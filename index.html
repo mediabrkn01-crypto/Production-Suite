@@ -280,8 +280,9 @@
   </div>
 
   <script>
-    // INJECTED DEPLOYED GOOGLE APPS SCRIPT TARGET URL
     const EMAIL_RELAY_URL = "https://script.google.com/macros/s/AKfycbxxBakHrIJJBHfHE3008nII23KcA5pbdBNlGlujtogyXkFOihJHSz-WVpX932ddiSZbqQ/exec";
+    
+    // MODIFY THIS VALUE AT ANY TIME IN THE FUTURE TO UPDATE BOSS ROUTING TARGET
     const TARGET_NOTIFICATION_EMAIL = "amailtosreekanth@gmail.com";
 
     let taskDatabase = [];
@@ -293,12 +294,10 @@
     const TRACKER_CACHE_KEY = 'standalone_be_tracker_cache';
     const SETTINGS_CACHE_KEY = 'standalone_be_routing_cache';
 
-    // NAV ELEMENTS
     const navDashboardBtn = document.getElementById('navDashboardBtn');
     const navScheduleBtn = document.getElementById('navScheduleBtn');
     const navSettingsBtn = document.getElementById('navSettingsBtn');
     
-    // TAB SECTIONS
     const dashboardView = document.getElementById('dashboard-tab-view');
     const scheduleView = document.getElementById('schedule-tab-view');
     const settingsView = document.getElementById('settings-tab-view');
@@ -324,6 +323,23 @@
     navDashboardBtn.addEventListener('click', () => displayTab('dashboard'));
     navScheduleBtn.addEventListener('click', () => displayTab('schedule'));
     navSettingsBtn.addEventListener('click', () => displayTab('settings'));
+
+    // MANAGE DROPDOWN VISIBILITY RULES FOR NEW ENTRIES
+    const formAssignmentType = document.getElementById('formAssignmentType');
+    const formThumbStatus = document.getElementById('formThumbStatus');
+    
+    function evaluateFormDropdownLocks() {
+      if (formAssignmentType.value === "Video Editing") {
+        formThumbStatus.value = "Pending";
+        formThumbStatus.disabled = true;
+        formThumbStatus.classList.add('opacity-50', 'bg-slate-200');
+      } else {
+        formThumbStatus.disabled = false;
+        formThumbStatus.classList.remove('opacity-50', 'bg-slate-200');
+      }
+    }
+    formAssignmentType.addEventListener('change', evaluateFormDropdownLocks);
+    window.addEventListener('DOMContentLoaded', evaluateFormDropdownLocks);
 
     function loadStorageData() {
       taskDatabase = JSON.parse(localStorage.getItem(TRACKER_CACHE_KEY)) || [];
@@ -441,6 +457,7 @@
       updateFormatProportionChart();
     }
 
+    // AUTOMATED SYSTEM VALIDATION ROUTER TRIGGER FOR THE BOSS RECEIPT
     async function checkAndTriggerStatusNotification(task) {
       if (task.thumbnailStatus === 'Completed' && task.editorStatus === 'Ready to Upload') {
         const payload = {
@@ -473,7 +490,11 @@
         let postDateVal = task.postedDate ? new Date(task.postedDate).toISOString().split('T') : '';
         let currentLink = task.contentLink || '';
 
-        // RENDER COLOR TAG ADAPTED FOR "BOTH" TRACK VALUE
+        // Conditional checks to isolate locks inside table view rows
+        const isThumbDisabled = task.assignmentType === 'Video Editing';
+        const disabledAttr = isThumbDisabled ? 'disabled' : '';
+        const opStyle = isThumbDisabled ? 'opacity-40 cursor-not-allowed bg-slate-100' : 'cursor-pointer bg-white';
+
         let trackBadgeColor = 'bg-red-50 text-red-600';
         if (task.assignmentType === 'Thumbnail/Poster') trackBadgeColor = 'bg-amber-50 text-amber-600';
         if (task.assignmentType === 'Both') trackBadgeColor = 'bg-purple-50 text-purple-600 border border-purple-100';
@@ -499,7 +520,7 @@
             <div class="text-[10px] text-slate-400 mt-1 font-mono">${task.presenter}</div>
           </td>
           <td class="py-3 px-3">
-            <select class="thumb-dropdown text-xs font-bold px-2 py-1 rounded-lg border bg-white border-slate-200 cursor-pointer">
+            <select ${disabledAttr} class="thumb-dropdown text-xs font-bold px-2 py-1 rounded-lg border border-slate-200 ${opStyle}">
               <option value="Pending" ${task.thumbnailStatus === 'Pending' ? 'selected' : ''}>Pending</option>
               <option value="In Progress" ${task.thumbnailStatus === 'In Progress' ? 'selected' : ''}>In Progress</option>
               <option value="Completed" ${task.thumbnailStatus === 'Completed' ? 'selected' : ''}>Completed</option>
@@ -557,16 +578,13 @@
       
       const selectedTrack = document.getElementById('formAssignmentType').value;
       
-      // LOGIC COMPILING BOTH EMAIL ROUTING POOLS INTO ONE LIST
       let targetEmails = "";
       if (selectedTrack === 'Video Editing') {
         targetEmails = routingSettings.videoEmails.join(",");
       } else if (selectedTrack === 'Thumbnail/Poster') {
         targetEmails = routingSettings.thumbEmails.join(",");
       } else if (selectedTrack === 'Both') {
-        // Combines both distinct pools into a single unified array
         const combinedPool = [...routingSettings.videoEmails, ...routingSettings.thumbEmails];
-        // Removes any duplicate emails if someone belongs to both setups
         const uniquePool = [...new Set(combinedPool)];
         targetEmails = uniquePool.join(",");
       }
@@ -590,7 +608,7 @@
         editorStatus: document.getElementById('formEditorStatus').value,
         postedDate: document.getElementById('formPostedDate').value,
         uploadedIn: document.getElementById('formUploadedIn').value,
-        contentLink: ''
+        contentLink: '' // Instantiates default value profile
       };
 
       taskDatabase.unshift(newTaskItem);
@@ -612,6 +630,7 @@
       }
       
       document.getElementById('productionEntryForm').reset();
+      evaluateFormDropdownLocks();
       checkAndTriggerStatusNotification(newTaskItem);
     });
 
