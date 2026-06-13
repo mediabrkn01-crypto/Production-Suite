@@ -3,15 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Broken English Media | Content Manager</title>
+  <title>Broken English Media | Content Suite</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #f8fafc; }
-    html { scroll-behavior: smooth; }
-    /* Hidden state for the work assignment slide-over panel */
-    .panel-hidden { transform: translateX(100%); }
     
-    /* Custom brand gradient utility classes matching your hex codes */
     .bg-brand-gradient {
       background: linear-gradient(135deg, #FF0000 0%, #FD6D05 50%, #FDB82D 100%);
     }
@@ -23,9 +19,12 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-    .focus-brand-ring:focus-within {
-      border-color: #FD6D05;
-      box-shadow: 0 0 0 2px rgba(253, 109, 5, 0.15);
+    
+    /* Animation helper for the graphic meters */
+    .chart-circle {
+      transition: stroke-dashoffset 0.6s ease-in-out;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
     }
   </style>
 </head>
@@ -36,509 +35,522 @@
     <!-- SIDEBAR NAVIGATION -->
     <aside class="w-64 bg-[#090e1a] text-slate-400 p-6 flex flex-col justify-between hidden md:flex shrink-0">
       <div>
-        <!-- BRAND LOGO HEADER: Pulling your official Instagram Profile Image -->
         <div class="flex items-center gap-3 mb-8">
-          <img src="https://www.instagram.com/brokenenglish___/profilev2/featured/" 
-               onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=60';" 
-               alt="Broken English Logo" 
-               class="w-12 h-12 rounded-xl object-cover border border-slate-800 shadow-inner bg-slate-900" />
+          <img src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=60" alt="Broken English Logo" class="w-12 h-12 rounded-xl object-cover border border-slate-800 shadow-inner bg-slate-900" />
           <div class="flex flex-col">
             <span class="text-[10px] font-bold tracking-widest text-[#FD6D05] uppercase">Media Suite</span>
             <span class="text-white font-black text-lg tracking-tight leading-none">BROKEN<br/><span class="text-[#FDB82D]">ENGLISH</span></span>
           </div>
         </div>
-
         <nav class="space-y-1">
-          <a href="#" class="flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md transition">📊 Dashboard</a>
-          <a href="#work-schedule-section" class="flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl transition">📝 Work Schedule</a>
-          <a href="https://www.instagram.com/brokenenglish___?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==" target="_blank" class="flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl transition">📸 Instagram Reels ↗</a>
+          <button id="navDashboardBtn" class="w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md transition outline-none">📊 Dashboard Overview</button>
+          <button id="navScheduleBtn" class="w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none">📝 Work Schedule Pipeline</button>
+          <a href="https://www.youtube.com/channel/UC3UroLYjfHIEqInFK0rC5OQ" target="_blank" class="flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl transition">📺 YouTube Channel ↗</a>
         </nav>
-        
-        <!-- TRIGGER BUTTON TO SHOW THE WORK ASSIGNMENT TAB -->
-        <button id="openFormBtn" class="w-full mt-6 bg-brand-gradient hover-bg-brand-gradient text-white font-bold text-sm py-3.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg tracking-wide">
-          <span>➕</span> Assign New Work
-        </button>
       </div>
-      
       <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs">
-        <div class="flex items-center gap-2 mb-2 text-emerald-400 font-semibold">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Google Sheets Active
-        </div>
-        <p class="text-slate-500 mb-3">Last synced: Just now</p>
-        <a href="https://docs.google.com/spreadsheets/d/1GJVD2iaSA_aDTKWgf8ChAb0ln6NY1F7qtpMQ1Bacp-0/edit?pli=1&gid=0#gid=0" target="_blank" class="block w-full bg-slate-800 hover:bg-slate-700 text-white text-center font-medium py-2 rounded-lg transition">Open Master Spreadsheet ↗</a>
+        <div class="flex items-center gap-2 mb-2 text-emerald-400 font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live Graphical Sync</div>
+        <p class="text-slate-500">Analytics display automatically shifts shapes as logs update.</p>
       </div>
     </aside>
 
-    <!-- MAIN CONTENT CONTAINER -->
-    <main class="flex-1 p-8 overflow-y-auto transition-all duration-300">
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 p-6 overflow-y-auto">
       
-      <!-- HEADER -->
-      <header class="flex justify-between items-center mb-8">
-        <div>
+      <!-- LOADING COVER STATE OVERLAY -->
+      <div id="initialLoadingOverlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center font-bold text-white text-sm">
+        <div class="bg-slate-950 p-6 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-800">
+          <span class="animate-spin text-xl">⏳</span> Reading Sheet Database & Scanning Upload matching indexes...
+        </div>
+      </div>
+
+      <!-- ================= TAB 1: DASHBOARD OVERVIEW ================= -->
+      <section id="dashboard-tab-view" class="space-y-6">
+        <header>
           <h1 class="text-3xl font-black tracking-tight text-slate-900">Workspace Dashboard 🚀</h1>
-          <p class="text-sm text-slate-500">Log task structures, track content workflows, and review channel metrics summaries.</p>
-        </div>
-        <!-- MOBILE ACCESSIBLE ASSIGN BUTTON -->
-        <button id="openFormBtnMobile" class="md:hidden bg-brand-gradient text-white font-medium text-sm px-4 py-2.5 rounded-xl transition shadow-sm">
-          ➕ Assign Work
-        </button>
-      </header>
+          <p class="text-sm text-slate-500">Live channel parameters combined with data charts.</p>
+        </header>
 
-      <!-- METRICS / REELS STATS CARDS GRID -->
-      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-          <div class="p-3 bg-red-50 text-[#FF0000] rounded-xl text-xl font-bold">🎞️</div>
-          <div>
-            <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Live Reels</p>
-            <h3 class="text-2xl font-bold text-slate-900">100</h3>
+        <!-- LIVE METRICS CARDS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div class="p-3 bg-red-50 text-[#FF0000] rounded-xl text-xl font-bold">🎞️</div>
+            <div>
+              <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Videos</p>
+              <h3 id="ytTotalVideos" class="text-2xl font-bold text-slate-900">...</h3>
+            </div>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div class="p-3 bg-pink-50 text-pink-600 rounded-xl text-xl font-bold">📸</div>
+            <div>
+              <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Instagram Reels</p>
+              <h3 id="igTotalReels" class="text-2xl font-bold text-slate-900">...</h3>
+            </div>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div class="p-3 bg-orange-50 text-[#FD6D05] rounded-xl text-xl">📱</div>
+            <div>
+              <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">YouTube Shorts</p>
+              <h3 id="ytShortsVideos" class="text-2xl font-bold text-slate-900">...</h3>
+            </div>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div class="p-3 bg-amber-50 text-[#FDB82D] rounded-xl text-xl">🖥️</div>
+            <div>
+              <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Normal Videos</p>
+              <h3 id="ytNormalVideos" class="text-2xl font-bold text-slate-900">...</h3>
+            </div>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div class="p-3 bg-slate-50 text-slate-600 rounded-xl text-xl">⏳</div>
+            <div>
+              <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Pipeline Space</p>
+              <h3 id="activeTasksCount" class="text-2xl font-bold text-slate-900">0</h3>
+            </div>
           </div>
         </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-          <div class="p-3 bg-orange-50 text-[#FD6D05] rounded-xl text-xl">👤</div>
-          <div>
-            <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Standalone Reels</p>
-            <h3 class="text-2xl font-bold text-slate-900">65</h3>
-          </div>
-        </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-          <div class="p-3 bg-amber-50 text-[#FDB82D] rounded-xl text-xl">🤝</div>
-          <div>
-            <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Collaborated Reels</p>
-            <h3 class="text-2xl font-bold text-slate-900">35</h3>
-          </div>
-        </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-          <div class="p-3 bg-slate-50 text-slate-600 rounded-xl text-xl">⏳</div>
-          <div>
-            <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Active Pipeline Tasks</p>
-            <h3 id="activeTasksCount" class="text-2xl font-bold text-slate-900">0</h3>
-          </div>
-        </div>
-      </section>
 
-      <!-- NEW PRODUCTION PIPELINE CHART WORKSPACE LOGIC -->
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <!-- Visual Progress Analytics -->
-        <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-          <h2 class="text-base font-bold text-slate-900 mb-1">Production Workflow Metrics</h2>
-          <p class="text-xs text-slate-400 mb-6">Real-time status tracking distribution for active pipeline runs.</p>
+        <!-- GRAPHICAL CHARTS ARCHITECTURE SECTION -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          <div class="space-y-4">
-            <!-- To Do Progress Line Bar -->
-            <div>
-              <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
-                <span>🔴 To Do (Pending Assignment)</span>
-                <span id="chartToDoLabel">0 Tasks (0%)</span>
-              </div>
-              <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                <div id="chartToDoBar" class="bg-[#FF0000] h-full transition-all duration-500" style="width: 0%"></div>
-              </div>
-            </div>
-
-            <!-- In Progress Progress Line Bar -->
-            <div>
-              <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
-                <span>🟠 In Progress (Production)</span>
-                <span id="chartProgressLabel">0 Tasks (0%)</span>
-              </div>
-              <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                <div id="chartProgressBar" class="bg-[#FD6D05] h-full transition-all duration-500" style="width: 0%"></div>
+          <!-- LEFT GRAPHIC: PIPELINE DONUT CHART METERS -->
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col md:flex-row items-center justify-around gap-6">
+            <div class="text-center md:text-left">
+              <h2 class="text-base font-bold text-slate-900 mb-1">Workflow Allocation</h2>
+              <p class="text-xs text-slate-400 max-w-xs mb-4">A complete graphical layout distribution across all current workspace items.</p>
+              
+              <!-- Color Indicator Legends -->
+              <div class="space-y-2 text-xs font-semibold text-slate-600">
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#FF0000] block"></span> To Do: <span id="legendToDo">0 Tasks</span></div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#FD6D05] block"></span> In Progress: <span id="legendProgress">0 Tasks</span></div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#FDB82D] block"></span> Under Review: <span id="legendReview">0 Tasks</span></div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-500 block"></span> Ready to Upload: <span id="legendReady">0 Tasks</span></div>
               </div>
             </div>
 
-            <!-- Under Review Progress Line Bar -->
-            <div>
-              <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
-                <span>🟡 Under Review</span>
-                <span id="chartReviewLabel">0 Tasks (0%)</span>
-              </div>
-              <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                <div id="chartReviewBar" class="bg-[#FDB82D] h-full transition-all duration-500" style="width: 0%"></div>
-              </div>
-            </div>
-
-            <!-- Ready To Upload Progress Line Bar -->
-            <div>
-              <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
-                <span>🟢 Ready to Upload (Completed)</span>
-                <span id="chartReadyLabel">0 Tasks (0%)</span>
-              </div>
-              <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                <div id="chartReadyBar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 0%"></div>
+            <!-- Native SVG Vector Radial Multi-Chart Graphics -->
+            <div class="relative w-44 h-44 flex items-center justify-center">
+              <svg width="100%" height="100%" viewBox="0 0 42 42" class="donut">
+                <circle class="donut-hole" cx="21" cy="21" r="15.91549430918954" fill="#fff"></circle>
+                <circle class="donut-ring" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#f1f5f9" stroke-width="4"></circle>
+                
+                <!-- Colored segments that change size programmatically based on percentages -->
+                <circle id="segmentToDo" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#FF0000" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                <circle id="segmentProgress" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#FD6D05" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                <circle id="segmentReview" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#FDB82D" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                <circle id="segmentReady" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#10b981" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+              </svg>
+              <!-- Center Text Content -->
+              <div class="absolute text-center">
+                <span id="chartCenterCount" class="block text-2xl font-black text-slate-900 leading-none">0</span>
+                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total logged</span>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Task Split Summary Box Dashboard Counter Widget -->
-        <div class="bg-slate-950 text-white rounded-2xl p-6 flex flex-col justify-between shadow-md relative overflow-hidden">
-          <div class="absolute -right-6 -bottom-6 text-slate-900 font-black text-9xl pointer-events-none select-none opacity-40">📊</div>
-          <div class="z-10">
-            <h3 class="text-sm font-bold tracking-wider uppercase text-[#FDB82D] mb-1">Queue Overview</h3>
-            <p class="text-xs text-slate-400">Quick balancing analysis summary data metric.</p>
-          </div>
-          
-          <div class="grid grid-cols-2 gap-4 my-auto z-10">
-            <div class="bg-white/5 border border-white/10 p-4 rounded-xl">
-              <span class="block text-xs font-medium text-slate-400">Total Pending</span>
-              <span id="widgetPendingCount" class="text-3xl font-black text-[#FD6D05]">0</span>
-            </div>
-            <div class="bg-white/5 border border-white/10 p-4 rounded-xl">
-              <span class="block text-xs font-medium text-slate-400">Finished</span>
-              <span id="widgetFinishedCount" class="text-3xl font-black text-emerald-400">0</span>
-            </div>
-          </div>
-
-          <p class="text-[11px] text-slate-500 z-10 font-medium">Keep production pipelines green to hit strategic channel upload targets.</p>
-        </div>
-      </section>
-
-      <!-- DATA DISPLAY GRID -->
-      <section id="work-schedule-section" class="grid grid-cols-1 gap-6">
-        
-        <!-- WORK SCHEDULE TABLE -->
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <!-- RIGHT GRAPHIC: LIVE COMPARATIVE TRACKER BAR GRAPH -->
+          <div class="bg-slate-950 text-white rounded-2xl p-6 flex flex-col justify-between shadow-md">
             <div>
-              <h2 class="text-lg font-bold text-slate-900">Work Schedule Pipeline</h2>
-              <p class="text-xs text-slate-400">Updates dynamically in real-time as soon as data is entered into the system</p>
+              <h3 class="text-sm font-bold tracking-wider uppercase text-[#FDB82D] mb-1">Queue Proportions</h3>
+              <p class="text-xs text-slate-400">Comparing active items vs finished entries.</p>
             </div>
             
-            <button id="downloadReportBtn" class="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition shadow-sm">
-              📥 Download Daily Report
-            </button>
+            <div class="my-6 space-y-4">
+              <!-- Pending Proportional Bar -->
+              <div>
+                <div class="flex justify-between text-xs font-semibold text-slate-400 mb-1">
+                  <span>🛠️ Active Backlog (Pending)</span>
+                  <span id="barPendingLabel" class="text-[#FD6D05]">0</span>
+                </div>
+                <div class="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
+                  <div id="barPendingWidth" class="bg-gradient-to-r from-[#FF0000] to-[#FD6D05] h-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+              </div>
+
+              <!-- Finished Proportional Bar -->
+              <div>
+                <div class="flex justify-between text-xs font-semibold text-slate-400 mb-1">
+                  <span>✅ Completed (Finished)</span>
+                  <span id="barFinishedLabel" class="text-emerald-400">0</span>
+                </div>
+                <div class="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
+                  <div id="barFinishedWidth" class="bg-emerald-500 h-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+
+            <p class="text-[10px] text-slate-500 font-medium">Keep production pipelines green to hit strategic channel upload targets.</p>
+          </div>
+          
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: WORK SCHEDULE SUITE SECTION ================= -->
+      <section id="schedule-tab-view" class="space-y-6 hidden">
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div class="p-4 bg-[#090e1a] text-white"><h3 class="text-base font-bold">Log New Production Entry</h3></div>
+          <form id="productionEntryForm" class="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Date</label>
+              <input id="formDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Presenter</label>
+              <input id="formPresenter" type="text" placeholder="Presenter Name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Video Title</label>
+              <input id="formVideoTitle" type="text" placeholder="Title Context" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Shoot Date</label>
+              <input id="formShootDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Shoot Title</label>
+              <input id="formShootTitle" type="text" placeholder="Reference ID" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Description</label>
+              <input id="formDescription" type="text" placeholder="Scope notes..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Designer Name</label>
+              <input id="formDesigner" type="text" placeholder="Receives alert email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Editor Name</label>
+              <input id="formEditor" type="text" placeholder="Receives alert email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Thumbnail Status</label>
+              <select id="formThumbStatus" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Editor Status</label>
+              <select id="formEditorStatus" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="To Do">To Do</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Ready to Upload">Ready to Upload</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Posted Date (Optional)</label>
+              <input id="formPostedDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Uploaded In</label>
+              <select id="formUploadedIn" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="Not Yet Uploaded">Not Yet Uploaded</option>
+                <option value="Instagram">Instagram</option>
+                <option value="YouTube Shorts">YouTube Shorts</option>
+                <option value="Both (IG & YT)">Both (IG & YT)</option>
+              </select>
+            </div>
+            <div class="md:col-span-2 lg:col-span-4 flex justify-end mt-2">
+              <button type="submit" class="w-full md:w-64 bg-brand-gradient hover-bg-brand-gradient text-white font-bold text-sm py-3 rounded-xl shadow-md transition">Publish & Sync Record</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- TRACKER GRID ENGINE -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 overflow-hidden">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-slate-900">Live Production Dynamic Tracker</h3>
+              <p class="text-xs text-slate-400">Updates dynamically across views when editing or cancelling</p>
+            </div>
+            <button id="downloadReportBtn" class="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition shadow-sm w-full sm:w-auto justify-center">📥 Download Production CSV Report</button>
           </div>
 
           <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+            <table class="w-full text-left border-collapse min-w-[1100px]">
               <thead>
                 <tr class="border-b border-slate-100 text-slate-400 text-xs font-semibold uppercase bg-slate-50/50">
-                  <th class="py-3 px-4">Date</th>
-                  <th class="py-3 px-4">Topic / Scene Description</th>
-                  <th class="py-3 px-4">Presenter</th>
-                  <th class="py-3 px-4">Camera Person</th>
-                  <th class="py-3 px-4">Thumbnail Creator</th>
-                  <th class="py-3 px-4">Editing Status</th>
+                  <th class="py-3 px-3">Production Timeline</th>
+                  <th class="py-3 px-3">Title / Core Reference</th>
+                  <th class="py-3 px-3">Assignment Crew</th>
+                  <th class="py-3 px-3">Thumbnail Status</th>
+                  <th class="py-3 px-3">Editor Status</th>
+                  <th class="py-3 px-3">Upload Destination</th>
+                  <th class="py-3 px-3 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody id="workTableBody" class="text-sm divide-y divide-slate-100">
-                <!-- Rows append here when forms are published -->
-              </tbody>
+              <tbody id="productionTableBody" class="text-sm divide-y divide-slate-100"></tbody>
             </table>
-            
-            <!-- Empty state tracker -->
-            <div id="emptyStateContainer" class="text-center py-12 text-slate-400">
-              <span class="text-3xl block mb-2">📥</span>
-              <p class="text-sm font-medium">Pipeline empty. Open the "Assign New Work" menu to publish data items.</p>
-            </div>
+            <div id="emptyStateContainer" class="text-center py-12 text-slate-400 font-medium">No active layout rows. Input values above to generate.</div>
           </div>
         </div>
       </section>
     </main>
-
-    <!-- RIGHT SIDE SLIDE-OUT PANEL (Hidden by default) -->
-    <div id="assignmentPanel" class="fixed top-0 right-0 h-full w-full sm:w-[450px] bg-white shadow-2xl border-l border-slate-100 z-50 transition-transform duration-300 ease-in-out panel-hidden flex flex-col">
-      <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-[#090e1a] text-white">
-        <div>
-          <h2 class="text-lg font-bold">Assign Work Tasks</h2>
-          <p class="text-xs text-[#FDB82D] font-medium uppercase tracking-wider">Broken English Creative Desk</p>
-        </div>
-        <button id="closeFormBtn" class="text-slate-400 hover:text-white text-2xl font-bold px-3 py-1 rounded-lg hover:bg-slate-800 transition">×</button>
-      </div>
-
-      <form id="workAssignmentForm" class="p-6 space-y-4 flex-1 overflow-y-auto">
-        <!-- MULTI EMAIL INPUT COMPONENT -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Assigned Members Emails</label>
-          <div id="emailContainer" class="flex flex-wrap gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px] focus-brand-ring transition">
-            <input id="emailInput" type="text" placeholder="Add email and press Enter..." class="flex-1 min-w-[150px] bg-transparent text-sm outline-none px-2 py-1" />
-          </div>
-        </div>
-
-        <!-- Content Target Media Setup -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Target Media Format</label>
-          <select id="workPlatform" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition">
-            <option value="Instagram Standalone Reel">Instagram Standalone Reel</option>
-            <option value="Instagram Collaborative Reel">Instagram Collaborative Reel</option>
-            <option value="Both (YouTube & Instagram Reel)">Both (YouTube & Instagram Reel)</option>
-            <option value="YouTube Shorts / Video Only">YouTube Shorts / Video Only</option>
-          </select>
-        </div>
-
-        <!-- Date & Day -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Date</label>
-            <input id="workDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#FD6D05] transition" required />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Day Tag</label>
-            <input id="workDay" type="text" placeholder="e.g., Day 4" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition" required />
-          </div>
-        </div>
-
-        <!-- Topic / Description -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Topic / Scene Description</label>
-          <input id="workTopic" type="text" placeholder="e.g., Freeze Frame Scene" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition" required />
-        </div>
-
-        <!-- Production Crew Assignments -->
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Presenter</label>
-              <input id="workPresenter" type="text" placeholder="Name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition" required />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Camera Person</label>
-              <input id="workCamera" type="text" placeholder="Name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition" required />
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">🎨 Thumbnail Creator Name</label>
-            <input id="workThumbCreator" type="text" placeholder="Designer Name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition" required />
-          </div>
-        </div>
-
-        <!-- Task Tracking Pipeline Parameters -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Thumbnail Status</label>
-            <select id="statusThumbnail" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition">
-              <option value="Pending">Pending</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Completed">Completed</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Editing Status</label>
-            <select id="statusEditing" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#FD6D05] transition">
-              <option value="To Do">To Do</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Under Review">Under Review</option>
-              <option value="Ready to Upload">Ready to Upload</option>
-            </select>
-          </div>
-        </div>
-
-        <button type="submit" class="w-full bg-brand-gradient hover-bg-brand-gradient text-white font-bold text-sm py-3.5 rounded-xl transition shadow-md mt-4 tracking-wide">
-          Publish Work & Sync Sheet
-        </button>
-      </form>
-    </div>
-
   </div>
 
   <script>
-    // Panel Toggle Control Animations Handler
-    const assignmentPanel = document.getElementById('assignmentPanel');
-    const openFormBtn = document.getElementById('openFormBtn');
-    const openFormBtnMobile = document.getElementById('openFormBtnMobile');
-    const closeFormBtn = document.getElementById('closeFormBtn');
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwexEGiuzUytC7j3ilqZAFUb2QP_MPStDZIatSfAgSf7VEHOqfgYlow0ohKX0AOEv64/exec';
+    let taskDatabase = [];
 
-    function togglePanel() {
-      assignmentPanel.classList.toggle('panel-hidden');
+    // TABS CHANGEOVER HANDLER
+    const navDashboardBtn = document.getElementById('navDashboardBtn');
+    const navScheduleBtn = document.getElementById('navScheduleBtn');
+    const dashboardView = document.getElementById('dashboard-tab-view');
+    const scheduleView = document.getElementById('schedule-tab-view');
+
+    function toggleView(showDashboard) {
+      if (showDashboard) {
+        navDashboardBtn.className = "w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md outline-none";
+        navScheduleBtn.className = "w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none";
+        dashboardView.classList.remove('hidden');
+        scheduleView.classList.add('hidden');
+      } else {
+        navScheduleBtn.className = "w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md outline-none";
+        navDashboardBtn.className = "w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none";
+        scheduleView.classList.remove('hidden');
+        dashboardView.classList.add('hidden');
+      }
+    }
+    navDashboardBtn.addEventListener('click', () => toggleView(true));
+    navScheduleBtn.addEventListener('click', () => toggleView(false));
+
+    // MASTER DATABASE AND APP SYNC INDEXER
+    async function loadMasterSystemData() {
+      try {
+        const response = await fetch(SCRIPT_URL);
+        const data = await response.json();
+        
+        // Populate standard channel metrics counters
+        document.getElementById('ytTotalVideos').innerText = data.total;
+        document.getElementById('ytShortsVideos').innerText = data.shorts;
+        document.getElementById('ytNormalVideos').innerText = data.videos;
+        
+        // Inject the live, cached Instagram Reels total metrics count parameter
+        document.getElementById('igTotalReels').innerText = data.instagramReels;
+        
+        // Direct database injection from spreadsheet data matrix
+        taskDatabase = data.tasks || [];
+        
+        updateMetricsAndCharts();
+        renderTable();
+      } catch (err) {
+        console.error('System failed to load master database matrix:', err);
+      } finally {
+        document.getElementById('initialLoadingOverlay').classList.add('hidden');
+      }
+    }
+    window.addEventListener('DOMContentLoaded', loadMasterSystemData);
+
+    // ADVANCED REAL-TIME SVG RADIAL GRAPH RE-RENDERING SCRIPT
+    function updateMetricsAndCharts() {
+      const total = taskDatabase.length;
+      document.getElementById('activeTasksCount').innerText = total;
+      document.getElementById('chartCenterCount').innerText = total;
+      document.getElementById('emptyStateContainer').className = total === 0 ? "text-center py-12 text-slate-400 font-medium" : "hidden";
+
+      let counts = { "To Do": 0, "In Progress": 0, "Under Review": 0, "Ready to Upload": 0 };
+      taskDatabase.forEach(t => { if(counts[t.editorStatus] !== undefined) counts[t.editorStatus]++; });
+
+      // Update Text Legends
+      document.getElementById('legendToDo').innerText = `${counts["To Do"]} Tasks`;
+      document.getElementById('legendProgress').innerText = `${counts["In Progress"]} Tasks`;
+      document.getElementById('legendReview').innerText = `${counts["Under Review"]} Tasks`;
+      document.getElementById('legendReady').innerText = `${counts["Ready to Upload"]} Tasks`;
+
+      // Right Side Horizontal Proportions Bars
+      const pendingTotal = counts["To Do"] + counts["In Progress"] + counts["Under Review"];
+      const finishedTotal = counts["Ready to Upload"];
+      
+      document.getElementById('barPendingLabel').innerText = pendingTotal;
+      document.getElementById('barFinishedLabel').innerText = finishedTotal;
+      
+      const pendingPct = total > 0 ? (pendingTotal / total) * 100 : 0;
+      const finishedPct = total > 0 ? (finishedTotal / total) * 100 : 0;
+      document.getElementById('barPendingWidth').style.width = pendingPct + '%';
+      document.getElementById('barFinishedWidth').style.width = finishedPct + '%';
+
+      // SVG Vector Radial Circle Dynamic Segment Matrix Processor
+      const getPercent = (val) => total > 0 ? (val / total) * 100 : 0;
+      
+      let pToDo = getPercent(counts["To Do"]);
+      let pProgress = getPercent(counts["In Progress"]);
+      let pReview = getPercent(counts["Under Review"]);
+      let pReady = getPercent(counts["Ready to Upload"]);
+
+      // Calculate vector offset boundaries
+      let elToDo = document.getElementById('segmentToDo');
+      let elProgress = document.getElementById('segmentProgress');
+      let elReview = document.getElementById('segmentReview');
+      let elReady = document.getElementById('segmentReady');
+
+      elToDo.setAttribute('stroke-dasharray', `${pToDo} 100`);
+      elToDo.setAttribute('stroke-dashoffset', '0');
+
+      elProgress.setAttribute('stroke-dasharray', `${pProgress} 100`);
+      elProgress.setAttribute('stroke-dashoffset', `-${pToDo}`);
+
+      elReview.setAttribute('stroke-dasharray', `${pReview} 100`);
+      elReview.setAttribute('stroke-dashoffset', `-${pToDo + pProgress}`);
+
+      elReady.setAttribute('stroke-dasharray', `${pReady} 100`);
+      elReady.setAttribute('stroke-dashoffset', `-${pToDo + pProgress + pReview}`);
     }
 
-    openFormBtn.addEventListener('click', togglePanel);
-    openFormBtnMobile.addEventListener('click', togglePanel);
-    closeFormBtn.addEventListener('click', togglePanel);
+    function renderTable() {
+      const tbody = document.getElementById('productionTableBody');
+      tbody.innerHTML = '';
 
-    // Multi-Email Tag Element Processor Component
-    const emailContainer = document.getElementById('emailContainer');
-    const emailInput = document.getElementById('emailInput');
-    let emailList = [];
+      taskDatabase.forEach(task => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/50 transition border-b border-slate-100';
+        
+        // Highlight logic if video was updated automatically by the background engine
+        const isAutoSynced = (task.uploadedIn === "Both (IG & YT)");
+        const rowHighlightClass = isAutoSynced ? "bg-emerald-50/40" : "";
+        const selectBgColor = task.editorStatus === "Ready to Upload" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-orange-50 text-[#FD6D05] border-orange-100";
 
-    emailInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ',') {
-        e.preventDefault();
-        let val = emailInput.value.trim().replace(',', '');
-        if (val && !emailList.includes(val) && val.includes('@')) {
-          emailList.push(val);
-          createTag(val);
-          emailInput.value = '';
+        // Format dates safely for local raw inputs
+        let displayPostDate = '';
+        if (task.postedDate) {
+          try { displayPostDate = new Date(task.postedDate).toISOString().split('T')[0]; } catch(e) { displayPostDate = ''; }
         }
-      }
+
+        tr.innerHTML = `
+          <td class="py-3 px-3 space-y-0.5 text-xs ${rowHighlightClass}">
+            <div><span class="text-slate-400">Created:</span> ${task.date ? new Date(task.date).toISOString().split('T')[0] : '---'}</div>
+            <div><span class="text-slate-400">Shoot:</span> ${task.shootDate ? new Date(task.shootDate).toISOString().split('T')[0] : '---'}</div>
+            <div><span class="text-slate-400 font-bold">Post Date:</span> <input type="date" class="posted-date-input bg-transparent border-b border-dashed border-slate-300 focus:outline-none text-blue-600 font-semibold" value="${displayPostDate}"></div>
+          </td>
+          <td class="py-3 px-3 ${rowHighlightClass}">
+            <p class="font-bold text-slate-800 leading-tight">${task.videoTitle}</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">🎬 Reference: ${task.shootTitle} ${isAutoSynced ? '⚡ <span class="text-emerald-600 font-bold">Auto-Synced</span>':''}</p>
+          </td>
+          <td class="py-3 px-3 text-slate-600 max-w-[180px] truncate ${rowHighlightClass}" title="${task.description}">${task.description}</td>
+          <td class="py-3 px-3 text-[11px] space-y-0.5 ${rowHighlightClass}">
+            <div><span class="text-slate-400">Pres:</span> ${task.presenter}</div>
+            <div><span class="text-slate-400">Edit:</span> ${task.editor}</div>
+            <div><span class="text-slate-400">Des:</span> ${task.designer}</div>
+          </td>
+          <td class="py-3 px-3 ${rowHighlightClass}">
+            <select class="thumb-dropdown text-xs font-bold px-2 py-1 rounded-lg border bg-white border-slate-200 cursor-pointer">
+              <option value="Pending" ${task.thumbnailStatus === 'Pending' ? 'selected' : ''}>Pending</option>
+              <option value="In Progress" ${task.thumbnailStatus === 'In Progress' ? 'selected' : ''}>In Progress</option>
+              <option value="Completed" ${task.thumbnailStatus === 'Completed' ? 'selected' : ''}>Completed</option>
+            </select>
+          </td>
+          <td class="py-3 px-3 ${rowHighlightClass}">
+            <select class="editor-dropdown text-xs font-bold px-2 py-1 rounded-lg border ${selectBgColor} bg-white border-slate-200 cursor-pointer">
+              <option value="To Do" ${task.editorStatus === 'To Do' ? 'selected' : ''}>🔴 To Do</option>
+              <option value="In Progress" ${task.editorStatus === 'In Progress' ? 'selected' : ''}>🟠 In Progress</option>
+              <option value="Under Review" ${task.editorStatus === 'Under Review' ? 'selected' : ''}>🟡 Under Review</option>
+              <option value="Ready to Upload" ${task.editorStatus === 'Ready to Upload' ? 'selected' : ''}>🟢 Ready to Upload</option>
+            </select>
+          </td>
+          <td class="py-3 px-3 ${rowHighlightClass}">
+            <select class="upload-dropdown text-xs font-medium px-2 py-1 rounded-lg border bg-white border-slate-200 cursor-pointer">
+              <option value="Not Yet Uploaded" ${task.uploadedIn === 'Not Yet Uploaded' ? 'selected' : ''}>Not Yet Uploaded</option>
+              <option value="Instagram" ${task.uploadedIn === 'Instagram' ? 'selected' : ''}>Instagram</option>
+              <option value="YouTube Shorts" ${task.uploadedIn === 'YouTube Shorts' ? 'selected' : ''}>YouTube Shorts</option>
+              <option value="Both (IG & YT)" ${task.uploadedIn === 'Both (IG & YT)' ? 'selected' : ''}>Both (IG & YT)</option>
+            </select>
+          </td>
+          <td class="py-3 px-3 text-center ${rowHighlightClass}">
+            <button class="delete-btn text-slate-300 hover:text-red-500 font-semibold text-xs px-2 py-1 transition">🗑️ Cancel</button>
+          </td>
+        `;
+
+        // DYNAMIC CHANGE EVENT INTERACTIVITIES
+        tr.querySelector('.thumb-dropdown').addEventListener('change', (e) => {
+          task.thumbnailStatus = e.target.value;
+          syncSheet(task, 'UPDATE');
+        });
+
+        tr.querySelector('.editor-dropdown').addEventListener('change', (e) => {
+          task.editorStatus = e.target.value;
+          updateMetricsAndCharts();
+          renderTable();
+          syncSheet(task, 'UPDATE');
+        });
+
+        tr.querySelector('.upload-dropdown').addEventListener('change', (e) => {
+          task.uploadedIn = e.target.value;
+          syncSheet(task, 'UPDATE');
+        });
+
+        tr.querySelector('.posted-date-input').addEventListener('change', (e) => {
+          task.postedDate = e.target.value;
+          syncSheet(task, 'UPDATE');
+        });
+
+        tr.querySelector('.delete-btn').addEventListener('click', () => {
+          if (confirm('Delete this pipeline record from layout data and synced sheets?')) {
+            taskDatabase = taskDatabase.filter(t => t.id !== task.id);
+            updateMetricsAndCharts();
+            renderTable();
+            syncSheet(task, 'DELETE');
+          }
+        });
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // FORM CAPTURES
+    document.getElementById('productionEntryForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const task = {
+        id: Date.now().toString(),
+        date: document.getElementById('formDate').value,
+        presenter: document.getElementById('formPresenter').value,
+        videoTitle: document.getElementById('formVideoTitle').value,
+        shootDate: document.getElementById('formShootDate').value,
+        shootTitle: document.getElementById('formShootTitle').value,
+        description: document.getElementById('formDescription').value,
+        designer: document.getElementById('formDesigner').value,
+        editor: document.getElementById('formEditor').value,
+        thumbnailStatus: document.getElementById('formThumbStatus').value,
+        editorStatus: document.getElementById('formEditorStatus').value,
+        postedDate: document.getElementById('formPostedDate').value,
+        uploadedIn: document.getElementById('formUploadedIn').value
+      };
+
+      taskDatabase.unshift(task);
+      updateMetricsAndCharts();
+      renderTable();
+      syncSheet(task, 'CREATE');
+      document.getElementById('productionEntryForm').reset();
     });
 
-    function createTag(label) {
-      const div = document.createElement('div');
-      div.setAttribute('class', 'flex items-center gap-1.5 bg-orange-50 text-[#FD6D05] font-medium text-xs px-2.5 py-1 rounded-lg border border-orange-100');
-      const span = document.createElement('span');
-      span.innerText = label;
-      const closeBtn = document.createElement('button');
-      closeBtn.innerText = '×';
-      closeBtn.setAttribute('class', 'font-bold text-sm hover:text-red-600');
-      closeBtn.onclick = () => {
-        emailList = emailList.filter(e => e !== label);
-        div.remove();
-      };
-      div.appendChild(span);
-      div.appendChild(closeBtn);
-      emailContainer.insertBefore(div, emailInput);
-    }
-
-    // STATE VARIABLE DATA PACKETS FOR CHART CALCULATIONS
-    let taskTrackerMap = {
-      "To Do": 0,
-      "In Progress": 0,
-      "Under Review": 0,
-      "Ready to Upload": 0
-    };
-    let totalAssignedTasks = 0;
-
-    // CHART RE-RENDER RE-CALCULATION ENGINE
-    function recomputeWorkflowCharts() {
-      document.getElementById('activeTasksCount').innerText = totalAssignedTasks;
-      
-      // Calculate how many tasks are pending vs how many are done
-      let pendingTotal = taskTrackerMap["To Do"] + taskTrackerMap["In Progress"] + taskTrackerMap["Under Review"];
-      let finishedTotal = taskTrackerMap["Ready to Upload"];
-      
-      document.getElementById('widgetPendingCount').innerText = pendingTotal;
-      document.getElementById('widgetFinishedCount').innerText = finishedTotal;
-
-      // Safe fractional percentage calculation utility block
-      const getPercent = (val) => totalAssignedTasks > 0 ? Math.round((val / totalAssignedTasks) * 100) : 0;
-
-      // Render To Do Visual Elements
-      const todoPct = getPercent(taskTrackerMap["To Do"]);
-      document.getElementById('chartToDoBar').style.width = todoPct + '%';
-      document.getElementById('chartToDoLabel').innerText = `${taskTrackerMap["To Do"]} Tasks (${todoPct}%)`;
-
-      // Render In Progress Visual Elements
-      const progPct = getPercent(taskTrackerMap["In Progress"]);
-      document.getElementById('chartProgressBar').style.width = progPct + '%';
-      document.getElementById('chartProgressLabel').innerText = `${taskTrackerMap["In Progress"]} Tasks (${progPct}%)`;
-
-      // Render Under Review Visual Elements
-      const revPct = getPercent(taskTrackerMap["Under Review"]);
-      document.getElementById('chartReviewBar').style.width = revPct + '%';
-      document.getElementById('chartReviewLabel').innerText = `${taskTrackerMap["Under Review"]} Tasks (${revPct}%)`;
-
-      // Render Ready to Upload Visual Elements
-      const readyPct = getPercent(taskTrackerMap["Ready to Upload"]);
-      document.getElementById('chartReadyBar').style.width = readyPct + '%';
-      document.getElementById('chartReadyLabel').innerText = `${taskTrackerMap["Ready to Upload"]} Tasks (${readyPct}%)`;
-    }
-
-    // Form Submissions - Dynamic Data Updates inside Pipeline Dashboard 
-    document.getElementById('workAssignmentForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      // AUTO-FIX: Convert hanging uncommitted text strings to array tags cleanly
-      let pendingEmail = emailInput.value.trim().replace(',', '');
-      if (pendingEmail && !emailList.includes(pendingEmail) && pendingEmail.includes('@')) {
-        emailList.push(pendingEmail);
-        createTag(pendingEmail);
-        emailInput.value = '';
-      }
-
-      if (emailList.length === 0) { 
-        alert('Please supply an assignee email tag first.'); 
-        return; 
-      }
-
-      const date = document.getElementById('workDate').value;
-      const topic = document.getElementById('workTopic').value;
-      const presenter = document.getElementById('workPresenter').value;
-      const camera = document.getElementById('workCamera').value;
-      const creator = document.getElementById('workThumbCreator').value;
-      const editStatus = document.getElementById('statusEditing').value;
-
-      if (totalAssignedTasks === 0) {
-        document.getElementById('emptyStateContainer').classList.add('hidden');
-      }
-
-      // Appends row tracking line directly to table workspace
-      const tbody = document.getElementById('workTableBody');
-      const newRow = document.createElement('tr');
-      newRow.setAttribute('class', 'hover:bg-slate-50/70 transition border-b border-slate-100');
-      newRow.innerHTML = `
-        <td class="py-4 px-4 font-medium text-slate-900">${date}</td>
-        <td class="py-4 px-4 text-slate-700 font-medium">${topic}</td>
-        <td class="py-4 px-4 text-slate-600">${presenter}</td>
-        <td class="py-4 px-4 text-slate-600">${camera}</td>
-        <td class="py-4 px-4 text-slate-600">${creator}</td>
-        <td class="py-4 px-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-[#FD6D05]">${editStatus}</span></td>
-      `;
-      tbody.insertBefore(newRow, tbody.firstChild);
-
-      // Mutate state configurations metrics records
-      taskTrackerMap[editStatus]++;
-      totalAssignedTasks++;
-      
-      // Fire visual rendering script engine
-      recomputeWorkflowCharts();
-
-      // Close structural panel view drawer element container wrapper
-      togglePanel();
-
-      // Pack row payload data properties packet for Apps Script
-      const payload = {
-        emails: emailList.join(', '),
-        platform: document.getElementById('workPlatform').value,
-        date: date,
-        day: document.getElementById('workDay').value,
-        topic: topic,
-        presenter: presenter,
-        camera: camera,
-        thumbCreator: creator,
-        thumbnailStat: document.getElementById('statusThumbnail').value,
-        editingStat: editStatus
-      };
-
+    // SERVER SYNC WRAPPERS
+    async function syncSheet(taskData, actionType) {
       try {
-        await fetch('YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL', {
+        await fetch(SCRIPT_URL, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ action: actionType, ...taskData })
         });
-        
-        emailList = [];
-        document.querySelectorAll('#emailContainer div').forEach(el => el.remove());
-        document.getElementById('workAssignmentForm').reset();
-      } catch (err) {
-        console.error('Remote storage syncing error connection details:', err);
-      }
-    });
+      } catch (err) { console.error('Sync issue:', err); }
+    }
 
-    // REPORT DOWNLOAD GENERATOR LOGIC
+    // EXPORT DOWNLOADS CSV GENERATOR
     document.getElementById('downloadReportBtn').addEventListener('click', () => {
-      const tableBody = document.getElementById('workTableBody');
-      const rows = tableBody.querySelectorAll('tr');
-
-      if (rows.length === 0) {
-        alert('There is no schedule data in the pipeline to download yet! Add some tasks first.');
+      if (taskDatabase.length === 0) {
+        alert('Tracker log database is empty!');
         return;
       }
-
-      let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Date,Topic/Scene Description,Presenter,Camera Person,Thumbnail Creator,Editing Status\n";
-
-      rows.forEach(row => {
-        const cols = row.querySelectorAll('td');
-        let rowData = [];
-        
-        cols.forEach((col) => {
-          let text = col.innerText.trim();
-          if (text.includes(',')) { text = `"${text}"`; }
-          rowData.push(text);
-        });
-
-        csvContent += rowData.join(",") + "\n";
+      let csvContent = "data:text/csv;charset=utf-8,Date,Presenter,Video Title,Shoot Date,Shoot Title,Description,Designer,Thumbnail Status,Editor Status,Posted Date,Uploaded In\n";
+      taskDatabase.forEach(t => {
+        let row = [t.date, `"${t.presenter}"`, `"${t.videoTitle}"`, t.shootDate, `"${t.shootTitle}"`, `"${t.description}"`, `"${t.designer}"`, t.thumbnailStatus, t.editorStatus, t.postedDate || 'N/A', t.uploadedIn];
+        csvContent += row.join(",") + "\n";
       });
-
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
-      const today = new Date().toISOString().split('T')[0];
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `broken_english_daily_report_${today}.csv`);
+      link.setAttribute("download", `production_report_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
-
       link.click();
       document.body.removeChild(link);
     });
