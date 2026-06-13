@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Broken English Media | Content Suite</title>
-  <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #f8fafc; }
@@ -30,7 +29,7 @@
     <aside class="w-64 bg-[#090e1a] text-slate-400 p-6 flex flex-col justify-between hidden md:flex shrink-0">
       <div>
         <div class="flex items-center gap-3 mb-8">
-          <img src="Broken English Final Logo-03.png" alt="Broken English Logo" class="w-12 h-12 rounded-xl object-cover border border-slate-800 shadow-inner bg-slate-900" />
+          <img src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=60" alt="Broken English Logo" class="w-12 h-12 rounded-xl object-cover border border-slate-800 shadow-inner bg-slate-900" />
           <div class="flex flex-col">
             <span class="text-[10px] font-bold tracking-widest text-[#FD6D05] uppercase">Media Suite</span>
             <span class="text-white font-black text-lg tracking-tight leading-none">BROKEN<br/><span class="text-[#FDB82D]">ENGLISH</span></span>
@@ -173,11 +172,11 @@
               <select id="formAssignmentType" class="w-full bg-orange-50/50 border border-orange-200 rounded-xl px-3 py-2 text-sm font-bold focus:border-[#FD6D05] cursor-pointer">
                 <option value="Video Editing">🎬 Video Editing Asset</option>
                 <option value="Thumbnail/Poster">🖼️ Thumbnail / Poster Design</option>
-                <option value="Both (Editor & Designer)">⚙️ Both (Editor & Designer)</option>
+                <option value="Both">🔥 Both (Editor & Designer Pools)</option>
               </select>
             </div>
 
-            <div id="formThumbStatusWrapper" class="hidden">
+            <div>
               <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Thumbnail Status</label>
               <select id="formThumbStatus" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
                 <option value="Pending">Pending</option>
@@ -223,11 +222,12 @@
           </div>
 
           <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[1150px]">
+            <table class="w-full text-left border-collapse min-w-[1250px]">
               <thead>
                 <tr class="border-b border-slate-100 text-slate-400 text-xs font-semibold uppercase bg-slate-50/50">
                   <th class="py-3 px-3">Production Timeline</th>
                   <th class="py-3 px-3">Title / Core Reference</th>
+                  <th class="py-3 px-3">Content Link</th>
                   <th class="py-3 px-3">Description Context</th>
                   <th class="py-3 px-3">Assignment Track</th>
                   <th class="py-3 px-3">Thumbnail Status</th>
@@ -253,7 +253,7 @@
           <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
             <div class="border-b border-slate-100 pb-3">
               <h3 class="text-base font-bold text-slate-900">🎬 Video Assignment Routing Pool</h3>
-              <p class="text-xs text-slate-400">Emails notified when "Video Editing Asset" or "Both" is selected.</p>
+              <p class="text-xs text-slate-400">Emails notified when "Video Editing Asset" is selected.</p>
             </div>
             <form id="addVideoEmailForm" class="flex gap-2">
               <input id="inputVideoEmail" type="email" placeholder="new.editor@gmail.com" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500" required />
@@ -265,7 +265,7 @@
           <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
             <div class="border-b border-slate-100 pb-3">
               <h3 class="text-base font-bold text-slate-900">🖼️ Thumbnail/Poster Routing Pool</h3>
-              <p class="text-xs text-slate-400">Emails notified when "Thumbnail/Poster Design" or "Both" is selected.</p>
+              <p class="text-xs text-slate-400">Emails notified when "Thumbnail/Poster Design" is selected.</p>
             </div>
             <form id="addThumbEmailForm" class="flex gap-2">
               <input id="inputThumbEmail" type="email" placeholder="new.designer@gmail.com" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-500" required />
@@ -282,6 +282,7 @@
   <script>
     // INJECTED DEPLOYED GOOGLE APPS SCRIPT TARGET URL
     const EMAIL_RELAY_URL = "https://script.google.com/macros/s/AKfycbxxBakHrIJJBHfHE3008nII23KcA5pbdBNlGlujtogyXkFOihJHSz-WVpX932ddiSZbqQ/exec";
+    const TARGET_NOTIFICATION_EMAIL = "amailtosreekanth@gmail.com";
 
     let taskDatabase = [];
     let routingSettings = {
@@ -302,22 +303,7 @@
     const scheduleView = document.getElementById('schedule-tab-view');
     const settingsView = document.getElementById('settings-tab-view');
 
-    // CONDITIONAL WRAPPER ASSIGNMENT ENGINE
-    const formAssignmentType = document.getElementById('formAssignmentType');
-    const formThumbStatusWrapper = document.getElementById('formThumbStatusWrapper');
-
-    function toggleThumbFormVisibility() {
-      const val = formAssignmentType.value;
-      if (val === 'Thumbnail/Poster' || val === 'Both (Editor & Designer)') {
-        formThumbStatusWrapper.classList.remove('hidden');
-      } else {
-        formThumbStatusWrapper.classList.add('hidden');
-      }
-    }
-    formAssignmentType.addEventListener('change', toggleThumbFormVisibility);
-
     function displayTab(tabId) {
-      // RESET CLASSES
       [navDashboardBtn, navScheduleBtn, navSettingsBtn].forEach(btn => {
         btn.className = "w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none";
       });
@@ -344,7 +330,6 @@
       if (localStorage.getItem(SETTINGS_CACHE_KEY)) {
         routingSettings = JSON.parse(localStorage.getItem(SETTINGS_CACHE_KEY));
       }
-      toggleThumbFormVisibility();
       updateMetricsAndCharts();
       renderTable();
       renderRoutingLists();
@@ -456,6 +441,27 @@
       updateFormatProportionChart();
     }
 
+    async function checkAndTriggerStatusNotification(task) {
+      if (task.thumbnailStatus === 'Completed' && task.editorStatus === 'Ready to Upload') {
+        const payload = {
+          ...task,
+          assignedEmployee: TARGET_NOTIFICATION_EMAIL,
+          systemNotificationType: "ReadyForUploadConfirmation"
+        };
+        try {
+          fetch(EMAIL_RELAY_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          alert(`📧 Status Notification Auto-Dispatched!\nSent compilation updates and content link to ${TARGET_NOTIFICATION_EMAIL}`);
+        } catch (err) {
+          console.error("Auto routing notification system failed:", err);
+        }
+      }
+    }
+
     function renderTable() {
       const tbody = document.getElementById('productionTableBody');
       tbody.innerHTML = '';
@@ -465,9 +471,12 @@
         tr.className = 'hover:bg-slate-50/50 transition border-b border-slate-100';
         const colorClass = task.editorStatus === "Ready to Upload" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-orange-50 text-[#FD6D05] border-orange-100";
         let postDateVal = task.postedDate ? new Date(task.postedDate).toISOString().split('T') : '';
+        let currentLink = task.contentLink || '';
 
-        // CONDITIONAL RENDER DETERMINATION ENGINE FOR THUMBNAIL TRACKS
-        const allowsThumbnail = (task.assignmentType === 'Thumbnail/Poster' || task.assignmentType === 'Both (Editor & Designer)');
+        // RENDER COLOR TAG ADAPTED FOR "BOTH" TRACK VALUE
+        let trackBadgeColor = 'bg-red-50 text-red-600';
+        if (task.assignmentType === 'Thumbnail/Poster') trackBadgeColor = 'bg-amber-50 text-amber-600';
+        if (task.assignmentType === 'Both') trackBadgeColor = 'bg-purple-50 text-purple-600 border border-purple-100';
 
         tr.innerHTML = `
           <td class="py-3 px-3 space-y-0.5 text-xs">
@@ -479,21 +488,22 @@
             <p class="font-bold text-slate-800 leading-tight">${task.videoTitle}</p>
             <p class="text-[11px] text-slate-400 mt-0.5">🎬 Reference: ${task.shootTitle}</p>
           </td>
+          <td class="py-3 px-3">
+            <input type="text" placeholder="Paste link..." class="content-link-input w-40 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-500" value="${currentLink}" />
+          </td>
           <td class="py-3 px-3 text-slate-600 max-w-[180px] truncate" title="${task.description}">${task.description}</td>
           <td class="py-3 px-3 text-xs font-semibold">
-            <span class="px-2.5 py-1 rounded-full ${task.assignmentType === 'Video Editing' ? 'bg-red-50 text-red-600' : task.assignmentType === 'Thumbnail/Poster' ? 'bg-amber-50 text-amber-600' : 'bg-purple-50 text-purple-600'}">
+            <span class="px-2.5 py-1 rounded-full ${trackBadgeColor}">
               ${task.assignmentType || 'Video Editing'}
             </span>
             <div class="text-[10px] text-slate-400 mt-1 font-mono">${task.presenter}</div>
           </td>
           <td class="py-3 px-3">
-            ${allowsThumbnail ? `
             <select class="thumb-dropdown text-xs font-bold px-2 py-1 rounded-lg border bg-white border-slate-200 cursor-pointer">
               <option value="Pending" ${task.thumbnailStatus === 'Pending' ? 'selected' : ''}>Pending</option>
               <option value="In Progress" ${task.thumbnailStatus === 'In Progress' ? 'selected' : ''}>In Progress</option>
               <option value="Completed" ${task.thumbnailStatus === 'Completed' ? 'selected' : ''}>Completed</option>
             </select>
-            ` : `<span class="text-xs text-slate-400 font-medium italic">No Thumbnail Needed</span>`}
           </td>
           <td class="py-3 px-3">
             <select class="editor-dropdown text-xs font-bold px-2 py-1 rounded-lg border ${colorClass} bg-white border-slate-200 cursor-pointer">
@@ -516,12 +526,26 @@
           </td>
         `;
 
-        if (allowsThumbnail) {
-          tr.querySelector('.thumb-dropdown').addEventListener('change', (e) => { task.thumbnailStatus = e.target.value; localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); });
-        }
-        tr.querySelector('.editor-dropdown').addEventListener('change', (e) => { task.editorStatus = e.target.value; localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); updateMetricsAndCharts(); renderTable(); });
+        tr.querySelector('.thumb-dropdown').addEventListener('change', (e) => { 
+          task.thumbnailStatus = e.target.value; 
+          localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); 
+          checkAndTriggerStatusNotification(task);
+        });
+        tr.querySelector('.editor-dropdown').addEventListener('change', (e) => { 
+          task.editorStatus = e.target.value; 
+          localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); 
+          updateMetricsAndCharts(); 
+          renderTable(); 
+          checkAndTriggerStatusNotification(task);
+        });
         tr.querySelector('.upload-dropdown').addEventListener('change', (e) => { task.uploadedIn = e.target.value; localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); updateFormatProportionChart(); });
         tr.querySelector('.posted-date-input').addEventListener('change', (e) => { task.postedDate = e.target.value; localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); });
+        
+        tr.querySelector('.content-link-input').addEventListener('change', (e) => { 
+          task.contentLink = e.target.value; 
+          localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); 
+        });
+
         tr.querySelector('.delete-btn').addEventListener('click', () => { if (confirm('Remove row entry?')) { taskDatabase = taskDatabase.filter(t => t.id !== task.id); localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); updateMetricsAndCharts(); renderTable(); } });
 
         tbody.appendChild(tr);
@@ -533,16 +557,18 @@
       
       const selectedTrack = document.getElementById('formAssignmentType').value;
       
-      // EMAIL POOL AGGREGATION SELECTOR FOR THE MULTI-ASSIGNMENT MODULE
+      // LOGIC COMPILING BOTH EMAIL ROUTING POOLS INTO ONE LIST
       let targetEmails = "";
       if (selectedTrack === 'Video Editing') {
         targetEmails = routingSettings.videoEmails.join(",");
       } else if (selectedTrack === 'Thumbnail/Poster') {
         targetEmails = routingSettings.thumbEmails.join(",");
-      } else if (selectedTrack === 'Both (Editor & Designer)') {
-        // COMBINE BOTH ROUTING POOLS FOR COORDINATED HANDOFF
-        const combinedPool = [...new Set([...routingSettings.videoEmails, ...routingSettings.thumbEmails])];
-        targetEmails = combinedPool.join(",");
+      } else if (selectedTrack === 'Both') {
+        // Combines both distinct pools into a single unified array
+        const combinedPool = [...routingSettings.videoEmails, ...routingSettings.thumbEmails];
+        // Removes any duplicate emails if someone belongs to both setups
+        const uniquePool = [...new Set(combinedPool)];
+        targetEmails = uniquePool.join(",");
       }
 
       if (!targetEmails) {
@@ -560,10 +586,11 @@
         description: document.getElementById('formDescription').value,
         assignmentType: selectedTrack,
         assignedEmployee: targetEmails, 
-        thumbnailStatus: (selectedTrack === 'Thumbnail/Poster' || selectedTrack === 'Both (Editor & Designer)') ? document.getElementById('formThumbStatus').value : 'Not Applicable',
+        thumbnailStatus: document.getElementById('formThumbStatus').value,
         editorStatus: document.getElementById('formEditorStatus').value,
         postedDate: document.getElementById('formPostedDate').value,
-        uploadedIn: document.getElementById('formUploadedIn').value
+        uploadedIn: document.getElementById('formUploadedIn').value,
+        contentLink: ''
       };
 
       taskDatabase.unshift(newTaskItem);
@@ -572,7 +599,6 @@
       updateMetricsAndCharts();
       renderTable();
 
-      // DISPATCH PAYLOAD
       try {
         fetch(EMAIL_RELAY_URL, {
           method: 'POST',
@@ -586,13 +612,13 @@
       }
       
       document.getElementById('productionEntryForm').reset();
-      toggleThumbFormVisibility();
+      checkAndTriggerStatusNotification(newTaskItem);
     });
 
     document.getElementById('downloadReportBtn').addEventListener('click', () => {
       if (taskDatabase.length === 0) return;
-      let csvContent = "data:text/csv;charset=utf-8,Date,Presenter,Video Title,Shoot Date,Shoot Title,Description,Track Type,Thumbnail Status,Editor Status,Posted Date,Uploaded In\n";
-      taskDatabase.forEach(t => { csvContent += [t.date, `"${t.presenter}"`, `"${t.videoTitle}"`, t.shootDate, `"${t.shootTitle}"`, `"${t.description}"`, `"${t.assignmentType}"`, t.thumbnailStatus, t.editorStatus, t.postedDate || 'N/A', t.uploadedIn].join(",") + "\n"; });
+      let csvContent = "data:text/csv;charset=utf-8,Date,Presenter,Video Title,Shoot Date,Shoot Title,Description,Track Type,Thumbnail Status,Editor Status,Posted Date,Uploaded In,Content Link\n";
+      taskDatabase.forEach(t => { csvContent += [t.date, `"${t.presenter}"`, `"${t.videoTitle}"`, t.shootDate, `"${t.shootTitle}"`, `"${t.description}"`, `"${t.assignmentType}"`, t.thumbnailStatus, t.editorStatus, t.postedDate || 'N/A', t.uploadedIn, `"${t.contentLink || ''}"`].join(",") + "\n"; });
       const encodedUri = encodeURI(csvContent);
       const targetLink = document.createElement("a");
       targetLink.setAttribute("href", encodedUri);
