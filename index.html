@@ -191,10 +191,22 @@
       <section id="settings-tab-view" class="space-y-6 hidden">
         <header>
           <h1 class="text-3xl font-black tracking-tight text-slate-900">Email Routing Configuration ⚙️</h1>
-          <p class="text-sm text-slate-500">Emails assigned dynamically during data row operations.</p>
+          <p class="text-sm text-slate-500">Manage destination notification routing updates when assets hit production thresholds.</p>
         </header>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4 lg:col-span-2">
+            <div class="border-b border-slate-100 pb-3">
+              <h3 class="text-base font-bold text-slate-900">👑 Boss / Executive Notification Routing Pool</h3>
+              <p class="text-xs text-slate-400">Emails notified automatically when Editor Status is "Ready to Upload" AND Thumbnail Status is "Complete".</p>
+            </div>
+            <form id="addBossEmailForm" class="flex gap-2">
+              <input id="inputBossEmail" type="email" placeholder="boss.media@company.com" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500" required />
+              <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition">Add Management Email</button>
+            </form>
+            <ul id="bossEmailList" class="divide-y divide-slate-50 border border-slate-100 rounded-xl overflow-hidden text-sm"></ul>
+          </div>
+
           <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
             <div class="border-b border-slate-100 pb-3">
               <h3 class="text-base font-bold text-slate-900">🎬 Video Assignment Routing Pool</h3>
@@ -230,6 +242,7 @@
 
     let taskDatabase = [];
     let routingSettings = {
+      bossEmails: [],
       videoEmails: ["analpbrk@gmail.com"],
       thumbEmails: ["alibrk717@gmail.com"]
     };
@@ -329,20 +342,18 @@
         const response = await fetch(GOOGLE_SHEET_CSV_URL);
         const csvText = await response.text();
         
-        // Split text strings cleanly into lines
         const lines = csvText.split(/\r?\n/);
         if (lines.length <= 1) {
           alert("Connected, but no record entries found inside your spreadsheet rows.");
           return;
         }
 
-        // CSV parsing array initialization logic maps columns dynamically
         let loadedTasks = [];
+        let readyAndCompleteTriggers = 0;
         
         for (let i = 1; i < lines.length; i++) {
           if (!lines[i].trim()) continue;
           
-          // Basic CSV quote string segment separation parsing mechanics
           let cells = [];
           let currentCell = '';
           let inQuotes = false;
@@ -359,13 +370,16 @@
             }
           }
           cells.push(currentCell.trim());
-
-          // Data cell fallback configuration parsing structures matching sheet design layout columns:
-          // Col 0: Date, Col 1: Presenter, Col 2: Video Title, Col 3: Shoot Date, Col 4: Shoot Title, 
-          // Col 5: Description, Col 6: Track, Col 7: Thumbnail, Col 8: Editor, Col 9: Posted Date, Col 10: Platform Destination
           
-          if(cells[2] || cells[1]) { // Verify raw entry presence
+          if(cells[2] || cells[1]) { 
             let parsedDate = cells[0] ? formatToISO(cells[0]) : new Date().toISOString().split('T')[0];
+            let thumbStatus = cells[7] || 'Pending';
+            let edStatus = cells[8] || 'To Do';
+
+            // Check configuration criteria parameters to notify administration tier
+            if (edStatus === 'Ready to Upload' && (thumbStatus.toLowerCase() === 'complete' || thumbStatus.toLowerCase() === 'ready')) {
+              readyAndCompleteTriggers++;
+            }
             
             loadedTasks.push({
               id: "sheet-" + i + "-" + Date.now(),
@@ -376,8 +390,8 @@
               shootTitle: cells[4] || 'N/A',
               description: cells[5] || 'No extended synopsis details specified.',
               assignmentType: cells[6] || 'Video Editing',
-              thumbnailStatus: cells[7] || 'Pending',
-              editorStatus: cells[8] || 'To Do',
+              thumbnailStatus: thumbStatus,
+              editorStatus: edStatus,
               postedDate: cells[9] ? formatToISO(cells[9]) : '',
               uploadedIn: cells[10] || 'Not Yet Uploaded'
             });
@@ -392,6 +406,10 @@
         updateMetricsAndCharts();
         renderTable();
         
+        if (readyAndCompleteTriggers > 0 && routingSettings.bossEmails.length > 0) {
+          console.log(`Simulated API Outbound Email: Sending alert context package tracking ${readyAndCompleteTriggers} ready item arrays to executive channels: [${routingSettings.bossEmails.join(', ')}]`);
+        }
+
         alert(`🎉 Success! Loaded ${taskDatabase.length} live records from your spreadsheet.`);
       } catch (err) {
         console.error(err);
@@ -402,14 +420,12 @@
       }
     }
 
-    // Normalizes variation in written spreadsheet data date formats to "YYYY-MM-DD"
     function formatToISO(dateStr) {
       if (!dateStr) return '';
-      if (dateStr.includes('-')) return dateStr; // Already valid layout structures
+      if (dateStr.includes('-')) return dateStr; 
       if (dateStr.includes('/')) {
         const p = dateStr.split('/');
         if(p.length === 3) {
-          // Check if format is MM/DD/YYYY or DD/MM/YYYY
           let month = p[0].padStart(2, '0');
           let day = p[1].padStart(2, '0');
           let year = p[2];
@@ -426,6 +442,8 @@
       taskDatabase = JSON.parse(localStorage.getItem(TRACKER_CACHE_KEY)) || [];
       if (localStorage.getItem(SETTINGS_CACHE_KEY)) {
         routingSettings = JSON.parse(localStorage.getItem(SETTINGS_CACHE_KEY));
+        // Backwards compatibility safeguard for arrays
+        if (!routingSettings.bossEmails) routingSettings.bossEmails = [];
       }
       initCurrentMonthSelection();
       buildMonthDropdownOptions();
@@ -433,30 +451,88 @@
       renderTable();
       renderRoutingLists();
 
-      // Auto-trigger sync on launch if configured properly
       if (GOOGLE_SHEET_CSV_URL && !GOOGLE_SHEET_CSV_URL.includes("YOUR_PUBLISHED_CSV_LINK_HERE")) {
         fetchGoogleSheetData();
       }
     }
 
     function renderRoutingLists() {
+      const bList = document.getElementById('bossEmailList');
       const vList = document.getElementById('videoEmailList');
       const tList = document.getElementById('thumbEmailList');
-      vList.innerHTML = ''; tList.innerHTML = '';
+      
+      bList.innerHTML = ''; vList.innerHTML = ''; tList.innerHTML = '';
 
-      routingSettings.videoEmails.forEach(email => {
+      if(routingSettings.bossEmails.length === 0) {
+        bList.innerHTML = `<div class="p-4 text-xs text-slate-400 font-medium text-center bg-slate-50">No supervisor records registered. Enter an email target above to route notifications.</div>`;
+      } else {
+        routingSettings.bossEmails.forEach((email, index) => {
+          const li = document.createElement('li');
+          li.className = "flex justify-between items-center px-4 py-2.5 bg-white text-slate-700";
+          li.innerHTML = `<span class="font-mono font-bold text-red-600">${email}</span>
+                          <button onclick="removeEmailTarget('boss', ${index})" class="text-xs text-slate-400 hover:text-red-500 font-semibold">Remove</button>`;
+          bList.appendChild(li);
+        });
+      }
+
+      routingSettings.videoEmails.forEach((email, index) => {
         const li = document.createElement('li');
         li.className = "flex justify-between items-center px-4 py-2.5 bg-white text-slate-700";
-        li.innerHTML = `<span class="font-mono">${email}</span>`;
+        li.innerHTML = `<span class="font-mono">${email}</span>
+                        <button onclick="removeEmailTarget('video', ${index})" class="text-xs text-slate-400 hover:text-red-500 font-semibold">Remove</button>`;
         vList.appendChild(li);
       });
 
-      routingSettings.thumbEmails.forEach(email => {
+      routingSettings.thumbEmails.forEach((email, index) => {
         const li = document.createElement('li');
         li.className = "flex justify-between items-center px-4 py-2.5 bg-white text-slate-700";
-        li.innerHTML = `<span class="font-mono">${email}</span>`;
+        li.innerHTML = `<span class="font-mono">${email}</span>
+                        <button onclick="removeEmailTarget('thumb', ${index})" class="text-xs text-slate-400 hover:text-red-500 font-semibold">Remove</button>`;
         tList.appendChild(li);
       });
+    }
+
+    // INTERACTIVE LIVE FORM RECEPTORS
+    document.getElementById('addBossEmailForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = document.getElementById('inputBossEmail');
+      if(el.value.trim()) {
+        routingSettings.bossEmails.push(el.value.trim());
+        saveRoutingConfig();
+        el.value = '';
+      }
+    });
+
+    document.getElementById('addVideoEmailForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = document.getElementById('inputVideoEmail');
+      if(el.value.trim()) {
+        routingSettings.videoEmails.push(el.value.trim());
+        saveRoutingConfig();
+        el.value = '';
+      }
+    });
+
+    document.getElementById('addThumbEmailForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = document.getElementById('inputThumbEmail');
+      if(el.value.trim()) {
+        routingSettings.thumbEmails.push(el.value.trim());
+        saveRoutingConfig();
+        el.value = '';
+      }
+    });
+
+    window.removeEmailTarget = function(type, index) {
+      if(type === 'boss') routingSettings.bossEmails.splice(index, 1);
+      if(type === 'video') routingSettings.videoEmails.splice(index, 1);
+      if(type === 'thumb') routingSettings.thumbEmails.splice(index, 1);
+      saveRoutingConfig();
+    };
+
+    function saveRoutingConfig() {
+      localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(routingSettings));
+      renderRoutingLists();
     }
 
     function updateFormatProportionChart() {
