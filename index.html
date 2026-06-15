@@ -52,6 +52,11 @@
 </head>
 <body class="flex h-screen overflow-hidden">
 
+    <div id="global-loader" class="fixed inset-0 z- bg-[#05060e] flex flex-col items-center justify-center gap-4 transition-opacity duration-300">
+        <div class="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p class="text-sm text-gray-400 font-medium tracking-wide">Syncing Workspace Pipeline Matrix...</p>
+    </div>
+
     <aside class="w-64 bg-[#090b14] border-r border-[#1e2238] flex flex-col justify-between p-4 hidden md:flex">
         <div>
             <div class="flex items-center gap-3 px-2 py-4 mb-4">
@@ -217,7 +222,7 @@
             <div id="tab-settings" class="tab-content space-y-8">
                 <div>
                     <h2 class="text-2xl font-bold">Workspace System Settings</h2>
-                    <p class="text-sm text-gray-400 mt-1">Configure your email alert distribution lists and operational directories.</p>
+                    <p class="text-sm text-gray-400 mt-1">Configure your email alerts distribution rules and roster addresses.</p>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -225,12 +230,12 @@
                         <h3 class="text-lg font-bold text-gray-200 flex items-center gap-2">
                             <i data-lucide="mail-plus" class="text-orange-500 w-5 h-5"></i> Manage Team Emails Directory
                         </h3>
-                        <p class="text-xs text-gray-400">Map crew names to their addresses to unlock automated system notification drop-down options inside forms.</p>
+                        <p class="text-xs text-gray-400">Map crew names to their addresses to unlock system dropdown options inside project cards.</p>
                         
                         <div class="space-y-3 pt-2" id="settings-emails-list"></div>
 
                         <div class="pt-4 border-t border-[#1e2238] flex gap-2">
-                            <input type="text" id="new-team-name" placeholder="Name (e.g., afzal)" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 w-1/3">
+                            <input type="text" id="new-team-name" placeholder="Name (e.g., rahul)" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 w-1/3">
                             <input type="email" id="new-team-email" placeholder="Email Address" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 flex-1">
                             <button onclick="addTeamEmailRow()" class="bg-orange-500 hover:bg-orange-600 text-white text-xs px-4 py-2 rounded-xl transition font-medium">Add</button>
                         </div>
@@ -245,7 +250,7 @@
                             
                             <div class="space-y-1 pt-2">
                                 <label class="text-gray-400 text-xs font-medium">Manager / Reviewer Email Address</label>
-                                <input type="email" id="settings-manager-email" placeholder="Enter manager email account..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500 transition">
+                                <input type="email" id="settings-manager-email" placeholder="Enter manager email..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500 transition">
                             </div>
                         </div>
 
@@ -304,13 +309,13 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Video Editor Assigned</label>
-                            <select id="input-editor" onchange="handleEditorSelectChange()" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
-                                <option value="">-- Choose Editor from Settings --</option>
+                            <select id="input-editor" onchange="syncEditorEmail()" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                                <option value="">-- Select Editor --</option>
                             </select>
                         </div>
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Video Editor Email</label>
-                            <input type="email" id="input-editor-email" readonly placeholder="Auto-populated from directory" class="w-full bg-[#121424] border border-[#1e2238] opacity-70 rounded-xl px-4 py-2.5 text-gray-400 cursor-not-allowed focus:outline-none">
+                            <input type="email" id="input-editor-email" readonly placeholder="Auto-populated" class="w-full bg-[#121424] border border-[#1e2238] rounded-xl px-4 py-2.5 text-gray-400 cursor-not-allowed outline-none">
                         </div>
                     </div>
                     <div class="space-y-1">
@@ -331,13 +336,13 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Graphic Designer Assigned</label>
-                            <select id="input-designer" onchange="handleDesignerSelectChange()" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
-                                <option value="">-- Choose Designer from Settings --</option>
+                            <select id="input-designer" onchange="syncDesignerEmail()" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                                <option value="">-- Select Designer --</option>
                             </select>
                         </div>
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Graphic Designer Email</label>
-                            <input type="email" id="input-designer-email" readonly placeholder="Auto-populated from directory" class="w-full bg-[#121424] border border-[#1e2238] opacity-70 rounded-xl px-4 py-2.5 text-gray-400 cursor-not-allowed focus:outline-none">
+                            <input type="email" id="input-designer-email" readonly placeholder="Auto-populated" class="w-full bg-[#121424] border border-[#1e2238] rounded-xl px-4 py-2.5 text-gray-400 cursor-not-allowed outline-none">
                         </div>
                     </div>
                     <div class="space-y-1">
@@ -375,6 +380,41 @@
         let dynamicProjectsList = [];
         let teamEmailsDirectory = {}; 
 
+        // 1. ONSITE PERSISTENCE STRATEGY: INITIAL LOAD ROUTINE FETCHES RECENT WORKSPACE STATE FROM SCRIPT ENDPOINT
+        window.addEventListener('DOMContentLoaded', async () => {
+            // Load directories from local storage configurations if present
+            const storedRoster = localStorage.getItem('be_team_roster');
+            const storedManager = localStorage.getItem('be_manager_mail');
+            if(storedRoster) teamEmailsDirectory = JSON.parse(storedRoster);
+            if(storedManager) document.getElementById('settings-manager-email').value = storedManager;
+            
+            renderSettingsRoster();
+            await fetchProjectsFromCloud();
+        });
+
+        async function fetchProjectsFromCloud() {
+            if(!SHEET_API_URL) {
+                document.getElementById('global-loader').classList.add('opacity-0', 'pointer-events-none');
+                return;
+            }
+            try {
+                // Fetch existing database matrix records to survive any refresh sequence
+                const response = await fetch(`${SHEET_API_URL}?action=READ`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if(Array.isArray(data)) {
+                        dynamicProjectsList = data;
+                    }
+                }
+            } catch (error) { 
+                console.error("Cloud Retrieval Error:", error); 
+            } finally {
+                // Ensure the view drops the processing wall once synced
+                document.getElementById('global-loader').classList.add('opacity-0', 'pointer-events-none');
+                refreshProjectUI();
+            }
+        }
+
         function toggleNotificationPanel() {
             document.getElementById('notification-panel').classList.toggle('hidden');
         }
@@ -394,40 +434,45 @@
             if(document.getElementById('btn-' + tabId)) document.getElementById('btn-' + tabId).classList.add('active');
         }
 
-        function populateModalDropdownMenues() {
+        // Populates UI drop-downs securely with your current settings panel directory entries
+        function buildTeamDropdowns() {
             const editorSelect = document.getElementById('input-editor');
             const designerSelect = document.getElementById('input-designer');
             
-            editorSelect.innerHTML = '<option value="">-- Choose Editor from Settings --</option>';
-            designerSelect.innerHTML = '<option value="">-- Choose Designer from Settings --</option>';
+            const currentEditorVal = editorSelect.value;
+            const currentDesignerVal = designerSelect.value;
+
+            editorSelect.innerHTML = '<option value="">-- Choose Editor --</option>';
+            designerSelect.innerHTML = '<option value="">-- Choose Designer --</option>';
 
             Object.keys(teamEmailsDirectory).forEach(name => {
-                const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
-                editorSelect.innerHTML += `<option value="${name}">${capitalizedName}</option>`;
-                designerSelect.innerHTML += `<option value="${name}">${capitalizedName}</option>`;
+                const display = name.charAt(0).toUpperCase() + name.slice(1);
+                editorSelect.innerHTML += `<option value="${name}">${display}</option>`;
+                designerSelect.innerHTML += `<option value="${name}">${display}</option>`;
             });
+
+            editorSelect.value = currentEditorVal;
+            designerSelect.value = currentDesignerVal;
         }
 
-        function handleEditorSelectChange() {
-            const chosenName = document.getElementById('input-editor').value;
-            document.getElementById('input-editor-email').value = teamEmailsDirectory[chosenName] || '';
+        function syncEditorEmail() {
+            const chosen = document.getElementById('input-editor').value;
+            document.getElementById('input-editor-email').value = teamEmailsDirectory[chosen] || '';
         }
 
-        function handleDesignerSelectChange() {
-            const chosenName = document.getElementById('input-designer').value;
-            document.getElementById('input-designer-email').value = teamEmailsDirectory[chosenName] || '';
+        function syncDesignerEmail() {
+            const chosen = document.getElementById('input-designer').value;
+            document.getElementById('input-designer-email').value = teamEmailsDirectory[chosen] || '';
         }
 
         function openProjectModal() {
-            populateModalDropdownMenues();
+            document.getElementById('project-creation-form').reset();
+            buildTeamDropdowns();
             document.getElementById('modal-heading').innerHTML = `<i data-lucide="file-plus-2" class="text-orange-500 w-5 h-5"></i> Launch New Campaign Row`;
             document.getElementById('input-project-id').value = '';
-            document.getElementById('project-creation-form').reset();
             document.getElementById('modal-delete-container').innerHTML = '';
-            
             document.getElementById('input-editor-email').value = '';
             document.getElementById('input-designer-email').value = '';
-            
             toggleDriveLinkField();
             document.getElementById('project-modal').classList.remove('hidden');
             lucide.createIcons();
@@ -453,7 +498,7 @@
             const target = dynamicProjectsList.find(p => p.id === projectId);
             if (!target) return;
 
-            populateModalDropdownMenues();
+            buildTeamDropdowns();
 
             document.getElementById('modal-heading').innerHTML = `<i data-lucide="edit-3" class="text-orange-500 w-5 h-5"></i> Update Project Properties`;
             document.getElementById('input-project-id').value = target.id;
@@ -536,20 +581,24 @@
             const email = document.getElementById('new-team-email').value.trim();
             if(!name || !email) { alert("Please complete both parameters."); return; }
             teamEmailsDirectory[name] = email;
+            localStorage.setItem('be_team_roster', JSON.stringify(teamEmailsDirectory));
             document.getElementById('new-team-name').value = '';
             document.getElementById('new-team-email').value = '';
-            renderSettingsRoster(); refreshProjectUI();
+            renderSettingsRoster(); 
+            refreshProjectUI();
         }
 
         function removeTeamEmailRow(name) {
             delete teamEmailsDirectory[name];
-            renderSettingsRoster(); refreshProjectUI();
+            localStorage.setItem('be_team_roster', JSON.stringify(teamEmailsDirectory));
+            renderSettingsRoster(); 
+            refreshProjectUI();
         }
 
         function saveManagerEmail() {
             const email = document.getElementById('settings-manager-email').value.trim();
-            if(!email) { alert("Please input a valid email destination."); return; }
-            alert(`Review notifications routing applied to global settings: ${email}`);
+            localStorage.setItem('be_manager_mail', email);
+            alert(`Review notifications routing applied: ${email || "None Specified"}`);
             refreshProjectUI();
         }
 
@@ -586,7 +635,10 @@
                 dynamicProjectsList.push(projectPayload);
             }
             
-            refreshProjectUI(); closeProjectModal();
+            refreshProjectUI(); 
+            closeProjectModal();
+            
+            // Fires asynchronous payload data upstream immediately
             syncWithGoogleSheet("SAVE", projectPayload);
         }
 
@@ -594,21 +646,31 @@
             if(confirm("Are you sure you want to completely clear this row?")) {
                 const targetProject = dynamicProjectsList.find(p => p.id === projectId);
                 dynamicProjectsList = dynamicProjectsList.filter(p => p.id !== projectId);
-                refreshProjectUI(); closeProjectModal();
+                refreshProjectUI(); 
+                closeProjectModal();
                 if (targetProject) syncWithGoogleSheet("DELETE", targetProject);
             }
         }
 
+        // 2. CONCURRENT ROUTING RECONCILIATION: MAPS DISPATCH ARRAYS upstream TO BE HANDLED VIA APPS SCRIPT WITHOUT STACK CLASHES
         async function syncWithGoogleSheet(actionType, projectData) {
             if(!SHEET_API_URL) return;
             try {
+                // Pass structural context directly to the gateway execution node
                 await fetch(SHEET_API_URL, {
                     method: "POST",
                     mode: "no-cors",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: actionType, project: projectData })
+                    body: JSON.stringify({ 
+                        action: actionType, 
+                        project: projectData,
+                        // Package directory context directly so the engine can look up recipients in a single run
+                        rosterDirectory: teamEmailsDirectory 
+                    })
                 });
-            } catch (error) { console.error("Sync Failure:", error); }
+            } catch (error) { 
+                console.error("Sync Failure:", error); 
+            }
         }
 
         function refreshProjectUI() {
@@ -624,7 +686,7 @@
 
             const selectedMonth = document.getElementById('filter-month').value;
             const selectedYear = document.getElementById('filter-year').value;
-            const globalManagerAddress = document.getElementById('settings-manager-email').value || 'None';
+            const globalManagerAddress = document.getElementById('settings-manager-email').value || 'None Specified';
 
             let filteredList = dynamicProjectsList.filter(p => {
                 if(!p.date) return true;
@@ -652,7 +714,7 @@
                     <div class="w-full card p-12 rounded-2xl empty-placeholder text-center text-gray-500 col-span-full py-16">
                         <div class="w-14 h-14 bg-orange-500/10 text-orange-400 rounded-2xl flex items-center justify-center mx-auto mb-4"><i data-lucide="calendar-x"></i></div>
                         <h4 class="text-lg font-bold text-gray-200 mb-1">No Projects Found</h4>
-                        <p class="text-sm text-gray-400 max-w-md mx-auto">There are no records found for this period.</p>
+                        <p class="text-sm text-gray-400 max-w-md mx-auto">There are no records discovered within this parameter segment.</p>
                     </div>`;
 
                 dashboardGrid.innerHTML = emptyStateHTML; projectsTabContainer.innerHTML = emptyStateHTML;
@@ -711,12 +773,12 @@
                                 <div class="p-2 rounded-lg bg-orange-500/5 border border-orange-500/10">
                                     <p class="text-[10px] text-orange-400 uppercase font-bold">🎬 Video Cut</p>
                                     <p class="text-white mt-1 font-semibold">${proj.videoStatus}</p>
-                                    <p class="text-[10px] text-gray-400 truncate mt-1">${proj.editorEmail || 'No Email Mapped'}</p>
+                                    <p class="text-[10px] text-gray-400 truncate mt-1">${proj.editorEmail || 'No Email Associated'}</p>
                                 </div>
                                 <div class="p-2 rounded-lg bg-purple-500/5 border border-purple-500/10">
                                     <p class="text-[10px] text-purple-400 uppercase font-bold">🎨 Thumbnail</p>
                                     <p class="text-white mt-1 font-semibold">${proj.designStatus}</p>
-                                    <p class="text-[10px] text-gray-400 truncate mt-1">${proj.designerEmail || 'No Email Mapped'}</p>
+                                    <p class="text-[10px] text-gray-400 truncate mt-1">${proj.designerEmail || 'No Email Associated'}</p>
                                 </div>
                             </div>
                         </div>
@@ -740,7 +802,7 @@
                             <div class="p-2 rounded-lg brand-gradient text-white"><i data-lucide="file-text" class="w-4 h-4"></i></div>
                             <div>
                                 <h5 class="font-bold text-white tracking-tight">${proj.topic}</h5>
-                                <p class="text-xs text-gray-400">Presenter: <span class="text-gray-300">${proj.presenter || 'Unassigned'}</span> | Routing: <span class="text-emerald-400">${proj.managerEmail || globalManagerAddress}</span></p>
+                                <p class="text-xs text-gray-400">Presenter: <span class="text-gray-300">${proj.presenter || 'Unassigned'}</span> | routing: <span class="text-emerald-400">${proj.managerEmail || globalManagerAddress}</span></p>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
@@ -788,9 +850,6 @@
             tasksContainer.innerHTML = tasksHTML; assignmentsContainer.innerHTML = assignmentsHTML; teamContainer.innerHTML = teamHTML; calendarContainer.innerHTML = calendarHTML;
             lucide.createIcons();
         }
-
-        renderSettingsRoster();
-        refreshProjectUI();
     </script>
 </body>
 </html>
