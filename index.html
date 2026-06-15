@@ -304,7 +304,9 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Video Editor Assigned</label>
-                            <input type="text" id="input-editor" placeholder="e.g., afzal" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition">
+                            <select id="input-editor" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-orange-500 transition capitalize">
+                                <option value="">-- No Editor Assigned --</option>
+                            </select>
                         </div>
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Video Status</label>
@@ -325,7 +327,9 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Graphic Designer Assigned</label>
-                            <input type="text" id="input-designer" placeholder="e.g., ananya" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition">
+                            <select id="input-designer" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-orange-500 transition capitalize">
+                                <option value="">-- No Designer Assigned --</option>
+                            </select>
                         </div>
                         <div class="space-y-1">
                             <label class="text-gray-400 font-medium">Thumbnail Status</label>
@@ -360,7 +364,6 @@
     <script>
         const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyxQxDDn8Qu_RHO7zUkmO8hRBXKsS7Cjbh1uanuM6vOpHqzTjDJM9m5eIh6BAIhJWCx/exec";
 
-        // Load dynamic projects and email roster configurations from localStorage to preserve across refreshes
         let dynamicProjectsList = JSON.parse(localStorage.getItem('dynamicProjectsList')) || [];
         let teamEmailsDirectory = JSON.parse(localStorage.getItem('teamEmailsDirectory')) || {};
 
@@ -383,7 +386,30 @@
             if(document.getElementById('btn-' + tabId)) document.getElementById('btn-' + tabId).classList.add('active');
         }
 
+        // Dynamically populates dropdown selections based on added settings records
+        function populateAssignmentDropdowns() {
+            const editorSelect = document.getElementById('input-editor');
+            const designerSelect = document.getElementById('input-designer');
+            
+            // Retain placeholder initial option nodes
+            editorSelect.innerHTML = '<option value="">-- No Editor Assigned --</option>';
+            designerSelect.innerHTML = '<option value="">-- No Designer Assigned --</option>';
+            
+            Object.keys(teamEmailsDirectory).forEach(name => {
+                const optEditor = document.createElement('option');
+                optEditor.value = name;
+                optEditor.textContent = name;
+                editorSelect.appendChild(optEditor);
+
+                const optDesigner = document.createElement('option');
+                optDesigner.value = name;
+                optDesigner.textContent = name;
+                designerSelect.appendChild(optDesigner);
+            });
+        }
+
         function openProjectModal() {
+            populateAssignmentDropdowns();
             document.getElementById('modal-heading').innerHTML = `<i data-lucide="file-plus-2" class="text-orange-500 w-5 h-5"></i> Launch New Campaign Row`;
             document.getElementById('input-project-id').value = '';
             document.getElementById('project-creation-form').reset();
@@ -413,14 +439,16 @@
             const target = dynamicProjectsList.find(p => p.id === projectId);
             if (!target) return;
 
+            populateAssignmentDropdowns();
+
             document.getElementById('modal-heading').innerHTML = `<i data-lucide="edit-3" class="text-orange-500 w-5 h-5"></i> Update Project Properties`;
             document.getElementById('input-project-id').value = target.id;
             document.getElementById('input-topic').value = target.topic;
             document.getElementById('input-presenter').value = target.presenter || '';
             document.getElementById('input-date').value = target.date;
-            document.getElementById('input-editor').value = target.editor;
+            document.getElementById('input-editor').value = target.editor || '';
             document.getElementById('input-video-status').value = target.videoStatus;
-            document.getElementById('input-designer').value = target.designer;
+            document.getElementById('input-designer').value = target.designer || '';
             document.getElementById('input-design-status').value = target.designStatus;
             document.getElementById('input-caption-status').value = target.captionStatus;
             document.getElementById('input-drive-link').value = (target.driveLink === '#' || target.driveLink === '') ? '' : target.driveLink;
@@ -446,7 +474,7 @@
                 alert("There are no active data rows to export.");
                 return;
             }
-            let csvRows = [["Project ID", "Topic", "Presenter", "Date", "Editor", "Video Status", "Designer", "Design Status", "Drive Link", "Caption Status"]];
+            let csvRows = [["Project ID", "Topic", "Presenter", "Date", "Editor", "Video Status", "Designer", "Design Status", "Drive Link", "Campaign Status"]];
             dynamicProjectsList.forEach(p => {
                 csvRows.push([
                     `"${p.id}"`, `"${p.topic.replace(/"/g, '""')}"`, `"${p.presenter.replace(/"/g, '""')}"`,
@@ -508,7 +536,6 @@
             alert(`Review notifications routing applied to: ${email}`);
         }
 
-        // Initialize saved manager email routing on boot if available
         window.addEventListener('DOMContentLoaded', () => {
             const savedManagerEmail = localStorage.getItem('managerEmailRouting');
             if (savedManagerEmail) {
@@ -522,15 +549,14 @@
             const topic = document.getElementById('input-topic').value;
             const presenter = document.getElementById('input-presenter').value || 'Unassigned';
             const date = document.getElementById('input-date').value;
-            const editor = document.getElementById('input-editor').value.trim().toLowerCase() || '';
+            const editor = document.getElementById('input-editor').value;
             const videoStatus = document.getElementById('input-video-status').value;
-            const designer = document.getElementById('input-designer').value.trim().toLowerCase() || '';
+            const designer = document.getElementById('input-designer').value;
             const designStatus = document.getElementById('input-design-status').value;
             const driveLink = document.getElementById('input-drive-link').value || '';
             const captionStatus = document.getElementById('input-caption-status').value;
             const managerEmail = document.getElementById('settings-manager-email').value;
 
-            // Logic matching assignment conditions for team roster emails
             let recipientRoster = {};
             if (editor && teamEmailsDirectory[editor]) {
                 recipientRoster[editor] = teamEmailsDirectory[editor];
@@ -539,7 +565,6 @@
                 recipientRoster[designer] = teamEmailsDirectory[designer];
             }
 
-            // Logic matching manager review notification rules: fire only when work is completed
             const isVideoCompleted = (videoStatus === 'Completed' || videoStatus === 'Approved');
             const isDesignCompleted = (designStatus === 'Completed' || designStatus === 'Approved');
             const sendToManager = (isVideoCompleted && isDesignCompleted);
@@ -548,9 +573,9 @@
                 id: id || 'camp-' + Date.now(), 
                 topic, presenter, date, editor, videoStatus, 
                 designer, designStatus, driveLink, captionStatus,
-                rosterDirectory: recipientRoster, // Sends only to assigned task workers
+                rosterDirectory: recipientRoster, 
                 managerEmail: managerEmail,
-                triggerManagerAlert: sendToManager // Informs Google Apps Script to loop in the manager
+                triggerManagerAlert: sendToManager 
             };
 
             if (id) {
@@ -560,7 +585,6 @@
                 dynamicProjectsList.push(projectPayload);
             }
             
-            // Sync with local state storage first to handle instant fallback recovery
             localStorage.setItem('dynamicProjectsList', JSON.stringify(dynamicProjectsList));
             
             refreshProjectUI(); closeProjectModal();
@@ -614,8 +638,8 @@
             });
 
             document.getElementById('stat-active-projects').innerText = filteredList.length;
-            document.getElementById('stat-editing-projects').innerText = filteredList.filter(p => p.videoStatus === 'Editing').length;
-            document.getElementById('stat-design-projects').innerText = filteredList.filter(p => p.designStatus === 'Designing').length;
+            document.getElementById('stat-editing-projects').innerText = filteredList.filter(p => p.videoStatus === 'Pending' || p.videoStatus === 'Editing').length;
+            document.getElementById('stat-design-projects').innerText = filteredList.filter(p => p.designStatus === 'Pending' || p.designStatus === 'Designing').length;
             document.getElementById('stat-approved-projects').innerText = filteredList.filter(p => p.videoStatus === 'Approved' && p.designStatus === 'Approved').length;
 
             if (filteredList.length === 0) {
@@ -692,8 +716,8 @@
                             </div>
                         </div>
                         <div class="mt-6 pt-4 border-t border-[#1e2238] text-xs text-gray-400 space-y-2">
-                            <div>Editor: <strong class="text-gray-300">${proj.editor || 'Not Assigned'}</strong></div>
-                            <div>Designer: <strong class="text-gray-300">${proj.designer || 'Not Assigned'}</strong></div>
+                            <div>Editor: <strong class="text-gray-300 capitalize">${proj.editor || 'Not Assigned'}</strong></div>
+                            <div>Designer: <strong class="text-gray-300 capitalize">${proj.designer || 'Not Assigned'}</strong></div>
                             <div class="flex justify-between items-center pt-2 border-t border-[#1e2238]/40 text-[11px]">
                                 <span>Captions: <strong class="text-gray-300">${proj.captionStatus}</strong></span>
                                 ${hasLink ? `<a href="${proj.driveLink}" target="_blank" class="text-orange-400 hover:underline flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i> View Work</a>` : `<span class="text-gray-600 italic text-[10px]">No link uploaded</span>`}
@@ -724,17 +748,17 @@
                         <h5 class="font-bold text-gray-200 border-b border-[#1e2238] pb-2 tracking-tight">${proj.topic}</h5>
                         <div class="grid grid-cols-3 gap-4 text-xs">
                             <div><p class="text-gray-500">🎤 Presenter</p><p class="text-white font-semibold mt-0.5 tracking-tight">${proj.presenter || 'Unassigned'}</p></div>
-                            <div><p class="text-gray-500">🎬 Video Editor</p><p class="text-white font-semibold mt-0.5 tracking-tight">${proj.editor || '⚠️ Unassigned'}</p></div>
-                            <div><p class="text-gray-500">🎨 Thumbnail Designer</p><p class="text-white font-semibold mt-0.5 tracking-tight">${proj.designer || '⚠️ Unassigned'}</p></div>
+                            <div><p class="text-gray-500">🎬 Video Editor</p><p class="text-white font-semibold mt-0.5 tracking-tight capitalize">${proj.editor || '⚠️ Unassigned'}</p></div>
+                            <div><p class="text-gray-500">🎨 Thumbnail Designer</p><p class="text-white font-semibold mt-0.5 tracking-tight capitalize">${proj.designer || '⚠️ Unassigned'}</p></div>
                         </div>
                     </div>`;
 
                 teamHTML += `
                     <div class="card p-4 rounded-xl border-[#1e2238] flex flex-col justify-between gap-4">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-orange-600/10 text-orange-400 font-bold flex items-center justify-center text-sm">${(proj.editor || 'U').charAt(0)}</div>
+                            <div class="w-10 h-10 rounded-xl bg-orange-600/10 text-orange-400 font-bold flex items-center justify-center text-sm uppercase">${(proj.editor || 'U').charAt(0)}</div>
                             <div>
-                                <h6 class="font-bold text-white text-sm">${proj.editor || 'Unassigned Editor'}</h6>
+                                <h6 class="font-bold text-white text-sm capitalize">${proj.editor || 'Unassigned Editor'}</h6>
                                 <p class="text-[10px] uppercase text-orange-500 font-semibold tracking-wider">Video Editor</p>
                             </div>
                         </div>
@@ -744,7 +768,7 @@
                     <div class="flex items-center justify-between p-3 bg-[#0b0d19] border border-[#1e2238] rounded-xl text-xs">
                         <div class="flex items-center gap-2">
                             <i data-lucide="calendar-days" class="w-4 h-4 text-red-500"></i>
-                            <span class="font-semibold text-white">${proj.date}</span>
+                            <span class="font-semibold text-white"><b>${proj.date}</b></span>
                             <span class="text-gray-400">| Node:</span>
                             <span class="text-gray-200 font-medium truncate max-w-xs tracking-tight">${proj.topic}</span>
                         </div>
