@@ -245,7 +245,7 @@
                             
                             <div class="space-y-1 pt-2">
                                 <label class="text-gray-400 text-xs font-medium">Manager / Reviewer Email Address</label>
-                                <input type="email" id="settings-manager-email" value="analpbrk@gmail.com" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500 transition">
+                                <input type="email" id="settings-manager-email" value="" placeholder="Enter manager email..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500 transition">
                             </div>
                         </div>
 
@@ -359,7 +359,7 @@
     </div>
 
     <script>
-        // HARDCODED UPDATED DEPLOYMENT URL LINK HERE
+        // UPDATED APPS SCRIPT WEB APP DEPLOYMENT URL
         const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyFOBXoFwQgm0JupcSJ5yxSExVWPfZiieypPUJPHkamIaxEXO44V-5z3XxuQ32HbdiV/exec";
 
         let dynamicProjectsList = JSON.parse(localStorage.getItem('dynamicProjectsList')) || [];
@@ -442,10 +442,12 @@
             document.getElementById('input-topic').value = target.topic;
             document.getElementById('input-presenter').value = target.presenter || '';
             document.getElementById('input-date').value = target.date;
+            
             document.getElementById('input-editor').value = target.editor || '';
             document.getElementById('input-video-status').value = target.videoStatus;
             document.getElementById('input-designer').value = target.designer || '';
             document.getElementById('input-design-status').value = target.designStatus;
+            
             document.getElementById('input-caption-status').value = target.captionStatus;
             document.getElementById('input-drive-link').value = (target.driveLink === '#' || target.driveLink === '') ? '' : target.driveLink;
 
@@ -527,16 +529,13 @@
 
         function saveManagerEmail() {
             const email = document.getElementById('settings-manager-email').value.trim();
-            if(!email) { alert("Please input a valid email destination."); return; }
             localStorage.setItem('managerEmailRouting', email);
-            alert(`Review notifications routing applied to: ${email}`);
+            alert(`Review routing destination saved successfully.`);
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            const savedManagerEmail = localStorage.getItem('managerEmailRouting');
-            if (savedManagerEmail) {
-                document.getElementById('settings-manager-email').value = savedManagerEmail;
-            }
+            const savedManagerEmail = localStorage.getItem('managerEmailRouting') || '';
+            document.getElementById('settings-manager-email').value = savedManagerEmail;
         });
 
         async function handleFormSubmit(event) {
@@ -556,10 +555,6 @@
             const editorEmailAddress = (editor && teamEmailsDirectory[editor]) ? teamEmailsDirectory[editor] : '';
             const designerEmailAddress = (designer && teamEmailsDirectory[designer]) ? teamEmailsDirectory[designer] : '';
 
-            let recipientRoster = {};
-            if (editorEmailAddress) recipientRoster[editor] = editorEmailAddress;
-            if (designerEmailAddress) recipientRoster[designer] = designerEmailAddress;
-
             const isVideoCompleted = (videoStatus === 'Completed' || videoStatus === 'Approved');
             const isDesignCompleted = (designStatus === 'Completed' || designStatus === 'Approved');
             const sendToManager = (isVideoCompleted && isDesignCompleted);
@@ -570,7 +565,6 @@
                 designer, designStatus, driveLink, captionStatus,
                 editorEmail: editorEmailAddress, 
                 designerEmail: designerEmailAddress, 
-                rosterDirectory: recipientRoster, 
                 managerEmail: managerEmail,
                 triggerManagerAlert: sendToManager 
             };
@@ -605,8 +599,7 @@
             try {
                 await fetch(SHEET_API_URL, {
                     method: "POST",
-                    mode: "no-cors",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
                     body: JSON.stringify({ action: actionType, project: projectData })
                 });
             } catch (error) { console.error("Sync Failure:", error); }
@@ -628,9 +621,9 @@
 
             let filteredList = dynamicProjectsList.filter(p => {
                 if(!p.date) return true;
-                const parts = p.date.split('-'); 
-                const matchesYear = (selectedYear === "ALL" || parts === selectedYear);
-                const matchesMonth = (selectedMonth === "ALL" || parts === selectedMonth);
+                const parts = p.date.split('-'); // Format is YYYY-MM-DD
+                const matchesYear = (selectedYear === "ALL" || parts[0] === selectedYear);
+                const matchesMonth = (selectedMonth === "ALL" || parts[1] === selectedMonth);
                 return matchesYear && matchesMonth;
             });
 
