@@ -1,653 +1,764 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Broken English Media | Content Suite</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { background-color: #f8fafc; }
-    
-    .bg-brand-gradient {
-      background: linear-gradient(135deg, #FF0000 0%, #FD6D05 50%, #FDB82D 100%);
-    }
-    .hover-bg-brand-gradient:hover {
-      background: linear-gradient(135deg, #e00000 0%, #e25e02 50%, #e5a422 100%);
-    }
-    
-    .chart-circle {
-      transition: stroke-dashoffset 0.6s ease-in-out;
-      transform: rotate(-90deg);
-      transform-origin: 50% 50%;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broken English | Creative Production Matrix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0b0d19;
+            color: #f3f4f6;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .card {
+            background-color: #121424;
+            border: 1px solid #1e2238;
+        }
+        /* Color Palette from Broken English Logo guidelines */
+        .brand-gradient {
+            background: linear-gradient(135deg, #FF0000, #FD6D05);
+        }
+        .brand-text-gradient {
+            background: linear-gradient(135deg, #FF0000, #FD6D05);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .sidebar-link {
+            color: #9ca3af;
+            border-left: 4px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .sidebar-link:hover, .sidebar-link.active {
+            background-color: #1e2345;
+            color: #FD6D05;
+            border-left-color: #FF0000;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        /* Modal Background Blur overlay */
+        .modal-overlay {
+            background-color: rgba(5, 6, 14, 0.8);
+            backdrop-filter: blur(8px);
+        }
+        .empty-placeholder {
+            border: 2px dashed #1e2238;
+            background: rgba(18, 20, 36, 0.4);
+        }
+    </style>
 </head>
-<body class="text-slate-800 antialiased relative overflow-x-hidden">
+<body class="flex h-screen overflow-hidden">
 
-  <div class="flex min-h-screen">
-    
-    <aside class="w-64 bg-[#090e1a] text-slate-400 p-6 flex flex-col justify-between hidden md:flex shrink-0">
-      <div>
-        <div class="flex items-center gap-3 mb-8">
-          <img src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=60" alt="Broken English Logo" class="w-12 h-12 rounded-xl object-cover border border-slate-800 shadow-inner bg-slate-900" />
-          <div class="flex flex-col">
-            <span class="text-[10px] font-bold tracking-widest text-[#FD6D05] uppercase">Media Suite</span>
-            <span class="text-white font-black text-lg tracking-tight leading-none">BROKEN<br/><span class="text-[#FDB82D]">ENGLISH</span></span>
-          </div>
+    <aside class="w-64 bg-[#090b14] border-r border-[#1e2238] flex flex-col justify-between p-4 hidden md:flex">
+        <div>
+            <div class="flex items-center gap-3 px-2 py-4 mb-4">
+                <div class="brand-gradient p-2 rounded-xl text-white shadow-lg shadow-red-600/20">
+                    <i data-lucide="clapperboard" class="w-6 h-6"></i>
+                </div>
+                <div class="flex flex-col">
+                    <span class="font-bold text-lg tracking-wide text-white leading-none">Broken English</span>
+                    <span class="text-[10px] text-orange-400 font-semibold tracking-wider uppercase mt-1">Creative Production</span>
+                </div>
+            </div>
+
+            <nav class="space-y-1" id="sidebar-menu">
+                <button onclick="switchTab('dashboard')" id="btn-dashboard" class="sidebar-link active w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
+                </button>
+                <button onclick="switchTab('projects')" id="btn-projects" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left">
+                    <i data-lucide="folder-kanban" class="w-5 h-5"></i> Creative Projects
+                </button>
+                <button onclick="switchTab('tasks')" id="btn-tasks" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left relative">
+                    <i data-lucide="list-todo" class="w-5 h-5"></i> Production Tasks
+                    <span id="badge-tasks" class="absolute right-3 top-1/2 -translate-y-1/2 bg-orange-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
+                </button>
+                <button onclick="switchTab('assignments')" id="btn-assignments" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left relative">
+                    <i data-lucide="user-check" class="w-5 h-5"></i> Team Assignments
+                    <span id="badge-assignments" class="absolute right-3 top-1/2 -translate-y-1/2 bg-orange-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
+                </button>
+                <button onclick="switchTab('team')" id="btn-team" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left relative">
+                    <i data-lucide="users" class="w-5 h-5"></i> Media & Design Team
+                    <span id="badge-team" class="absolute right-3 top-1/2 -translate-y-1/2 bg-orange-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
+                </button>
+                <button onclick="switchTab('calendar')" id="btn-calendar" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left relative">
+                    <i data-lucide="calendar" class="w-5 h-5"></i> Schedule & Deadlines
+                    <span id="badge-calendar" class="absolute right-3 top-1/2 -translate-y-1/2 bg-orange-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
+                </button>
+            </nav>
         </div>
-        <nav class="space-y-1">
-          <button id="navDashboardBtn" class="w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md transition outline-none">📊 Dashboard Overview</button>
-          <button id="navScheduleBtn" class="w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none">📝 Work Schedule Pipeline</button>
-          <button id="navSettingsBtn" class="w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none">⚙️ Email Routing Settings</button>
-          <a href="https://www.youtube.com/channel/UC3UroLYjfHIEqInFK0rC5OQ" target="_blank" class="flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl transition">📺 YouTube Channel ↗</a>
-          <a href="https://www.instagram.com/brokenenglish___/" target="_blank" class="flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl transition">📸 Instagram Profile ↗</a>
-        </nav>
-      </div>
-      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs">
-        <div class="flex items-center gap-2 mb-2 text-[#FDB82D] font-semibold"><span class="w-2 h-2 rounded-full bg-[#FDB82D]"></span> Standalone Dashboard</div>
-        <p class="text-slate-500">All data items save directly inside your local computer's cache framework.</p>
-      </div>
+
+        <div class="space-y-1 border-t border-[#1e2238] pt-4">
+            <a href="https://docs.google.com/spreadsheets/d/1GJVD2iaSA_aDTKWgf8ChAb0ln6NY1F7qtpMQ1Bacp-0/edit?pli=1&gid=0#gid=0" target="_blank" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left bg-emerald-500/5 text-emerald-400 border-l-2 border-emerald-500">
+                <i data-lucide="file-spreadsheet" class="w-5 h-5 text-emerald-400"></i> Production Sheet
+            </a>
+            <button onclick="switchTab('settings')" id="btn-settings" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left">
+                <i data-lucide="settings" class="w-5 h-5"></i> Settings
+            </button>
+        </div>
     </aside>
 
-    <main class="flex-1 p-6 overflow-y-auto">
-
-      <section id="dashboard-tab-view" class="space-y-6">
-        <header>
-          <h1 class="text-3xl font-black tracking-tight text-slate-900">Workspace Dashboard 🚀</h1>
-          <p class="text-sm text-slate-500">Decoupled browser control module paired with standalone analytical charts.</p>
-        </header>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col md:flex-row items-center justify-around gap-6">
-            <div class="text-center md:text-left">
-              <h2 class="text-base font-bold text-slate-900 mb-1">Workflow Allocation</h2>
-              <p class="text-xs text-slate-400 max-w-xs mb-4">Tracking internal tracker item allocations.</p>
-              <div class="space-y-2 text-xs font-semibold text-slate-600">
-                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#FF0000] block"></span> To Do: <span id="legendToDo">0 Tasks</span></div>
-                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#FD6D05] block"></span> In Progress: <span id="legendProgress">0 Tasks</span></div>
-                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#FDB82D] block"></span> Under Review: <span id="legendReview">0 Tasks</span></div>
-                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-500 block"></span> Ready to Upload: <span id="legendReady">0 Tasks</span></div>
-              </div>
-            </div>
-
-            <div class="relative w-36 h-36 flex items-center justify-center shrink-0">
-              <svg width="100%" height="100%" viewBox="0 0 42 42" class="donut">
-                <circle cx="21" cy="21" r="15.91549430918954" fill="#fff"></circle>
-                <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#f1f5f9" stroke-width="4"></circle>
-                <circle id="segmentToDo" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#FF0000" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
-                <circle id="segmentProgress" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#FD6D05" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
-                <circle id="segmentReview" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#FDB82D" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
-                <circle id="segmentReady" class="chart-circle" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#10b981" stroke-width="4.2" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
-              </svg>
-              <div class="absolute text-center">
-                <span id="chartCenterCount" class="block text-2xl font-black text-slate-900 leading-none">0</span>
-                <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total logged</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col justify-between">
-            <div>
-              <h2 class="text-base font-bold text-slate-900 mb-1">Content Proportions</h2>
-              <p class="text-xs text-slate-400">Proportion map comparing Shorts vs long-form Normal Videos.</p>
-            </div>
-            
-            <div class="flex items-end justify-center gap-8 h-28 my-2 pt-4">
-              <div class="flex flex-col items-center w-12">
-                <div id="barShortFormHeight" class="w-full bg-gradient-to-t from-[#FD6D05] to-[#FDB82D] rounded-t-lg transition-all duration-500 min-h-[4px]" style="height: 50%"></div>
-                <span id="barShortFormLabel" class="text-xs font-bold text-slate-700 mt-2">0</span>
-                <span class="text-[9px] text-slate-400 font-bold uppercase">Shorts</span>
-              </div>
-              <div class="flex flex-col items-center w-12">
-                <div id="barLongFormHeight" class="w-full bg-slate-800 rounded-t-lg transition-all duration-500 min-h-[4px]" style="height: 50%"></div>
-                <span id="barLongFormLabel" class="text-xs font-bold text-slate-700 mt-2">0</span>
-                <span class="text-[9px] text-slate-400 font-bold uppercase">Videos</span>
-              </div>
-            </div>
-            <p class="text-[10px] text-slate-400 text-center">Calculates distribution configurations from table registry parameters.</p>
-          </div>
-
-          <div class="bg-slate-950 text-white rounded-2xl p-6 flex flex-col justify-between shadow-md">
-            <div>
-              <h3 class="text-sm font-bold tracking-wider uppercase text-[#FDB82D] mb-1">Queue Proportions</h3>
-              <p class="text-xs text-slate-400">Comparing interactive rows remaining vs ready items.</p>
-            </div>
-            <div class="my-4 space-y-4">
-              <div>
-                <div class="flex justify-between text-xs font-semibold text-slate-400 mb-1">
-                  <span>🛠️ Active Backlog (Pending)</span>
-                  <span id="barPendingLabel" class="text-[#FD6D05]">0</span>
-                </div>
-                <div class="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
-                  <div id="barPendingWidth" class="bg-gradient-to-r from-[#FF0000] to-[#FD6D05] h-full transition-all duration-500" style="width: 0%"></div>
-                </div>
-              </div>
-              <div>
-                <div class="flex justify-between text-xs font-semibold text-slate-400 mb-1">
-                  <span>✅ Completed (Finished)</span>
-                  <span id="barFinishedLabel" class="text-emerald-400">0</span>
-                </div>
-                <div class="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
-                  <div id="barFinishedWidth" class="bg-emerald-500 h-full transition-all duration-500" style="width: 0%"></div>
-                </div>
-              </div>
-            </div>
-            <p class="text-[10px] text-slate-500 font-medium">Keep production pipelines green to hit strategic channel upload targets.</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="schedule-tab-view" class="space-y-6 hidden">
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div class="p-4 bg-[#090e1a] text-white"><h3 class="text-base font-bold">Log New Production Entry</h3></div>
-          <form id="productionEntryForm" class="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Date</label>
-              <input id="formDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Presenter</label>
-              <input id="formPresenter" type="text" placeholder="Presenter Name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Video Title</label>
-              <input id="formVideoTitle" type="text" placeholder="Title Context" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Shoot Date</label>
-              <input id="formShootDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Shoot Title</label>
-              <input id="formShootTitle" type="text" placeholder="Reference ID" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Description</label>
-              <input id="formDescription" type="text" placeholder="Scope notes..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" required />
-            </div>
-            
-            <div>
-              <label class="block text-xs font-bold text-[#FD6D05] uppercase mb-1">Assignment Channel Type</label>
-              <select id="formAssignmentType" class="w-full bg-orange-50/50 border border-orange-200 rounded-xl px-3 py-2 text-sm font-bold focus:border-[#FD6D05] cursor-pointer">
-                <option value="Video Editing">🎬 Video Editing Asset</option>
-                <option value="Thumbnail/Poster">🖼️ Thumbnail / Poster Design</option>
-                <option value="Both">🔥 Both (Editor & Designer Pools)</option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Thumbnail Status</label>
-              <select id="formThumbStatus" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                <option value="Pending">Pending</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Editor Status</label>
-              <select id="formEditorStatus" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                <option value="To Do">To Do</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Under Review">Under Review</option>
-                <option value="Ready to Upload">Ready to Upload</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Posted Date (Optional)</label>
-              <input id="formPostedDate" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Uploaded In</label>
-              <select id="formUploadedIn" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                <option value="Not Yet Uploaded">Not Yet Uploaded</option>
-                <option value="Instagram">Instagram</option>
-                <option value="YouTube Shorts">YouTube Shorts</option>
-                <option value="Both (IG & YT)">Both (IG & YT)</option>
-              </select>
-            </div>
-            <div class="md:col-span-2 lg:col-span-4 flex justify-end mt-2">
-              <button type="submit" class="w-full md:w-64 bg-brand-gradient hover-bg-brand-gradient text-white font-bold text-sm py-3 rounded-xl shadow-md transition">Generate Log Entry Item</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 overflow-hidden">
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div>
-              <h3 class="text-lg font-bold text-slate-900">Live Production Dashboard Tracker</h3>
-              <p class="text-xs text-slate-400">Updates metrics calculations and allocation charts automatically when items are adjusted.</p>
-            </div>
-            <button id="downloadReportBtn" class="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition shadow-sm w-full sm:w-auto justify-center">📥 Download Production CSV Report</button>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[1250px]">
-              <thead>
-                <tr class="border-b border-slate-100 text-slate-400 text-xs font-semibold uppercase bg-slate-50/50">
-                  <th class="py-3 px-3">Production Timeline</th>
-                  <th class="py-3 px-3">Title / Core Reference</th>
-                  <th class="py-3 px-3">Content Link</th>
-                  <th class="py-3 px-3">Description Context</th>
-                  <th class="py-3 px-3">Assignment Track</th>
-                  <th class="py-3 px-3">Thumbnail Status</th>
-                  <th class="py-3 px-3">Editor Status</th>
-                  <th class="py-3 px-3">Upload Destination</th>
-                  <th class="py-3 px-3 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody id="productionTableBody" class="text-sm divide-y divide-slate-100"></tbody>
-            </table>
-            <div id="emptyStateContainer" class="text-center py-12 text-slate-400 font-medium">No active layout rows. Input values above to generate.</div>
-          </div>
-        </div>
-      </section>
-
-      <section id="settings-tab-view" class="space-y-6 hidden">
-        <header>
-          <h1 class="text-3xl font-black tracking-tight text-slate-900">Email Routing Configuration ⚙️</h1>
-          <p class="text-sm text-slate-500">Manage and distribute personnel emails across asset assignment nodes.</p>
-        </header>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
-            <div class="border-b border-slate-100 pb-3">
-              <h3 class="text-base font-bold text-slate-900">🎬 Video Assignment Routing Pool</h3>
-              <p class="text-xs text-slate-400">Emails notified when "Video Editing Asset" is selected.</p>
-            </div>
-            <form id="addVideoEmailForm" class="flex gap-2">
-              <input id="inputVideoEmail" type="email" placeholder="new.editor@gmail.com" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500" required />
-              <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition">Add Email</button>
-            </form>
-            <ul id="videoEmailList" class="divide-y divide-slate-50 border border-slate-100 rounded-xl overflow-hidden text-sm"></ul>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
-            <div class="border-b border-slate-100 pb-3">
-              <h3 class="text-base font-bold text-slate-900">🖼️ Thumbnail/Poster Routing Pool</h3>
-              <p class="text-xs text-slate-400">Emails notified when "Thumbnail/Poster Design" is selected.</p>
-            </div>
-            <form id="addThumbEmailForm" class="flex gap-2">
-              <input id="inputThumbEmail" type="email" placeholder="new.designer@gmail.com" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-500" required />
-              <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl transition">Add Email</button>
-            </form>
-            <ul id="thumbEmailList" class="divide-y divide-slate-50 border border-slate-100 rounded-xl overflow-hidden text-sm"></ul>
-          </div>
-        </div>
-      </section>
-
-    </main>
-  </div>
-
-  <script>
-    const EMAIL_RELAY_URL = "https://script.google.com/macros/s/AKfycbxxBakHrIJJBHfHE3008nII23KcA5pbdBNlGlujtogyXkFOihJHSz-WVpX932ddiSZbqQ/exec";
-    
-    // MODIFY THIS VALUE AT ANY TIME IN THE FUTURE TO UPDATE BOSS ROUTING TARGET
-    const TARGET_NOTIFICATION_EMAIL = "amailtosreekanth@gmail.com";
-
-    let taskDatabase = [];
-    let routingSettings = {
-      videoEmails: ["analpbrk@gmail.com"],
-      thumbEmails: ["alibrk717@gmail.com"]
-    };
-
-    const TRACKER_CACHE_KEY = 'standalone_be_tracker_cache';
-    const SETTINGS_CACHE_KEY = 'standalone_be_routing_cache';
-
-    const navDashboardBtn = document.getElementById('navDashboardBtn');
-    const navScheduleBtn = document.getElementById('navScheduleBtn');
-    const navSettingsBtn = document.getElementById('navSettingsBtn');
-    
-    const dashboardView = document.getElementById('dashboard-tab-view');
-    const scheduleView = document.getElementById('schedule-tab-view');
-    const settingsView = document.getElementById('settings-tab-view');
-
-    function displayTab(tabId) {
-      [navDashboardBtn, navScheduleBtn, navSettingsBtn].forEach(btn => {
-        btn.className = "w-full flex items-center gap-3 hover:bg-slate-800 hover:text-white px-4 py-3 rounded-xl text-left transition outline-none";
-      });
-      [dashboardView, scheduleView, settingsView].forEach(view => view.classList.add('hidden'));
-
-      if (tabId === 'dashboard') {
-        navDashboardBtn.className = "w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md outline-none";
-        dashboardView.classList.remove('hidden');
-      } else if (tabId === 'schedule') {
-        navScheduleBtn.className = "w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md outline-none";
-        scheduleView.classList.remove('hidden');
-      } else if (tabId === 'settings') {
-        navSettingsBtn.className = "w-full flex items-center gap-3 bg-brand-gradient text-white px-4 py-3 rounded-xl font-medium shadow-md outline-none";
-        settingsView.classList.remove('hidden');
-      }
-    }
-
-    navDashboardBtn.addEventListener('click', () => displayTab('dashboard'));
-    navScheduleBtn.addEventListener('click', () => displayTab('schedule'));
-    navSettingsBtn.addEventListener('click', () => displayTab('settings'));
-
-    // MANAGE DROPDOWN VISIBILITY RULES FOR NEW ENTRIES
-    const formAssignmentType = document.getElementById('formAssignmentType');
-    const formThumbStatus = document.getElementById('formThumbStatus');
-    
-    function evaluateFormDropdownLocks() {
-      if (formAssignmentType.value === "Video Editing") {
-        formThumbStatus.value = "Pending";
-        formThumbStatus.disabled = true;
-        formThumbStatus.classList.add('opacity-50', 'bg-slate-200');
-      } else {
-        formThumbStatus.disabled = false;
-        formThumbStatus.classList.remove('opacity-50', 'bg-slate-200');
-      }
-    }
-    formAssignmentType.addEventListener('change', evaluateFormDropdownLocks);
-    window.addEventListener('DOMContentLoaded', evaluateFormDropdownLocks);
-
-    function loadStorageData() {
-      taskDatabase = JSON.parse(localStorage.getItem(TRACKER_CACHE_KEY)) || [];
-      if (localStorage.getItem(SETTINGS_CACHE_KEY)) {
-        routingSettings = JSON.parse(localStorage.getItem(SETTINGS_CACHE_KEY));
-      }
-      updateMetricsAndCharts();
-      renderTable();
-      renderRoutingLists();
-    }
-
-    function renderRoutingLists() {
-      const vList = document.getElementById('videoEmailList');
-      const tList = document.getElementById('thumbEmailList');
-      
-      vList.innerHTML = '';
-      tList.innerHTML = '';
-
-      routingSettings.videoEmails.forEach(email => {
-        const li = document.createElement('li');
-        li.className = "flex justify-between items-center px-4 py-2.5 bg-white hover:bg-slate-50";
-        li.innerHTML = `<span class="font-mono text-slate-700">${email}</span><button class="text-xs font-bold text-red-400 hover:text-red-600 transition">Remove</button>`;
-        li.querySelector('button').addEventListener('click', () => {
-          routingSettings.videoEmails = routingSettings.videoEmails.filter(e => e !== email);
-          localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(routingSettings));
-          renderRoutingLists();
-        });
-        vList.appendChild(li);
-      });
-
-      routingSettings.thumbEmails.forEach(email => {
-        const li = document.createElement('li');
-        li.className = "flex justify-between items-center px-4 py-2.5 bg-white hover:bg-slate-50";
-        li.innerHTML = `<span class="font-mono text-slate-700">${email}</span><button class="text-xs font-bold text-red-400 hover:text-red-600 transition">Remove</button>`;
-        li.querySelector('button').addEventListener('click', () => {
-          routingSettings.thumbEmails = routingSettings.thumbEmails.filter(e => e !== email);
-          localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(routingSettings));
-          renderRoutingLists();
-        });
-        tList.appendChild(li);
-      });
-    }
-
-    document.getElementById('addVideoEmailForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const input = document.getElementById('inputVideoEmail');
-      if(!routingSettings.videoEmails.includes(input.value.trim())) {
-        routingSettings.videoEmails.push(input.value.trim());
-        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(routingSettings));
-        renderRoutingLists();
-      }
-      input.value = '';
-    });
-
-    document.getElementById('addThumbEmailForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const input = document.getElementById('inputThumbEmail');
-      if(!routingSettings.thumbEmails.includes(input.value.trim())) {
-        routingSettings.thumbEmails.push(input.value.trim());
-        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(routingSettings));
-        renderRoutingLists();
-      }
-      input.value = '';
-    });
-
-    function updateFormatProportionChart() {
-      let shortsCount = 0, videosCount = 0;
-      taskDatabase.forEach(task => {
-        if (task.uploadedIn === 'YouTube Shorts' || task.uploadedIn === 'Both (IG & YT)') shortsCount++;
-        else videosCount++;
-      });
-      document.getElementById('barShortFormLabel').innerText = shortsCount;
-      document.getElementById('barLongFormLabel').innerText = videosCount;
-
-      const runningSum = shortsCount + videosCount;
-      if (runningSum > 0) {
-        document.getElementById('barShortFormHeight').style.height = `${(shortsCount / runningSum) * 100}%`;
-        document.getElementById('barLongFormHeight').style.height = `${(videosCount / runningSum) * 100}%`;
-      } else {
-        document.getElementById('barShortFormHeight').style.height = '50%';
-        document.getElementById('barLongFormHeight').style.height = '50%';
-      }
-    }
-
-    function updateMetricsAndCharts() {
-      const totalTasks = taskDatabase.length;
-      document.getElementById('chartCenterCount').innerText = totalTasks;
-      document.getElementById('emptyStateContainer').className = totalTasks === 0 ? "text-center py-12 text-slate-400 font-medium" : "hidden";
-
-      let filterCounts = { "To Do": 0, "In Progress": 0, "Under Review": 0, "Ready to Upload": 0 };
-      taskDatabase.forEach(t => { if(filterCounts[t.editorStatus] !== undefined) filterCounts[t.editorStatus]++; });
-
-      document.getElementById('legendToDo').innerText = `${filterCounts["To Do"]} Tasks`;
-      document.getElementById('legendProgress').innerText = `${filterCounts["In Progress"]} Tasks`;
-      document.getElementById('legendReview').innerText = `${filterCounts["Under Review"]} Tasks`;
-      document.getElementById('legendReady').innerText = `${filterCounts["Ready to Upload"]} Tasks`;
-
-      const backlogSum = filterCounts["To Do"] + filterCounts["In Progress"] + filterCounts["Under Review"];
-      const readySum = filterCounts["Ready to Upload"];
-      document.getElementById('barPendingLabel').innerText = backlogSum;
-      document.getElementById('barFinishedLabel').innerText = readySum;
-      
-      document.getElementById('barPendingWidth').style.width = (totalTasks > 0 ? (backlogSum / totalTasks) * 100 : 0) + '%';
-      document.getElementById('barFinishedWidth').style.width = (totalTasks > 0 ? (readySum / totalTasks) * 100 : 0) + '%';
-
-      const getRatioPct = (val) => totalTasks > 0 ? (val / totalTasks) * 100 : 0;
-      document.getElementById('segmentToDo').setAttribute('stroke-dasharray', `${getRatioPct(filterCounts["To Do"])} 100`);
-      document.getElementById('segmentProgress').setAttribute('stroke-dasharray', `${getRatioPct(filterCounts["In Progress"])} 100`);
-      document.getElementById('segmentProgress').setAttribute('stroke-dashoffset', `-${getRatioPct(filterCounts["To Do"])}`);
-      document.getElementById('segmentReview').setAttribute('stroke-dasharray', `${getRatioPct(filterCounts["Under Review"])} 100`);
-      document.getElementById('segmentReview').setAttribute('stroke-dashoffset', `-${getRatioPct(filterCounts["To Do"]) + getRatioPct(filterCounts["In Progress"])}`);
-      document.getElementById('segmentReady').setAttribute('stroke-dasharray', `${getRatioPct(filterCounts["Ready to Upload"])} 100`);
-      document.getElementById('segmentReady').setAttribute('stroke-dashoffset', `-${getRatioPct(filterCounts["To Do"]) + getRatioPct(filterCounts["In Progress"]) + getRatioPct(filterCounts["Under Review"])}`);
-
-      updateFormatProportionChart();
-    }
-
-    // AUTOMATED SYSTEM VALIDATION ROUTER TRIGGER FOR THE BOSS RECEIPT
-    async function checkAndTriggerStatusNotification(task) {
-      if (task.thumbnailStatus === 'Completed' && task.editorStatus === 'Ready to Upload') {
-        const payload = {
-          ...task,
-          assignedEmployee: TARGET_NOTIFICATION_EMAIL,
-          systemNotificationType: "ReadyForUploadConfirmation"
-        };
-        try {
-          // CORRECTION: Dropped 'no-cors' mode and updated to text/plain parsing compatibility
-          await fetch(EMAIL_RELAY_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-          });
-          alert(`📧 Status Notification Auto-Dispatched!\nSent compilation updates and content link to ${TARGET_NOTIFICATION_EMAIL}`);
-        } catch (err) {
-          console.error("Auto routing notification system failed:", err);
-        }
-      }
-    }
-
-    function renderTable() {
-      const tbody = document.getElementById('productionTableBody');
-      tbody.innerHTML = '';
-
-      taskDatabase.forEach(task => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-50/50 transition border-b border-slate-100';
-        const colorClass = task.editorStatus === "Ready to Upload" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-orange-50 text-[#FD6D05] border-orange-100";
-        let postDateVal = task.postedDate ? new Date(task.postedDate).toISOString().split('T') : '';
-        let currentLink = task.contentLink || '';
-
-        // Conditional checks to isolate locks inside table view rows
-        const isThumbDisabled = task.assignmentType === 'Video Editing';
-        const disabledAttr = isThumbDisabled ? 'disabled' : '';
-        const opStyle = isThumbDisabled ? 'opacity-40 cursor-not-allowed bg-slate-100' : 'cursor-pointer bg-white';
-
-        let trackBadgeColor = 'bg-red-50 text-red-600';
-        if (task.assignmentType === 'Thumbnail/Poster') trackBadgeColor = 'bg-amber-50 text-amber-600';
-        if (task.assignmentType === 'Both') trackBadgeColor = 'bg-purple-50 text-purple-600 border border-purple-100';
-
-        tr.innerHTML = `
-          <td class="py-3 px-3 space-y-0.5 text-xs">
-            <div><span class="text-slate-400">Created:</span> ${task.date ? new Date(task.date).toISOString().split('T') : '---'}</div>
-            <div><span class="text-slate-400">Shoot:</span> ${task.shootDate ? new Date(task.shootDate).toISOString().split('T') : '---'}</div>
-            <div><span class="text-slate-400 font-bold">Post Date:</span> <input type="date" class="posted-date-input bg-transparent border-b border-dashed border-slate-300 focus:outline-none text-blue-600 font-semibold" value="${postDateVal}"></div>
-          </td>
-          <td class="py-3 px-3">
-            <p class="font-bold text-slate-800 leading-tight">${task.videoTitle}</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">🎬 Reference: ${task.shootTitle}</p>
-          </td>
-          <td class="py-3 px-3">
-            <input type="text" placeholder="Paste link..." class="content-link-input w-40 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-500" value="${currentLink}" />
-          </td>
-          <td class="py-3 px-3 text-slate-600 max-w-[180px] truncate" title="${task.description}">${task.description}</td>
-          <td class="py-3 px-3 text-xs font-semibold">
-            <span class="px-2.5 py-1 rounded-full ${trackBadgeColor}">
-              ${task.assignmentType || 'Video Editing'}
-            </span>
-            <div class="text-[10px] text-slate-400 mt-1 font-mono">${task.presenter}</div>
-          </td>
-          <td class="py-3 px-3">
-            <select ${disabledAttr} class="thumb-dropdown text-xs font-bold px-2 py-1 rounded-lg border border-slate-200 ${opStyle}">
-              <option value="Pending" ${task.thumbnailStatus === 'Pending' ? 'selected' : ''}>Pending</option>
-              <option value="In Progress" ${task.thumbnailStatus === 'In Progress' ? 'selected' : ''}>In Progress</option>
-              <option value="Completed" ${task.thumbnailStatus === 'Completed' ? 'selected' : ''}>Completed</option>
-            </select>
-          </td>
-          <td class="py-3 px-3">
-            <select class="editor-dropdown text-xs font-bold px-2 py-1 rounded-lg border ${colorClass} bg-white border-slate-200 cursor-pointer">
-              <option value="To Do" ${task.editorStatus === 'To Do' ? 'selected' : ''}>🔴 To Do</option>
-              <option value="In Progress" ${task.editorStatus === 'In Progress' ? 'selected' : ''}>🟠 In Progress</option>
-              <option value="Under Review" ${task.editorStatus === 'Under Review' ? 'selected' : ''}>🟡 Under Review</option>
-              <option value="Ready to Upload" ${task.editorStatus === 'Ready to Upload' ? 'selected' : ''}>🟢 Ready to Upload</option>
-            </select>
-          </td>
-          <td class="py-3 px-3">
-            <select class="upload-dropdown text-xs font-medium px-2 py-1 rounded-lg border bg-white border-slate-200 cursor-pointer">
-              <option value="Not Yet Uploaded" ${task.uploadedIn === 'Not Yet Uploaded' ? 'selected' : ''}>Not Yet Uploaded</option>
-              <option value="Instagram" ${task.uploadedIn === 'Instagram' ? 'selected' : ''}>Instagram</option>
-              <option value="YouTube Shorts" ${task.uploadedIn === 'YouTube Shorts' ? 'selected' : ''}>YouTube Shorts</option>
-              <option value="Both (IG & YT)" ${task.uploadedIn === 'Both (IG & YT)' ? 'selected' : ''}>Both (IG & YT)</option>
-            </select>
-          </td>
-          <td class="py-3 px-3 text-center">
-            <button class="delete-btn text-slate-300 hover:text-red-500 font-semibold text-xs px-2 py-1 transition">🗑️ Cancel</button>
-          </td>
-        `;
-
-        tr.querySelector('.thumb-dropdown').addEventListener('change', (e) => { 
-          task.thumbnailStatus = e.target.value; 
-          localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); 
-          checkAndTriggerStatusNotification(task);
-        });
-        tr.querySelector('.editor-dropdown').addEventListener('change', (e) => { 
-          task.editorStatus = e.target.value; 
-          localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); 
-          updateMetricsAndCharts(); 
-          renderTable(); 
-          checkAndTriggerStatusNotification(task);
-        });
-        tr.querySelector('.upload-dropdown').addEventListener('change', (e) => { task.uploadedIn = e.target.value; localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); updateFormatProportionChart(); });
-        tr.querySelector('.posted-date-input').addEventListener('change', (e) => { task.postedDate = e.target.value; localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); });
+    <main class="flex-1 flex flex-col h-full overflow-y-auto">
         
-        tr.querySelector('.content-link-input').addEventListener('change', (e) => { 
-          task.contentLink = e.target.value; 
-          localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); 
+        <header class="h-20 border-b border-[#1e2238] flex items-center justify-between px-8 bg-[#0b0d19]/80 backdrop-blur-md sticky top-0 z-10">
+            <div class="flex items-center gap-3">
+                <select id="filter-month" onchange="refreshProjectUI()" class="bg-[#121424] border border-[#1e2238] rounded-xl text-xs px-3 py-2 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                    <option value="ALL">All Months</option>
+                    <option value="01">January</option>
+                    <option value="02">February</option>
+                    <option value="03">March</option>
+                    <option value="04">April</option>
+                    <option value="05">May</option>
+                    <option value="06">June</option>
+                    <option value="07">July</option>
+                    <option value="08">August</option>
+                    <option value="09">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+                <select id="filter-year" onchange="refreshProjectUI()" class="bg-[#121424] border border-[#1e2238] rounded-xl text-xs px-3 py-2 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                    <option value="ALL">All Years</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                    <option value="2028">2028</option>
+                </select>
+                <button onclick="downloadCSVReport()" class="flex items-center gap-1.5 bg-[#121424] border border-[#1e2238] hover:border-orange-500/40 text-gray-300 px-3 py-2 rounded-xl text-xs transition">
+                    <i data-lucide="download" class="w-3.5 h-3.5 text-orange-500"></i> Download Tasks
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="relative cursor-pointer p-2 hover:bg-[#121424] rounded-xl transition group" onclick="toggleNotificationPanel()">
+                    <i data-lucide="bell" class="w-5 h-5 text-gray-400 group-hover:text-white"></i>
+                    <span id="header-notif-dot" class="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full hidden"></span>
+                    
+                    <div id="notification-panel" class="absolute right-0 mt-3 w-80 bg-[#121424] border border-[#1e2238] rounded-2xl p-4 shadow-2xl hidden z-50">
+                        <h4 class="font-bold text-sm border-b border-[#1e2238] pb-2 mb-2 flex items-center gap-1.5 text-white">
+                            <i data-lucide="bell-ring" class="w-4 h-4 text-orange-500"></i> Workspace Alerts
+                        </h4>
+                        <div id="notification-list" class="space-y-2 max-h-60 overflow-y-auto text-xs text-gray-400"></div>
+                    </div>
+                </div>
+
+                <button onclick="openProjectModal()" class="brand-gradient hover:opacity-90 text-white text-xs px-3 py-2 rounded-xl transition font-medium flex items-center gap-1.5 shadow-md shadow-orange-600/10">
+                    <i data-lucide="plus" class="w-4 h-4"></i> New Project
+                </button>
+                <div class="h-8 w-px bg-[#1e2238]"></div>
+                <div class="w-10 h-10 rounded-xl brand-gradient flex items-center justify-center text-white font-semibold shadow-md">BE</div>
+            </div>
+        </header>
+
+        <div id="global-notification-banner" class="px-8 pt-6 hidden">
+            <div class="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4 flex items-start gap-3 text-orange-300">
+                <i data-lucide="alert-circle" class="w-5 h-5 text-orange-500 mt-0.5 shrink-0"></i>
+                <div class="text-xs">
+                    <span class="font-bold text-white block text-sm mb-0.5">Workspace Status Update</span>
+                    No interactive items are configured matching your current filter limits. Select a different time block or add a new entry.
+                </div>
+            </div>
+        </div>
+
+        <div class="p-8 space-y-8 max-w-[1600px] w-full mx-auto">
+            
+            <div id="tab-dashboard" class="tab-content active space-y-8">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold tracking-tight">Creative Workspace Dashboard 👋</h1>
+                        <p class="text-gray-400 text-sm mt-1">Unified pipeline tracking for the <span class="brand-text-gradient font-semibold">Broken English</span> team.</p>
+                    </div>
+                    <a href="https://docs.google.com/spreadsheets/d/1GJVD2iaSA_aDTKWgf8ChAb0ln6NY1F7qtpMQ1Bacp-0/edit?pli=1&gid=0#gid=0" target="_blank" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl transition font-semibold text-sm shadow-lg shadow-emerald-900/20">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Open Live Google Sheet
+                    </a>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="card p-6 rounded-2xl flex justify-between items-start">
+                        <div><p class="text-gray-400 text-sm font-medium">Filtered Campaigns</p><h3 id="stat-active-projects" class="text-3xl font-bold mt-2">0</h3></div>
+                        <div class="bg-red-500/10 text-red-500 p-3 rounded-xl"><i data-lucide="clapperboard" class="w-6 h-6"></i></div>
+                    </div>
+                    <div class="card p-6 rounded-2xl flex justify-between items-start">
+                        <div><p class="text-gray-400 text-sm font-medium">In Editing Phase</p><h3 id="stat-editing-projects" class="text-3xl font-bold mt-2">0</h3></div>
+                        <div class="bg-orange-500/10 text-orange-500 p-3 rounded-xl"><i data-lucide="video" class="w-6 h-6"></i></div>
+                    </div>
+                    <div class="card p-6 rounded-2xl flex justify-between items-start">
+                        <div><p class="text-gray-400 text-sm font-medium">In Design Phase</p><h3 id="stat-design-projects" class="text-3xl font-bold mt-2">0</h3></div>
+                        <div class="bg-red-500/10 text-red-400 p-3 rounded-xl"><i data-lucide="palette" class="w-6 h-6"></i></div>
+                    </div>
+                    <div class="card p-6 rounded-2xl flex justify-between items-start">
+                        <div><p class="text-gray-400 text-sm font-medium">Approved / Ready</p><h3 id="stat-approved-projects" class="text-3xl font-bold mt-2">0</h3></div>
+                        <div class="bg-emerald-500/10 text-emerald-400 p-3 rounded-xl"><i data-lucide="check-circle-2" class="w-6 h-6"></i></div>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <h3 class="text-xl font-bold">Live Tracked Production Matrix</h3>
+                    <div id="dashboard-projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                </div>
+            </div>
+
+            <div id="tab-projects" class="tab-content space-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Creative Projects Board</h2>
+                    <button onclick="openProjectModal()" class="brand-gradient hover:opacity-90 text-white text-sm px-4 py-2 rounded-xl transition font-medium flex items-center gap-2 shadow-lg shadow-orange-600/20">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Start New Project
+                    </button>
+                </div>
+                <div id="projects-list-container"></div>
+            </div>
+
+            <div id="tab-tasks" class="tab-content space-y-6"><h2 class="text-2xl font-bold">Production Tasks</h2><div id="tasks-container"></div></div>
+            <div id="tab-assignments" class="tab-content space-y-6"><h2 class="text-2xl font-bold">Team Assignments</h2><div id="assignments-container"></div></div>
+            <div id="tab-team" class="tab-content space-y-6"><h2 class="text-2xl font-bold">Media & Design Team Roster</h2><div id="team-container"></div></div>
+            <div id="tab-calendar" class="tab-content space-y-6"><h2 class="text-2xl font-bold">Schedule & Deadlines</h2><div id="calendar-container"></div></div>
+
+            <div id="tab-settings" class="tab-content space-y-8">
+                <div>
+                    <h2 class="text-2xl font-bold">Workspace System Settings</h2>
+                    <p class="text-sm text-gray-400 mt-1">Configure your email alerts distribution rules and roster addresses.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card p-6 rounded-2xl space-y-4">
+                        <h3 class="text-lg font-bold text-gray-200 flex items-center gap-2">
+                            <i data-lucide="mail-plus" class="text-orange-500 w-5 h-5"></i> Manage Team Emails Directory
+                        </h3>
+                        <p class="text-xs text-gray-400">Map handles or crew names to their addresses to unlock automated system messaging alerts.</p>
+                        
+                        <div class="space-y-3 pt-2" id="settings-emails-list">
+                            </div>
+
+                        <div class="pt-4 border-t border-[#1e2238] flex gap-2">
+                            <input type="text" id="new-team-name" placeholder="Name (e.g., Rahul)" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 w-1/3">
+                            <input type="email" id="new-team-email" placeholder="Email Address" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 flex-1">
+                            <button onclick="addTeamEmailRow()" class="bg-orange-500 hover:bg-orange-600 text-white text-xs px-4 py-2 rounded-xl transition font-medium">Add</button>
+                        </div>
+                    </div>
+
+                    <div class="card p-6 rounded-2xl space-y-4 flex flex-col justify-between">
+                        <div class="space-y-4">
+                            <h3 class="text-lg font-bold text-gray-200 flex items-center gap-2">
+                                <i data-lucide="shield-check" class="text-orange-500 w-5 h-5"></i> Manager Review Routing
+                            </h3>
+                            <p class="text-xs text-gray-400">Specify the email address where all finalized assets, links, and review requests will be routed when a status updates to **Completed**.</p>
+                            
+                            <div class="space-y-1 pt-2">
+                                <label class="text-gray-400 text-xs font-medium">Manager / Reviewer Email Address</label>
+                                <input type="email" id="settings-manager-email" value="analpbrk@gmail.com" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500 transition">
+                            </div>
+                        </div>
+
+                        <button onclick="saveManagerEmail()" class="w-full brand-gradient text-white text-sm py-2.5 rounded-xl transition font-semibold shadow-lg shadow-orange-600/10">
+                            Apply Routing Controls
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="project-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay hidden">
+        <div class="bg-[#121424] border border-[#1e2238] w-full max-w-2xl rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-4 border-b border-[#1e2238]">
+                <h3 id="modal-heading" class="text-xl font-bold flex items-center gap-2 text-white">
+                    <i data-lucide="file-plus-2" class="text-orange-500 w-5 h-5"></i> Launch New Campaign Row
+                </h3>
+                <button onclick="closeProjectModal()" class="text-gray-400 hover:text-white transition p-1.5 hover:bg-[#1e2238] rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="project-creation-form" onsubmit="handleFormSubmit(event)" class="space-y-6 pt-4 text-sm">
+                <input type="hidden" id="input-project-id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-gray-400 font-medium">Topic / Campaign Name</label>
+                        <input type="text" id="input-topic" required placeholder="e.g., Vocabulary Concept Day 21" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition tracking-tight">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-gray-400 font-medium">Presenter Name</label>
+                        <input type="text" id="input-presenter" placeholder="e.g., Vivek Sharma" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition tracking-tight">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-gray-400 font-medium">Due Date</label>
+                        <input type="date" id="input-date" required class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-gray-400 font-medium">Caption Status</label>
+                        <select id="input-caption-status" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                            <option value="Not Done">Pending / Not Done</option>
+                            <option value="Ready">Ready / Finalized</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="p-4 rounded-xl border border-orange-500/10 bg-orange-500/5 space-y-4">
+                    <h4 class="text-orange-400 font-semibold flex items-center gap-2 text-xs uppercase tracking-wider">
+                        <i data-lucide="video" class="w-4 h-4"></i> Video Editing Pipeline Parameters
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-gray-400 font-medium">Video Editor Assigned</label>
+                            <input type="text" id="input-editor" placeholder="e.g., Afzal" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-gray-400 font-medium">Video Status</label>
+                            <select id="input-video-status" onchange="toggleDriveLinkField()" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                                <option value="Pending">Pending / Not Started</option>
+                                <option value="Editing">In Progress (Editing)</option>
+                                <option value="Completed">Completed Cut</option>
+                                <option value="Approved">Approved / Finalized</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 rounded-xl border border-purple-500/10 bg-purple-500/5 space-y-4">
+                    <h4 class="text-purple-400 font-semibold flex items-center gap-2 text-xs uppercase tracking-wider">
+                        <i data-lucide="palette" class="w-4 h-4"></i> Graphic Design Pipeline Parameters
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-gray-400 font-medium">Graphic Designer Assigned</label>
+                            <input type="text" id="input-designer" placeholder="e.g., Ananya" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-gray-400 font-medium">Thumbnail Status</label>
+                            <select id="input-design-status" onchange="toggleDriveLinkField()" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
+                                <option value="Pending">Pending / Not Started</option>
+                                <option value="Designing">In Progress (Designing)</option>
+                                <option value="Completed">Completed Layout</option>
+                                <option value="Approved">Approved / Finalized</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-1 transition-all duration-300" id="drive-link-input-wrapper">
+                    <label class="text-orange-400 font-semibold flex items-center gap-1 text-xs uppercase tracking-wider">
+                        <i data-lucide="link" class="w-3.5 h-3.5"></i> Work Upload Link
+                    </label>
+                    <input type="url" id="input-drive-link" placeholder="https://drive.google.com/..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition">
+                </div>
+
+                <div class="pt-4 flex justify-between items-center border-t border-[#1e2238] text-sm font-medium">
+                    <div id="modal-delete-container"></div>
+                    <div class="flex gap-3">
+                        <button type="button" onclick="closeProjectModal()" class="bg-[#1e2238] hover:bg-[#252a47] text-gray-300 px-5 py-2.5 rounded-xl transition">Cancel</button>
+                        <button type="submit" class="brand-gradient text-white px-5 py-2.5 rounded-xl transition font-semibold shadow-lg shadow-orange-600/20">Save Project Values</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyxQxDDn8Qu_RHO7zUkmO8hRBXKsS7Cjbh1uanuM6vOpHqzTjDJM9m5eIh6BAIhJWCx/exec";
+
+        // Local state configuration defaults engine
+        let dynamicProjectsList = [
+            { id: 'camp-1', topic: 'Cinematography Frame Composition', presenter: 'Afzal', date: '2026-06-11', editor: 'Afzal', videoStatus: 'Approved', designer: 'Ananya', designStatus: 'Approved', driveLink: 'https://drive.google.com', captionStatus: 'Ready' },
+            { id: 'camp-2', topic: 'Malayalam Fonts Performance Ad', presenter: 'Vivek', date: '2026-02-15', editor: 'Afzal', videoStatus: 'Editing', designer: 'Ananya', designStatus: 'Pending', driveLink: '', captionStatus: 'Not Done' }
+        ];
+
+        let teamEmailsDirectory = {
+            "afzal": "analpbrk@gmail.com",
+            "ananya": "alibrk717@gmail.com"
+        };
+
+        function toggleNotificationPanel() {
+            document.getElementById('notification-panel').classList.toggle('hidden');
+        }
+
+        window.addEventListener('click', function(e) {
+            const panel = document.getElementById('notification-panel');
+            const bell = document.querySelector('[onclick="toggleNotificationPanel()"]');
+            if (panel && !panel.contains(e.target) && bell && !bell.contains(e.target)) {
+                panel.classList.add('hidden');
+            }
         });
 
-        tr.querySelector('.delete-btn').addEventListener('click', () => { if (confirm('Remove row entry?')) { taskDatabase = taskDatabase.filter(t => t.id !== task.id); localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase)); updateMetricsAndCharts(); renderTable(); } });
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.sidebar-link').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            if(document.getElementById('btn-' + tabId)) document.getElementById('btn-' + tabId).classList.add('active');
+        }
 
-        tbody.appendChild(tr);
-      });
-    }
+        function openProjectModal() {
+            document.getElementById('modal-heading').innerHTML = `<i data-lucide="file-plus-2" class="text-orange-500 w-5 h-5"></i> Launch New Campaign Row`;
+            document.getElementById('input-project-id').value = '';
+            document.getElementById('project-creation-form').reset();
+            document.getElementById('modal-delete-container').innerHTML = '';
+            toggleDriveLinkField();
+            document.getElementById('project-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
 
-    document.getElementById('productionEntryForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const selectedTrack = document.getElementById('formAssignmentType').value;
-      
-      let targetEmails = "";
-      if (selectedTrack === 'Video Editing') {
-        targetEmails = routingSettings.videoEmails.join(",");
-      } else if (selectedTrack === 'Thumbnail/Poster') {
-        targetEmails = routingSettings.thumbEmails.join(",");
-      } else if (selectedTrack === 'Both') {
-        const combinedPool = [...routingSettings.videoEmails, ...routingSettings.thumbEmails];
-        const uniquePool = [...new Set(combinedPool)];
-        targetEmails = uniquePool.join(",");
-      }
+        function toggleDriveLinkField() {
+            const videoStatus = document.getElementById('input-video-status').value;
+            const designStatus = document.getElementById('input-design-status').value;
+            const inputWrapper = document.getElementById('drive-link-input-wrapper');
+            const isTaskFinished = (videoStatus === 'Completed' || videoStatus === 'Approved' || designStatus === 'Completed' || designStatus === 'Approved');
 
-      if (!targetEmails) {
-        alert("⚠️ Cannot send notification. The active email pool for this track is empty! Please add an email address in the configuration tab.");
-        return;
-      }
+            if (isTaskFinished) {
+                inputWrapper.classList.remove('opacity-0', 'pointer-events-none');
+                inputWrapper.style.visibility = "visible";
+            } else {
+                inputWrapper.classList.add('opacity-0', 'pointer-events-none');
+                inputWrapper.style.visibility = "hidden";
+                document.getElementById('input-drive-link').value = '';
+            }
+        }
 
-      const newTaskItem = {
-        id: Date.now().toString(),
-        date: document.getElementById('formDate').value,
-        presenter: document.getElementById('formPresenter').value,
-        videoTitle: document.getElementById('formVideoTitle').value,
-        shootDate: document.getElementById('formShootDate').value,
-        shootTitle: document.getElementById('formShootTitle').value,
-        description: document.getElementById('formDescription').value,
-        assignmentType: selectedTrack,
-        assignedEmployee: targetEmails, 
-        thumbnailStatus: document.getElementById('formThumbStatus').value,
-        editorStatus: document.getElementById('formEditorStatus').value,
-        postedDate: document.getElementById('formPostedDate').value,
-        uploadedIn: document.getElementById('formUploadedIn').value,
-        contentLink: '' // Instantiates default value profile
-      };
+        function openUpdateModal(projectId) {
+            const target = dynamicProjectsList.find(p => p.id === projectId);
+            if (!target) return;
 
-      taskDatabase.unshift(newTaskItem);
-      localStorage.setItem(TRACKER_CACHE_KEY, JSON.stringify(taskDatabase));
-      
-      updateMetricsAndCharts();
-      renderTable();
+            document.getElementById('modal-heading').innerHTML = `<i data-lucide="edit-3" class="text-orange-500 w-5 h-5"></i> Update Project Properties`;
+            document.getElementById('input-project-id').value = target.id;
+            document.getElementById('input-topic').value = target.topic;
+            document.getElementById('input-presenter').value = target.presenter || '';
+            document.getElementById('input-date').value = target.date;
+            document.getElementById('input-editor').value = target.editor;
+            document.getElementById('input-video-status').value = target.videoStatus;
+            document.getElementById('input-designer').value = target.designer;
+            document.getElementById('input-design-status').value = target.designStatus;
+            document.getElementById('input-caption-status').value = target.captionStatus;
+            document.getElementById('input-drive-link').value = (target.driveLink === '#' || target.driveLink === '') ? '' : target.driveLink;
 
-      try {
-        // CORRECTION: Dropped 'no-cors' mode and updated to text/plain parsing compatibility
-        await fetch(EMAIL_RELAY_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(newTaskItem)
-        });
-        alert(`🚀 Task entry generated!\nConfirmation mail sent to target list: [ ${targetEmails} ]`);
-      } catch (err) {
-        console.error("Email routing failure:", err);
-      }
-      
-      document.getElementById('productionEntryForm').reset();
-      evaluateFormDropdownLocks();
-      checkAndTriggerStatusNotification(newTaskItem);
-    });
+            toggleDriveLinkField();
 
-    document.getElementById('downloadReportBtn').addEventListener('click', () => {
-      if (taskDatabase.length === 0) return;
-      let csvContent = "data:text/csv;charset=utf-8,Date,Presenter,Video Title,Shoot Date,Shoot Title,Description,Track Type,Thumbnail Status,Editor Status,Posted Date,Uploaded In,Content Link\n";
-      taskDatabase.forEach(t => { csvContent += [t.date, `"${t.presenter}"`, `"${t.videoTitle}"`, t.shootDate, `"${t.shootTitle}"`, `"${t.description}"`, `"${t.assignmentType}"`, t.thumbnailStatus, t.editorStatus, t.postedDate || 'N/A', t.uploadedIn, `"${t.contentLink || ''}"`].join(",") + "\n"; });
-      const encodedUri = encodeURI(csvContent);
-      const targetLink = document.createElement("a");
-      targetLink.setAttribute("href", encodedUri);
-      targetLink.setAttribute("download", "production_report.csv");
-      document.body.appendChild(targetLink);
-      targetLink.click();
-      document.body.removeChild(targetLink);
-    });
+            document.getElementById('modal-delete-container').innerHTML = `
+                <button type="button" onclick="deleteProject('${target.id}')" class="bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 font-semibold text-xs border border-red-500/20">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project
+                </button>
+            `;
+            document.getElementById('project-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
 
-    window.addEventListener('DOMContentLoaded', loadStorageData);
-  </script>
+        function closeProjectModal() {
+            document.getElementById('project-modal').classList.add('hidden');
+            document.getElementById('project-creation-form').reset();
+        }
+
+        // ==========================================
+        // NEW FEATURE: DATA EXTRACTION TO EXCEL/CSV
+        // ==========================================
+        function downloadCSVReport() {
+            if(dynamicProjectsList.length === 0) {
+                alert("There are no active data rows to export.");
+                return;
+            }
+            let csvRows = [["Project ID", "Topic", "Presenter", "Date", "Editor", "Video Status", "Designer", "Design Status", "Drive Link", "Caption Status"]];
+            
+            dynamicProjectsList.forEach(p => {
+                csvRows.push([
+                    `"${p.id}"`, `"${p.topic.replace(/"/g, '""')}"`, `"${p.presenter.replace(/"/g, '""')}"`,
+                    `"${p.date}"`, `"${p.editor}"`, `"${p.videoStatus}"`, `"${p.designer}"`,
+                    `"${p.designStatus}"`, `"${p.driveLink}"`, `"${p.captionStatus}"`
+                ]);
+            });
+
+            let csvContent = "data:text/csv;charset=utf-8," + csvRows.map(e => e.join(",")).join("\n");
+            let encodedUri = encodeURI(csvContent);
+            let link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Production_Report_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ==========================================
+        // NEW FEATURE: ROSTER SYSTEM CONTROLS
+        // ==========================================
+        function renderSettingsRoster() {
+            const container = document.getElementById('settings-emails-list');
+            let rosterHTML = '';
+            
+            Object.keys(teamEmailsDirectory).forEach(name => {
+                rosterHTML += `
+                    <div class="flex items-center justify-between p-3 bg-[#0b0d19] border border-[#1e2238] rounded-xl text-xs">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-400 font-bold flex items-center justify-center uppercase">${name.charAt(0)}</div>
+                            <div>
+                                <span class="font-semibold text-white block capitalize">${name}</span>
+                                <span class="text-gray-400 text-[11px]">${teamEmailsDirectory[name]}</span>
+                            </div>
+                        </div>
+                        <button onclick="removeTeamEmailRow('${name}')" class="text-gray-500 hover:text-red-400 transition p-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </div>`;
+            });
+            container.innerHTML = rosterHTML || `<p class="text-xs text-gray-500 italic text-center py-2">No team emails configured locally.</p>`;
+            lucide.createIcons();
+        }
+
+        function addTeamEmailRow() {
+            const name = document.getElementById('new-team-name').value.trim().toLowerCase();
+            const email = document.getElementById('new-team-email').value.trim();
+            if(!name || !email) { alert("Please complete both parameters fields."); return; }
+            
+            teamEmailsDirectory[name] = email;
+            document.getElementById('new-team-name').value = '';
+            document.getElementById('new-team-email').value = '';
+            renderSettingsRoster();
+            refreshProjectUI();
+        }
+
+        function removeTeamEmailRow(name) {
+            delete teamEmailsDirectory[name];
+            renderSettingsRoster();
+            refreshProjectUI();
+        }
+
+        function saveManagerEmail() {
+            const email = document.getElementById('settings-manager-email').value.trim();
+            if(!email) { alert("Please input a valid email destination link."); return; }
+            alert(`Review notifications router successfully targeted to: ${email}`);
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('input-project-id').value;
+            const topic = document.getElementById('input-topic').value;
+            const presenter = document.getElementById('input-presenter').value || 'Unassigned';
+            const date = document.getElementById('input-date').value;
+            const editor = document.getElementById('input-editor').value || '';
+            const videoStatus = document.getElementById('input-video-status').value;
+            const designer = document.getElementById('input-designer').value || '';
+            const designStatus = document.getElementById('input-design-status').value;
+            const driveLink = document.getElementById('input-drive-link').value || '';
+            const captionStatus = document.getElementById('input-caption-status').value;
+
+            let projectPayload = { id: id || 'camp-' + Date.now(), topic, presenter, date, editor, videoStatus, designer, designStatus, driveLink, captionStatus };
+
+            if (id) {
+                const index = dynamicProjectsList.findIndex(p => p.id === id);
+                if (index !== -1) dynamicProjectsList[index] = projectPayload;
+            } else {
+                dynamicProjectsList.push(projectPayload);
+            }
+            
+            refreshProjectUI();
+            closeProjectModal();
+            syncWithGoogleSheet("SAVE", projectPayload);
+        }
+
+        async function deleteProject(projectId) {
+            if(confirm("Are you sure you want to completely clear this row?")) {
+                const targetProject = dynamicProjectsList.find(p => p.id === projectId);
+                dynamicProjectsList = dynamicProjectsList.filter(p => p.id !== projectId);
+                refreshProjectUI();
+                closeProjectModal();
+                if (targetProject) syncWithGoogleSheet("DELETE", targetProject);
+            }
+        }
+
+        async function syncWithGoogleSheet(actionType, projectData) {
+            if(!SHEET_API_URL || SHEET_API_URL.includes("YOUR_GOOGLE_WEB_APP_URL_HERE")) return;
+            try {
+                await fetch(SHEET_API_URL, {
+                    method: "POST",
+                    mode: "no-cors",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: actionType, project: projectData })
+                });
+            } catch (error) { console.error("Sync Failure:", error); }
+        }
+
+        // ==========================================
+        // MAIN RENDERING WITH TIMELINE FILTER CORES
+        // ==========================================
+        function refreshProjectUI() {
+            const dashboardGrid = document.getElementById('dashboard-projects-grid');
+            const projectsTabContainer = document.getElementById('projects-list-container');
+            const tasksContainer = document.getElementById('tasks-container');
+            const assignmentsContainer = document.getElementById('assignments-container');
+            const teamContainer = document.getElementById('team-container');
+            const calendarContainer = document.getElementById('calendar-container');
+            const notifList = document.getElementById('notification-list');
+            const bellDot = document.getElementById('header-notif-dot');
+            const banner = document.getElementById('global-notification-banner');
+
+            // Read filter parameters values
+            const selectedMonth = document.getElementById('filter-month').value;
+            const selectedYear = document.getElementById('filter-year').value;
+
+            // Apply logical time grouping limits array filter
+            let filteredList = dynamicProjectsList.filter(p => {
+                if(!p.date) return true;
+                const parts = p.date.split('-'); // Format: YYYY-MM-DD
+                const matchesYear = (selectedYear === "ALL" || parts[0] === selectedYear);
+                const matchesMonth = (selectedMonth === "ALL" || parts[1] === selectedMonth);
+                return matchesYear && matchesMonth;
+            });
+
+            document.getElementById('stat-active-projects').innerText = filteredList.length;
+            document.getElementById('stat-editing-projects').innerText = filteredList.filter(p => p.videoStatus === 'Editing').length;
+            document.getElementById('stat-design-projects').innerText = filteredList.filter(p => p.designStatus === 'Designing').length;
+            document.getElementById('stat-approved-projects').innerText = filteredList.filter(p => p.videoStatus === 'Approved' && p.designStatus === 'Approved').length;
+
+            if (filteredList.length === 0) {
+                banner.classList.remove('hidden');
+                bellDot.classList.add('hidden');
+                document.getElementById('badge-tasks').classList.add('hidden');
+                document.getElementById('badge-assignments').classList.add('hidden');
+                document.getElementById('badge-team').classList.add('hidden');
+                document.getElementById('badge-calendar').classList.add('hidden');
+                notifList.innerHTML = `<div class="p-2 text-center text-gray-500 italic">No alerts for this filter scope.</div>`;
+
+                const emptyStateHTML = `
+                    <div class="w-full card p-12 rounded-2xl empty-placeholder text-center text-gray-500 col-span-full py-16">
+                        <div class="w-14 h-14 bg-orange-500/10 text-orange-400 rounded-2xl flex items-center justify-center mx-auto mb-4"><i data-lucide="calendar-x"></i></div>
+                        <h4 class="text-lg font-bold text-gray-200 mb-1">No Projects Found</h4>
+                        <p class="text-sm text-gray-400 max-w-md mx-auto">There are no records found for the selected month/year. Change the header filters or create a new row.</p>
+                    </div>`;
+
+                dashboardGrid.innerHTML = emptyStateHTML; projectsTabContainer.innerHTML = emptyStateHTML;
+                tasksContainer.innerHTML = emptyStateHTML; assignmentsContainer.innerHTML = emptyStateHTML;
+                teamContainer.innerHTML = emptyStateHTML; calendarContainer.innerHTML = emptyStateHTML;
+                lucide.createIcons();
+                return;
+            }
+
+            banner.classList.add('hidden');
+            
+            let incompleteItems = filteredList.filter(p => p.videoStatus !== 'Approved' || p.designStatus !== 'Approved');
+            if(incompleteItems.length > 0) {
+                bellDot.classList.remove('hidden');
+                let notifHTML = '';
+                incompleteItems.forEach(item => {
+                    notifHTML += `
+                        <div class="p-2.5 rounded-lg bg-[#1a1d36]/60 border border-[#252a4a] hover:border-orange-500/20 transition cursor-pointer" onclick="openUpdateModal('${item.id}'); switchTab('dashboard'); toggleNotificationPanel();">
+                            <span class="font-semibold text-gray-200 block truncate">${item.topic}</span>
+                            <span class="text-[10px] text-orange-400 mt-0.5 block">🎬 ${item.videoStatus} | 🎨 ${item.designStatus}</span>
+                        </div>`;
+                });
+                notifList.innerHTML = notifHTML;
+            } else {
+                bellDot.classList.add('hidden');
+                notifList.innerHTML = `<div class="p-2 text-center text-emerald-400 font-medium">✨ All files in this view block are clear!</div>`;
+            }
+
+            document.getElementById('badge-tasks').innerText = filteredList.length; document.getElementById('badge-tasks').classList.remove('hidden');
+            document.getElementById('badge-assignments').innerText = filteredList.length; document.getElementById('badge-assignments').classList.remove('hidden');
+            document.getElementById('badge-team').innerText = filteredList.length; document.getElementById('badge-team').classList.remove('hidden');
+            document.getElementById('badge-calendar').innerText = filteredList.length; document.getElementById('badge-calendar').classList.remove('hidden');
+
+            let gridHTML = '';
+            let tasksHTML = '<div class="space-y-3">';
+            let assignmentsHTML = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+            let teamHTML = '<div class="grid grid-cols-1 md:grid-cols-3 gap-6">';
+            let calendarHTML = '<div class="card p-6 rounded-2xl space-y-4"><h3 class="font-bold text-gray-300">Upcoming Delivery Schedule Logs</h3><div class="space-y-2">';
+
+            filteredList.forEach(proj => {
+                const isComplete = (proj.videoStatus === 'Approved' && proj.designStatus === 'Approved');
+                const hasLink = (proj.driveLink && proj.driveLink !== '#');
+                
+                gridHTML += `
+                    <div class="card p-6 rounded-2xl flex flex-col justify-between border-[#1e2238] hover:border-orange-500/30 transition-all duration-300 bg-[#121424] relative overflow-hidden group">
+                        ${isComplete ? `<div class="absolute top-0 right-0 bg-emerald-500 text-black text-[9px] font-extrabold px-3 py-1 uppercase tracking-widest rounded-bl-lg">COMPLETED WORK</div>` : ''}
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[11px] text-gray-400 font-medium bg-[#0b0d19] px-2 py-1 rounded border border-[#1e2238]">Date: ${proj.date}</span>
+                                <button onclick="deleteProject('${proj.id}'); event.stopPropagation();" class="text-gray-500 hover:text-red-400 transition p-1.5 hover:bg-[#1e2238] rounded-xl z-20 relative"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>
+                            <div>
+                                <h4 class="text-lg font-bold text-white tracking-tight line-clamp-2">${proj.topic}</h4>
+                                <p class="text-xs text-orange-400/80 font-medium mt-1 flex items-center gap-1"><i data-lucide="mic" class="w-3.5 h-3.5"></i> Presenter: ${proj.presenter || 'Unassigned'}</p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                                <div class="p-2 rounded-lg bg-orange-500/5 border border-orange-500/10"><p class="text-[10px] text-orange-400 uppercase font-bold">🎬 Video Cut</p><p class="text-white mt-1">${proj.videoStatus}</p></div>
+                                <div class="p-2 rounded-lg bg-purple-500/5 border border-purple-500/10"><p class="text-[10px] text-purple-400 uppercase font-bold">🎨 Thumbnail</p><p class="text-white mt-1">${proj.designStatus}</p></div>
+                            </div>
+                        </div>
+                        <div class="mt-6 pt-4 border-t border-[#1e2238] text-xs text-gray-400 space-y-2">
+                            <div>Editor: <strong class="text-gray-300">${proj.editor || 'Not Assigned'}</strong></div>
+                            <div>Designer: <strong class="text-gray-300">${proj.designer || 'Not Assigned'}</strong></div>
+                            <div class="flex justify-between items-center pt-2 border-t border-[#1e2238]/40 text-[11px]">
+                                <span>Captions: <strong class="text-gray-300">${proj.captionStatus}</strong></span>
+                                ${hasLink ? `<a href="${proj.driveLink}" target="_blank" class="text-orange-400 hover:underline flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i> View Work</a>` : `<span class="text-gray-600 italic text-[10px]">No link uploaded</span>`}
+                            </div>
+                        </div>
+                        <div onclick="openUpdateModal('${proj.id}')" class="absolute inset-0 bg-slate-950/80 hidden group-hover:flex flex-col items-center justify-center gap-2 transition-all duration-200 cursor-pointer text-xs font-semibold text-orange-400 z-10">
+                            <div class="bg-[#1e2238] border border-[#2e3456] px-4 py-2 rounded-xl text-gray-200 hover:text-orange-400 flex items-center gap-1.5 mb-2"><i data-lucide="edit-3" class="w-4 h-4"></i> Edit / Update Status</div>
+                        </div>
+                    </div>`;
+
+                tasksHTML += `
+                    <div class="card p-4 rounded-xl flex items-center justify-between border-[#1e2238]">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-lg brand-gradient text-white"><i data-lucide="file-text" class="w-4 h-4"></i></div>
+                            <div>
+                                <h5 class="font-bold text-white tracking-tight">${proj.topic}</h5>
+                                <p class="text-xs text-gray-400">Presenter: <span class="text-gray-300">${proj.presenter || 'Unassigned'}</span> | Captions: <span class="text-orange-400">${proj.captionStatus}</span></p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${hasLink ? `<a href="${proj.driveLink}" target="_blank" class="text-xs bg-orange-500/10 border border-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg transition font-medium flex items-center gap-1"><i data-lucide="link" class="w-3.5 h-3.5"></i> Open Assets</a>` : ''}
+                            <button onclick="openUpdateModal('${proj.id}'); switchTab('dashboard');" class="text-xs bg-[#1e2238] border border-[#232844] text-gray-300 hover:text-orange-400 px-3 py-1.5 rounded-lg transition">Manage Task</button>
+                        </div>
+                    </div>`;
+
+                assignmentsHTML += `
+                    <div class="card p-5 rounded-xl border-[#1e2238] space-y-3">
+                        <h5 class="font-bold text-gray-200 border-b border-[#1e2238] pb-2 tracking-tight">${proj.topic}</h5>
+                        <div class="grid grid-cols-3 gap-4 text-xs">
+                            <div><p class="text-gray-500">🎤 Presenter</p><p class="text-white font-semibold mt-0.5 tracking-tight">${proj.presenter || 'Unassigned'}</p></div>
+                            <div><p class="text-gray-500">🎬 Video Editor</p><p class="text-white font-semibold mt-0.5 tracking-tight">${proj.editor || '⚠️ Unassigned'}</p></div>
+                            <div><p class="text-gray-500">🎨 Thumbnail Designer</p><p class="text-white font-semibold mt-0.5 tracking-tight">${proj.designer || '⚠️ Unassigned'}</p></div>
+                        </div>
+                    </div>`;
+
+                teamHTML += `
+                    <div class="card p-4 rounded-xl border-[#1e2238] flex flex-col justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-orange-600/10 text-orange-400 font-bold flex items-center justify-center text-sm">${(proj.editor || 'U').charAt(0)}</div>
+                            <div>
+                                <h6 class="font-bold text-white text-sm">${proj.editor || 'Unassigned Editor'}</h6>
+                                <p class="text-[10px] uppercase text-orange-500 font-semibold tracking-wider">Video Editor</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 border-t border-[#1e2238]/40 pt-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-600/10 text-purple-400 font-bold flex items-center justify-center text-sm">${(proj.presenter || 'U').charAt(0)}</div>
+                            <div>
+                                <h6 class="font-bold text-white text-sm">${proj.presenter || 'Unassigned Presenter'}</h6>
+                                <p class="text-[10px] uppercase text-purple-400 font-semibold tracking-wider">Presenter / Host</p>
+                            </div>
+                        </div>
+                    </div>`;
+
+                calendarHTML += `
+                    <div class="flex items-center justify-between p-3 bg-[#0b0d19] border border-[#1e2238] rounded-xl text-xs">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="calendar-days" class="w-4 h-4 text-red-500"></i>
+                            <span class="font-semibold text-white">${proj.date}</span>
+                            <span class="text-gray-400">| Campaign Delivery Node:</span>
+                            <span class="text-gray-200 font-medium truncate max-w-xs tracking-tight">${proj.topic}</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isComplete ? 'bg-emerald-500/10 text-emerald-400' : 'bg-orange-500/10 text-orange-400'}">${isComplete ? 'Ready' : 'In Production Pipeline'}</span>
+                    </div>`;
+            });
+
+            tasksHTML += '</div>'; assignmentsHTML += '</div>'; teamHTML += '</div>'; calendarHTML += '</div></div>';
+            dashboardGrid.innerHTML = gridHTML; projectsTabContainer.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${gridHTML}</div>`;
+            tasksContainer.innerHTML = tasksHTML; assignmentsContainer.innerHTML = assignmentsHTML; teamContainer.innerHTML = teamHTML; calendarContainer.innerHTML = calendarHTML;
+            lucide.createIcons();
+        }
+
+        // Initialize Settings Panel Data layout elements
+        renderSettingsRoster();
+        refreshProjectUI();
+    </script>
 </body>
 </html>
