@@ -290,10 +290,7 @@
                     </div>
                     <div class="space-y-1">
                         <label class="text-gray-400 font-medium">Caption Status</label>
-                        <select id="input-caption-status" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-gray-300 focus:outline-none focus:border-orange-500 transition">
-                            <option value="Not Done">Pending / Not Done</option>
-                            <option value="Ready">Ready / Finalized</option>
-                        </select>
+                        <input type="text" id="input-caption-status" placeholder="e.g., Pending, Done" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-orange-500 transition">
                     </div>
                 </div>
 
@@ -362,7 +359,8 @@
     </div>
 
     <script>
-        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyxQxDDn8Qu_RHO7zUkmO8hRBXKsS7Cjbh1uanuM6vOpHqzTjDJM9m5eIh6BAIhJWCx/exec";
+        // HARDCODED UPDATED DEPLOYMENT URL LINK HERE
+        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyFOBXoFwQgm0JupcSJ5yxSExVWPfZiieypPUJPHkamIaxEXO44V-5z3XxuQ32HbdiV/exec";
 
         let dynamicProjectsList = JSON.parse(localStorage.getItem('dynamicProjectsList')) || [];
         let teamEmailsDirectory = JSON.parse(localStorage.getItem('teamEmailsDirectory')) || {};
@@ -386,12 +384,10 @@
             if(document.getElementById('btn-' + tabId)) document.getElementById('btn-' + tabId).classList.add('active');
         }
 
-        // Dynamically populates dropdown selections based on added settings records
         function populateAssignmentDropdowns() {
             const editorSelect = document.getElementById('input-editor');
             const designerSelect = document.getElementById('input-designer');
             
-            // Retain placeholder initial option nodes
             editorSelect.innerHTML = '<option value="">-- No Editor Assigned --</option>';
             designerSelect.innerHTML = '<option value="">-- No Designer Assigned --</option>';
             
@@ -557,13 +553,12 @@
             const captionStatus = document.getElementById('input-caption-status').value;
             const managerEmail = document.getElementById('settings-manager-email').value;
 
+            const editorEmailAddress = (editor && teamEmailsDirectory[editor]) ? teamEmailsDirectory[editor] : '';
+            const designerEmailAddress = (designer && teamEmailsDirectory[designer]) ? teamEmailsDirectory[designer] : '';
+
             let recipientRoster = {};
-            if (editor && teamEmailsDirectory[editor]) {
-                recipientRoster[editor] = teamEmailsDirectory[editor];
-            }
-            if (designer && teamEmailsDirectory[designer]) {
-                recipientRoster[designer] = teamEmailsDirectory[designer];
-            }
+            if (editorEmailAddress) recipientRoster[editor] = editorEmailAddress;
+            if (designerEmailAddress) recipientRoster[designer] = designerEmailAddress;
 
             const isVideoCompleted = (videoStatus === 'Completed' || videoStatus === 'Approved');
             const isDesignCompleted = (designStatus === 'Completed' || designStatus === 'Approved');
@@ -573,6 +568,8 @@
                 id: id || 'camp-' + Date.now(), 
                 topic, presenter, date, editor, videoStatus, 
                 designer, designStatus, driveLink, captionStatus,
+                editorEmail: editorEmailAddress, 
+                designerEmail: designerEmailAddress, 
                 rosterDirectory: recipientRoster, 
                 managerEmail: managerEmail,
                 triggerManagerAlert: sendToManager 
@@ -768,7 +765,7 @@
                     <div class="flex items-center justify-between p-3 bg-[#0b0d19] border border-[#1e2238] rounded-xl text-xs">
                         <div class="flex items-center gap-2">
                             <i data-lucide="calendar-days" class="w-4 h-4 text-red-500"></i>
-                            <span class="font-semibold text-white"><b>${proj.date}</b></span>
+                            <span class="font-semibold text-white">${proj.date}</span>
                             <span class="text-gray-400">| Node:</span>
                             <span class="text-gray-200 font-medium truncate max-w-xs tracking-tight">${proj.topic}</span>
                         </div>
