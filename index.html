@@ -33,6 +33,15 @@
             color: #FD6D05;
             border-left-color: #FF0000;
         }
+        /* Real-time assignment update flash animation */
+        @keyframes pulse-highlight {
+            0% { border-color: #1e2238; box-shadow: 0 0 0 rgba(253, 109, 5, 0); }
+            50% { border-color: #FD6D05; box-shadow: 0 0 15px rgba(253, 109, 5, 0.4); }
+            100% { border-color: #1e2238; box-shadow: 0 0 0 rgba(253, 109, 5, 0); }
+        }
+        .flash-update {
+            animation: pulse-highlight 2s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -108,9 +117,14 @@
 
             <div class="flex md:hidden items-center justify-between bg-[#121424] border border-[#1e2238] p-3 rounded-xl text-xs">
                 <span id="active-user-display-mobile" class="text-gray-300"></span>
-                <button onclick="logoutPortal()" class="text-red-400 flex items-center gap-1 font-bold">
-                    <i data-lucide="log-out" class="w-4 h-4"></i> Out
-                </button>
+                <div class="flex items-center gap-3">
+                    <button onclick="syncLedgerEngine(true)" class="text-orange-400 p-1 flex items-center gap-1 font-bold bg-orange-500/10 rounded-lg px-2 border border-orange-500/20" title="Force Sync Matrix Data">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync
+                    </button>
+                    <button onclick="logoutPortal()" class="text-red-400 flex items-center gap-1 font-bold">
+                        <i data-lucide="log-out" class="w-4 h-4"></i> Out
+                    </button>
+                </div>
             </div>
 
             <div id="tab-content-dashboard" class="space-y-6">
@@ -322,6 +336,63 @@
             { time: "12:00:00 AM", text: "Production workbook dashboard secure node successfully launched." }
         ];
 
+        // Keeps track of existing task IDs to highlight fresh incoming items dynamically
+        let loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
+
+        /**
+         * Real-time Synchronization Loop Controller
+         * Scans for variations across storage without interface locked down states
+         */
+        function syncLedgerEngine(forcedByUser = false) {
+            const externalAssignmentsRaw = localStorage.getItem('be_assignments_v7');
+            const externalRosterRaw = localStorage.getItem('be_studio_roster_v7');
+            const externalLogsRaw = localStorage.getItem('be_system_logs_v7');
+
+            let updatedDetected = false;
+
+            if (externalAssignmentsRaw) {
+                const parsedAssignments = JSON.parse(externalAssignmentsRaw);
+                // Compare structure length or stringified value content mapping
+                if (JSON.stringify(parsedAssignments) !== JSON.stringify(assignmentsList)) {
+                    assignmentsList = parsedAssignments;
+                    updatedDetected = true;
+                }
+            }
+            if (externalRosterRaw) {
+                const parsedRoster = JSON.parse(externalRosterRaw);
+                if (JSON.stringify(parsedRoster) !== JSON.stringify(userRoster)) {
+                    userRoster = parsedRoster;
+                    updatedDetected = true;
+                }
+            }
+            if (externalLogsRaw) {
+                const parsedLogs = JSON.parse(externalLogsRaw);
+                if (JSON.stringify(parsedLogs) !== JSON.stringify(internalLogs)) {
+                    internalLogs = parsedLogs;
+                    updatedDetected = true;
+                }
+            }
+
+            if (updatedDetected || forcedByUser) {
+                renderCountersGrid();
+                renderTableRows();
+                renderSettingsRoster();
+                renderLogFeed();
+                if (activeRole === 'employee') renderEmployeeNotificationBar();
+                
+                if(forcedByUser && typeof alert !== 'undefined') {
+                    alert("Real-time snapshot synchronization complete!");
+                }
+            }
+        }
+
+        // Initialize Background Live Listener Pool (Executes smoothly every 3 seconds)
+        setInterval(() => {
+            if (activeUser) {
+                syncLedgerEngine(false);
+            }
+        }, 3000);
+
         function handlePortalLogin() {
             const userInput = document.getElementById('portal-user-input').value.trim();
             const pwdInput = document.getElementById('portal-password-input').value.trim();
@@ -346,7 +417,6 @@
                             alert("Authentication Error: Secure Password Key Invalid."); return;
                         }
                     } else {
-                        // Standard Employee logs in password-less
                         activeUser = foundUser.name;
                         activeRole = "employee";
                         activeEmail = foundUser.email;
@@ -893,6 +963,9 @@
 
                 let isRejected = (t.status === 'Rejected');
 
+                // Determine if this item was newly injected in real-time
+                let isNewRealtimeItem = !loadedTaskIdsSnapshot.includes(t.id);
+
                 let inputActionSelectorMarkup = '';
                 if (activeRole === 'employee') {
                     if (isRejected) {
@@ -933,7 +1006,7 @@
                     `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
 
                 let desktopRow = document.createElement('tr');
-                desktopRow.className = "hover:bg-[#1a1e36]/40 transition text-xs";
+                desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
                     <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
                     <td class="py-3 px-4"><span>${t.type}</span></td>
@@ -955,7 +1028,7 @@
                 tbody.appendChild(desktopRow);
 
                 let mobileCard = document.createElement('div');
-                mobileCard.className = "card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238]";
+                mobileCard.className = `card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238] ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 mobileCard.innerHTML = `
                     <div class="flex justify-between items-start border-b border-[#1e2238]/60 pb-2">
                         <div>
@@ -993,6 +1066,8 @@
                 mobileContainer.appendChild(mobileCard);
             });
 
+            // Update local snapshot with currently loaded elements to keep animations accurate
+            loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
             lucide.createIcons();
         }
 
