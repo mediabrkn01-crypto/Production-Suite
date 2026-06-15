@@ -37,8 +37,8 @@
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
 
-    <div id="portal-login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4">
-        <div class="w-full max-w-md card p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 text-center">
+    <div id="portal-login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4 overflow-y-auto">
+        <div class="w-full max-w-md card p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 text-center my-auto">
             <div class="flex justify-center">
                 <img src="Broken English Final Logo-03.png" alt="Broken English Logo" class="h-16 w-auto object-contain">
             </div>
@@ -46,16 +46,16 @@
                 <h2 class="text-xl font-bold text-white">Production Framework Portal</h2>
             </div>
             
-            <div class="space-y-3 text-left">
+            <div class="space-y-4 text-left">
                 <div>
                     <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wider block mb-1">Access Identity Email / Handle</label>
-                    <input type="text" id="portal-user-input" placeholder="Enter your identity email address" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500">
+                    <input type="text" id="portal-user-input" placeholder="Enter your identity email address" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500" autocomplete="username">
                 </div>
-                <div id="admin-password-wrapper" class="hidden">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wider block mb-1">Secure Password Key</label>
-                    <input type="password" id="portal-password-input" placeholder="••••••••" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500">
+                <div id="admin-password-wrapper">
+                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wider block mb-1">Secure Password Key (Leave blank if Employee)</label>
+                    <input type="password" id="portal-password-input" placeholder="••••••••" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500" autocomplete="current-password">
                 </div>
-                <button onclick="handlePortalLogin()" class="w-full brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs mt-2">
+                <button onclick="handlePortalLogin()" class="w-full brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs mt-2 active:scale-[0.98] transition-transform">
                     Verify & Authenticate
                 </button>
             </div>
@@ -127,7 +127,7 @@
                 </div>
 
                 <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    </div>
+                </div>
 
                 <div id="admin-assignment-panel" class="card p-4 md:p-6 rounded-2xl space-y-4 hidden">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
@@ -193,12 +193,12 @@
                                     </tr>
                                 </thead>
                                 <tbody id="production-matrix-rows" class="divide-y divide-[#1e2238]/60 text-gray-300">
-                                    </tbody>
+                                </tbody>
                             </table>
                         </div>
 
                         <div id="production-matrix-mobile-cards" class="block md:hidden space-y-3">
-                            </div>
+                        </div>
                     </div>
 
                     <div class="space-y-4">
@@ -211,7 +211,7 @@
                             </button>
                         </div>
                         <div class="card p-4 rounded-2xl h-[300px] md:h-[430px] overflow-y-auto space-y-3" id="workspace-activity-log">
-                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -289,7 +289,7 @@
                                 </tr>
                             </thead>
                             <tbody id="roster-settings-rows" class="divide-y divide-[#1e2238]/40">
-                                </tbody>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -303,21 +303,17 @@
         let activeRole = localStorage.getItem('be_active_role') || null; 
         let activeEmail = localStorage.getItem('be_active_email') || null;
 
-        // Dynamic State Tracker for active row modification index
         let editingRosterIndex = null;
 
-        // Reactive Master Admin Credential Initializers
         let systemAdminUser = localStorage.getItem('be_admin_username') || 'admin';
         let systemAdminPass = localStorage.getItem('be_admin_password') || '12345';
 
-        // User Account Seed Registry Array
         let userRoster = JSON.parse(localStorage.getItem('be_studio_roster_v7')) || [
             { name: "Rahul Kumar", email: "rahul@brokenenglish.com", role: "employee", pass: "" },
             { name: "Anjali Sharma", email: "anjali@brokenenglish.com", role: "employee", pass: "" },
             { name: "Suresh Manager", email: "suresh@brokenenglish.com", role: "manager", pass: "54321" }
         ];
 
-        // Core Workflow Ledger Database Setup
         let assignmentsList = JSON.parse(localStorage.getItem('be_assignments_v7')) || [
             { id: 1, topic: "English Vocabulary Reels 01", type: "Video Editing", assignedTo: "Rahul Kumar", employeeEmail: "rahul@brokenenglish.com", description: "Use bold yellow kinetic text overlays.", assignedDate: "2026-06-10", date: "2026-06-25", status: "In Progress", explanation: "None", assetLink: "" }
         ];
@@ -326,21 +322,9 @@
             { time: "12:00:00 AM", text: "Production workbook dashboard secure node successfully launched." }
         ];
 
-        // Secure Login Trigger Configuration Handler
-        document.getElementById('portal-user-input').addEventListener('input', function(e) {
-            const inputVal = e.target.value.trim().toLowerCase();
-            const matchedManager = userRoster.find(u => u.email.toLowerCase() === inputVal && u.role === 'manager');
-            
-            if (inputVal === systemAdminUser.toLowerCase() || matchedManager) {
-                document.getElementById('admin-password-wrapper').classList.remove('hidden');
-            } else {
-                document.getElementById('admin-password-wrapper').classList.add('hidden');
-            }
-        });
-
         function handlePortalLogin() {
             const userInput = document.getElementById('portal-user-input').value.trim();
-            const pwdInput = document.getElementById('portal-password-input').value;
+            const pwdInput = document.getElementById('portal-password-input').value.trim();
 
             if (userInput.toLowerCase() === systemAdminUser.toLowerCase()) {
                 if (pwdInput === systemAdminPass) {
@@ -351,7 +335,7 @@
                     alert("Authentication Error: Access Key Denied."); return;
                 }
             } else {
-                const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput.toLowerCase());
+                const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput.toLowerCase() || u.name.toLowerCase() === userInput.toLowerCase());
                 if (foundUser) {
                     if (foundUser.role === 'manager') {
                         if (pwdInput === foundUser.pass) {
@@ -362,6 +346,7 @@
                             alert("Authentication Error: Secure Password Key Invalid."); return;
                         }
                     } else {
+                        // Standard Employee logs in password-less
                         activeUser = foundUser.name;
                         activeRole = "employee";
                         activeEmail = foundUser.email;
@@ -396,7 +381,6 @@
                 document.getElementById('admin-download-logs-btn').classList.remove('hidden');
                 document.getElementById('employee-notification-banner').classList.add('hidden');
                 
-                // Initialize setup settings values
                 document.getElementById('setting-admin-user').value = systemAdminUser;
                 document.getElementById('setting-admin-pass').value = systemAdminPass;
             } else {
@@ -447,7 +431,6 @@
             }
         }
 
-        // Top notification engine logic for active creators
         function renderEmployeeNotificationBar() {
             let myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             let totalActive = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
@@ -465,7 +448,6 @@
             }
         }
 
-        // Dynamic multi-role analytics breakdown card injector layout engine
         function renderCountersGrid() {
             const container = document.getElementById('metrics-counter-container');
             if(!container) return;
@@ -585,7 +567,6 @@
             }
         }
 
-        // Action Triggering Handlers for Inline Account Management Editing Row
         function startEditingRoster(index) {
             editingRosterIndex = index;
             renderSettingsRoster();
@@ -614,7 +595,6 @@
             const oldEmail = userRoster[index].email;
             const oldName = userRoster[index].name;
 
-            // Transverse active tracker workspace list data to safely update references
             if (oldEmail !== editEmail || oldName !== editName) {
                 assignmentsList.forEach(task => {
                     if (task.employeeEmail === oldEmail) {
