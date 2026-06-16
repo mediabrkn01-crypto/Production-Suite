@@ -1,9 +1,306 @@
-<script>
-        // Supabase Configuration Variables - Space Typo inside Token Fixed Completely
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broken English | Production Studio Network</title>
+    
+    <link class="invisible" rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
+    <link class="invisible" rel="apple-touch-icon" href="Broken English Final Logo-02 (1).png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body {
+            background-color: #0b0d19;
+            color: #f3f4f6;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .card {
+            background-color: #121424;
+            border: 1px solid #1e2238;
+        }
+        .brand-gradient {
+            background: linear-gradient(135deg, #FF0000, #FD6D05);
+        }
+        .sidebar-link {
+            color: #9ca3af;
+            border-left: 4px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .sidebar-link:hover, .sidebar-link.active {
+            background-color: #1e2345;
+            color: #FD6D05;
+            border-left-color: #FF0000;
+        }
+        @keyframes pulse-highlight {
+            0% { border-color: #1e2238; box-shadow: 0 0 0 rgba(253, 109, 5, 0); }
+            50% { border-color: #FD6D05; box-shadow: 0 0 15px rgba(253, 109, 5, 0.4); }
+            100% { border-color: #1e2238; box-shadow: 0 0 0 rgba(253, 109, 5, 0); }
+        }
+        .flash-update {
+            animation: pulse-highlight 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <div id="portal-login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4 overflow-y-auto">
+        <div class="w-full max-w-md card p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 text-center my-auto">
+            <div class="flex justify-center">
+                <img src="Broken English Final Logo-03.png" alt="Broken English Logo" class="h-16 w-auto object-contain">
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-white">Production Framework Portal</h2>
+            </div>
+            
+            <div class="space-y-4 text-left">
+                <div>
+                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wider block mb-1">Access Identity Email / Handle</label>
+                    <input type="text" id="portal-user-input" placeholder="Enter your identity email address" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500" autocomplete="username">
+                </div>
+                <div id="admin-password-wrapper">
+                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wider block mb-1">Secure Password Key</label>
+                    <input type="password" id="portal-password-input" placeholder="••••••••" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500" autocomplete="current-password">
+                </div>
+                <button onclick="handlePortalLogin()" class="w-full brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs mt-2 active:scale-[0.98] transition-transform">
+                    Verify & Authenticate
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-application-frame" class="w-full h-full flex flex-col md:flex-row opacity-0 pointer-events-none transition-opacity duration-300 overflow-hidden">
+        
+        <aside class="w-full md:w-64 bg-[#090b14] border-b md:border-b-0 md:border-r border-[#1e2238] flex flex-col justify-between p-4 z-20">
+            <div class="flex md:flex-col justify-between md:justify-start items-center md:items-stretch w-full">
+                <div class="flex items-center gap-3 py-2 md:py-4 md:mb-4">
+                    <img src="Broken English Final Logo-03.png" alt="Broken English Logo" class="h-9 w-auto object-contain">
+                    <div>
+                        <span class="font-bold text-xs md:text-sm text-white block leading-none">Studio Suite</span>
+                        <span id="user-role-badge" class="text-[9px] text-orange-400 uppercase tracking-wider font-semibold"></span>
+                    </div>
+                </div>
+
+                <nav class="flex md:flex-col gap-1">
+                    <button id="nav-dashboard" onclick="switchTab('dashboard')" class="sidebar-link active flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4 md:w-5 h-5"></i> Pipeline Matrix
+                    </button>
+                    <button id="nav-settings" onclick="switchTab('settings')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
+                        <i data-lucide="settings" class="w-4 h-4 md:w-5 h-5"></i> Setup Center
+                    </button>
+                </nav>
+            </div>
+
+            <div class="hidden md:block space-y-2 mt-4">
+                <div id="active-user-display" class="px-3 py-2 bg-[#121424] rounded-xl border border-[#1e2238] text-xs text-gray-400 truncate">
+                    User: <span class="text-white font-semibold">None</span>
+                </div>
+                <button onclick="logoutPortal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition">
+                    <i data-lucide="log-out" class="w-5 h-5"></i> Log Out
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+            
+            <div id="employee-notification-banner" class="hidden bg-blue-900/40 border border-blue-500/40 rounded-xl p-4 flex items-start gap-3">
+                <div class="bg-blue-500/20 text-blue-400 p-2 rounded-lg shrink-0">
+                    <i data-lucide="bell" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h4 class="text-white font-bold text-sm">Employee Briefing Alert</h4>
+                    <p id="employee-notification-text" class="text-xs text-gray-300 mt-0.5">Scanning live tracking data...</p>
+                </div>
+            </div>
+
+            <div class="flex md:hidden items-center justify-between bg-[#121424] border border-[#1e2238] p-3 rounded-xl text-xs">
+                <span id="active-user-display-mobile" class="text-gray-300"></span>
+                <div class="flex items-center gap-3">
+                    <button onclick="syncLedgerEngine(true)" class="text-orange-400 p-1 flex items-center gap-1 font-bold bg-orange-500/10 rounded-lg px-2 border border-orange-500/20" title="Force Sync Matrix Data">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync
+                    </button>
+                    <button onclick="logoutPortal()" class="text-red-400 flex items-center gap-1 font-bold">
+                        <i data-lucide="log-out" class="w-4 h-4"></i> Out
+                    </button>
+                </div>
+            </div>
+
+            <div id="tab-content-dashboard" class="space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Creative Production Matrix</h1>
+                        <p class="text-gray-400 text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
+                    </div>
+                    <div id="admin-download-wrapper" class="hidden">
+                        <button onclick="downloadWorkbookCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+                            <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
+                        </button>
+                    </div>
+                </div>
+
+                <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                </div>
+
+                <div id="admin-assignment-panel" class="card p-4 md:p-6 rounded-2xl space-y-4 hidden">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                        <i data-lucide="file-plus" class="w-4 h-4"></i> Create & Assign Work Task
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                            <label class="text-gray-400 text-[11px] block mb-1">Task / Campaign Topic</label>
+                            <input type="text" id="task-topic" placeholder="Vocabulary Reels Day 5" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                        </div>
+                        <div>
+                            <label class="text-gray-400 text-[11px] block mb-1">Work Classification</label>
+                            <select id="task-type" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                                <option value="Video Editing">🎬 Video Editing</option>
+                                <option value="Thumbnail">🖼️ Thumbnail Design</option>
+                                <option value="Poster Design">🎨 Poster Design</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-gray-400 text-[11px] block mb-1">Assign Creator</label>
+                            <select id="task-assigned-employee" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                                <option value="">-- Select Employee --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-gray-400 text-[11px] block mb-1">Target Deadline Date</label>
+                            <input type="date" id="task-date" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-orange-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-gray-400 text-[11px] block mb-1">Work Instructions & Description Details</label>
+                        <textarea id="task-description" rows="2" placeholder="Describe references, aspect ratio requirements, text fonts, etc..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 resize-none"></textarea>
+                    </div>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-1">
+                        <p class="text-[10px] text-gray-500 italic">Only administrators can construct and route assignments into this workbook ledger.</p>
+                        <button onclick="createWorkAssignment()" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-xl uppercase tracking-wider transition">
+                            Assign Work Project
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    
+                    <div class="lg:col-span-3 space-y-4">
+                        <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
+                            <i data-lucide="list-todo" class="text-orange-500"></i> Active Pipeline Sheet
+                        </h3>
+                        
+                        <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
+                                        <th class="py-3.5 px-4">Campaign Topic</th>
+                                        <th class="py-3.5 px-4">Category</th>
+                                        <th class="py-3.5 px-4">Assigned Creator</th>
+                                        <th class="py-3.5 px-4">Description Info</th>
+                                        <th class="py-3.5 px-4">Assigned Date</th>
+                                        <th class="py-3.5 px-4">Target Date</th>
+                                        <th class="py-3.5 px-4">Status</th>
+                                        <th class="py-3.5 px-4">Explanation Log</th>
+                                        <th class="py-3.5 px-4">Delivery Output</th>
+                                        <th id="th-actions" class="py-3.5 px-4 text-center hidden">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="production-matrix-rows" class="divide-y divide-[#1e2238]/60 text-gray-300">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="production-matrix-mobile-cards" class="block md:hidden space-y-3">
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
+                                <i data-lucide="activity" class="text-blue-400"></i> Studio Update Feed
+                            </h3>
+                            <button id="admin-download-logs-btn" onclick="downloadActivityLogs()" class="hidden text-[11px] text-orange-400 hover:underline font-bold flex items-center gap-1">
+                                <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> Export Logs
+                            </button>
+                        </div>
+                        <div class="card p-4 rounded-2xl h-[300px] md:h-[430px] overflow-y-auto space-y-3" id="workspace-activity-log">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-content-settings" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Studio Matrix Setup</h1>
+                        <p class="text-gray-400 text-xs md:text-sm mt-1">Manage infrastructure, register managers, and register creators.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="card p-4 md:p-6 rounded-2xl space-y-4">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="user-plus" class="w-4 h-4"></i> Add Account Key
+                        </h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-gray-400 text-xs block mb-1">Full Identity Name</label>
+                                <input type="text" id="new-user-name" placeholder="John Doe" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                            </div>
+                            <div>
+                                <label class="text-gray-400 text-xs block mb-1">Login Handle (Email)</label>
+                                <input type="email" id="new-user-email" placeholder="john@brokenenglish.com" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                            </div>
+                            <div>
+                                <label class="text-gray-400 text-xs block mb-1">Network Role Scope</label>
+                                <select id="new-user-role" onchange="toggleFormPassField(this.value)" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                                    <option value="employee">🎨 Employee / Creative Creator</option>
+                                    <option value="manager">💼 Studio Manager / Evaluation Control</option>
+                                    <option value="admin">🔑 Network Admin / Master Control</option>
+                                </select>
+                            </div>
+                            <div id="form-user-password-container" class="hidden">
+                                <label class="text-gray-400 text-xs block mb-1">Access Key Password</label>
+                                <input type="password" id="new-user-password" placeholder="Set secure pipeline password" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                            </div>
+                            <button onclick="addNewUser()" class="w-full brand-gradient text-white text-xs font-bold py-2.5 rounded-xl uppercase tracking-wider">
+                                Register Framework Account
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card p-4 md:p-6 rounded-2xl space-y-4 lg:col-span-2 overflow-x-auto">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                            <i data-lucide="shield-alert" class="w-4 h-4"></i> Active System Registry Accounts
+                        </h3>
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="text-gray-400 uppercase tracking-wider text-[10px] border-b border-[#1e2238] pb-2">
+                                    <th class="py-2">Name</th>
+                                    <th class="py-2">Handle / Email</th>
+                                    <th class="py-2">Scope</th>
+                                    <th class="py-2">Secure Pass Key</th>
+                                    <th class="py-2 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="roster-settings-rows" class="divide-y divide-[#1e2238]/40">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // Restored Configuration Parameters - Broken characters completely recovered
         const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         
-        // Map authorization client directly through instance reference handles
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let activeUser = localStorage.getItem('be_active_user') || null;
@@ -12,24 +309,16 @@
 
         let editingRosterIndex = null;
 
-        // Local State Arrays populated live from the cloud SQL tables
         let userRoster = [];
         let assignmentsList = [];
         let internalLogs = [];
-
         let loadedTaskIdsSnapshot = [];
 
-        /**
-         * Live Synchronization Core Engine
-         * Fetches data synchronously across cloud SQL records seamlessly
-         */
         async function syncLedgerEngine(forcedByUser = false) {
             try {
-                // 1. Fetch live user credentials
                 const { data: users, error: errU } = await dbInstance.from('user_roster').select('*');
                 if (!errU && users) userRoster = users;
 
-                // 2. Fetch tracking matrix rows
                 const { data: tasks, error: errT } = await dbInstance.from('assignments').select('*');
                 if (!errT && tasks) {
                     assignmentsList = tasks.map(t => ({
@@ -47,11 +336,9 @@
                     }));
                 }
 
-                // 3. Fetch activity updates
                 const { data: logs, error: errL } = await dbInstance.from('system_logs').select('*').order('created_at', { ascending: false }).limit(40);
                 if (!errL && logs) internalLogs = logs;
 
-                // Re-render UI boundaries
                 if (activeUser) {
                     renderCountersGrid();
                     renderTableRows();
@@ -68,15 +355,10 @@
             }
         }
 
-        // Initialize Live Sync loop executing efficiently every 4 seconds
         setInterval(() => {
             if (activeUser) syncLedgerEngine(false);
         }, 4000);
 
-        /**
-         * Cloud-Aware Portal Authentication Core Handler
-         * Evaluates login parameters directly matching Cloud Database schemas
-         */
         async function handlePortalLogin() {
             const userInput = document.getElementById('portal-user-input').value.trim().toLowerCase();
             const pwdInput = document.getElementById('portal-password-input').value.trim();
@@ -86,24 +368,19 @@
                 return;
             }
 
-            // Fetch user records instantly from Supabase cloud roster table
-            const { data: matchedUsers, error } = await dbInstance
-                .from('user_roster')
-                .select('*');
+            const { data: matchedUsers, error } = await dbInstance.from('user_roster').select('*');
 
             if (error || !matchedUsers) {
                 alert("Network Error: Failed to pull client registry database."); 
                 return;
             }
 
-            // Search credentials matching either email or explicit handles
             const foundUser = matchedUsers.find(u => 
                 u.email.trim().toLowerCase() === userInput || 
                 u.name.trim().toLowerCase() === userInput
             );
 
             if (foundUser) {
-                // Administrative and Management security check validation
                 if (foundUser.role === 'admin' || foundUser.role === 'manager') {
                     if (pwdInput === foundUser.pass) {
                         activeUser = foundUser.name;
@@ -114,7 +391,6 @@
                         return;
                     }
                 } else {
-                    // Standard employee/creator tracking initialization
                     if (pwdInput === foundUser.pass || !foundUser.pass) {
                         activeUser = foundUser.name;
                         activeRole = "employee";
@@ -129,7 +405,6 @@
                 return;
             }
 
-            // Lock session data structures to local application state parameters
             localStorage.setItem('be_active_user', activeUser);
             localStorage.setItem('be_active_role', activeRole);
             localStorage.setItem('be_active_email', activeEmail);
@@ -305,7 +580,6 @@
 
             if (!name || !email || !pass) { alert("Provide all mandatory registration parameters!"); return; }
 
-            // Write user securely into Supabase Cloud Table infrastructure
             const { error } = await dbInstance
                 .from('user_roster')
                 .insert([{ name, email, role, pass }]);
@@ -361,7 +635,6 @@
 
             const oldUserRecord = userRoster[index];
 
-            // Update user in Supabase
             const { error } = await dbInstance
                 .from('user_roster')
                 .update({ name: editName, email: editEmail, role: editRole, pass: editPass })
@@ -369,7 +642,6 @@
 
             if(error) { alert("Database Update Error."); return; }
 
-            // Cascade credentials synchronization across all matching metrics
             if (oldUserRecord.email !== editEmail || oldUserRecord.name !== editName) {
                 await dbInstance
                     .from('assignments')
@@ -398,7 +670,6 @@
             const todayStr = new Date().toISOString().slice(0, 10);
             const newTaskId = Date.now();
 
-            // Insert into Supabase table mapping
             const { error } = await dbInstance
                 .from('assignments')
                 .insert([{
@@ -449,7 +720,6 @@
                 assetLinkVal = "";
             }
 
-            // Update assignment status directly inside Supabase
             await dbInstance
                 .from('assignments')
                 .update({ status: newStatus, asset_link: assetLinkVal })
@@ -559,8 +829,6 @@
         async function pushLogEntry(text) {
             const now = new Date();
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            
-            // Push Log straightforwardly into Supabase cloud log infrastructure
             await dbInstance.from('system_logs').insert([{ time: ts, text }]);
         }
 
@@ -770,3 +1038,5 @@
             if (activeUser) launchSession();
         });
     </script>
+</body>
+</html>
