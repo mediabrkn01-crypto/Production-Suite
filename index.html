@@ -73,7 +73,6 @@
         </div>
     </div>
 
-    <!-- Media Upload/Viewer Asset Modal -->
     <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
         <div class="card w-full max-w-lg rounded-2xl p-6 space-y-4 relative">
             <button onclick="closeAssetModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
@@ -90,7 +89,7 @@
                             External URL Link
                         </button>
                         <button id="btn-method-file" onclick="setDeliveryMethod('file')" class="py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider transition bg-[#0b0d19] border-[#1e2238] text-gray-400 hover:text-white">
-                            Direct Asset Upload
+                            Cloud Storage Upload
                         </button>
                     </div>
                 </div>
@@ -99,11 +98,11 @@
                     <input type="url" id="delivery-url-input" placeholder="https://drive.google.com/..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500">
                 </div>
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase block">Upload Local File Asset (Image/Video)</label>
+                    <label class="text-gray-400 text-[11px] font-bold uppercase block">Upload Video or Image Asset (Up to 50MB)</label>
                     <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30">
-                    <p class="text-[10px] text-gray-500 italic">Accepts raw assets directly integrated within your pipeline workspace framework.</p>
+                    <p class="text-[10px] text-gray-500 italic">Assets are routed to cloud infrastructure instantly. Preserves high quality layout frames.</p>
                 </div>
-                <button onclick="submitAssetDeliveryAction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
+                <button id="btn-submit-delivery" onclick="submitAssetDeliveryAction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
                     <i data-lucide="cloud-upload" class="w-4 h-4"></i> Deploy Work Package
                 </button>
             </div>
@@ -337,7 +336,8 @@
         // Configuration Parameters
         const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
-        
+        const STORAGE_BUCKET_NAME = "production-assets";
+
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let activeUser = localStorage.getItem('be_active_user') || null;
@@ -753,6 +753,11 @@
             document.getElementById('asset-delivery-modal').classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
+            
+            const submitBtn = document.getElementById('btn-submit-delivery');
+            submitBtn.disabled = false;
+            submitBtn.innerText = "Deploy Work Package";
+            
             currentTargetTaskId = null;
             renderTableRows();
         }
@@ -762,6 +767,7 @@
             const targetTask = assignmentsList.find(t => t.id == currentTargetTaskId);
             if (!targetTask) return;
 
+            const submitBtn = document.getElementById('btn-submit-delivery');
             let finalPayloadValue = "";
 
             if(selectedDeliveryMethod === 'link') {
@@ -770,16 +776,47 @@
                 finalPayloadValue = linkVal;
             } else {
                 const fileInput = document.getElementById('delivery-file-input');
-                if(!fileInput.files || fileInput.files.length === 0) { alert("Please select a local image or video file asset!"); return; }
+                if(!fileInput.files || fileInput.files.length === 0) { alert("Please select a file asset!"); return; }
                 
                 const selectedFile = fileInput.files[0];
                 
-                // Convert raw file into local Base64 string payload storage context
-                finalPayloadValue = await new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.readAsDataURL(selectedFile);
-                });
+                // Block if user uploads something absolute crazy over 60MB
+                if (selectedFile.size > 60 * 1024 * 1024) {
+                    alert("File size limit warning: Please limit asset uploads to 60MB.");
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                submitBtn.innerText = "Uploading to Cloud Storage...";
+
+                // Generate clean non-clashing unique cloud path name
+                const fileExtension = selectedFile.name.split('.').pop();
+                const cloudFilePath = `${currentTargetTaskId}_${Date.now()}.${fileExtension}`;
+
+                // Upload direct file binary to Supabase Public Bucket System
+                const { data: uploadData, error: uploadError } = await dbInstance
+                    .storage
+                    .from(STORAGE_BUCKET_NAME)
+                    .upload(cloudFilePath, selectedFile, {
+                        cacheControl: '3600',
+                        upsert: true
+                    });
+
+                if (uploadError) {
+                    console.error("Cloud Upload Error details: ", uploadError);
+                    alert("Storage Error: Failed to push file package into cloud destination bucket.");
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = "Deploy Work Package";
+                    return;
+                }
+
+                // Construct clean immutable direct public link URL
+                const { data: publicUrlData } = dbInstance
+                    .storage
+                    .from(STORAGE_BUCKET_NAME)
+                    .getPublicUrl(cloudFilePath);
+
+                finalPayloadValue = publicUrlData.publicUrl;
             }
 
             await dbInstance
@@ -788,6 +825,10 @@
                 .eq('id', currentTargetTaskId);
 
             await pushLogEntry(`Creator ${targetTask.assignedTo} deployed production deliverables into the matrix pipeline.`);
+            
+            submitBtn.disabled = false;
+            submitBtn.innerText = "Deploy Work Package";
+            
             document.getElementById('asset-delivery-modal').classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
@@ -868,6 +909,17 @@
 
         async function deleteAssignment(id) {
             if(confirm("Delete this pipeline entity row item completely?")) {
+                const targetTask = assignmentsList.find(t => t.id == id);
+                
+                // If it contains a cloud storage file link, clean up the bucket space
+                if (targetTask && targetTask.assetLink && targetTask.assetLink.includes('/storage/v1/object/public/')) {
+                    try {
+                        const fileUrlSegments = targetTask.assetLink.split('/');
+                        const fileNameInBucket = fileUrlSegments[fileUrlSegments.length - 1];
+                        await dbInstance.storage.from(STORAGE_BUCKET_NAME).remove([fileNameInBucket]);
+                    } catch(e) { console.error("Cloud storage cleanup hook error:", e); }
+                }
+
                 const { error } = await dbInstance.from('assignments').delete().eq('id', id);
                 if (!error) await syncLedgerEngine(false);
             }
@@ -883,10 +935,9 @@
                 let clDesc = `"${task.description.replace(/"/g, '""')}"`;
                 let clTopic = `"${task.topic.replace(/"/g, '""')}"`;
                 let clExp = `"${task.explanation.replace(/"/g, '""')}"`;
-                let assetData = task.assetLink && task.assetLink.startsWith('data:') ? "Direct Integrated Base64 Payload Asset" : task.assetLink;
                 
                 let rowData = [
-                    task.id, clTopic, task.type, task.assignedTo, task.employeeEmail, clDesc, task.assignedDate, task.date, task.status, clExp, assetData || "Awaiting submission"
+                    task.id, clTopic, task.type, task.assignedTo, task.employeeEmail, clDesc, task.assignedDate, task.date, task.status, clExp, task.assetLink || "Awaiting submission"
                 ];
                 csvRows.push(rowData.join(","));
             });
@@ -922,6 +973,22 @@
             const now = new Date();
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             await dbInstance.from('system_logs').insert([{ time: ts, text }]);
+        }
+
+        function downloadDirectPublicAsset(url, filename) {
+            fetch(url)
+                .then(response => response.blob())
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(blobUrl);
+                })
+                .catch(() => window.open(url, '_blank'));
         }
 
         function renderLogFeed() {
@@ -992,33 +1059,37 @@
             lucide.createIcons();
         }
 
-        // Helper function to build download/view actions for managers/admins
+        // Upgraded helper to seamlessly process cloud URLs as native interactive elements
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
-            // Check if string contains encoded raw media stream data
-            if (assetString.startsWith('data:')) {
-                const isVideo = assetString.includes('data:video/');
-                if (isVideo) {
-                    return `
-                        <div class="flex flex-col gap-1.5 max-w-[140px]">
-                            <video src="${assetString}" controls class="w-32 h-auto rounded border border-[#1e2238] bg-black"></video>
-                            <a href="${assetString}" download="Delivery_${topicName.replace(/\s+/g, '_')}.mp4" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
-                                <i data-lucide="download" class="w-3 h-3"></i> Download Video
-                            </a>
-                        </div>
-                    `;
-                } else {
-                    return `
-                        <div class="flex flex-col gap-1.5 max-w-[140px]">
-                            <img src="${assetString}" alt="Asset Preview" class="w-32 h-auto object-cover rounded border border-[#1e2238]"/>
-                            <a href="${assetString}" download="Delivery_${topicName.replace(/\s+/g, '_')}.png" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
-                                <i data-lucide="download" class="w-3 h-3"></i> Download Image
-                            </a>
-                        </div>
-                    `;
-                }
+            const sanitizedName = topicName.replace(/\s+/g, '_');
+            const lowercaseAsset = assetString.toLowerCase();
+            
+            // Check if link points to an image file or a video file extension
+            const isCloudImage = lowercaseAsset.includes('.png') || lowercaseAsset.includes('.jpg') || lowercaseAsset.includes('.jpeg') || lowercaseAsset.includes('.webp') || lowercaseAsset.includes('.gif') || assetString.startsWith('data:image');
+            const isCloudVideo = lowercaseAsset.includes('.mp4') || lowercaseAsset.includes('.mov') || lowercaseAsset.includes('.webm') || lowercaseAsset.includes('.mkv') || assetString.startsWith('data:video');
+
+            if (isCloudVideo) {
+                return `
+                    <div class="flex flex-col gap-1.5 max-w-[140px]">
+                        <video src="${assetString}" preload="metadata" controls class="w-32 h-auto rounded border border-[#1e2238] bg-black"></video>
+                        <button onclick="downloadDirectPublicAsset('${assetString}', 'Delivery_${sanitizedName}.mp4')" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
+                            <i data-lucide="download" class="w-3 h-3"></i> Download Video
+                        </button>
+                    </div>
+                `;
+            } else if (isCloudImage) {
+                return `
+                    <div class="flex flex-col gap-1.5 max-w-[140px]">
+                        <img src="${assetString}" alt="Asset Preview" class="w-32 h-auto object-cover rounded border border-[#1e2238]" loading="lazy"/>
+                        <button onclick="downloadDirectPublicAsset('${assetString}', 'Delivery_${sanitizedName}.png')" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
+                            <i data-lucide="download" class="w-3 h-3"></i> Download Image
+                        </button>
+                    </div>
+                `;
             } else {
+                // Return standard external link anchor fallback
                 return `
                     <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1">
                         <i data-lucide="external-link" class="w-3 h-3"></i> View Link
