@@ -464,7 +464,6 @@
             renderLogFeed();
         }
 
-        // New Self-Service Feature: Anyone (Employee, Manager, or Admin) can update their password anytime
         async function requestUserSelfPasswordUpdate() {
             if(!activeEmail) return;
             const newPassword = prompt("Enter your new framework access key password:");
@@ -572,6 +571,52 @@
             }
         }
 
+        // Updated Account Key Registration logic with full protection filters
+        async function addNewUser() {
+            const name = document.getElementById('new-user-name').value.trim();
+            const email = document.getElementById('new-user-email').value.trim().toLowerCase(); 
+            const role = document.getElementById('new-user-role').value;
+            const pass = document.getElementById('new-user-password').value.trim();
+
+            if (!name || !email || !pass) { 
+                alert("Provide all mandatory registration parameters!"); 
+                return; 
+            }
+
+            // 1. Client-Side Duplication Verification Lookups
+            const emailExists = userRoster.some(u => u.email.toLowerCase() === email);
+            if (emailExists) {
+                alert(`Registration Rejected: The email address "${email}" is already registered to an active account in this network framework.`);
+                return;
+            }
+
+            // 2. Push profile structure down into the database instance mapping
+            const { error } = await dbInstance
+                .from('user_roster')
+                .insert([{ name, email, role, pass }]);
+
+            if (error) {
+                console.error("Database Connection Failure Matrix Log:", error);
+                if (error.code === '23505') { 
+                    alert(`Database Conflict: The login handle "${email}" is already assigned to a profile schema.`);
+                } else {
+                    alert(`Database Error: ${error.message || 'Could not save user schema.'}`);
+                }
+                return;
+            }
+
+            // 3. Document logs and scrub elements
+            await pushLogEntry(`Registered Profile: ${name} configured as a network ${role}`);
+
+            document.getElementById('new-user-name').value = '';
+            document.getElementById('new-user-email').value = '';
+            document.getElementById('new-user-password').value = '';
+
+            await syncLedgerEngine(false);
+            populateDropdownSelectors();
+            alert(`Framework profile registered successfully inside the database registry.`);
+        }
+
         function logoutPortal() {
             localStorage.removeItem('be_active_user');
             localStorage.removeItem('be_active_role');
@@ -586,33 +631,6 @@
             userRoster.forEach(u => {
                 empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.role})</option>`;
             });
-        }
-
-        async function addNewUser() {
-            const name = document.getElementById('new-user-name').value.trim();
-            const email = document.getElementById('new-user-email').value.trim();
-            const role = document.getElementById('new-user-role').value;
-            const pass = document.getElementById('new-user-password').value.trim();
-
-            if (!name || !email || !pass) { alert("Provide all mandatory registration parameters!"); return; }
-
-            const { error } = await dbInstance
-                .from('user_roster')
-                .insert([{ name, email, role, pass }]);
-
-            if(error) {
-                alert("Database Error: Could not save user schema. Email may be a duplicate."); return;
-            }
-
-            await pushLogEntry(`Registered: ${name} as ${role}`);
-
-            document.getElementById('new-user-name').value = '';
-            document.getElementById('new-user-email').value = '';
-            document.getElementById('new-user-password').value = '';
-
-            await syncLedgerEngine(false);
-            populateDropdownSelectors();
-            alert(`Framework profile registered inside security ledger database.`);
         }
 
         async function removeUser(index) {
@@ -643,7 +661,7 @@
 
         async function saveEditedRoster(index) {
             const editName = document.getElementById(`edit-roster-name-${index}`).value.trim();
-            const editEmail = document.getElementById(`edit-roster-email-${index}`).value.trim();
+            const editEmail = document.getElementById(`edit-roster-email-${index}`).value.trim().toLowerCase();
             const editRole = document.getElementById(`edit-roster-role-${index}`).value;
             const editPass = document.getElementById(`edit-roster-pass-${index}`).value.trim();
 
@@ -919,7 +937,6 @@
             lucide.createIcons();
         }
 
-        // Table Rows Implementation Mapping
         function renderTableRows() {
             const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
