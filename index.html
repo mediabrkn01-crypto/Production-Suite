@@ -40,7 +40,7 @@
             100% { border-color: #1e2238; box-shadow: 0 0 0 rgba(253, 109, 5, 0); }
         }
         .flash-update {
-            animation: pulse-highlight 2s ease-in-out infinite;
+            animation: pulse-highlight 2s ease-in-out 1;
         }
     </style>
 </head>
@@ -322,16 +322,27 @@
         let systemAdminUser = localStorage.getItem('be_admin_username') || 'admin';
         let systemAdminPass = localStorage.getItem('be_admin_password') || '12345';
 
-        // Stale sample rosters and assignments have been fully wiped empty
-        let userRoster = JSON.parse(localStorage.getItem('be_studio_roster_v7')) || [];
-        let assignmentsList = JSON.parse(localStorage.getItem('be_assignments_v7')) || [];
-
-        let internalLogs = JSON.parse(localStorage.getItem('be_system_logs_v7')) || [
-            { time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}), text: "Production workbook dashboard secure node successfully launched." }
+        let userRoster = JSON.parse(localStorage.getItem('be_studio_roster_v7')) || [
+            { name: "Rahul Kumar", email: "rahul@brokenenglish.com", role: "employee", pass: "" },
+            { name: "Anjali Sharma", email: "anjali@brokenenglish.com", role: "employee", pass: "" },
+            { name: "Suresh Manager", email: "suresh@brokenenglish.com", role: "manager", pass: "54321" }
         ];
 
+        let assignmentsList = JSON.parse(localStorage.getItem('be_assignments_v7')) || [
+            { id: 1, topic: "English Vocabulary Reels 01", type: "Video Editing", assignedTo: "Rahul Kumar", employeeEmail: "rahul@brokenenglish.com", description: "Use bold yellow kinetic text overlays.", assignedDate: "2026-06-10", date: "2026-06-25", status: "In Progress", explanation: "None", assetLink: "" }
+        ];
+
+        let internalLogs = JSON.parse(localStorage.getItem('be_system_logs_v7')) || [
+            { time: "12:00:00 AM", text: "Production workbook dashboard secure node successfully launched." }
+        ];
+
+        // Tracks existing database entity hashes locally to eliminate layout sync flashes
         let loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
 
+        /**
+         * Real-time Synchronization Loop Controller
+         * Scans for variations across storage layers
+         */
         function syncLedgerEngine(forcedByUser = false) {
             const externalAssignmentsRaw = localStorage.getItem('be_assignments_v7');
             const externalRosterRaw = localStorage.getItem('be_studio_roster_v7');
@@ -374,6 +385,7 @@
             }
         }
 
+        // Initialize Background Live Listener Pool (3-second cadence)
         setInterval(() => {
             if (activeUser) {
                 syncLedgerEngine(false);
@@ -384,11 +396,6 @@
             const userInput = document.getElementById('portal-user-input').value.trim();
             const pwdInput = document.getElementById('portal-password-input').value.trim();
 
-            if (!userInput) {
-                alert("Identity field can't be left blank!");
-                return;
-            }
-
             if (userInput.toLowerCase() === systemAdminUser.toLowerCase()) {
                 if (pwdInput === systemAdminPass) {
                     activeUser = "Master Admin";
@@ -398,11 +405,7 @@
                     alert("Authentication Error: Access Key Denied."); return;
                 }
             } else {
-                const foundUser = userRoster.find(u => 
-                    u.email.toLowerCase().trim() === userInput.toLowerCase() || 
-                    u.name.toLowerCase().trim() === userInput.toLowerCase()
-                );
-                
+                const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput.toLowerCase() || u.name.toLowerCase() === userInput.toLowerCase());
                 if (foundUser) {
                     if (foundUser.role === 'manager') {
                         if (pwdInput === foundUser.pass) {
@@ -413,7 +416,6 @@
                             alert("Authentication Error: Secure Password Key Invalid."); return;
                         }
                     } else {
-                        // Safe employee authentication line bypasses password checks
                         activeUser = foundUser.name;
                         activeRole = "employee";
                         activeEmail = foundUser.email;
@@ -508,10 +510,10 @@
             
             if (totalActive > 0 || totalRework > 0) {
                 banner.classList.remove('hidden');
-                txt.innerHTML = `Welcome back <span class="text-white font-bold">${activeUser}</span>! You have been assigned <span class="text-orange-400 font-bold">${totalActive} active tasks</span> waiting in your queue line, and <span class="text-yellow-400 font-bold">${totalRework} items requires rework modifications</span>. Please update status metrics immediately upon file delivery.`;
+                txt.innerHTML = `Welcome back <span class="text-white font-bold">${activeUser}</span>! You have <span class="text-orange-400 font-bold">${totalActive} active tasks</span> waiting in your queue line, and <span class="text-yellow-400 font-bold">${totalRework} items requiring rework modifications</span>. Please update status metrics immediately upon file delivery.`;
             } else {
                 banner.classList.remove('hidden');
-                txt.innerHTML = `Hello <span class="text-white font-bold">${activeUser}</span>. No newly tracked active task assignments found assigned to your email queue scope.`;
+                txt.innerHTML = `Hello <span class="text-white font-bold">${activeUser}</span>. No newly tracked active task assignments found inside your email queue scope.`;
             }
         }
 
@@ -543,6 +545,26 @@
                     <div class="card p-4 rounded-xl flex items-center gap-3">
                         <div class="p-2.5 rounded-lg bg-red-500/10 text-red-400"><i data-lucide="alert-triangle" class="w-5 h-5"></i></div>
                         <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Rejected Work</p><h3 class="text-lg font-bold text-white">${rejected}</h3></div>
+                    </div>
+                `;
+            } else if (activeRole === 'manager') {
+                let pendingReview = assignmentsList.filter(t => t.status === 'Completed').length;
+                let activeTracked = assignmentsList.filter(t => t.status === 'Pending' || t.status === 'In Progress' || t.status === 'Rework Required').length;
+                let totalRejected = assignmentsList.filter(t => t.status === 'Rejected').length;
+
+                container.className = "grid grid-cols-1 sm:grid-cols-3 gap-4";
+                container.innerHTML = `
+                    <div class="card p-4 rounded-xl flex items-center gap-4">
+                        <div class="p-3 rounded-xl bg-purple-500/10 text-purple-400"><i data-lucide="eye" class="w-5 h-5 md:w-6 h-6"></i></div>
+                        <div><p class="text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider">Awaiting Evaluation Approval</p><h3 class="text-xl md:text-2xl font-bold text-white">${pendingReview}</h3></div>
+                    </div>
+                    <div class="card p-4 rounded-xl flex items-center gap-4">
+                        <div class="p-3 rounded-xl bg-orange-500/10 text-orange-400"><i data-lucide="activity" class="w-5 h-5 md:w-6 h-6"></i></div>
+                        <div><p class="text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider">Active Studio Tasks</p><h3 class="text-xl md:text-2xl font-bold text-white">${activeTracked}</h3></div>
+                    </div>
+                    <div class="card p-4 rounded-xl flex items-center gap-4">
+                        <div class="p-3 rounded-xl bg-red-500/10 text-red-400"><i data-lucide="shield-alert" class="w-5 h-5 md:w-6 h-6"></i></div>
+                        <div><p class="text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider">Locked Rejected Line items</p><h3 class="text-xl md:text-2xl font-bold text-white">${totalRejected}</h3></div>
                     </div>
                 `;
             } else {
@@ -771,6 +793,9 @@
                 pushLogEntry(`Manager updated task row status [${assignmentsList[idx].topic}] to ${nextStatus}. Reason notes: ${explanationText}`);
             } else {
                 assignmentsList[idx].status = nextStatus;
+                if (nextStatus === "Pending" || nextStatus === "In Progress") {
+                    assignmentsList[idx].assetLink = "";
+                }
             }
 
             localStorage.setItem('be_assignments_v7', JSON.stringify(assignmentsList));
@@ -802,16 +827,6 @@
                 renderTableRows();
             }
         }
-
-        document.addEventListener("DOMContentLoaded", () => {
-            // Wipes existing dashboard content data maps on target browsers to ensure clean initialization
-            if(!localStorage.getItem('be_studio_roster_v7')) {
-                localStorage.setItem('be_studio_roster_v7', JSON.stringify([]));
-            }
-            if(!localStorage.getItem('be_assignments_v7')) {
-                localStorage.setItem('be_assignments_v7', JSON.stringify([]));
-            }
-        });
 
         function downloadWorkbookCSV() {
             if (activeRole !== 'admin') {
@@ -991,7 +1006,7 @@
                             <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                             <option value="Rework Required" ${t.status === 'Rework Required' ? 'selected' : ''}>🔄 Rework</option>
                             <option value="Rejected" ${t.status === 'Rejected' ? 'selected' : ''}>❌ Reject</option>
-                            <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                            <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Approved</option>
                         </select>
                     `;
                 } else {
@@ -1071,6 +1086,7 @@
                 mobileContainer.appendChild(mobileCard);
             });
 
+            // Update local tracking snapshot array
             loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
             lucide.createIcons();
         }
