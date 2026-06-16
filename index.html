@@ -297,7 +297,7 @@
     </div>
 
     <script>
-        // Restored Configuration Parameters - Broken characters completely recovered
+        // Configuration Parameters
         const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         
@@ -552,14 +552,13 @@
             location.reload();
         }
 
+        // Fixed: Dropdown selector updated to pull all profiles regardless of role classification restriction
         function populateDropdownSelectors() {
             const empDropdown = document.getElementById('task-assigned-employee');
             if(!empDropdown) return;
-            empDropdown.innerHTML = '<option value="">-- Select Employee --</option>';
+            empDropdown.innerHTML = '<option value="">-- Select Creator / Profile --</option>';
             userRoster.forEach(u => {
-                if(u.role === 'employee') {
-                    empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.email})</option>`;
-                }
+                empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.role})</option>`;
             });
         }
 
@@ -586,6 +585,7 @@
             document.getElementById('new-user-password').value = '';
 
             await syncLedgerEngine(false);
+            populateDropdownSelectors();
             alert(`Framework profile registered inside security ledger database.`);
         }
 
@@ -601,6 +601,7 @@
                 if(error) { alert("Database Error: Delete rejected."); return; }
 
                 await syncLedgerEngine(false);
+                populateDropdownSelectors();
             }
         }
 
@@ -644,6 +645,7 @@
             
             editingRosterIndex = null;
             await syncLedgerEngine(false);
+            populateDropdownSelectors();
         }
 
         async function createWorkAssignment() {
