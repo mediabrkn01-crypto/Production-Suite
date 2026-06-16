@@ -281,20 +281,22 @@
         let activeRole = localStorage.getItem('be_active_role') || null; 
         let activeEmail = localStorage.getItem('be_active_email') || null;
 
-        // 💡 CRITICAL UPDATE: Hardcode permanent accounts below so they can log in on ANY device!
-        const fallbackCloudRoster = [
+        // 🌟 PERMANENT HARDCODED USERS REGISTRY 🌟
+        // Add anyone here who needs to log in from ANY device or browser!
+        const globalCloudRoster = [
             { name: "Rahul Kumar", email: "rahul@brokenenglish.com", role: "employee" },
             { name: "Anjali Sharma", email: "anjali@brokenenglish.com", role: "employee" },
             { name: "Suresh Manager", email: "suresh@brokenenglish.com", role: "manager", pass: "54321" },
-            // Add your new employees here directly if they need cross-device login capability:
-            // { name: "New Employee Name", email: "employee@brokenenglish.com", role: "employee" }
+            
+            // Added employee from your screenshot context:
+            { name: "Ali", email: "alibrk@gmai.com", role: "employee" }
         ];
 
-        // Initialize user roster array safely combined with device database checks
+        // Retrieve local storage items safely
         let userRoster = JSON.parse(localStorage.getItem('be_studio_roster_v7')) || [];
         
-        // Synchronize and inject any missing cloud accounts into active matrix memory array
-        fallbackCloudRoster.forEach(cloudUser => {
+        // Auto-merge global database items into device browser state if missing
+        globalCloudRoster.forEach(cloudUser => {
             if (!userRoster.some(localUser => localUser.email.toLowerCase() === cloudUser.email.toLowerCase())) {
                 userRoster.push(cloudUser);
             }
@@ -335,7 +337,7 @@
                     alert("Authentication Error: Access Key Denied."); return;
                 }
             } else {
-                // FIXED: Enforce cross-device lower-case parameters evaluation to eliminate case input errors
+                // Evaluated with .toLowerCase() to completely eliminate mobile autofill capitalization errors
                 const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput);
                 if (foundUser) {
                     if (foundUser.role === 'manager') {
@@ -401,7 +403,6 @@
             renderLogFeed();
         }
 
-        // Top notification engine logic for active creators - Updated to prevent empty displays
         function renderEmployeeNotificationBar() {
             let myTasks = assignmentsList.filter(t => t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase());
             let totalActive = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
@@ -419,7 +420,6 @@
             }
         }
 
-        // Dynamic multi-role analytics breakdown card injector layout engine
         function renderCountersGrid() {
             const container = document.getElementById('metrics-counter-container');
             if(!container) return;
