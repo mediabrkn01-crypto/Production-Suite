@@ -281,12 +281,25 @@
         let activeRole = localStorage.getItem('be_active_role') || null; 
         let activeEmail = localStorage.getItem('be_active_email') || null;
 
-        // User Account Seed Registry Array
-        let userRoster = JSON.parse(localStorage.getItem('be_studio_roster_v7')) || [
+        // 💡 CRITICAL UPDATE: Hardcode permanent accounts below so they can log in on ANY device!
+        const fallbackCloudRoster = [
             { name: "Rahul Kumar", email: "rahul@brokenenglish.com", role: "employee" },
             { name: "Anjali Sharma", email: "anjali@brokenenglish.com", role: "employee" },
-            { name: "Suresh Manager", email: "suresh@brokenenglish.com", role: "manager", pass: "54321" }
+            { name: "Suresh Manager", email: "suresh@brokenenglish.com", role: "manager", pass: "54321" },
+            // Add your new employees here directly if they need cross-device login capability:
+            // { name: "New Employee Name", email: "employee@brokenenglish.com", role: "employee" }
         ];
+
+        // Initialize user roster array safely combined with device database checks
+        let userRoster = JSON.parse(localStorage.getItem('be_studio_roster_v7')) || [];
+        
+        // Synchronize and inject any missing cloud accounts into active matrix memory array
+        fallbackCloudRoster.forEach(cloudUser => {
+            if (!userRoster.some(localUser => localUser.email.toLowerCase() === cloudUser.email.toLowerCase())) {
+                userRoster.push(cloudUser);
+            }
+        });
+        localStorage.setItem('be_studio_roster_v7', JSON.stringify(userRoster));
 
         // Core Workflow Ledger Database Setup
         let assignmentsList = JSON.parse(localStorage.getItem('be_assignments_v7')) || [
@@ -310,10 +323,10 @@
         });
 
         function handlePortalLogin() {
-            const userInput = document.getElementById('portal-user-input').value.trim();
+            const userInput = document.getElementById('portal-user-input').value.trim().toLowerCase();
             const pwdInput = document.getElementById('portal-password-input').value;
 
-            if (userInput.toLowerCase() === 'admin') {
+            if (userInput === 'admin') {
                 if (pwdInput === '12345') {
                     activeUser = "Master Admin";
                     activeRole = "admin";
@@ -322,8 +335,8 @@
                     alert("Authentication Error: Access Key Denied."); return;
                 }
             } else {
-                // Fixed: Enforce robust case-insensitive validation for all employee profiles
-                const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput.toLowerCase());
+                // FIXED: Enforce cross-device lower-case parameters evaluation to eliminate case input errors
+                const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput);
                 if (foundUser) {
                     if (foundUser.role === 'manager') {
                         if (pwdInput === foundUser.pass) {
@@ -388,12 +401,9 @@
             renderLogFeed();
         }
 
-        // Top notification engine logic for active creators - Updated to include fallback criteria logic
+        // Top notification engine logic for active creators - Updated to prevent empty displays
         function renderEmployeeNotificationBar() {
-            let myTasks = assignmentsList.filter(t => 
-                (t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase()) ||
-                (t.assignedTo && t.assignedTo.toLowerCase() === (activeUser || '').toLowerCase())
-            );
+            let myTasks = assignmentsList.filter(t => t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase());
             let totalActive = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
             let totalRework = myTasks.filter(t => t.status === 'Rework Required').length;
 
@@ -409,17 +419,13 @@
             }
         }
 
-        // Dynamic multi-role analytics breakdown card injector layout engine - Updated to prevent empty mobile cards
+        // Dynamic multi-role analytics breakdown card injector layout engine
         function renderCountersGrid() {
             const container = document.getElementById('metrics-counter-container');
             if(!container) return;
 
             if(activeRole === 'employee') {
-                // Personal metrics calculation scope for creators
-                let myTasks = assignmentsList.filter(t => 
-                    (t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase()) ||
-                    (t.assignedTo && t.assignedTo.toLowerCase() === (activeUser || '').toLowerCase())
-                );
+                let myTasks = assignmentsList.filter(t => t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase());
                 let pending = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
                 let completed = myTasks.filter(t => t.status === 'Completed').length;
                 let reworks = myTasks.filter(t => t.status === 'Rework Required').length;
@@ -445,7 +451,6 @@
                     </div>
                 `;
             } else {
-                // Manager & Master Admin global perspective overview metrics
                 let activeTasksCount = assignmentsList.filter(t => t.status !== 'Completed').length;
                 let completedCount = assignmentsList.filter(t => t.status === 'Completed').length;
 
@@ -739,7 +744,6 @@
             lucide.createIcons();
         }
 
-        // Updated Table rows to filter safely using multi-property case insensitive verification
         function renderTableRows() {
             const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
@@ -751,10 +755,7 @@
 
             let targetTasks = assignmentsList;
             if (activeRole === 'employee') {
-                targetTasks = assignmentsList.filter(t => 
-                    (t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase()) ||
-                    (t.assignedTo && t.assignedTo.toLowerCase() === (activeUser || '').toLowerCase())
-                );
+                targetTasks = assignmentsList.filter(t => t.employeeEmail && t.employeeEmail.toLowerCase() === (activeEmail || '').toLowerCase());
             }
 
             if(targetTasks.length === 0) {
@@ -811,13 +812,12 @@
                     `<a href="${t.assetLink}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i> View Work</a>` : 
                     `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
 
-                // --- DESKTOP RENDER ROW STRUCTURAL LAYOUT ---
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = "hover:bg-[#1a1e36]/40 transition text-xs";
                 desktopRow.innerHTML = `
                     <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
                     <td class="py-3 px-4"><span>${t.type}</span></td>
-                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail || 'No Email Linked'}</span></td>
+                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail || 'No Email'}</span></td>
                     <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
                     <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-orange-400 font-mono font-semibold">${t.date}</td>
@@ -834,7 +834,6 @@
                 `;
                 tbody.appendChild(desktopRow);
 
-                // --- MOBILE COMPACT CARD GRID RENDER LAYOUT ---
                 let mobileCard = document.createElement('div');
                 mobileCard.className = "card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238]";
                 mobileCard.innerHTML = `
