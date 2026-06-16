@@ -319,7 +319,6 @@
 
         let editingRosterIndex = null;
 
-        // FIXED CRITICAL MAPS: Forcing absolute validation parameters on reset fallback
         let systemAdminUser = localStorage.getItem('be_admin_username') || 'admin';
         let systemAdminPass = localStorage.getItem('be_admin_password') || '12345';
 
@@ -337,8 +336,13 @@
             { time: "12:00:00 AM", text: "Production workbook dashboard secure node successfully launched." }
         ];
 
+        // Keeps track of existing task IDs to highlight fresh incoming items dynamically
         let loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
 
+        /**
+         * Real-time Synchronization Loop Controller
+         * Scans for variations across storage without interface locked down states
+         */
         function syncLedgerEngine(forcedByUser = false) {
             const externalAssignmentsRaw = localStorage.getItem('be_assignments_v7');
             const externalRosterRaw = localStorage.getItem('be_studio_roster_v7');
@@ -381,6 +385,7 @@
             }
         }
 
+        // Initialize Background Live Listener Pool (Executes smoothly every 3 seconds)
         setInterval(() => {
             if (activeUser) {
                 syncLedgerEngine(false);
@@ -388,10 +393,10 @@
         }, 3000);
 
         function handlePortalLogin() {
-            const userInput = document.getElementById('portal-user-input').value.trim();
+            const userInput = document.getElementById('portal-user-input').value.trim().toLowerCase();
             const pwdInput = document.getElementById('portal-password-input').value.trim();
 
-            if (userInput.toLowerCase() === systemAdminUser.toLowerCase()) {
+            if (userInput === systemAdminUser.toLowerCase()) {
                 if (pwdInput === systemAdminPass) {
                     activeUser = "Master Admin";
                     activeRole = "admin";
@@ -400,7 +405,12 @@
                     alert("Authentication Error: Access Key Denied."); return;
                 }
             } else {
-                const foundUser = userRoster.find(u => u.email.toLowerCase() === userInput.toLowerCase() || u.name.toLowerCase() === userInput.toLowerCase());
+                // Fixed: Perform robust lookups using trimmed and lowercase comparisons
+                const foundUser = userRoster.find(u => 
+                    u.email.trim().toLowerCase() === userInput || 
+                    u.name.trim().toLowerCase() === userInput
+                );
+
                 if (foundUser) {
                     if (foundUser.role === 'manager') {
                         if (pwdInput === foundUser.pass) {
@@ -800,6 +810,7 @@
             }
         }
 
+        // Export system to CSV
         function downloadWorkbookCSV() {
             if (activeRole !== 'admin') {
                 alert("Security Threat: Unauthorized extraction action block initialized.");
