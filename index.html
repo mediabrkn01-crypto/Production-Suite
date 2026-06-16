@@ -10,7 +10,6 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
             background-color: #0b0d19;
@@ -314,18 +313,13 @@
     </div>
 
     <script>
-        // Initialize Supabase Client with your active parameters
-        const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
-        
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         let activeUser = localStorage.getItem('be_active_user') || null;
         let activeRole = localStorage.getItem('be_active_role') || null; 
         let activeEmail = localStorage.getItem('be_active_email') || null;
 
         let editingRosterIndex = null;
 
+        // FIXED CRITICAL MAPS: Forcing absolute validation parameters on reset fallback
         let systemAdminUser = localStorage.getItem('be_admin_username') || 'admin';
         let systemAdminPass = localStorage.getItem('be_admin_password') || '12345';
 
@@ -345,11 +339,7 @@
 
         let loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
 
-        /**
-         * Real-time Synchronization Loop Controller
-         * Saves to LocalStorage fallbacks and communicates directly with your Supabase endpoint if active
-         */
-        async function syncLedgerEngine(forcedByUser = false) {
+        function syncLedgerEngine(forcedByUser = false) {
             const externalAssignmentsRaw = localStorage.getItem('be_assignments_v7');
             const externalRosterRaw = localStorage.getItem('be_studio_roster_v7');
             const externalLogsRaw = localStorage.getItem('be_system_logs_v7');
@@ -378,15 +368,6 @@
                 }
             }
 
-            // Optional Supabase dynamic cloud ping check setup inside infrastructure pipeline
-            try {
-                // If tables 'assignments', 'roster', or 'logs' exist inside your Database, you can fetch directly:
-                // const { data: dbAssignments } = await supabase.from('assignments').select('*');
-                // if(dbAssignments) { assignmentsList = dbAssignments; updatedDetected = true; }
-            } catch (err) {
-                console.log("Supabase Cloud Sync waiting for configured table components: ", err.message);
-            }
-
             if (updatedDetected || forcedByUser) {
                 renderCountersGrid();
                 renderTableRows();
@@ -395,7 +376,7 @@
                 if (activeRole === 'employee') renderEmployeeNotificationBar();
                 
                 if(forcedByUser && typeof alert !== 'undefined') {
-                    alert("Real-time cloud database snapshot synchronization complete!");
+                    alert("Real-time snapshot synchronization complete!");
                 }
             }
         }
@@ -617,7 +598,7 @@
             });
         }
 
-        async function addNewUser() {
+        function addNewUser() {
             const name = document.getElementById('new-user-name').value.trim();
             const email = document.getElementById('new-user-email').value.trim();
             const role = document.getElementById('new-user-role').value;
@@ -626,15 +607,8 @@
             if (!name || !email) { alert("Provide registration parameters!"); return; }
             if (role === 'manager' && !pass) { alert("Managers must have a secure access password!"); return; }
 
-            const newUserData = { name, email, role, pass: (role === 'manager') ? pass : "" };
-            userRoster.push(newUserData);
+            userRoster.push({ name, email, role, pass: (role === 'manager') ? pass : "" });
             localStorage.setItem('be_studio_roster_v7', JSON.stringify(userRoster));
-            
-            // Supabase Cloud Storage Engine Integration Forwarding
-            try {
-                await supabase.from('roster').insert([newUserData]);
-            } catch(e) { console.log("Local saved. Database routing payload bypassed."); }
-
             pushLogEntry(`Registered: ${name} as ${role}`);
 
             document.getElementById('new-user-name').value = '';
@@ -647,16 +621,10 @@
             alert(`Framework profile registered inside security ledger mapping.`);
         }
 
-        async function removeUser(index) {
+        function removeUser(index) {
             if(confirm("Wipe account profile key index mapping?")) {
-                const targetEmail = userRoster[index].email;
                 userRoster.splice(index, 1);
                 localStorage.setItem('be_studio_roster_v7', JSON.stringify(userRoster));
-                
-                try {
-                    await supabase.from('roster').delete().eq('email', targetEmail);
-                } catch(e){}
-
                 populateDropdownSelectors();
                 renderCountersGrid();
                 renderSettingsRoster();
@@ -673,7 +641,7 @@
             renderSettingsRoster();
         }
 
-        async function saveEditedRoster(index) {
+        function saveEditedRoster(index) {
             const editName = document.getElementById(`edit-roster-name-${index}`).value.trim();
             const editEmail = document.getElementById(`edit-roster-email-${index}`).value.trim();
             const editRole = document.getElementById(`edit-roster-role-${index}`).value;
@@ -707,11 +675,6 @@
             userRoster[index].pass = (editRole === 'manager') ? editPass : "";
 
             localStorage.setItem('be_studio_roster_v7', JSON.stringify(userRoster));
-            
-            try {
-                await supabase.from('roster').update({ name: editName, email: editEmail, role: editRole, pass: userRoster[index].pass }).eq('email', oldEmail);
-            } catch(e){}
-
             pushLogEntry(`Admin restructured credentials configuration for: ${editName}`);
             
             editingRosterIndex = null;
@@ -721,7 +684,7 @@
             renderTableRows();
         }
 
-        async function createWorkAssignment() {
+        function createWorkAssignment() {
             const topic = document.getElementById('task-topic').value.trim();
             const type = document.getElementById('task-type').value;
             const targetEmpName = document.getElementById('task-assigned-employee').value;
@@ -751,11 +714,6 @@
 
             assignmentsList.push(newTask);
             localStorage.setItem('be_assignments_v7', JSON.stringify(assignmentsList));
-            
-            try {
-                await supabase.from('assignments').insert([newTask]);
-            } catch(e){}
-
             pushLogEntry(`Configured task: "${topic}" -> Route to ${targetEmpName}`);
 
             document.getElementById('task-topic').value = '';
@@ -766,7 +724,7 @@
             renderTableRows();
         }
 
-        async function employeeHandleStatusChange(id, newStatus) {
+        function employeeHandleStatusChange(id, newStatus) {
             const idx = assignmentsList.findIndex(t => t.id == id);
             if (idx === -1) return;
 
@@ -790,17 +748,12 @@
             }
 
             localStorage.setItem('be_assignments_v7', JSON.stringify(assignmentsList));
-            
-            try {
-                await supabase.from('assignments').update({ status: assignmentsList[idx].status, assetLink: assignmentsList[idx].assetLink }).eq('id', id);
-            } catch(e){}
-
             renderCountersGrid();
             renderTableRows();
             if (activeRole === 'employee') renderEmployeeNotificationBar();
         }
 
-        async function managerHandleWorkflowEvaluation(id, nextStatus) {
+        function managerHandleWorkflowEvaluation(id, nextStatus) {
             const idx = assignmentsList.findIndex(t => t.id == id);
             if (idx === -1) return;
 
@@ -818,16 +771,11 @@
             }
 
             localStorage.setItem('be_assignments_v7', JSON.stringify(assignmentsList));
-            
-            try {
-                await supabase.from('assignments').update({ status: assignmentsList[idx].status, explanation: assignmentsList[idx].explanation }).eq('id', id);
-            } catch(e){}
-
             renderCountersGrid();
             renderTableRows();
         }
 
-        async function adminUpdateStatusDirectly(id, newStatus) {
+        function adminUpdateStatusDirectly(id, newStatus) {
             const idx = assignmentsList.findIndex(t => t.id == id);
             if(idx !== -1) {
                 if (newStatus === "Rework Required" || newStatus === "Rejected") {
@@ -837,26 +785,16 @@
                 assignmentsList[idx].status = newStatus;
                 if(newStatus !== 'Completed' && newStatus !== 'Rework Required') assignmentsList[idx].assetLink = ""; 
                 localStorage.setItem('be_assignments_v7', JSON.stringify(assignmentsList));
-                
-                try {
-                    await supabase.from('assignments').update({ status: newStatus, explanation: assignmentsList[idx].explanation, assetLink: assignmentsList[idx].assetLink }).eq('id', id);
-                } catch(e){}
-
                 pushLogEntry(`Admin forced direct status override: [${assignmentsList[idx].topic}] shifted to ${newStatus}`);
                 renderCountersGrid();
                 renderTableRows();
             }
         }
 
-        async function deleteAssignment(id) {
+        function deleteAssignment(id) {
             if(confirm("Delete this pipeline entity row item card?")) {
                 assignmentsList = assignmentsList.filter(t => t.id != id);
                 localStorage.setItem('be_assignments_v7', JSON.stringify(assignmentsList));
-                
-                try {
-                    await supabase.from('assignments').delete().eq('id', id);
-                } catch(e){}
-
                 renderCountersGrid();
                 renderTableRows();
             }
@@ -912,17 +850,11 @@
             document.body.removeChild(structuralAnchor);
         }
 
-        async function pushLogEntry(text) {
+        function pushLogEntry(text) {
             const now = new Date();
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const logItem = { time: ts, text };
-            internalLogs.unshift(logItem);
+            internalLogs.unshift({ time: ts, text });
             localStorage.setItem('be_system_logs_v7', JSON.stringify(internalLogs));
-            
-            try {
-                await supabase.from('logs').insert([logItem]);
-            } catch(e){}
-
             renderLogFeed();
         }
 
