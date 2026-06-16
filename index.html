@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Broken English | Production Studio Network</title>
     
-    <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
-    <link rel="apple-touch-icon" href="Broken English Final Logo-02 (1).png">
+    <link class="invisible" rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
+    <link class="invisible" rel="apple-touch-icon" href="Broken English Final Logo-02 (1).png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
+    <!-- Supabase CDN Architecture Initialization JS Library Modules -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -48,6 +49,7 @@
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
 
+    <!-- Framework Login Authentication Screen Portal -->
     <div id="portal-login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4 overflow-y-auto">
         <div class="w-full max-w-md card p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 text-center my-auto">
             <div class="flex justify-center">
@@ -73,8 +75,10 @@
         </div>
     </div>
 
+    <!-- Main System Workspace Container Frame -->
     <div id="main-application-frame" class="w-full h-full flex flex-col md:flex-row opacity-0 pointer-events-none transition-opacity duration-300 overflow-hidden">
         
+        <!-- Sidebar Shell Panel Navigation Drawer -->
         <aside class="w-full md:w-64 bg-[#090b14] border-b md:border-b-0 md:border-r border-[#1e2238] flex flex-col justify-between p-4 z-20">
             <div class="flex md:flex-col justify-between md:justify-start items-center md:items-stretch w-full">
                 <div class="flex items-center gap-3 py-2 md:py-4 md:mb-4">
@@ -105,6 +109,7 @@
             </div>
         </aside>
 
+        <!-- Right-side Viewport Content Framework Main Layer -->
         <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
             
             <div id="employee-notification-banner" class="hidden bg-blue-900/40 border border-blue-500/40 rounded-xl p-4 flex items-start gap-3">
@@ -129,6 +134,7 @@
                 </div>
             </div>
 
+            <!-- Tab Component Interface Element: Pipeline Dashboard Overview -->
             <div id="tab-content-dashboard" class="space-y-6">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
@@ -232,6 +238,7 @@
                 </div>
             </div>
 
+            <!-- Tab Component Interface Element: Infrastructure Setup Operations Control -->
             <div id="tab-content-settings" class="space-y-6 hidden">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -301,8 +308,8 @@
         const SUPABASE_URL = "https://fevqnplllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         
-        // Initializing the Cloud SQL Client Context
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Fix: Initialize Client to a unique reference handle variable preventing global scope naming collisions
+        const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let activeUser = localStorage.getItem('be_active_user') || null;
         let activeRole = localStorage.getItem('be_active_role') || null; 
@@ -324,11 +331,11 @@
         async function syncLedgerEngine(forcedByUser = false) {
             try {
                 // 1. Fetch live user credentials
-                const { data: users, error: errU } = await supabase.from('user_roster').select('*');
+                const { data: users, error: errU } = await dbInstance.from('user_roster').select('*');
                 if (!errU && users) userRoster = users;
 
                 // 2. Fetch tracking matrix rows
-                const { data: tasks, error: errT } = await supabase.from('assignments').select('*');
+                const { data: tasks, error: errT } = await dbInstance.from('assignments').select('*');
                 if (!errT && tasks) {
                     assignmentsList = tasks.map(t => ({
                         id: t.id,
@@ -346,7 +353,7 @@
                 }
 
                 // 3. Fetch activity updates
-                const { data: logs, error: errL } = await supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(40);
+                const { data: logs, error: errL } = await dbInstance.from('system_logs').select('*').order('created_at', { ascending: false }).limit(40);
                 if (!errL && logs) internalLogs = logs;
 
                 // Re-render UI boundaries
@@ -385,7 +392,7 @@
             }
 
             // Fetch user records instantly from Supabase cloud roster table
-            const { data: matchedUsers, error } = await supabase
+            const { data: matchedUsers, error } = await dbInstance
                 .from('user_roster')
                 .select('*');
 
@@ -604,7 +611,7 @@
             if (!name || !email || !pass) { alert("Provide all mandatory registration parameters!"); return; }
 
             // Write user securely into Supabase Cloud Table infrastructure
-            const { error } = await supabase
+            const { error } = await dbInstance
                 .from('user_roster')
                 .insert([{ name, email, role, pass }]);
 
@@ -626,7 +633,7 @@
             if(confirm("Wipe account profile key database rows mapping completely?")) {
                 const targetUser = userRoster[index];
                 
-                const { error } = await supabase
+                const { error } = await dbInstance
                     .from('user_roster')
                     .delete()
                     .eq('email', targetUser.email);
@@ -660,7 +667,7 @@
             const oldUserRecord = userRoster[index];
 
             // Update user in Supabase
-            const { error } = await supabase
+            const { error } = await dbInstance
                 .from('user_roster')
                 .update({ name: editName, email: editEmail, role: editRole, pass: editPass })
                 .eq('email', oldUserRecord.email);
@@ -669,7 +676,7 @@
 
             // Cascade credentials synchronization across all matching metrics
             if (oldUserRecord.email !== editEmail || oldUserRecord.name !== editName) {
-                await supabase
+                await dbInstance
                     .from('assignments')
                     .update({ assigned_to: editName, employee_email: editEmail })
                     .eq('employee_email', oldUserRecord.email);
@@ -697,7 +704,7 @@
             const newTaskId = Date.now();
 
             // Insert into Supabase table mapping
-            const { error } = await supabase
+            const { error } = await dbInstance
                 .from('assignments')
                 .insert([{
                     id: newTaskId,
@@ -748,7 +755,7 @@
             }
 
             // Update assignment status directly inside Supabase
-            await supabase
+            await dbInstance
                 .from('assignments')
                 .update({ status: newStatus, asset_link: assetLinkVal })
                 .eq('id', id);
@@ -772,7 +779,7 @@
                 await pushLogEntry(`Manager flagged row state [${targetTask.topic}] to ${nextStatus}. Feedback: ${explanationText}`);
             }
 
-            await supabase
+            await dbInstance
                 .from('assignments')
                 .update({ status: nextStatus, explanation: feedbackLog })
                 .eq('id', id);
@@ -794,7 +801,7 @@
             
             if(newStatus !== 'Completed' && newStatus !== 'Rework Required') assetLinkVal = "";
 
-            await supabase
+            await dbInstance
                 .from('assignments')
                 .update({ status: newStatus, explanation: feedbackLog, asset_link: assetLinkVal })
                 .eq('id', id);
@@ -805,7 +812,7 @@
 
         async function deleteAssignment(id) {
             if(confirm("Delete this pipeline entity row item completely?")) {
-                const { error } = await supabase.from('assignments').delete().eq('id', id);
+                const { error } = await dbInstance.from('assignments').delete().eq('id', id);
                 if (!error) await syncLedgerEngine(false);
             }
         }
@@ -859,7 +866,7 @@
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             
             // Push Log straightforwardly into Supabase cloud log infrastructure
-            await supabase.from('system_logs').insert([{ time: ts, text }]);
+            await dbInstance.from('system_logs').insert([{ time: ts, text }]);
         }
 
         function renderLogFeed() {
