@@ -412,7 +412,7 @@
         const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         
-        // YOUR LIVE INTERACTIVE GOOGLE APPS SCRIPT APP URL
+        // LIVE AUTHENTICATED INTERACTIVE GOOGLE APPS SCRIPT APP URL
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBf_odJqiJEKxJm2vPtXwP8C1H-mICXte5W3nOGhafr-GuZ_X9oPN9Tgkz9p1-ZxWr/exec";
 
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -430,7 +430,7 @@
         let internalLogs = [];
         let loadedTaskIdsSnapshot = [];
 
-        // Global State Filters Configuration
+        // Global Tracking State Filters
         let globalYearFilter = 'all';
         let globalMonthFilter = 'all';
         let globalCategoryFilter = 'all';
@@ -446,7 +446,7 @@
             renderTableRows();
         }
 
-        // Base64 Binary Stream Converter hook for Google Drive uploads
+        // Base64 Binary Stream Converter logic for all direct Google Drive submissions
         async function uploadToGoogleDrive(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -465,13 +465,13 @@
                         if (resData.success) {
                             resolve(resData.fileUrl);
                         } else {
-                            reject(new Error(resData.error || 'Apps Script Route Error'));
+                            reject(new Error(resData.error || 'Apps Script Core Error'));
                         }
                     } catch (err) {
                         reject(err);
                     }
                 };
-                reader.onerror = () => reject(new Error('File conversion sequence broke.'));
+                reader.onerror = () => reject(new Error('File conversion matrix failed'));
                 reader.readAsDataURL(file);
             });
         }
@@ -603,7 +603,6 @@
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
                 document.getElementById('employee-notification-banner').classList.add('hidden');
             } else {
-                // SECURITY ENHANCEMENT: Hide assignment block panel explicitly from employees
                 document.getElementById('admin-assignment-panel').classList.add('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
@@ -843,6 +842,7 @@
             document.getElementById('task-ref-preview').classList.add('hidden');
         }
 
+        // UPGRADE: Routes managers' reference attachments straight to Google Drive
         async function uploadRefFile(file) {
             return await uploadToGoogleDrive(file);
         }
@@ -866,10 +866,21 @@
             const fileInput = document.getElementById('task-ref-file');
             const file = fileInput ? fileInput.files[0] : null;
             if(file) {
+                const assignPanel = document.getElementById('admin-assignment-panel');
+                const originalBtn = assignPanel.querySelector('button[onclick="createWorkAssignment()"]');
+                
                 try {
+                    originalBtn.disabled = true;
+                    originalBtn.innerText = "Uploading Reference to Drive...";
                     refFileUrl = await uploadRefFile(file);
                 } catch(e) {
-                    alert('Reference file upload failed: ' + e.message); return;
+                    alert('Reference file upload failed: ' + e.message); 
+                    originalBtn.disabled = false;
+                    originalBtn.innerText = "Assign Work Project";
+                    return;
+                } finally {
+                    originalBtn.disabled = false;
+                    originalBtn.innerText = "Assign Work Project";
                 }
             }
 
@@ -1185,7 +1196,7 @@
             lucide.createIcons();
         }
 
-        // Live Google Drive Public URL Preview Parser Hook Engine
+        // Live Google Drive Public Preview Module
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
@@ -1278,12 +1289,11 @@
 
             if(targetTasks.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this filtered parameter mix.</td></tr>`;
-                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
+                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this parameter configuration cycle.</p>`;
                 return;
             }
 
             targetTasks.forEach(t => {
-                // Dynamic Status Coloring Engine Mapping
                 let badgeColor = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20";
                 let statusDropdownStyles = "text-yellow-400 bg-yellow-400/10 border border-yellow-500/30";
                 
@@ -1384,6 +1394,11 @@
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Target Deadline</p><p class="font-mono text-orange-400 font-semibold">${t.date}</p></div>
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Delivery Link</p><div class="mt-1">${outputLinkBtn}</div></div>
                     </div>
+                    ${t.referenceFile ? `
+                    <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-blue-500/20">
+                        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-wide mb-1.5">Reference File from Manager:</p>
+                        ${buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic)}
+                    </div>` : ''}
                     <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-[#1e2238]/40 space-y-1">
                         <p class="text-gray-400 font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
                         <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
