@@ -237,9 +237,50 @@
                 <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     
                     <div class="lg:col-span-3 space-y-4">
-                        <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
-                            <i data-lucide="list-todo" class="text-orange-500"></i> Active Pipeline Sheet
-                        </h3>
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
+                                <i data-lucide="list-todo" class="text-orange-500"></i> Active Pipeline Sheet
+                            </h3>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs">
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
+                                <select id="filter-year" onchange="triggerPipelineMatrixUpdate()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                                    <option value="all">All Years</option>
+                                    <option value="2026">2026</option>
+                                    <option value="2025">2025</option>
+                                    <option value="2024">2024</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Month:</span>
+                                <select id="filter-month" onchange="triggerPipelineMatrixUpdate()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                                    <option value="all">All Months</option>
+                                    <option value="01">January</option>
+                                    <option value="02">February</option>
+                                    <option value="03">March</option>
+                                    <option value="04">April</option>
+                                    <option value="05">May</option>
+                                    <option value="06">June</option>
+                                    <option value="07">July</option>
+                                    <option value="08">August</option>
+                                    <option value="09">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2 sm:ml-auto">
+                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Sort Matrix:</span>
+                                <select id="sort-config" onchange="triggerPipelineMatrixUpdate()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                                    <option value="assignedDate-desc">Assigned Date (Newest First)</option>
+                                    <option value="assignedDate-asc">Assigned Date (Oldest First)</option>
+                                    <option value="date-desc">Deadline Target (Newest First)</option>
+                                    <option value="date-asc">Deadline Target (Oldest First)</option>
+                                </select>
+                            </div>
+                        </div>
                         
                         <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
                             <table class="w-full text-left border-collapse text-xs">
@@ -251,7 +292,7 @@
                                         <th class="py-3.5 px-4">Description Info</th>
                                         <th class="py-3.5 px-4">Assigned Date</th>
                                         <th class="py-3.5 px-4">Target Date</th>
-                                        <th class="py-3.5 px-4">Status</th>
+                                        <th class="py-3.5 px-4">Status Engine</th>
                                         <th class="py-3.5 px-4">Explanation Log</th>
                                         <th class="py-3.5 px-4">Delivery Output</th>
                                         <th class="py-3.5 px-4">Reference File</th>
@@ -366,6 +407,18 @@
         let assignmentsList = [];
         let internalLogs = [];
         let loadedTaskIdsSnapshot = [];
+
+        // Dynamic State Tracking for Filter Engine
+        let globalYearFilter = 'all';
+        let globalMonthFilter = 'all';
+        let globalSortConfig = 'assignedDate-desc';
+
+        function triggerPipelineMatrixUpdate() {
+            globalYearFilter = document.getElementById('filter-year').value;
+            globalMonthFilter = document.getElementById('filter-month').value;
+            globalSortConfig = document.getElementById('sort-config').value;
+            renderTableRows();
+        }
 
         async function syncLedgerEngine(forcedByUser = false) {
             try {
@@ -545,7 +598,7 @@
                 container.className = "grid grid-cols-2 lg:grid-cols-4 gap-4";
                 container.innerHTML = `
                     <div class="card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-blue-500/10 text-blue-400"><i data-lucide="clock" class="w-5 h-5"></i></div>
+                        <div class="p-2.5 rounded-lg bg-yellow-500/10 text-yellow-400"><i data-lucide="clock" class="w-5 h-5"></i></div>
                         <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Pending Tasks</p><h3 class="text-lg font-bold text-white">${pending}</h3></div>
                     </div>
                     <div class="card p-4 rounded-xl flex items-center gap-3">
@@ -1115,14 +1168,12 @@
             lucide.createIcons();
         }
 
-        // Upgraded helper to seamlessly process cloud URLs as native interactive elements
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
             const sanitizedName = topicName.replace(/\s+/g, '_');
             const lowercaseAsset = assetString.toLowerCase();
             
-            // Check if link points to an image file or a video file extension
             const isCloudImage = lowercaseAsset.includes('.png') || lowercaseAsset.includes('.jpg') || lowercaseAsset.includes('.jpeg') || lowercaseAsset.includes('.webp') || lowercaseAsset.includes('.gif') || assetString.startsWith('data:image');
             const isCloudVideo = lowercaseAsset.includes('.mp4') || lowercaseAsset.includes('.mov') || lowercaseAsset.includes('.webm') || lowercaseAsset.includes('.mkv') || assetString.startsWith('data:video');
 
@@ -1145,7 +1196,6 @@
                     </div>
                 `;
             } else {
-                // Return standard external link anchor fallback
                 return `
                     <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1">
                         <i data-lucide="external-link" class="w-3 h-3"></i> View Link
@@ -1168,18 +1218,59 @@
                 targetTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             }
 
+            // FILTER BY YEAR MAPPING (assigned_date format: YYYY-MM-DD)
+            if (globalYearFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => t.assignedDate && t.assignedDate.startsWith(globalYearFilter));
+            }
+
+            // FILTER BY MONTH MAPPING
+            if (globalMonthFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => {
+                    if (!t.assignedDate) return false;
+                    const trackingSegments = t.assignedDate.split('-');
+                    return trackingSegments[1] === globalMonthFilter;
+                });
+            }
+
+            // MULTI-ORDER WORKBOOK ENGINE SORT CONFIG
+            const [sortingField, sortingDirection] = globalSortConfig.split('-');
+            targetTasks.sort((firstItem, secondItem) => {
+                let variableA = firstItem[sortingField] || '';
+                let variableB = secondItem[sortingField] || '';
+                if (sortingDirection === 'asc') {
+                    return variableA.localeCompare(variableB);
+                } else {
+                    return variableB.localeCompare(variableA);
+                }
+            });
+
             if(targetTasks.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty.</td></tr>`;
-                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty.</p>`;
+                tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this month/year cycle.</td></tr>`;
+                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
                 return;
             }
 
             targetTasks.forEach(t => {
+                // DYNAMIC PIPELINE MATRIX RE-COLOR HOOK
                 let badgeColor = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20";
-                if (t.status === 'In Progress') badgeColor = "text-blue-400 bg-blue-400/10 border border-blue-400/20";
-                if (t.status === 'Completed') badgeColor = "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20";
-                if (t.status === 'Rework Required') badgeColor = "text-orange-400 bg-orange-400/10 border border-orange-400/20";
-                if (t.status === 'Rejected') badgeColor = "text-red-500 bg-red-500/10 border border-red-500/20";
+                let statusDropdownStyles = "text-yellow-400 bg-yellow-400/10 border border-yellow-500/30";
+                
+                if (t.status === 'In Progress') {
+                    badgeColor = "text-blue-400 bg-blue-400/10 border border-blue-400/20";
+                    statusDropdownStyles = "text-blue-400 bg-blue-400/10 border border-blue-500/30";
+                }
+                if (t.status === 'Completed') {
+                    badgeColor = "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20";
+                    statusDropdownStyles = "text-emerald-400 bg-emerald-400/10 border border-emerald-500/30";
+                }
+                if (t.status === 'Rework Required') {
+                    badgeColor = "text-orange-400 bg-orange-400/10 border border-orange-400/20";
+                    statusDropdownStyles = "text-orange-400 bg-orange-400/10 border border-orange-500/30";
+                }
+                if (t.status === 'Rejected') {
+                    badgeColor = "text-red-500 bg-red-500/10 border border-red-500/20";
+                    statusDropdownStyles = "text-red-400 bg-red-400/10 border border-red-500/30";
+                }
 
                 let isRejected = (t.status === 'Rejected');
                 let isNewRealtimeItem = !loadedTaskIdsSnapshot.includes(t.id);
@@ -1187,10 +1278,10 @@
                 let inputActionSelectorMarkup = '';
                 if (activeRole === 'employee') {
                     if (isRejected) {
-                        inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-red-500/10 text-red-400 font-bold border border-red-500/20 text-[10px] uppercase tracking-wide">🔒 Locked Rejection</span>`;
+                        inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-red-500/10 text-red-400 font-bold border border-red-500/20 text-[10px] uppercase tracking-wide">🔒 Locked</span>`;
                     } else {
                         inputActionSelectorMarkup = `
-                            <select onchange="employeeHandleStatusChange(${t.id}, this.value)" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-xs text-orange-400 focus:outline-none">
+                            <select onchange="employeeHandleStatusChange(${t.id}, this.value)" class="bg-[#0b0d19] border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none ${statusDropdownStyles}">
                                 <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
                                 <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                                 <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
@@ -1199,7 +1290,7 @@
                     }
                 } else if (activeRole === 'manager') {
                     inputActionSelectorMarkup = `
-                        <select onchange="managerHandleWorkflowEvaluation(${t.id}, this.value)" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-xs text-purple-400 font-bold focus:outline-none">
+                        <select onchange="managerHandleWorkflowEvaluation(${t.id}, this.value)" class="bg-[#0b0d19] border rounded-lg px-2 py-1 text-xs font-bold focus:outline-none ${statusDropdownStyles}">
                             <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
                             <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                             <option value="Rework Required" ${t.status === 'Rework Required' ? 'selected' : ''}>🔄 Rework</option>
@@ -1209,7 +1300,7 @@
                     `;
                 } else {
                     inputActionSelectorMarkup = `
-                        <select onchange="adminUpdateStatusDirectly(${t.id}, this.value)" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-xs text-orange-400 focus:outline-none">
+                        <select onchange="adminUpdateStatusDirectly(${t.id}, this.value)" class="bg-[#0b0d19] border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none ${statusDropdownStyles}">
                             <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
                             <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                             <option value="Rework Required" ${t.status === 'Rework Required' ? 'selected' : ''}>Rework Required</option>
