@@ -178,7 +178,7 @@
                     </div>
                 </div>
 
-                <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 </div>
 
                 <div id="admin-assignment-panel" class="card p-4 md:p-6 rounded-2xl space-y-4 hidden">
@@ -243,6 +243,7 @@
                             </h3>
                         </div>
 
+                        <!-- MONTH, YEAR, CLASSIFICATION AND STATUS FILTER PANEL -->
                         <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
@@ -271,8 +272,28 @@
                                     <option value="12">December</option>
                                 </select>
                             </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Type:</span>
+                                <select id="filter-category" onchange="triggerPipelineMatrixUpdate()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                                    <option value="all">All Types</option>
+                                    <option value="Video Editing">🎬 Video Editing</option>
+                                    <option value="Thumbnail">🖼️ Thumbnail Design</option>
+                                    <option value="Poster Design">🎨 Poster Design</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Status:</span>
+                                <select id="filter-status" onchange="triggerPipelineMatrixUpdate()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                                    <option value="all">All States</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Rework Required">Rework Required</option>
+                                    <option value="Rejected">Rejected</option>
+                                </select>
+                            </div>
                             <div class="flex items-center gap-2 sm:ml-auto">
-                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Sort Matrix:</span>
+                                <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Sort Order:</span>
                                 <select id="sort-config" onchange="triggerPipelineMatrixUpdate()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
                                     <option value="assignedDate-desc">Assigned Date (Newest First)</option>
                                     <option value="assignedDate-asc">Assigned Date (Oldest First)</option>
@@ -411,11 +432,15 @@
         // Dynamic State Tracking for Filter Engine
         let globalYearFilter = 'all';
         let globalMonthFilter = 'all';
+        let globalCategoryFilter = 'all';
+        let globalStatusFilter = 'all';
         let globalSortConfig = 'assignedDate-desc';
 
         function triggerPipelineMatrixUpdate() {
             globalYearFilter = document.getElementById('filter-year').value;
             globalMonthFilter = document.getElementById('filter-month').value;
+            globalCategoryFilter = document.getElementById('filter-category').value;
+            globalStatusFilter = document.getElementById('filter-status').value;
             globalSortConfig = document.getElementById('sort-config').value;
             renderTableRows();
         }
@@ -591,46 +616,61 @@
             if(activeRole === 'employee') {
                 let myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
                 let pending = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
-                let completed = myTasks.filter(t => t.status === 'Completed').length;
+                let compVideos = myTasks.filter(t => t.status === 'Completed' && t.type === 'Video Editing').length;
+                let compThumbs = myTasks.filter(t => t.status === 'Completed' && t.type === 'Thumbnail').length;
+                let compPosters = myTasks.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
                 let reworks = myTasks.filter(t => t.status === 'Rework Required').length;
-                let rejected = myTasks.filter(t => t.status === 'Rejected').length;
 
-                container.className = "grid grid-cols-2 lg:grid-cols-4 gap-4";
+                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4";
                 container.innerHTML = `
                     <div class="card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-yellow-500/10 text-yellow-400"><i data-lucide="clock" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Pending Tasks</p><h3 class="text-lg font-bold text-white">${pending}</h3></div>
+                        <div class="p-2.5 rounded-lg bg-blue-500/10 text-blue-400"><i data-lucide="clock" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Active Queue</p><h3 class="text-lg font-bold text-white">${pending}</h3></div>
                     </div>
                     <div class="card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="check-circle" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Completed</p><h3 class="text-lg font-bold text-white">${completed}</h3></div>
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="clapperboard" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Done Videos</p><h3 class="text-lg font-bold text-white">${compVideos}</h3></div>
+                    </div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="image" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Done Thumbs</p><h3 class="text-lg font-bold text-white">${compThumbs}</h3></div>
+                    </div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="palette" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Done Posters</p><h3 class="text-lg font-bold text-white">${compPosters}</h3></div>
                     </div>
                     <div class="card p-4 rounded-xl flex items-center gap-3">
                         <div class="p-2.5 rounded-lg bg-orange-500/10 text-orange-400"><i data-lucide="refresh-cw" class="w-5 h-5"></i></div>
                         <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Rework Phase</p><h3 class="text-lg font-bold text-white">${reworks}</h3></div>
                     </div>
-                    <div class="card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-red-500/10 text-red-400"><i data-lucide="alert-triangle" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Rejected Work</p><h3 class="text-lg font-bold text-white">${rejected}</h3></div>
-                    </div>
                 `;
             } else {
                 let activeTasksCount = assignmentsList.filter(t => t.status !== 'Completed').length;
-                let completedCount = assignmentsList.filter(t => t.status === 'Completed').length;
+                let compVideos = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Video Editing').length;
+                let compThumbs = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Thumbnail').length;
+                let compPosters = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
 
-                container.className = "grid grid-cols-1 sm:grid-cols-3 gap-4";
+                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4";
                 container.innerHTML = `
-                    <div class="card p-4 rounded-xl flex items-center gap-4">
-                        <div class="p-3 rounded-xl bg-blue-500/10 text-blue-400"><i data-lucide="users" class="w-5 h-5 md:w-6 h-6"></i></div>
-                        <div><p class="text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider">Studio Team Active Crew</p><h3 class="text-xl md:text-2xl font-bold text-white">${userRoster.length}</h3></div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-blue-500/10 text-blue-400"><i data-lucide="users" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Active Crew</p><h3 class="text-lg font-bold text-white">${userRoster.length}</h3></div>
                     </div>
-                    <div class="card p-4 rounded-xl flex items-center gap-4">
-                        <div class="p-3 rounded-xl bg-orange-500/10 text-orange-400"><i data-lucide="video" class="w-5 h-5 md:w-6 h-6"></i></div>
-                        <div><p class="text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider">Active Pipeline Rows</p><h3 class="text-xl md:text-2xl font-bold text-white">${activeTasksCount}</h3></div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-orange-500/10 text-orange-400"><i data-lucide="video" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Active Pipeline</p><h3 class="text-lg font-bold text-white">${activeTasksCount}</h3></div>
                     </div>
-                    <div class="card p-4 rounded-xl flex items-center gap-4">
-                        <div class="p-3 rounded-xl bg-emerald-500/10 text-emerald-400"><i data-lucide="check-circle" class="w-5 h-5 md:w-6 h-6"></i></div>
-                        <div><p class="text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider">Approved Deliveries</p><h3 class="text-xl md:text-2xl font-bold text-white">${completedCount}</h3></div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="clapperboard" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Done Videos</p><h3 class="text-lg font-bold text-white">${compVideos}</h3></div>
+                    </div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="image" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Done Thumbs</p><h3 class="text-lg font-bold text-white">${compThumbs}</h3></div>
+                    </div>
+                    <div class="card p-4 rounded-xl flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="palette" class="w-5 h-5"></i></div>
+                        <div><p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Done Posters</p><h3 class="text-lg font-bold text-white">${compPosters}</h3></div>
                     </div>
                 `;
             }
@@ -889,7 +929,6 @@
                 
                 const selectedFile = fileInput.files[0];
                 
-                // Block if user uploads something absolute crazy over 60MB
                 if (selectedFile.size > 60 * 1024 * 1024) {
                     alert("File size limit warning: Please limit asset uploads to 60MB.");
                     return;
@@ -898,11 +937,9 @@
                 submitBtn.disabled = true;
                 submitBtn.innerText = "Uploading to Cloud Storage...";
 
-                // Generate clean non-clashing unique cloud path name
                 const fileExtension = selectedFile.name.split('.').pop();
                 const cloudFilePath = `${currentTargetTaskId}_${Date.now()}.${fileExtension}`;
 
-                // Upload direct file binary to Supabase Public Bucket System
                 const { data: uploadData, error: uploadError } = await dbInstance
                     .storage
                     .from(STORAGE_BUCKET_NAME)
@@ -919,7 +956,6 @@
                     return;
                 }
 
-                // Construct clean immutable direct public link URL
                 const { data: publicUrlData } = dbInstance
                     .storage
                     .from(STORAGE_BUCKET_NAME)
@@ -1020,7 +1056,6 @@
             if(confirm("Delete this pipeline entity row item completely?")) {
                 const targetTask = assignmentsList.find(t => t.id == id);
                 
-                // If it contains a cloud storage file link, clean up the bucket space
                 if (targetTask && targetTask.assetLink && targetTask.assetLink.includes('/storage/v1/object/public/')) {
                     try {
                         const fileUrlSegments = targetTask.assetLink.split('/');
@@ -1232,7 +1267,17 @@
                 });
             }
 
-            // MULTI-ORDER WORKBOOK ENGINE SORT CONFIG
+            // FILTER BY WORK TYPE CLASSIFICATION
+            if (globalCategoryFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => t.type && t.type.includes(globalCategoryFilter));
+            }
+
+            // FILTER BY STATUS Engine STATE
+            if (globalStatusFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => t.status === globalStatusFilter);
+            }
+
+            // MULTI-ORDER SORT CONFIG ENGINE
             const [sortingField, sortingDirection] = globalSortConfig.split('-');
             targetTasks.sort((firstItem, secondItem) => {
                 let variableA = firstItem[sortingField] || '';
@@ -1245,13 +1290,12 @@
             });
 
             if(targetTasks.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this month/year cycle.</td></tr>`;
-                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
+                tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this filtered parameter mix.</td></tr>`;
+                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this parameter configuration cycle.</p>`;
                 return;
             }
 
             targetTasks.forEach(t => {
-                // DYNAMIC PIPELINE MATRIX RE-COLOR HOOK
                 let badgeColor = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20";
                 let statusDropdownStyles = "text-yellow-400 bg-yellow-400/10 border border-yellow-500/30";
                 
@@ -1318,7 +1362,7 @@
                 desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
                     <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
-                    <td class="py-3 px-4"><span>${t.type}</span></td>
+                    <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
                     <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail}</span></td>
                     <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
                     <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
