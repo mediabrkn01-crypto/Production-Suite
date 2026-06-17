@@ -89,7 +89,7 @@
                             External URL Link
                         </button>
                         <button id="btn-method-file" onclick="setDeliveryMethod('file')" class="py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider transition bg-[#0b0d19] border-[#1e2238] text-gray-400 hover:text-white">
-                            Cloud Storage Upload
+                            Google Drive Upload
                         </button>
                     </div>
                 </div>
@@ -100,7 +100,7 @@
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
                     <label class="text-gray-400 text-[11px] font-bold uppercase block">Upload Video or Image Asset (Up to 50MB)</label>
                     <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30">
-                    <p class="text-[10px] text-gray-500 italic">Assets are routed to cloud infrastructure instantly. Preserves high quality layout frames.</p>
+                    <p class="text-[10px] text-gray-500 italic">Assets are routed to your designated Google Drive infrastructure instantly.</p>
                 </div>
                 <button id="btn-submit-delivery" onclick="submitAssetDeliveryAction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
                     <i data-lucide="cloud-upload" class="w-4 h-4"></i> Deploy Work Package
@@ -243,7 +243,6 @@
                             </h3>
                         </div>
 
-                        <!-- MONTH, YEAR, CLASSIFICATION AND STATUS FILTER PANEL -->
                         <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
@@ -412,7 +411,9 @@
         // Configuration Parameters
         const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
-        const STORAGE_BUCKET_NAME = "production-assets";
+        
+        // YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP ROUTER URL
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBf_odJqiJEKxJm2vPtXwP8C1H-mICXte5W3nOGhafr-GuZ_X9oPN9Tgkz9p1-ZxWr/exec";
 
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -443,6 +444,36 @@
             globalStatusFilter = document.getElementById('filter-status').value;
             globalSortConfig = document.getElementById('sort-config').value;
             renderTableRows();
+        }
+
+        // Base64 Helper Engine for Direct Google Drive Storage Submissions
+        async function uploadToGoogleDrive(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    const base64Data = e.target.result.split(',')[1];
+                    try {
+                        const response = await fetch(GOOGLE_SCRIPT_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                fileName: file.name,
+                                mimeType: file.type,
+                                base64: base64Data
+                            })
+                        });
+                        const resData = await response.json();
+                        if (resData.success) {
+                            resolve(resData.fileUrl);
+                        } else {
+                            reject(new Error(resData.error || 'Apps Script Upload Rejected'));
+                        }
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                reader.onerror = () => reject(new Error('File conversion matrix failed'));
+                reader.readAsDataURL(file);
+            });
         }
 
         async function syncLedgerEngine(forcedByUser = false) {
@@ -812,14 +843,7 @@
         }
 
         async function uploadRefFile(file) {
-            const ext = file.name.split('.').pop();
-            const fileName = `ref_${Date.now()}.${ext}`;
-            const { error } = await dbInstance.storage
-                .from('task-references')
-                .upload(fileName, file, { upsert: true, contentType: file.type });
-            if(error) throw new Error(error.message);
-            const { data } = dbInstance.storage.from('task-references').getPublicUrl(fileName);
-            return data.publicUrl;
+            return await uploadToGoogleDrive(file);
         }
 
         async function createWorkAssignment() {
@@ -877,7 +901,6 @@
             await syncLedgerEngine(false);
         }
 
-        // Integrated Asset Modal Flow Controls
         function setDeliveryMethod(method) {
             selectedDeliveryMethod = method;
             const btnLink = document.getElementById('btn-method-link');
@@ -935,33 +958,17 @@
                 }
 
                 submitBtn.disabled = true;
-                submitBtn.innerText = "Uploading to Cloud Storage...";
+                submitBtn.innerText = "Uploading to Google Drive...";
 
-                const fileExtension = selectedFile.name.split('.').pop();
-                const cloudFilePath = `${currentTargetTaskId}_${Date.now()}.${fileExtension}`;
-
-                const { data: uploadData, error: uploadError } = await dbInstance
-                    .storage
-                    .from(STORAGE_BUCKET_NAME)
-                    .upload(cloudFilePath, selectedFile, {
-                        cacheControl: '3600',
-                        upsert: true
-                    });
-
-                if (uploadError) {
-                    console.error("Cloud Upload Error details: ", uploadError);
-                    alert("Storage Error: Failed to push file package into cloud destination bucket.");
+                try {
+                    finalPayloadValue = await uploadToGoogleDrive(selectedFile);
+                } catch (uploadError) {
+                    console.error("Google Drive Upload Error: ", uploadError);
+                    alert("Storage Error: Failed to push package into Google Drive target destination.");
                     submitBtn.disabled = false;
                     submitBtn.innerText = "Deploy Work Package";
                     return;
                 }
-
-                const { data: publicUrlData } = dbInstance
-                    .storage
-                    .from(STORAGE_BUCKET_NAME)
-                    .getPublicUrl(cloudFilePath);
-
-                finalPayloadValue = publicUrlData.publicUrl;
             }
 
             await dbInstance
@@ -993,7 +1000,7 @@
 
             if (newStatus === "Completed") {
                 currentTargetTaskId = id;
-                setDeliveryMethod('link');
+                setDeliveryMethod('file');
                 document.getElementById('asset-delivery-modal').classList.remove('hidden');
                 lucide.createIcons();
             } else {
@@ -1054,21 +1061,12 @@
 
         async function deleteAssignment(id) {
             if(confirm("Delete this pipeline entity row item completely?")) {
-                const targetTask = assignmentsList.find(t => t.id == id);
-                
-                if (targetTask && targetTask.assetLink && targetTask.assetLink.includes('/storage/v1/object/public/')) {
-                    try {
-                        const fileUrlSegments = targetTask.assetLink.split('/');
-                        const fileNameInBucket = fileUrlSegments[fileUrlSegments.length - 1];
-                        await dbInstance.storage.from(STORAGE_BUCKET_NAME).remove([fileNameInBucket]);
-                    } catch(e) { console.error("Cloud storage cleanup hook error:", e); }
-                }
-
-                const { error } = await dbInstance.from('assignments').delete().eq('id', id);
-                if (!error) await syncLedgerEngine(false);
+                await dbInstance.from('assignments').delete().eq('id', id);
+                await syncLedgerEngine(false);
             }
         }
 
+        // CSV Download Module
         function downloadWorkbookCSV() {
             if (activeRole !== 'admin' && activeRole !== 'manager') { return; }
             if (assignmentsList.length === 0) { alert("Matrix ledger data empty."); return; }
@@ -1117,22 +1115,6 @@
             const now = new Date();
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             await dbInstance.from('system_logs').insert([{ time: ts, text }]);
-        }
-
-        function downloadDirectPublicAsset(url, filename) {
-            fetch(url)
-                .then(response => response.blob())
-                .then(blob => {
-                    const blobUrl = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = blobUrl;
-                    link.download = filename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(blobUrl);
-                })
-                .catch(() => window.open(url, '_blank'));
         }
 
         function renderLogFeed() {
@@ -1203,40 +1185,50 @@
             lucide.createIcons();
         }
 
+        // Upgraded Google Drive Preview Engine
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
-            const sanitizedName = topicName.replace(/\s+/g, '_');
             const lowercaseAsset = assetString.toLowerCase();
             
-            const isCloudImage = lowercaseAsset.includes('.png') || lowercaseAsset.includes('.jpg') || lowercaseAsset.includes('.jpeg') || lowercaseAsset.includes('.webp') || lowercaseAsset.includes('.gif') || assetString.startsWith('data:image');
-            const isCloudVideo = lowercaseAsset.includes('.mp4') || lowercaseAsset.includes('.mov') || lowercaseAsset.includes('.webm') || lowercaseAsset.includes('.mkv') || assetString.startsWith('data:video');
-
-            if (isCloudVideo) {
-                return `
-                    <div class="flex flex-col gap-1.5 max-w-[140px]">
-                        <video src="${assetString}" preload="metadata" controls class="w-32 h-auto rounded border border-[#1e2238] bg-black"></video>
-                        <button onclick="downloadDirectPublicAsset('${assetString}', 'Delivery_${sanitizedName}.mp4')" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
-                            <i data-lucide="download" class="w-3 h-3"></i> Download Video
-                        </button>
-                    </div>
-                `;
-            } else if (isCloudImage) {
-                return `
-                    <div class="flex flex-col gap-1.5 max-w-[140px]">
-                        <img src="${assetString}" alt="Asset Preview" class="w-32 h-auto object-cover rounded border border-[#1e2238]" loading="lazy"/>
-                        <button onclick="downloadDirectPublicAsset('${assetString}', 'Delivery_${sanitizedName}.png')" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
-                            <i data-lucide="download" class="w-3 h-3"></i> Download Image
-                        </button>
-                    </div>
-                `;
-            } else {
-                return `
-                    <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1">
-                        <i data-lucide="external-link" class="w-3 h-3"></i> View Link
-                    </a>
-                `;
+            if (lowercaseAsset.includes('drive.google.com')) {
+                let fileId = '';
+                const idMatch = assetString.match(/\/d\/([a-zA-Z0-9-_]+)/) || assetString.match(/id=([a-zA-Z0-9-_]+)/);
+                if (idMatch && idMatch[1]) {
+                    fileId = idMatch[1];
+                }
+                
+                if (fileId) {
+                    const isVideoTask = topicName.toLowerCase().includes('reel') || topicName.toLowerCase().includes('video') || topicName.toLowerCase().includes('clip') || topicName.toLowerCase().includes('edit');
+                    
+                    if (isVideoTask) {
+                        return `
+                            <div class="flex flex-col gap-1.5 max-w-[140px]">
+                                <iframe src="https://drive.google.com/file/d/${fileId}/preview" class="w-32 h-24 rounded border border-[#1e2238] bg-black" allow="autoplay"></iframe>
+                                <a href="${assetString}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
+                                    <i data-lucide="external-link" class="w-3 h-3"></i> Open Drive
+                                </a>
+                            </div>
+                        `;
+                    } else {
+                        const driveImgUrl = `https://docs.google.com/uc?export=view&id=${fileId}`;
+                        return `
+                            <div class="flex flex-col gap-1.5 max-w-[140px]">
+                                <img src="${driveImgUrl}" alt="Asset Preview" class="w-32 h-auto object-cover rounded border border-[#1e2238]" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<a href=\'${assetString}\' target=\'_blank\' class=\'bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold text-center text-[10px]\'>View Asset Link</a>'"/>
+                                <a href="${assetString}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
+                                    <i data-lucide="external-link" class="w-3 h-3"></i> Open Drive
+                                </a>
+                            </div>
+                        `;
+                    }
+                }
             }
+
+            return `
+                <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1">
+                    <i data-lucide="external-link" class="w-3 h-3"></i> View Link
+                </a>
+            `;
         }
 
         function renderTableRows() {
@@ -1253,12 +1245,10 @@
                 targetTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             }
 
-            // FILTER BY YEAR MAPPING (assigned_date format: YYYY-MM-DD)
             if (globalYearFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => t.assignedDate && t.assignedDate.startsWith(globalYearFilter));
             }
 
-            // FILTER BY MONTH MAPPING
             if (globalMonthFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => {
                     if (!t.assignedDate) return false;
@@ -1267,17 +1257,14 @@
                 });
             }
 
-            // FILTER BY WORK TYPE CLASSIFICATION
             if (globalCategoryFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => t.type && t.type.includes(globalCategoryFilter));
             }
 
-            // FILTER BY STATUS Engine STATE
             if (globalStatusFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => t.status === globalStatusFilter);
             }
 
-            // MULTI-ORDER SORT CONFIG ENGINE
             const [sortingField, sortingDirection] = globalSortConfig.split('-');
             targetTasks.sort((firstItem, secondItem) => {
                 let variableA = firstItem[sortingField] || '';
@@ -1355,7 +1342,6 @@
                 }
 
                 const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
-                const refFileBtn = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
                 const refFileBtnDesktop = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
 
                 let desktopRow = document.createElement('tr');
@@ -1397,11 +1383,6 @@
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Target Deadline</p><p class="font-mono text-orange-400 font-semibold">${t.date}</p></div>
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Delivery Link</p><div class="mt-1">${outputLinkBtn}</div></div>
                     </div>
-                    ${refFileBtn !== '<span class="text-gray-500 italic text-[11px]">No deliverable</span>' ? `
-                    <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-blue-500/20">
-                        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-wide mb-1.5">Reference File from Manager:</p>
-                        ${refFileBtn}
-                    </div>` : ''}
                     <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-[#1e2238]/40 space-y-1">
                         <p class="text-gray-400 font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
                         <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
