@@ -213,8 +213,21 @@
                         <label class="text-gray-400 text-[11px] block mb-1">Work Instructions & Description Details</label>
                         <textarea id="task-description" rows="2" placeholder="Describe references, aspect ratio requirements, text fonts, etc..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 resize-none"></textarea>
                     </div>
+                    <div>
+                        <label class="text-gray-400 text-[11px] block mb-1">Reference File — optional (thumbnail sketch, poster reference, image)</label>
+                        <label id="task-ref-label" class="flex items-center gap-2 cursor-pointer bg-[#0b0d19] border border-dashed border-[#1e2238] hover:border-orange-500 rounded-xl px-3 py-2.5 text-xs text-gray-400 hover:text-white transition">
+                            <i data-lucide="upload" class="w-4 h-4 flex-shrink-0"></i>
+                            <span id="task-ref-text">Click to attach reference image or file</span>
+                            <input type="file" id="task-ref-file" accept="image/*,.pdf" class="hidden" onchange="handleRefFileSelect()"/>
+                        </label>
+                        <div id="task-ref-preview" class="hidden mt-2 flex items-center gap-2 bg-[#0b0d19] border border-blue-500/30 rounded-xl px-3 py-2">
+                            <i data-lucide="file-image" class="w-4 h-4 text-blue-400 flex-shrink-0"></i>
+                            <span id="task-ref-filename" class="text-xs text-blue-300 flex-1 truncate"></span>
+                            <button onclick="clearRefFile()" class="text-gray-500 hover:text-red-400 transition"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-1">
-                        <p class="text-[10px] text-gray-500 italic">Only administrators can construct and route assignments into this workbook ledger.</p>
+                        <p class="text-[10px] text-gray-500 italic">Assign tasks to your team members with optional reference files.</p>
                         <button onclick="createWorkAssignment()" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-xl uppercase tracking-wider transition">
                             Assign Work Project
                         </button>
@@ -481,7 +494,7 @@
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
                 document.getElementById('employee-notification-banner').classList.add('hidden');
             } else {
-                document.getElementById('admin-assignment-panel').classList.add('hidden');
+                document.getElementById('admin-assignment-panel').classList.remove('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
@@ -688,6 +701,34 @@
             populateDropdownSelectors();
         }
 
+        function handleRefFileSelect() {
+            const file = document.getElementById('task-ref-file').files[0];
+            if(!file) return;
+            document.getElementById('task-ref-label').classList.add('border-blue-500/50');
+            document.getElementById('task-ref-text').textContent = file.name;
+            document.getElementById('task-ref-filename').textContent = file.name;
+            document.getElementById('task-ref-preview').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function clearRefFile() {
+            document.getElementById('task-ref-file').value = '';
+            document.getElementById('task-ref-label').classList.remove('border-blue-500/50');
+            document.getElementById('task-ref-text').textContent = 'Click to attach reference image or file';
+            document.getElementById('task-ref-preview').classList.add('hidden');
+        }
+
+        async function uploadRefFile(file) {
+            const ext = file.name.split('.').pop();
+            const fileName = `ref_${Date.now()}.${ext}`;
+            const { error } = await dbInstance.storage
+                .from('task-references')
+                .upload(fileName, file, { upsert: true, contentType: file.type });
+            if(error) throw new Error(error.message);
+            const { data } = dbInstance.storage.from('task-references').getPublicUrl(fileName);
+            return data.publicUrl;
+        }
+
         async function createWorkAssignment() {
             const topic = document.getElementById('task-topic').value.trim();
             const type = document.getElementById('task-type').value;
@@ -703,6 +744,17 @@
             const todayStr = new Date().toISOString().slice(0, 10);
             const newTaskId = Date.now();
 
+            let refFileUrl = '';
+            const fileInput = document.getElementById('task-ref-file');
+            const file = fileInput ? fileInput.files[0] : null;
+            if(file) {
+                try {
+                    refFileUrl = await uploadRefFile(file);
+                } catch(e) {
+                    alert('Reference file upload failed: ' + e.message); return;
+                }
+            }
+
             const { error } = await dbInstance
                 .from('assignments')
                 .insert([{
@@ -716,16 +768,18 @@
                     date: deadlineDate,
                     status: "Pending",
                     explanation: "None",
-                    asset_link: ""
+                    asset_link: "",
+                    reference_file: refFileUrl
                 }]);
 
-            if(error) { alert("Database Error: Failed to push task."); return; }
+            if(error) { alert("Database Error: Failed to push task. " + error.message); return; }
 
             await pushLogEntry(`Configured task: "${topic}" -> Route to ${targetEmpName}`);
 
             document.getElementById('task-topic').value = '';
             document.getElementById('task-description').value = '';
             document.getElementById('task-date').value = '';
+            clearRefFile();
 
             await syncLedgerEngine(false);
         }
