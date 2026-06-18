@@ -94,13 +94,14 @@
                     </div>
                 </div>
                 <div id="wrapper-delivery-link" class="space-y-1">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase block">Production Destination URL Link</label>
-                    <input type="url" id="delivery-url-input" placeholder="https://drive.google.com/..." class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500">
+                    <label class="text-gray-400 text-[11px] font-bold uppercase block">Production Destination URL Links</label>
+                    <textarea id="delivery-url-input" placeholder="Paste links here. (Separate multiple links with commas)" rows="2" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500 resize-none"></textarea>
                 </div>
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase block">Upload Video or Image Asset (Up to 50MB)</label>
-                    <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30">
-                    <p class="text-[10px] text-gray-500 italic">Assets are routed to your designated Google Drive infrastructure instantly.</p>
+                    <label class="text-gray-400 text-[11px] font-bold uppercase block">Upload Video or Image Assets (Up to 50MB each)</label>
+                    <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30" multiple onchange="handleDeliveryFilesSelect()">
+                    <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1 max-h-24 overflow-y-auto"></div>
+                    <p class="text-[10px] text-gray-500 italic">You can select multiple files together. Assets route straight to Google Drive.</p>
                 </div>
                 <button id="btn-submit-delivery" onclick="submitAssetDeliveryAction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
                     <i data-lucide="cloud-upload" class="w-4 h-4"></i> Deploy Work Package
@@ -243,7 +244,6 @@
                             </h3>
                         </div>
 
-                        <!-- ADVANCED FILTER MATRIX CONTROLS PANEL -->
                         <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
@@ -413,8 +413,8 @@
         const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         
-        // LIVE AUTHENTICATED INTERACTIVE GOOGLE APPS SCRIPT APP URL
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBf_odJqiJEKxJm2vPtXwP8C1H-mICXte5W3nOGhafr-GuZ_X9oPN9Tgkz9p1-ZxWr/exec";
+        // INTERACTIVE GOOGLE APPS SCRIPT APP URL ROUTER
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby9RUmf52TWlhuoSQBdePajJwJ0QN0tMDtgdEGgMMjBo2xI5moTHuQj6MOIHVShPhJl/exec";
 
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -605,6 +605,7 @@
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
                 document.getElementById('employee-notification-banner').classList.add('hidden');
             } else {
+                // SECURITY ENHANCEMENT: Hide assignment panel explicitly from employee creator accounts
                 document.getElementById('admin-assignment-panel').classList.add('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
@@ -618,7 +619,7 @@
                 }
             }
 
-            // Sync visual drop-down selectors to show current month and year values automatically
+            // Synchronize active tracking dropdown elements to register current date parameters
             document.getElementById('filter-year').value = globalYearFilter;
             document.getElementById('filter-month').value = globalMonthFilter;
 
@@ -729,7 +730,6 @@
             }
         }
 
-        // Wipe dashboard local identity parameters
         function logoutPortal() {
             localStorage.removeItem('be_active_user');
             localStorage.removeItem('be_active_role');
@@ -920,6 +920,19 @@
             await syncLedgerEngine(false);
         }
 
+        function handleDeliveryFilesSelect() {
+            const fileInput = document.getElementById('delivery-file-input');
+            const previewContainer = document.getElementById('delivery-files-preview-list');
+            if(!fileInput || !previewContainer) return;
+            previewContainer.innerHTML = '';
+            if(fileInput.files.length > 0) {
+                previewContainer.innerHTML = '<p class="text-orange-400 font-bold uppercase tracking-wider text-[9px] mb-1">Selected Files for Upload:</p>';
+                Array.from(fileInput.files).forEach((f, i) => {
+                    previewContainer.innerHTML += `<div class="truncate text-gray-300 bg-[#0b0d19] p-1 rounded border border-[#1e2238] text-[10px]">${i+1}. ${f.name} (${(f.size/(1024*1024)).toFixed(2)} MB)</div>`;
+                });
+            }
+        }
+
         function setDeliveryMethod(method) {
             selectedDeliveryMethod = method;
             const btnLink = document.getElementById('btn-method-link');
@@ -944,6 +957,7 @@
             document.getElementById('asset-delivery-modal').classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
+            document.getElementById('delivery-files-preview-list').innerHTML = '';
             
             const submitBtn = document.getElementById('btn-submit-delivery');
             submitBtn.disabled = false;
@@ -959,36 +973,43 @@
             if (!targetTask) return;
 
             const submitBtn = document.getElementById('btn-submit-delivery');
-            let finalPayloadValue = "";
+            let finalLinksArray = [];
 
             if(selectedDeliveryMethod === 'link') {
                 const linkVal = document.getElementById('delivery-url-input').value.trim();
-                if(!linkVal) { alert("Please provide a valid destination deliverable URL!"); return; }
-                finalPayloadValue = linkVal;
+                if(!linkVal) { alert("Please provide at least one valid destination deliverable URL!"); return; }
+                finalLinksArray = linkVal.split(',').map(l => l.trim()).filter(Boolean);
             } else {
                 const fileInput = document.getElementById('delivery-file-input');
-                if(!fileInput.files || fileInput.files.length === 0) { alert("Please select a file asset!"); return; }
+                if(!fileInput.files || fileInput.files.length === 0) { alert("Please select file assets!"); return; }
                 
-                const selectedFile = fileInput.files[0];
-                
-                if (selectedFile.size > 60 * 1024 * 1024) {
-                    alert("File size limit warning: Please limit asset uploads to 60MB.");
-                    return;
-                }
-
                 submitBtn.disabled = true;
-                submitBtn.innerText = "Uploading to Google Drive...";
-
-                try {
-                    finalPayloadValue = await uploadToGoogleDrive(selectedFile);
-                } catch (uploadError) {
-                    console.error("Google Drive Upload Error: ", uploadError);
-                    alert("Storage Error: Failed to push package into Google Drive target destination.");
-                    submitBtn.disabled = false;
-                    submitBtn.innerText = "Deploy Work Package";
-                    return;
+                
+                // Sequentially process and upload each document item asset
+                for (let i = 0; i < fileInput.files.length; i++) {
+                    const selectedFile = fileInput.files[i];
+                    if (selectedFile.size > 60 * 1024 * 1024) {
+                        alert(`File "${selectedFile.name}" exceeds the 60MB safety upload limit guidelines.`);
+                        submitBtn.disabled = false;
+                        submitBtn.innerText = "Deploy Work Package";
+                        return;
+                    }
+                    
+                    submitBtn.innerText = `Uploading file ${i + 1} of ${fileInput.files.length}...`;
+                    try {
+                        const fileUrl = await uploadToGoogleDrive(selectedFile);
+                        finalLinksArray.push(fileUrl);
+                    } catch (uploadError) {
+                        console.error("Google Drive Multi-Upload Error: ", uploadError);
+                        alert(`Storage Error: Failed to push file package "${selectedFile.name}" into Google Drive.`);
+                        submitBtn.disabled = false;
+                        submitBtn.innerText = "Deploy Work Package";
+                        return;
+                    }
                 }
             }
+
+            const finalPayloadValue = finalLinksArray.join(', ');
 
             await dbInstance
                 .from('assignments')
@@ -1003,6 +1024,7 @@
             document.getElementById('asset-delivery-modal').classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
+            document.getElementById('delivery-files-preview-list').innerHTML = '';
             currentTargetTaskId = null;
             
             await syncLedgerEngine(false);
@@ -1085,6 +1107,7 @@
             }
         }
 
+        // CSV Workbook Sheet Parser
         function downloadWorkbookCSV() {
             if (activeRole !== 'admin' && activeRole !== 'manager') { return; }
             if (assignmentsList.length === 0) { alert("Matrix ledger data empty."); return; }
@@ -1203,25 +1226,35 @@
             lucide.createIcons();
         }
 
-        // Clean text action button generators
+        // Split multi-link asset entries and build clean action button arrays
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
-            const lowercaseAsset = assetString.toLowerCase();
-            
-            if (lowercaseAsset.includes('drive.google.com')) {
-                return `
-                    <a href="${assetString}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded font-bold hover:bg-emerald-600/40 transition inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
-                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Drive
-                    </a>
-                `;
-            }
+            const links = assetString.split(',').map(s => s.trim()).filter(Boolean);
+            if (links.length === 0) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
 
-            return `
-                <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
-                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i> View Link
-                </a>
-            `;
+            let html = '<div class="flex flex-col gap-1.5">';
+            links.forEach((link, index) => {
+                const lowercaseAsset = link.toLowerCase();
+                const label = links.length > 1 ? `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> Part ${index + 1}` : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Drive`;
+                const fallbackLabel = links.length > 1 ? `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> Link ${index + 1}` : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> View Link`;
+
+                if (lowercaseAsset.includes('drive.google.com')) {
+                    html += `
+                        <a href="${link}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded font-bold hover:bg-emerald-600/40 transition inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                            ${label}
+                        </a>
+                    `;
+                } else {
+                    html += `
+                        <a href="${link}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                            ${fallbackLabel}
+                        </a>
+                    `;
+                }
+            });
+            html += '</div>';
+            return html;
         }
 
         function renderTableRows() {
@@ -1285,7 +1318,7 @@
                 }
                 if (t.status === 'Completed') {
                     badgeColor = "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20";
-                    statusDropdownStyles = "text-emerald-400 bg-emerald-400/10 border border-emerald-500/30";
+                    statusDropdownStyles = "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20";
                 }
                 if (t.status === 'Rework Required') {
                     badgeColor = "text-orange-400 bg-orange-400/10 border border-orange-400/20";
