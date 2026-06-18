@@ -243,6 +243,7 @@
                             </h3>
                         </div>
 
+                        <!-- ADVANCED FILTER MATRIX CONTROLS PANEL -->
                         <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
@@ -842,7 +843,7 @@
             document.getElementById('task-ref-preview').classList.add('hidden');
         }
 
-        // UPGRADE: Routes managers' reference attachments straight to Google Drive
+        // Routes managers' reference attachments straight to Google Drive
         async function uploadRefFile(file) {
             return await uploadToGoogleDrive(file);
         }
@@ -1196,48 +1197,23 @@
             lucide.createIcons();
         }
 
-        // Live Google Drive Public Preview Module
+        // REMOVED INLINE IFRAME/IMAGE EMBED PREVIEWS TO PREVENT BROKEN LINK LOGS
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
             const lowercaseAsset = assetString.toLowerCase();
             
             if (lowercaseAsset.includes('drive.google.com')) {
-                let fileId = '';
-                const idMatch = assetString.match(/\/d\/([a-zA-Z0-9-_]+)/) || assetString.match(/id=([a-zA-Z0-9-_]+)/);
-                if (idMatch && idMatch[1]) {
-                    fileId = idMatch[1];
-                }
-                
-                if (fileId) {
-                    const isVideoTask = topicName.toLowerCase().includes('reel') || topicName.toLowerCase().includes('video') || topicName.toLowerCase().includes('clip') || topicName.toLowerCase().includes('edit');
-                    
-                    if (isVideoTask) {
-                        return `
-                            <div class="flex flex-col gap-1.5 max-w-[140px]">
-                                <iframe src="https://drive.google.com/file/d/${fileId}/preview" class="w-32 h-24 rounded border border-[#1e2238] bg-black" allow="autoplay"></iframe>
-                                <a href="${assetString}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
-                                    <i data-lucide="external-link" class="w-3 h-3"></i> Open Drive
-                                </a>
-                            </div>
-                        `;
-                    } else {
-                        const driveImgUrl = `https://docs.google.com/uc?export=view&id=${fileId}`;
-                        return `
-                            <div class="flex flex-col gap-1.5 max-w-[140px]">
-                                <img src="${driveImgUrl}" alt="Asset Preview" class="w-32 h-auto object-cover rounded border border-[#1e2238]" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<a href=\'${assetString}\' target=\'_blank\' class=\'bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold text-center text-[10px]\'>View Asset Link</a>'"/>
-                                <a href="${assetString}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-center font-bold hover:bg-emerald-600/40 transition flex items-center justify-center gap-1 text-[10px]">
-                                    <i data-lucide="external-link" class="w-3 h-3"></i> Open Drive
-                                </a>
-                            </div>
-                        `;
-                    }
-                }
+                return `
+                    <a href="${assetString}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded font-bold hover:bg-emerald-600/40 transition inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Drive
+                    </a>
+                `;
             }
 
             return `
-                <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1">
-                    <i data-lucide="external-link" class="w-3 h-3"></i> View Link
+                <a href="${assetString}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded font-bold hover:bg-blue-500/40 transition inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i> View Link
                 </a>
             `;
         }
@@ -1289,7 +1265,7 @@
 
             if(targetTasks.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this filtered parameter mix.</td></tr>`;
-                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this parameter configuration cycle.</p>`;
+                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
                 return;
             }
 
