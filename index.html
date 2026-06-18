@@ -431,9 +431,10 @@
         let internalLogs = [];
         let loadedTaskIdsSnapshot = [];
 
-        // Global Tracking State Filters
-        let globalYearFilter = 'all';
-        let globalMonthFilter = 'all';
+        // Calculate dynamic real-time browser dates for tracking filters on startup
+        const defaultDateInit = new Date();
+        let globalYearFilter = defaultDateInit.getFullYear().toString();
+        let globalMonthFilter = String(defaultDateInit.getMonth() + 1).padStart(2, '0');
         let globalCategoryFilter = 'all';
         let globalStatusFilter = 'all';
         let globalSortConfig = 'assignedDate-desc';
@@ -617,6 +618,10 @@
                 }
             }
 
+            // Sync visual drop-down selectors to show current month and year values automatically
+            document.getElementById('filter-year').value = globalYearFilter;
+            document.getElementById('filter-month').value = globalMonthFilter;
+
             populateDropdownSelectors();
             renderCountersGrid();
             renderTableRows();
@@ -724,6 +729,7 @@
             }
         }
 
+        // Wipe dashboard local identity parameters
         function logoutPortal() {
             localStorage.removeItem('be_active_user');
             localStorage.removeItem('be_active_role');
@@ -1197,7 +1203,7 @@
             lucide.createIcons();
         }
 
-        // REMOVED INLINE IFRAME/IMAGE EMBED PREVIEWS TO PREVENT BROKEN LINK LOGS
+        // Clean text action button generators
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
             
