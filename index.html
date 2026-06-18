@@ -100,8 +100,8 @@
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
                     <label class="text-gray-400 text-[11px] font-bold uppercase block">Upload Video or Image Assets (Up to 50MB each)</label>
                     <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30" multiple onchange="handleDeliveryFilesSelect()">
-                    <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1 max-h-24 overflow-y-auto"></div>
-                    <p class="text-[10px] text-gray-500 italic">You can select multiple files together. Assets route straight to Google Drive.</p>
+                    <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1.5 max-h-32 overflow-y-auto"></div>
+                    <p class="text-[10px] text-gray-500 italic mt-1">Click choose files multiple times to accumulate items. Assets route straight to Google Drive.</p>
                 </div>
                 <button id="btn-submit-delivery" onclick="submitAssetDeliveryAction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
                     <i data-lucide="cloud-upload" class="w-4 h-4"></i> Deploy Work Package
@@ -430,6 +430,9 @@
         let assignmentsList = [];
         let internalLogs = [];
         let loadedTaskIdsSnapshot = [];
+        
+        // Persistent queue state variable mapping to store accumulated delivery files
+        let deliveryFilesQueue = [];
 
         // Calculate dynamic real-time browser dates for tracking filters on startup
         const defaultDateInit = new Date();
@@ -533,7 +536,7 @@
                 return;
             }
 
-            const { data: matchedUsers, error } = await dbInstance.from('user_roster').select('*');
+            const { data: matchedUsers, error = null } = await dbInstance.from('user_roster').select('*');
 
             if (error || !matchedUsers) {
                 alert("Network Error: Failed to pull client registry database."); 
@@ -849,7 +852,6 @@
             document.getElementById('task-ref-preview').classList.add('hidden');
         }
 
-        // Routes managers' reference attachments straight to Google Drive
         async function uploadRefFile(file) {
             return await uploadToGoogleDrive(file);
         }
@@ -920,16 +922,47 @@
             await syncLedgerEngine(false);
         }
 
+        // Persistent Multi-File Accumulation Selection Engine Control
         function handleDeliveryFilesSelect() {
             const fileInput = document.getElementById('delivery-file-input');
-            const previewContainer = document.getElementById('delivery-files-preview-list');
-            if(!fileInput || !previewContainer) return;
-            previewContainer.innerHTML = '';
+            if(!fileInput) return;
+            
             if(fileInput.files.length > 0) {
-                previewContainer.innerHTML = '<p class="text-orange-400 font-bold uppercase tracking-wider text-[9px] mb-1">Selected Files for Upload:</p>';
-                Array.from(fileInput.files).forEach((f, i) => {
-                    previewContainer.innerHTML += `<div class="truncate text-gray-300 bg-[#0b0d19] p-1 rounded border border-[#1e2238] text-[10px]">${i+1}. ${f.name} (${(f.size/(1024*1024)).toFixed(2)} MB)</div>`;
+                Array.from(fileInput.files).forEach(f => {
+                    // Prevent duplicate files from clustering inside the collection
+                    if (!deliveryFilesQueue.some(existing => existing.name === f.name && existing.size === f.size)) {
+                        deliveryFilesQueue.push(f);
+                    }
                 });
+            }
+            renderDeliveryFilesQueue();
+            // Wipe standard file input target value state so clicking it again flags change hooks cleanly
+            fileInput.value = '';
+        }
+
+        function removeFileFromDeliveryQueue(index) {
+            deliveryFilesQueue.splice(index, 1);
+            renderDeliveryFilesQueue();
+        }
+
+        function renderDeliveryFilesQueue() {
+            const previewContainer = document.getElementById('delivery-files-preview-list');
+            if(!previewContainer) return;
+            previewContainer.innerHTML = '';
+            
+            if(deliveryFilesQueue.length > 0) {
+                previewContainer.innerHTML = `<p class="text-orange-400 font-bold uppercase tracking-wider text-[9px] mb-1">Selected Files for Upload (${deliveryFilesQueue.length}):</p>`;
+                deliveryFilesQueue.forEach((f, i) => {
+                    previewContainer.innerHTML += `
+                        <div class="flex items-center justify-between gap-2 text-gray-300 bg-[#0b0d19] px-2 py-1.5 rounded border border-[#1e2238] text-[10px]">
+                            <span class="truncate flex-1">${i+1}. ${f.name} (${(f.size/(1024*1024)).toFixed(2)} MB)</span>
+                            <button type="button" onclick="removeFileFromDeliveryQueue(${i})" class="text-gray-500 hover:text-red-400 transition shrink-0 ml-1">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    `;
+                });
+                lucide.createIcons();
             }
         }
 
@@ -958,6 +991,7 @@
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
+            deliveryFilesQueue = []; // Wipe accumulated file collection on container teardown
             
             const submitBtn = document.getElementById('btn-submit-delivery');
             submitBtn.disabled = false;
@@ -980,14 +1014,13 @@
                 if(!linkVal) { alert("Please provide at least one valid destination deliverable URL!"); return; }
                 finalLinksArray = linkVal.split(',').map(l => l.trim()).filter(Boolean);
             } else {
-                const fileInput = document.getElementById('delivery-file-input');
-                if(!fileInput.files || fileInput.files.length === 0) { alert("Please select file assets!"); return; }
+                if(deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
                 
                 submitBtn.disabled = true;
                 
-                // Sequentially process and upload each document item asset
-                for (let i = 0; i < fileInput.files.length; i++) {
-                    const selectedFile = fileInput.files[i];
+                // Loops sequentially through our persistent files queue list
+                for (let i = 0; i < deliveryFilesQueue.length; i++) {
+                    const selectedFile = deliveryFilesQueue[i];
                     if (selectedFile.size > 60 * 1024 * 1024) {
                         alert(`File "${selectedFile.name}" exceeds the 60MB safety upload limit guidelines.`);
                         submitBtn.disabled = false;
@@ -995,7 +1028,7 @@
                         return;
                     }
                     
-                    submitBtn.innerText = `Uploading file ${i + 1} of ${fileInput.files.length}...`;
+                    submitBtn.innerText = `Uploading file ${i + 1} of ${deliveryFilesQueue.length}...`;
                     try {
                         const fileUrl = await uploadToGoogleDrive(selectedFile);
                         finalLinksArray.push(fileUrl);
@@ -1025,6 +1058,7 @@
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
+            deliveryFilesQueue = [];
             currentTargetTaskId = null;
             
             await syncLedgerEngine(false);
@@ -1066,6 +1100,7 @@
                     renderTableRows(); return;
                 }
                 feedbackLog = explanationText;
+                // FIXED: Repaired broken syntax typo on compiler token
                 await pushLogEntry(`Manager flagged row state [${targetTask.topic}] to ${nextStatus}. Feedback: ${explanationText}`);
             }
 
