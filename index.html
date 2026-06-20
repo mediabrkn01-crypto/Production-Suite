@@ -86,6 +86,9 @@
             height: 32px;
             max-width: 220px;
         }
+        @media (hover: none) {
+            .chat-msg-delete-btn { opacity: 0.6 !important; }
+        }
         @media (max-width: 767px) {
             #tab-content-chat.chat-mobile-thread-open #chat-contacts-panel { display: none; }
             #tab-content-chat:not(.chat-mobile-thread-open) #chat-thread-panel { display: none; }
@@ -1683,7 +1686,19 @@
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
                     handleIncomingChatMessage(payload.new);
                 })
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (payload) => {
+                    handleDeletedChatMessage(payload.old);
+                })
                 .subscribe();
+        }
+
+        function handleDeletedChatMessage(msg) {
+            if (!msg || msg.id == null) return;
+            const wasInActiveRoom = chatMessages.some(m => m.id === msg.id);
+            if (wasInActiveRoom) {
+                chatMessages = chatMessages.filter(m => m.id !== msg.id);
+                renderChatMessages();
+            }
         }
 
         function handleIncomingChatMessage(msg) {
@@ -1840,10 +1855,14 @@
                 let attachmentMarkup = '';
                 if (m.attachment_url) {
                     if (m.attachment_type === 'voice') {
+                        const playableUrl = toPlayableDriveUrl(m.attachment_url);
                         attachmentMarkup = `
-                            <div class="voice-msg-bubble flex items-center gap-2 ${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'} px-3 py-2">
-                                <i data-lucide="mic" class="w-3.5 h-3.5 ${isMine ? 'text-white' : 'text-orange-400'} shrink-0"></i>
-                                <audio controls src="${m.attachment_url}"></audio>
+                            <div class="voice-msg-bubble flex flex-col gap-1.5 ${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'} px-3 py-2">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="mic" class="w-3.5 h-3.5 ${isMine ? 'text-white' : 'text-orange-400'} shrink-0"></i>
+                                    <audio controls preload="metadata" src="${playableUrl}"></audio>
+                                </div>
+                                <a href="${m.attachment_url}" target="_blank" class="text-[10px] underline opacity-70 hover:opacity-100 ${isMine ? 'text-white' : 'text-gray-400'}">Won't play? Open in Drive</a>
                             </div>
                         `;
                     } else {
@@ -1864,14 +1883,23 @@
                     </div>
                 ` : '';
 
+                const canDelete = isMine || activeRole === 'admin';
+                const deleteBtnMarkup = canDelete ? `
+                    <button onclick="deleteChatMessage(${m.id})" title="Delete message" class="chat-msg-delete-btn opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-1 shrink-0 self-center">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                ` : '';
+
                 container.innerHTML += `
-                    <div class="flex ${isMine ? 'justify-end' : 'justify-start'} animate-item">
+                    <div class="group flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'} animate-item">
+                        ${isMine ? deleteBtnMarkup : ''}
                         <div class="max-w-[78%] sm:max-w-[60%] space-y-1">
                             ${!isMine && activeChatRoom === CHAT_GROUP_ROOM ? `<p class="text-[10px] text-gray-500 mb-0.5 px-1">${m.sender_name}</p>` : ''}
                             ${textBubble}
                             ${attachmentMarkup}
                             <p class="text-[9px] text-gray-500 mt-0.5 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}</p>
                         </div>
+                        ${!isMine ? deleteBtnMarkup : ''}
                     </div>
                 `;
             });
@@ -1884,6 +1912,22 @@
             const div = document.createElement('div');
             div.innerText = str;
             return div.innerHTML;
+        }
+
+        // Google Drive "view" links (e.g. drive.google.com/file/d/FILE_ID/view) return an HTML
+        // viewer page, not raw bytes — so <audio>/<video> tags can't play them directly.
+        // This rewrites such links to Drive's direct content-stream endpoint.
+        function toPlayableDriveUrl(url) {
+            if (!url) return url;
+            const match = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+            if (match && match[1]) {
+                return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+            }
+            const idParamMatch = url.match(/[?&]id=([^&]+)/);
+            if (url.includes('drive.google.com') && idParamMatch && idParamMatch[1] && !url.includes('export=download')) {
+                return `https://drive.google.com/uc?export=download&id=${idParamMatch[1]}`;
+            }
+            return url;
         }
 
         async function sendChatMessage() {
@@ -1940,6 +1984,22 @@
                 alert('Message failed to send: ' + error.message);
                 input.value = text;
             }
+        }
+
+        async function deleteChatMessage(messageId) {
+            const targetMsg = chatMessages.find(m => m.id === messageId);
+            if (!targetMsg) return;
+
+            const isMine = targetMsg.sender_email === activeEmail;
+            if (!isMine && activeRole !== 'admin') return;
+
+            if (!confirm('Delete this message? This cannot be undone.')) return;
+
+            const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
+            if (error) { alert('Could not delete message: ' + error.message); return; }
+
+            chatMessages = chatMessages.filter(m => m.id !== messageId);
+            renderChatMessages();
         }
 
         // ---------- FILE ATTACHMENTS ----------
