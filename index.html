@@ -176,6 +176,9 @@
                         <i data-lucide="message-circle" class="w-4 h-4 md:w-5 h-5"></i> Team Chat
                         <span id="chat-unread-dot" class="hidden absolute right-3 md:right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-orange-500"></span>
                     </button>
+                    <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
+                        <i data-lucide="clock-4" class="w-4 h-4 md:w-5 h-5"></i> Attendance Log
+                    </button>
                     <button id="nav-settings" onclick="switchTab('settings')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
                         <i data-lucide="settings" class="w-4 h-4 md:w-5 h-5"></i> Setup Center
                     </button>
@@ -225,6 +228,26 @@
                     <div id="admin-download-wrapper" class="hidden">
                         <button onclick="downloadWorkbookCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
                             <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
+                        </button>
+                    </div>
+                </div>
+
+                <div id="attendance-clock-card" class="hidden card p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-orange-500/10 text-orange-400 shrink-0">
+                            <i data-lucide="clock-4" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold text-white uppercase tracking-wider">Attendance</p>
+                            <p id="attendance-status-text" class="text-[11px] text-gray-400 mt-0.5">Checking today's status...</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="attendance-clockin-btn" onclick="handleClockIn()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
+                            <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
+                        </button>
+                        <button id="attendance-clockout-btn" onclick="handleClockOut()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
+                            <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
                         </button>
                     </div>
                 </div>
@@ -452,6 +475,49 @@
                 </div>
             </div>
 
+            <div id="tab-content-attendance" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Attendance Log</h1>
+                        <p class="text-gray-400 text-xs md:text-sm mt-1">Clock in/out history for employees and managers.</p>
+                    </div>
+                    <button onclick="downloadAttendanceCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+                        <i data-lucide="download" class="w-4 h-4"></i> Download Attendance CSV
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs shadow-inner">
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Employee:</span>
+                        <select id="attendance-filter-employee" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                            <option value="all">All Team Members</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Date:</span>
+                        <input type="date" id="attendance-filter-date" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                        <button onclick="document.getElementById('attendance-filter-date').value='';renderAttendanceTable();" class="text-[10px] text-orange-400 hover:underline font-bold">Clear</button>
+                    </div>
+                </div>
+
+                <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
+                                <th class="py-3.5 px-4">Employee</th>
+                                <th class="py-3.5 px-4">Date</th>
+                                <th class="py-3.5 px-4">Clock In</th>
+                                <th class="py-3.5 px-4">Clock Out</th>
+                                <th class="py-3.5 px-4">Hours Worked</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendance-table-rows" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
+                    </table>
+                </div>
+
+                <div id="attendance-mobile-cards" class="block md:hidden space-y-3"></div>
+            </div>
+
             <div id="tab-content-settings" class="space-y-6 hidden">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -538,6 +604,8 @@
         let assignmentsList = [];
         let internalLogs = [];
         let loadedTaskIdsSnapshot = [];
+        let attendanceLogs = [];
+        let myActiveAttendanceRecord = null;
         
         // Accumulative state variables for multiple file tracking queues
         let deliveryFilesQueue = [];
@@ -636,14 +704,21 @@
                 const { data: logs, error: errL } = await dbInstance.from('system_logs').select('*').order('created_at', { ascending: false }).limit(40);
                 if (!errL && logs) internalLogs = logs;
 
+                const { data: attendance, error: errA } = await dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false });
+                if (!errA && attendance) attendanceLogs = attendance;
+
                 if (activeUser) {
                     renderCountersGrid();
                     renderTableRows();
                     renderSettingsRoster();
                     renderLogFeed();
+                    if (activeRole === 'employee' || activeRole === 'manager') refreshAttendanceClockCard();
                     if (activeRole === 'employee') renderEmployeeNotificationBar();
                     if (!document.getElementById('tab-content-chat').classList.contains('hidden')) {
                         renderChatContacts();
+                    }
+                    if (activeRole === 'admin' && !document.getElementById('tab-content-attendance').classList.contains('hidden')) {
+                        renderAttendanceTable();
                     }
                 }
 
@@ -728,29 +803,38 @@
             if (activeRole === 'admin') {
                 document.getElementById('admin-assignment-panel').classList.remove('hidden');
                 document.getElementById('nav-settings').classList.remove('hidden');
+                document.getElementById('nav-attendance').classList.remove('hidden');
                 document.getElementById('th-actions').classList.remove('hidden');
                 document.getElementById('admin-download-wrapper').classList.remove('hidden');
                 document.getElementById('admin-download-logs-btn').classList.remove('hidden');
                 document.getElementById('employee-notification-banner').classList.add('hidden');
+                document.getElementById('attendance-clock-card').classList.add('hidden');
             } else if (activeRole === 'manager') {
                 document.getElementById('admin-assignment-panel').classList.remove('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
+                document.getElementById('nav-attendance').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
                 document.getElementById('employee-notification-banner').classList.add('hidden');
+                document.getElementById('attendance-clock-card').classList.remove('hidden');
+                refreshAttendanceClockCard();
             } else {
                 // SECURITY ENHANCEMENT: Hide assignment panel explicitly from employee creator accounts
                 document.getElementById('admin-assignment-panel').classList.add('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
+                document.getElementById('nav-attendance').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
                 
                 if (activeRole === 'employee') {
                     renderEmployeeNotificationBar();
+                    document.getElementById('attendance-clock-card').classList.remove('hidden');
+                    refreshAttendanceClockCard();
                 } else {
                     document.getElementById('employee-notification-banner').classList.add('hidden');
+                    document.getElementById('attendance-clock-card').classList.add('hidden');
                 }
             }
 
@@ -853,26 +937,31 @@
 
         function switchTab(targetTab) {
             document.querySelectorAll('.sidebar-link').forEach(btn => btn.classList.remove('active'));
+
+            document.getElementById('tab-content-dashboard').classList.add('hidden');
+            document.getElementById('tab-content-chat').classList.add('hidden');
+            document.getElementById('tab-content-attendance').classList.add('hidden');
+            document.getElementById('tab-content-settings').classList.add('hidden');
+
             if(targetTab === 'dashboard') {
                 document.getElementById('nav-dashboard').classList.add('active');
                 document.getElementById('tab-content-dashboard').classList.remove('hidden');
-                document.getElementById('tab-content-chat').classList.add('hidden');
-                document.getElementById('tab-content-settings').classList.add('hidden');
             } else if (targetTab === 'chat') {
                 document.getElementById('nav-chat').classList.add('active');
-                document.getElementById('tab-content-dashboard').classList.add('hidden');
                 document.getElementById('tab-content-chat').classList.remove('hidden');
-                document.getElementById('tab-content-settings').classList.add('hidden');
                 clearChatUnreadDot();
                 initChatSystem();
                 renderChatContacts();
                 if (window.innerWidth < 768) {
                     document.getElementById('tab-content-chat').classList.remove('chat-mobile-thread-open');
                 }
+            } else if (targetTab === 'attendance' && activeRole === 'admin') {
+                document.getElementById('nav-attendance').classList.add('active');
+                document.getElementById('tab-content-attendance').classList.remove('hidden');
+                populateAttendanceEmployeeFilter();
+                renderAttendanceTable();
             } else if (targetTab === 'settings' && activeRole === 'admin') {
                 document.getElementById('nav-settings').classList.add('active');
-                document.getElementById('tab-content-dashboard').classList.add('hidden');
-                document.getElementById('tab-content-chat').classList.add('hidden');
                 document.getElementById('tab-content-settings').classList.remove('hidden');
                 editingRosterIndex = null;
                 renderSettingsRoster();
@@ -1372,6 +1461,183 @@
             const now = new Date();
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             await dbInstance.from('system_logs').insert([{ time: ts, text }]);
+        }
+
+        // ============================================================
+        // ATTENDANCE ENGINE — clock in / clock out + admin log
+        // ============================================================
+
+        function todayDateStr() {
+            return new Date().toISOString().slice(0, 10);
+        }
+
+        function findMyOpenAttendanceRecord() {
+            const today = todayDateStr();
+            return attendanceLogs.find(r => r.employee_email === activeEmail && r.log_date === today) || null;
+        }
+
+        function refreshAttendanceClockCard() {
+            myActiveAttendanceRecord = findMyOpenAttendanceRecord();
+
+            const statusText = document.getElementById('attendance-status-text');
+            const clockInBtn = document.getElementById('attendance-clockin-btn');
+            const clockOutBtn = document.getElementById('attendance-clockout-btn');
+            if (!statusText || !clockInBtn || !clockOutBtn) return;
+
+            if (!myActiveAttendanceRecord) {
+                statusText.innerHTML = `You haven't clocked in today.`;
+                clockInBtn.classList.remove('hidden');
+                clockOutBtn.classList.add('hidden');
+            } else if (myActiveAttendanceRecord.log_in_time && !myActiveAttendanceRecord.log_out_time) {
+                const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                statusText.innerHTML = `Clocked in at <span class="text-emerald-400 font-bold">${inTime}</span>. Don't forget to clock out!`;
+                clockInBtn.classList.add('hidden');
+                clockOutBtn.classList.remove('hidden');
+            } else {
+                const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const outTime = new Date(myActiveAttendanceRecord.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                statusText.innerHTML = `Completed today: <span class="text-white font-bold">${inTime} → ${outTime}</span>.`;
+                clockInBtn.classList.add('hidden');
+                clockOutBtn.classList.add('hidden');
+            }
+        }
+
+        async function handleClockIn() {
+            const existing = findMyOpenAttendanceRecord();
+            if (existing) { await syncLedgerEngine(false); return; }
+
+            const nowIso = new Date().toISOString();
+            const { error } = await dbInstance.from('attendance_logs').insert([{
+                employee_email: activeEmail,
+                employee_name: activeUser,
+                log_date: todayDateStr(),
+                log_in_time: nowIso,
+                log_out_time: null
+            }]);
+
+            if (error) { alert('Could not record clock in: ' + error.message); return; }
+
+            await pushLogEntry(`${activeUser} clocked IN at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+            await syncLedgerEngine(false);
+        }
+
+        async function handleClockOut() {
+            const existing = findMyOpenAttendanceRecord();
+            if (!existing || existing.log_out_time) { await syncLedgerEngine(false); return; }
+
+            const nowIso = new Date().toISOString();
+            const { error } = await dbInstance
+                .from('attendance_logs')
+                .update({ log_out_time: nowIso })
+                .eq('id', existing.id);
+
+            if (error) { alert('Could not record clock out: ' + error.message); return; }
+
+            await pushLogEntry(`${activeUser} clocked OUT at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+            await syncLedgerEngine(false);
+        }
+
+        function populateAttendanceEmployeeFilter() {
+            const select = document.getElementById('attendance-filter-employee');
+            if (!select) return;
+            const currentVal = select.value || 'all';
+            select.innerHTML = '<option value="all">All Team Members</option>';
+            userRoster
+                .filter(u => u.role === 'employee' || u.role === 'manager')
+                .forEach(u => {
+                    select.innerHTML += `<option value="${u.email}">${u.name} (${u.role})</option>`;
+                });
+            select.value = currentVal;
+        }
+
+        function calcHoursLabel(record) {
+            if (!record.log_in_time || !record.log_out_time) return '—';
+            const ms = new Date(record.log_out_time) - new Date(record.log_in_time);
+            const hours = ms / (1000 * 60 * 60);
+            return hours.toFixed(2) + ' hrs';
+        }
+
+        function renderAttendanceTable() {
+            const tbody = document.getElementById('attendance-table-rows');
+            const mobileContainer = document.getElementById('attendance-mobile-cards');
+            if (!tbody || !mobileContainer) return;
+
+            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
+            const dateFilter = document.getElementById('attendance-filter-date')?.value || '';
+
+            let rows = attendanceLogs;
+            if (empFilter !== 'all') rows = rows.filter(r => r.employee_email === empFilter);
+            if (dateFilter) rows = rows.filter(r => r.log_date === dateFilter);
+
+            tbody.innerHTML = '';
+            mobileContainer.innerHTML = '';
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-500 italic">No attendance records found for this filter.</td></tr>`;
+                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">No attendance records found.</p>`;
+                return;
+            }
+
+            rows.forEach(r => {
+                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                const hoursLabel = calcHoursLabel(r);
+                const stillIn = r.log_in_time && !r.log_out_time;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-[#1a1e36]/40 transition">
+                        <td class="py-3 px-4 font-bold text-white">${r.employee_name}</td>
+                        <td class="py-3 px-4 font-mono text-gray-400">${r.log_date}</td>
+                        <td class="py-3 px-4 text-emerald-400 font-mono">${inLabel}</td>
+                        <td class="py-3 px-4 font-mono ${stillIn ? 'text-orange-400' : 'text-red-400'}">${stillIn ? 'Still clocked in' : outLabel}</td>
+                        <td class="py-3 px-4 text-gray-300 font-mono">${hoursLabel}</td>
+                    </tr>
+                `;
+
+                mobileContainer.innerHTML += `
+                    <div class="card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238]">
+                        <div class="flex justify-between items-start">
+                            <h4 class="text-white font-bold text-sm">${r.employee_name}</h4>
+                            <span class="text-gray-400 font-mono text-[11px]">${r.log_date}</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 pt-1">
+                            <div><p class="text-gray-500 text-[10px] uppercase font-semibold">In</p><p class="font-mono text-emerald-400">${inLabel}</p></div>
+                            <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Out</p><p class="font-mono ${stillIn ? 'text-orange-400' : 'text-red-400'}">${stillIn ? 'Active' : outLabel}</p></div>
+                            <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Hours</p><p class="font-mono text-gray-300">${hoursLabel}</p></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function downloadAttendanceCSV() {
+            if (activeRole !== 'admin') return;
+            if (attendanceLogs.length === 0) { alert('No attendance records to export.'); return; }
+
+            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
+            const dateFilter = document.getElementById('attendance-filter-date')?.value || '';
+
+            let rows = attendanceLogs;
+            if (empFilter !== 'all') rows = rows.filter(r => r.employee_email === empFilter);
+            if (dateFilter) rows = rows.filter(r => r.log_date === dateFilter);
+
+            let csvHeaders = ["Employee Name", "Employee Email", "Date", "Clock In", "Clock Out", "Hours Worked"];
+            let csvRows = [csvHeaders.join(",")];
+
+            rows.forEach(r => {
+                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Still clocked in';
+                const hoursLabel = calcHoursLabel(r);
+                csvRows.push([r.employee_name, r.employee_email, r.log_date, inLabel, outLabel, hoursLabel].join(","));
+            });
+
+            let blobElement = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+            let structuralAnchor = document.createElement("a");
+            structuralAnchor.setAttribute("href", URL.createObjectURL(blobElement));
+            structuralAnchor.setAttribute("download", `Broken_English_Attendance_Log_${todayDateStr()}.csv`);
+            document.body.appendChild(structuralAnchor);
+            structuralAnchor.click();
+            document.body.removeChild(structuralAnchor);
         }
 
         // ============================================================
