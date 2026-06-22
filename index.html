@@ -777,7 +777,105 @@
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         
         // INTERACTIVE GOOGLE APPS SCRIPT WEB APP ROUTER
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby9RUmf52TWlhuoSQBdePajJwJ0QN0tMDtgdEGgMMjBo2xI5moTHuQj6MOIHVShPhJl/exec";
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwcFoywFbqWs7krvTFm2FOo9HEM4eZRgV9kAk2V9hwU1X1pv4LSGpmxlrF63wZhGWD/exec";
+
+        // ── Google Sheets live sync ──────────────────────────────────
+        // Silently pushes a row to the named sheet tab.
+        // action: 'syncTask' | 'syncAttendance' | 'syncLog' | 'syncMonthlyReport'
+        async function pushToSheet(action, payload) {
+            try {
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action, ...payload })
+                });
+            } catch(e) {
+                // Silent fail — Sheets sync never blocks the main app
+                console.warn('Sheet sync skipped:', e.message);
+            }
+        }
+
+        // Push the full tasks list to the Tasks sheet (full refresh)
+        async function syncTasksToSheet() {
+            const rows = assignmentsList.map(t => ({
+                id: t.id,
+                topic: t.topic,
+                type: t.type,
+                assignedTo: t.assignedTo,
+                employeeEmail: t.employeeEmail,
+                description: t.description,
+                assignedDate: t.assignedDate,
+                deadline: t.date,
+                status: t.status,
+                explanation: t.explanation,
+                assetLink: t.assetLink,
+                referenceFile: t.referenceFile
+            }));
+            pushToSheet('syncTasks', { rows });
+        }
+
+        // Push the full attendance list to the Attendance sheet (full refresh)
+        async function syncAttendanceToSheet() {
+            const rows = attendanceLogs.map(r => ({
+                id: r.id,
+                employeeName: r.employee_name,
+                employeeEmail: r.employee_email,
+                date: r.log_date,
+                clockIn: r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+                clockOut: r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+                hoursWorked: calcHoursWorkedDecimal(r)
+            }));
+            pushToSheet('syncAttendance', { rows });
+        }
+
+        // Push a single log entry
+        async function syncLogToSheet(time, text) {
+            pushToSheet('syncLog', { time, text, date: new Date().toISOString().slice(0, 10) });
+        }
+
+        // Push a monthly summary to the Monthly Report sheet
+        async function syncMonthlyReportToSheet() {
+            const now = new Date();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear().toString();
+            const prefix = `${year}-${month}`;
+            const monthName = now.toLocaleString('default', { month: 'long' });
+
+            const monthTasks = assignmentsList.filter(t => t.assignedDate && t.assignedDate.startsWith(prefix));
+            const monthAttendance = attendanceLogs.filter(r => r.log_date && r.log_date.startsWith(prefix));
+
+            const total = monthTasks.length;
+            const completed = monthTasks.filter(t => t.status === 'Completed').length;
+            const reworks = monthTasks.filter(t => t.status === 'Rework Required').length;
+            const rejected = monthTasks.filter(t => t.status === 'Rejected').length;
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+            const totalHours = monthAttendance.reduce((sum, r) => sum + calcHoursWorkedDecimal(r), 0);
+            const uniqueEmployees = [...new Set(monthAttendance.map(r => r.employee_email))].length;
+
+            // Per-creator breakdown
+            const creatorMap = {};
+            monthTasks.forEach(t => {
+                if (!creatorMap[t.assignedTo]) creatorMap[t.assignedTo] = { assigned: 0, completed: 0, reworks: 0, rejected: 0 };
+                creatorMap[t.assignedTo].assigned++;
+                if (t.status === 'Completed') creatorMap[t.assignedTo].completed++;
+                if (t.status === 'Rework Required') creatorMap[t.assignedTo].reworks++;
+                if (t.status === 'Rejected') creatorMap[t.assignedTo].rejected++;
+            });
+
+            pushToSheet('syncMonthlyReport', {
+                month: monthName, year, total, completed, reworks, rejected, rate,
+                totalHours: totalHours.toFixed(2), uniqueEmployees,
+                creatorBreakdown: Object.entries(creatorMap).map(([name, s]) => ({
+                    name, ...s,
+                    rate: s.assigned > 0 ? Math.round((s.completed / s.assigned) * 100) : 0
+                }))
+            });
+        }
+
+        function calcHoursWorkedDecimal(r) {
+            if (!r.log_in_time || !r.log_out_time) return 0;
+            return parseFloat(((new Date(r.log_out_time) - new Date(r.log_in_time)) / 3600000).toFixed(2));
+        }
 
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -1552,6 +1650,8 @@
             clearRefFile();
 
             await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
         }
 
         function handleDeliveryFilesSelect() {
@@ -1690,6 +1790,8 @@
             currentTargetTaskId = null;
             
             await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
         }
 
         async function employeeHandleStatusChange(id, newStatus) {
@@ -1712,6 +1814,8 @@
                     .update({ status: newStatus, asset_link: "" })
                     .eq('id', id);
                 await syncLedgerEngine(false);
+                syncTasksToSheet();
+                syncMonthlyReportToSheet();
             }
         }
 
@@ -1738,6 +1842,8 @@
                 .eq('id', id);
 
             await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
         }
 
         async function adminUpdateStatusDirectly(id, newStatus) {
@@ -1761,12 +1867,16 @@
 
             await pushLogEntry(`Admin forced direct status override: [${targetTask.topic}] -> ${newStatus}`);
             await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
         }
 
         async function deleteAssignment(id) {
             if(confirm("Delete this pipeline entity row item completely?")) {
                 await dbInstance.from('assignments').delete().eq('id', id);
                 await syncLedgerEngine(false);
+                syncTasksToSheet();
+                syncMonthlyReportToSheet();
             }
         }
 
@@ -1818,6 +1928,7 @@
             const now = new Date();
             const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             await dbInstance.from('system_logs').insert([{ time: ts, text }]);
+            syncLogToSheet(ts, text); // push to Sheets silently
         }
 
         // ============================================================
@@ -1876,6 +1987,8 @@
 
             await pushLogEntry(`${activeUser} clocked IN at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
             await syncLedgerEngine(false);
+            syncAttendanceToSheet();
+            syncMonthlyReportToSheet();
         }
 
         async function handleClockOut() {
@@ -1892,6 +2005,8 @@
 
             await pushLogEntry(`${activeUser} clocked OUT at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
             await syncLedgerEngine(false);
+            syncAttendanceToSheet();
+            syncMonthlyReportToSheet();
         }
 
         function populateAttendanceEmployeeFilter() {
