@@ -930,8 +930,31 @@
 
         // Read receipt state: email -> ISO timestamp of when they last read each room
         let lastSeenMap = {};   // { email: { room: isoTimestamp } }
-        // Track when current user opened each room
+        // Track when current user opened each room — persisted to localStorage
         let myRoomOpenedAt = {}; // { room: isoTimestamp }
+
+        function loadPersistedChatState() {
+            try {
+                const raw = localStorage.getItem(`be_room_opened_${activeEmail}`);
+                if (raw) myRoomOpenedAt = JSON.parse(raw);
+            } catch(e) { myRoomOpenedAt = {}; }
+            try {
+                const raw2 = localStorage.getItem(`be_last_seen_map_${activeEmail}`);
+                if (raw2) lastSeenMap = JSON.parse(raw2);
+            } catch(e) { lastSeenMap = {}; }
+        }
+
+        function persistMyRoomOpened() {
+            try {
+                localStorage.setItem(`be_room_opened_${activeEmail}`, JSON.stringify(myRoomOpenedAt));
+            } catch(e) {}
+        }
+
+        function persistLastSeenMap() {
+            try {
+                localStorage.setItem(`be_last_seen_map_${activeEmail}`, JSON.stringify(lastSeenMap));
+            } catch(e) {}
+        }
 
         // Calculate dynamic real-time browser dates for tracking filters on startup
         const defaultDateInit = new Date();
@@ -2249,6 +2272,7 @@
 
         function initChatSystem() {
             if (!activeUser || !activeEmail) return;
+            loadPersistedChatState(); // restore last-seen and room-opened from localStorage
             setupPresenceChannel();
             setupChatMessagesChannel();
             if (chatChannelsReady) return;
@@ -2276,6 +2300,7 @@
                             }
                         }
                     });
+                    persistLastSeenMap(); // save to localStorage so it survives refresh
                     renderChatContacts();
                     updateThreadOnlineStatus();
                     // Re-render messages to update tick status
@@ -2326,9 +2351,9 @@
             const isRelevantToMe = isGroupMsg || isMyDm;
             if (!isRelevantToMe) return;
 
-            // Skip if this message is hidden locally
+            // Skip if this message is hidden locally (compare as strings)
             const hiddenIds = getHiddenMsgIds();
-            if (hiddenIds.includes(msg.id)) return;
+            if (hiddenIds.includes(String(msg.id))) return;
 
             const isForActiveRoom = msg.room === activeChatRoom;
             const isChatTabVisible = !document.getElementById('tab-content-chat').classList.contains('hidden');
@@ -2340,6 +2365,7 @@
                 if (isChatTabVisible) {
                     const nowIso = new Date().toISOString();
                     myRoomOpenedAt[activeChatRoom] = nowIso;
+                    persistMyRoomOpened(); // persist so it survives refresh
                     if (presenceChannel) {
                         presenceChannel.track({
                             name: activeUser, email: activeEmail, role: activeRole,
@@ -2479,6 +2505,7 @@
             // Record that current user has now "seen" this room up to now
             const nowIso = new Date().toISOString();
             myRoomOpenedAt[activeChatRoom] = nowIso;
+            persistMyRoomOpened(); // save to localStorage so it survives refresh
 
             // Broadcast updated last-seen via presence
             if (presenceChannel) {
@@ -2522,9 +2549,9 @@
                 return;
             }
 
-            // Filter out messages the current user has hidden locally
+            // Filter out messages the current user has hidden locally (compare as strings)
             const hiddenIds = getHiddenMsgIds();
-            chatMessages = (data || []).filter(m => !hiddenIds.includes(m.id));
+            chatMessages = (data || []).filter(m => !hiddenIds.includes(String(m.id)));
             renderChatMessages();
         }
 
@@ -2731,14 +2758,16 @@
         function getHiddenMsgIds() {
             try {
                 const raw = localStorage.getItem(`be_hidden_msgs_${activeEmail}`);
-                return raw ? JSON.parse(raw) : [];
+                // Always return as strings for consistent comparison
+                return raw ? JSON.parse(raw).map(String) : [];
             } catch(e) { return []; }
         }
 
         function hideMessageLocally(messageId) {
             const hidden = getHiddenMsgIds();
-            if (!hidden.includes(messageId)) {
-                hidden.push(messageId);
+            const idStr = String(messageId);
+            if (!hidden.includes(idStr)) {
+                hidden.push(idStr);
                 localStorage.setItem(`be_hidden_msgs_${activeEmail}`, JSON.stringify(hidden));
             }
         }
