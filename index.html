@@ -82,10 +82,6 @@
             background-color: #1a1e36;
             border: 1px solid #2e3554;
         }
-        .voice-msg-bubble audio {
-            height: 32px;
-            max-width: 220px;
-        }
         @media (hover: none) {
             .chat-msg-delete-btn { opacity: 0.6 !important; }
         }
@@ -103,7 +99,8 @@
                 <img src="Broken English Final Logo-03.png" alt="Broken English Logo" class="h-16 w-auto object-contain">
             </div>
             <div>
-                <h2 class="text-xl font-bold text-white">Production Framework Portal</h2>
+                <h2 id="portal-heading-text" class="text-xl font-bold text-white">Production Framework Portal</h2>
+                <p id="portal-subheading-text" class="hidden text-[11px] text-gray-500 mt-1">Adding a new account on this device</p>
             </div>
             
             <div class="space-y-4 text-left">
@@ -117,6 +114,9 @@
                 </div>
                 <button onclick="handlePortalLogin()" class="w-full brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs mt-2 active:scale-[0.98] transition-transform">
                     Verify & Authenticate
+                </button>
+                <button id="portal-cancel-add-btn" onclick="cancelAddAccountFlow()" class="hidden w-full text-gray-400 hover:text-white text-[11px] font-bold uppercase tracking-wider py-1">
+                    Cancel
                 </button>
             </div>
         </div>
@@ -188,10 +188,20 @@
                 </nav>
             </div>
 
-            <div class="hidden md:block space-y-2 mt-4">
-                <div id="active-user-display" class="px-3 py-2 bg-[#121424] rounded-xl border border-[#1e2238] text-xs text-gray-400 truncate">
-                    User: <span class="text-white font-semibold">None</span>
+            <div class="hidden md:block space-y-2 mt-4 relative">
+                <button id="account-switcher-trigger" onclick="toggleAccountSwitcher()" class="w-full flex items-center justify-between px-3 py-2 bg-[#121424] rounded-xl border border-[#1e2238] text-xs text-gray-400 hover:border-orange-500/40 transition-colors">
+                    <span id="active-user-display" class="truncate text-left">User: <span class="text-white font-semibold">None</span></span>
+                    <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 text-gray-500 shrink-0 ml-2"></i>
+                </button>
+
+                <div id="account-switcher-panel" class="hidden absolute bottom-full left-0 mb-2 w-full card rounded-xl shadow-2xl border border-[#1e2238] overflow-hidden z-30">
+                    <div class="px-3 py-2 text-[10px] text-gray-500 uppercase font-bold tracking-wider border-b border-[#1e2238]">Switch Account</div>
+                    <div id="account-switcher-list" class="max-h-48 overflow-y-auto"></div>
+                    <button onclick="startAddAccountFlow()" class="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-orange-400 hover:bg-orange-500/10 transition-colors border-t border-[#1e2238]">
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Add another account
+                    </button>
                 </div>
+
                 <button onclick="logoutPortal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition duration-200">
                     <i data-lucide="log-out" class="w-5 h-5"></i> Log Out
                 </button>
@@ -210,8 +220,18 @@
                 </div>
             </div>
 
-            <div class="flex md:hidden items-center justify-between bg-[#121424] border border-[#1e2238] p-3 rounded-xl text-xs">
-                <span id="active-user-display-mobile" class="text-gray-300"></span>
+            <div class="flex md:hidden items-center justify-between bg-[#121424] border border-[#1e2238] p-3 rounded-xl text-xs relative">
+                <button onclick="toggleAccountSwitcher()" class="flex items-center gap-1.5 text-left">
+                    <span id="active-user-display-mobile" class="text-gray-300"></span>
+                    <i data-lucide="chevrons-up-down" class="w-3 h-3 text-gray-500 shrink-0"></i>
+                </button>
+                <div id="account-switcher-panel-mobile" class="hidden absolute top-full left-3 right-3 mt-2 card rounded-xl shadow-2xl border border-[#1e2238] overflow-hidden z-30">
+                    <div class="px-3 py-2 text-[10px] text-gray-500 uppercase font-bold tracking-wider border-b border-[#1e2238]">Switch Account</div>
+                    <div id="account-switcher-list-mobile" class="max-h-48 overflow-y-auto"></div>
+                    <button onclick="startAddAccountFlow()" class="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-orange-400 hover:bg-orange-500/10 transition-colors border-t border-[#1e2238]">
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Add another account
+                    </button>
+                </div>
                 <div class="flex items-center gap-3">
                     <button onclick="syncLedgerEngine(true)" class="text-orange-400 p-1 flex items-center gap-1 font-bold bg-orange-500/10 rounded-lg px-2 border border-orange-500/20 transition-all duration-200" title="Force Sync Matrix Data">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync
@@ -447,26 +467,10 @@
 
                         <div id="chat-attachment-preview" class="hidden px-3 pt-2"></div>
 
-                        <div id="chat-recording-bar" class="hidden px-3 pt-2 pb-1">
-                            <div class="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
-                                <span class="text-xs text-red-300 font-bold">Recording...</span>
-                                <span id="chat-recording-timer" class="text-xs text-red-300 font-mono">0:00</span>
-                                <div class="flex-1"></div>
-                                <button onclick="cancelVoiceRecording()" class="text-gray-400 hover:text-white text-[11px] font-bold uppercase tracking-wider px-2">Cancel</button>
-                                <button onclick="stopVoiceRecording()" class="bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                                    <i data-lucide="square" class="w-3 h-3"></i> Stop
-                                </button>
-                            </div>
-                        </div>
-
                         <div class="p-3 border-t border-[#1e2238] flex items-center gap-2">
                             <input type="file" id="chat-file-input" class="hidden" onchange="handleChatFileSelect()">
                             <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="text-gray-400 hover:text-orange-400 p-2.5 rounded-xl shrink-0 transition-colors">
                                 <i data-lucide="paperclip" class="w-4 h-4"></i>
-                            </button>
-                            <button id="chat-mic-btn" onclick="startVoiceRecording()" title="Record voice message" class="text-gray-400 hover:text-orange-400 p-2.5 rounded-xl shrink-0 transition-colors">
-                                <i data-lucide="mic" class="w-4 h-4"></i>
                             </button>
                             <input type="text" id="chat-message-input" placeholder="Type a message..." class="flex-1 bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500" onkeydown="if(event.key==='Enter'){event.preventDefault();sendChatMessage();}">
                             <button id="chat-send-btn" onclick="sendChatMessage()" class="brand-gradient text-white p-2.5 rounded-xl shrink-0 active:scale-95 transition-transform">
@@ -626,13 +630,8 @@
         let chatHasUnread = false;
         let chatChannelsReady = false;
 
-        // Chat attachments + voice recording state
-        let pendingChatAttachment = null;     // { file, kind: 'file'|'voice', previewName, durationLabel }
-        let mediaRecorderInstance = null;
-        let recordedAudioChunks = [];
-        let recordingStartTime = null;
-        let recordingTimerInterval = null;
-        let activeMicStream = null;
+        // Chat attachment state
+        let pendingChatAttachment = null;     // { file, kind: 'file', previewName }
 
         // Calculate dynamic real-time browser dates for tracking filters on startup
         const defaultDateInit = new Date();
@@ -786,7 +785,8 @@
             localStorage.setItem('be_active_user', activeUser);
             localStorage.setItem('be_active_role', activeRole);
             localStorage.setItem('be_active_email', activeEmail);
-            
+            saveAccountForSwitching(activeUser, activeRole, activeEmail, pwdInput);
+
             await pushLogEntry(`${activeUser} (${activeRole}) authenticated into system framework session.`);
             launchSession();
         }
@@ -979,6 +979,155 @@
             localStorage.removeItem('be_active_email');
             location.reload();
         }
+
+        // ============================================================
+        // ACCOUNT SWITCHER — instant switch between saved logins on this device
+        // ============================================================
+
+        function getSavedAccounts() {
+            try {
+                const raw = localStorage.getItem('be_saved_accounts');
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveAccountForSwitching(name, role, email, pass) {
+            let accounts = getSavedAccounts();
+            accounts = accounts.filter(a => a.email.toLowerCase() !== email.toLowerCase());
+            accounts.push({ name, role, email, pass });
+            localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
+        }
+
+        function removeSavedAccount(email) {
+            let accounts = getSavedAccounts();
+            accounts = accounts.filter(a => a.email.toLowerCase() !== email.toLowerCase());
+            localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
+            renderAccountSwitcherList();
+        }
+
+        function toggleAccountSwitcher() {
+            const desktopPanel = document.getElementById('account-switcher-panel');
+            const mobilePanel = document.getElementById('account-switcher-panel-mobile');
+            const isOpening = desktopPanel.classList.contains('hidden') && mobilePanel.classList.contains('hidden');
+
+            desktopPanel.classList.add('hidden');
+            mobilePanel.classList.add('hidden');
+
+            if (isOpening) {
+                renderAccountSwitcherList();
+                if (window.innerWidth < 768) {
+                    mobilePanel.classList.remove('hidden');
+                } else {
+                    desktopPanel.classList.remove('hidden');
+                }
+            }
+        }
+
+        function closeAccountSwitcher() {
+            document.getElementById('account-switcher-panel').classList.add('hidden');
+            document.getElementById('account-switcher-panel-mobile').classList.add('hidden');
+        }
+
+        function renderAccountSwitcherList() {
+            const accounts = getSavedAccounts();
+            const targets = [
+                document.getElementById('account-switcher-list'),
+                document.getElementById('account-switcher-list-mobile')
+            ];
+
+            targets.forEach(list => {
+                if (!list) return;
+                list.innerHTML = '';
+
+                if (accounts.length === 0) {
+                    list.innerHTML = `<p class="px-3 py-3 text-[11px] text-gray-500 italic">No saved accounts yet.</p>`;
+                    return;
+                }
+
+                accounts.forEach(acc => {
+                    const isCurrent = acc.email.toLowerCase() === (activeEmail || '').toLowerCase();
+                    const initials = acc.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+                    list.innerHTML += `
+                        <div class="flex items-center gap-2 px-3 py-2 hover:bg-[#1a1e36] transition-colors ${isCurrent ? 'bg-[#1a1e36]/60' : ''}">
+                            <button onclick="switchToAccount(${JSON.stringify(acc.email)})" class="flex items-center gap-2.5 flex-1 text-left min-w-0">
+                                <div class="w-7 h-7 rounded-full bg-[#1e2238] flex items-center justify-center text-gray-300 font-bold text-[10px] shrink-0">${initials}</div>
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-white truncate">${acc.name} ${isCurrent ? '<span class=\"text-emerald-400\">(current)</span>' : ''}</p>
+                                    <p class="text-[10px] text-gray-500 truncate">${acc.role}</p>
+                                </div>
+                            </button>
+                            <button onclick="removeSavedAccount(${JSON.stringify(acc.email)})" title="Remove saved account" class="text-gray-500 hover:text-red-400 p-1 shrink-0">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    `;
+                });
+            });
+
+            lucide.createIcons();
+        }
+
+        function switchToAccount(email) {
+            const accounts = getSavedAccounts();
+            const target = accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+            if (!target) return;
+
+            if (target.email.toLowerCase() === (activeEmail || '').toLowerCase()) {
+                closeAccountSwitcher();
+                return;
+            }
+
+            if (presenceChannel) { dbInstance.removeChannel(presenceChannel); presenceChannel = null; }
+            if (chatRoomsChannel) { dbInstance.removeChannel(chatRoomsChannel); chatRoomsChannel = null; }
+            chatChannelsReady = false;
+            activeChatRoom = CHAT_GROUP_ROOM;
+            activeChatPeer = null;
+            chatMessages = [];
+            onlinePresenceMap = {};
+
+            activeUser = target.name;
+            activeRole = target.role;
+            activeEmail = target.email;
+
+            localStorage.setItem('be_active_user', activeUser);
+            localStorage.setItem('be_active_role', activeRole);
+            localStorage.setItem('be_active_email', activeEmail);
+
+            closeAccountSwitcher();
+            pushLogEntry(`${activeUser} (${activeRole}) switched into session on this device.`);
+            launchSession();
+            switchTab('dashboard');
+        }
+
+        function startAddAccountFlow() {
+            closeAccountSwitcher();
+            document.getElementById('portal-user-input').value = '';
+            document.getElementById('portal-password-input').value = '';
+            document.getElementById('portal-heading-text').innerText = 'Add Another Account';
+            document.getElementById('portal-subheading-text').classList.remove('hidden');
+            document.getElementById('portal-cancel-add-btn').classList.remove('hidden');
+            document.getElementById('portal-login-screen').classList.remove('hidden');
+        }
+
+        function cancelAddAccountFlow() {
+            document.getElementById('portal-heading-text').innerText = 'Production Framework Portal';
+            document.getElementById('portal-subheading-text').classList.add('hidden');
+            document.getElementById('portal-cancel-add-btn').classList.add('hidden');
+            document.getElementById('portal-login-screen').classList.add('hidden');
+        }
+
+        document.addEventListener('click', function(e) {
+            const desktopPanel = document.getElementById('account-switcher-panel');
+            const mobilePanel = document.getElementById('account-switcher-panel-mobile');
+            if (!desktopPanel || !mobilePanel) return;
+            const clickedInsideSwitcher = e.target.closest('#account-switcher-panel, #account-switcher-trigger, #account-switcher-panel-mobile');
+            if (!clickedInsideSwitcher) {
+                desktopPanel.classList.add('hidden');
+                mobilePanel.classList.add('hidden');
+            }
+        });
 
         function populateDropdownSelectors() {
             const empDropdown = document.getElementById('task-assigned-employee');
@@ -1787,7 +1936,6 @@
 
         async function openChatRoom(kind, peerEmail) {
             clearPendingAttachment();
-            if (mediaRecorderInstance) cancelVoiceRecording();
 
             if (kind === 'group') {
                 activeChatRoom = CHAT_GROUP_ROOM;
@@ -1854,27 +2002,14 @@
 
                 let attachmentMarkup = '';
                 if (m.attachment_url) {
-                    if (m.attachment_type === 'voice') {
-                        const playableUrl = toPlayableDriveUrl(m.attachment_url);
-                        attachmentMarkup = `
-                            <div class="voice-msg-bubble flex flex-col gap-1.5 ${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'} px-3 py-2">
-                                <div class="flex items-center gap-2">
-                                    <i data-lucide="mic" class="w-3.5 h-3.5 ${isMine ? 'text-white' : 'text-orange-400'} shrink-0"></i>
-                                    <audio controls preload="metadata" src="${playableUrl}"></audio>
-                                </div>
-                                <a href="${m.attachment_url}" target="_blank" class="text-[10px] underline opacity-70 hover:opacity-100 ${isMine ? 'text-white' : 'text-gray-400'}">Won't play? Open in Drive</a>
-                            </div>
-                        `;
-                    } else {
-                        const fileName = m.attachment_name || 'Attachment';
-                        attachmentMarkup = `
-                            <a href="${m.attachment_url}" target="_blank" class="chat-attachment-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs hover:border-orange-500 transition-colors">
-                                <i data-lucide="file-text" class="w-4 h-4 text-orange-400 shrink-0"></i>
-                                <span class="truncate max-w-[160px] text-gray-200">${fileName}</span>
-                                <i data-lucide="download" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i>
-                            </a>
-                        `;
-                    }
+                    const fileName = m.attachment_name || 'Attachment';
+                    attachmentMarkup = `
+                        <a href="${m.attachment_url}" target="_blank" class="chat-attachment-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs hover:border-orange-500 transition-colors">
+                            <i data-lucide="file-text" class="w-4 h-4 text-orange-400 shrink-0"></i>
+                            <span class="truncate max-w-[160px] text-gray-200">${fileName}</span>
+                            <i data-lucide="download" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i>
+                        </a>
+                    `;
                 }
 
                 const textBubble = m.message ? `
@@ -1912,22 +2047,6 @@
             const div = document.createElement('div');
             div.innerText = str;
             return div.innerHTML;
-        }
-
-        // Google Drive "view" links (e.g. drive.google.com/file/d/FILE_ID/view) return an HTML
-        // viewer page, not raw bytes — so <audio>/<video> tags can't play them directly.
-        // This rewrites such links to Drive's direct content-stream endpoint.
-        function toPlayableDriveUrl(url) {
-            if (!url) return url;
-            const match = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-            if (match && match[1]) {
-                return `https://drive.google.com/uc?export=download&id=${match[1]}`;
-            }
-            const idParamMatch = url.match(/[?&]id=([^&]+)/);
-            if (url.includes('drive.google.com') && idParamMatch && idParamMatch[1] && !url.includes('export=download')) {
-                return `https://drive.google.com/uc?export=download&id=${idParamMatch[1]}`;
-            }
-            return url;
         }
 
         async function sendChatMessage() {
@@ -2030,11 +2149,7 @@
             const preview = document.getElementById('chat-attachment-preview');
             if (!preview || !pendingChatAttachment) return;
 
-            const isVoice = pendingChatAttachment.kind === 'voice';
-            const icon = isVoice ? 'mic' : 'file-text';
-            const label = isVoice
-                ? `Voice message · ${pendingChatAttachment.durationLabel || ''}`
-                : pendingChatAttachment.previewName;
+            const label = pendingChatAttachment.previewName;
             const sizeLabel = pendingChatAttachment.file.size
                 ? `(${(pendingChatAttachment.file.size / (1024*1024)).toFixed(2)} MB)`
                 : '';
@@ -2042,7 +2157,7 @@
             preview.classList.remove('hidden');
             preview.innerHTML = `
                 <div class="chat-attachment-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-gray-200 animate-item">
-                    <i data-lucide="${icon}" class="w-4 h-4 text-orange-400 shrink-0"></i>
+                    <i data-lucide="file-text" class="w-4 h-4 text-orange-400 shrink-0"></i>
                     <span class="truncate flex-1">${label} ${sizeLabel}</span>
                     <button onclick="clearPendingAttachment()" class="text-gray-500 hover:text-red-400 shrink-0">
                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
@@ -2050,85 +2165,6 @@
                 </div>
             `;
             lucide.createIcons();
-        }
-
-        // ---------- VOICE RECORDING ----------
-
-        async function startVoiceRecording() {
-            if (!navigator.mediaDevices || !window.MediaRecorder) {
-                alert('Voice recording is not supported in this browser.');
-                return;
-            }
-
-            try {
-                activeMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            } catch (e) {
-                alert('Microphone access denied or unavailable.');
-                return;
-            }
-
-            recordedAudioChunks = [];
-            mediaRecorderInstance = new MediaRecorder(activeMicStream);
-
-            mediaRecorderInstance.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) recordedAudioChunks.push(e.data);
-            };
-
-            mediaRecorderInstance.onstop = () => {
-                activeMicStream.getTracks().forEach(track => track.stop());
-                activeMicStream = null;
-            };
-
-            mediaRecorderInstance.start();
-            recordingStartTime = Date.now();
-
-            document.getElementById('chat-recording-bar').classList.remove('hidden');
-            document.getElementById('chat-mic-btn').classList.add('hidden');
-            document.getElementById('chat-message-input').disabled = true;
-
-            recordingTimerInterval = setInterval(() => {
-                const elapsedSec = Math.floor((Date.now() - recordingStartTime) / 1000);
-                const mins = Math.floor(elapsedSec / 60);
-                const secs = elapsedSec % 60;
-                document.getElementById('chat-recording-timer').innerText = `${mins}:${secs.toString().padStart(2,'0')}`;
-            }, 500);
-
-            lucide.createIcons();
-        }
-
-        function stopVoiceRecording() {
-            if (!mediaRecorderInstance) return;
-            const elapsedSec = Math.floor((Date.now() - recordingStartTime) / 1000);
-            const mins = Math.floor(elapsedSec / 60);
-            const secs = elapsedSec % 60;
-            const durationLabel = `${mins}:${secs.toString().padStart(2,'0')}`;
-
-            mediaRecorderInstance.addEventListener('stop', () => {
-                const audioBlob = new Blob(recordedAudioChunks, { type: 'audio/webm' });
-                const voiceFile = new File([audioBlob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
-                pendingChatAttachment = { file: voiceFile, kind: 'voice', previewName: voiceFile.name, durationLabel };
-                renderPendingAttachmentPreview();
-            }, { once: true });
-
-            mediaRecorderInstance.stop();
-            finishRecordingUI();
-        }
-
-        function cancelVoiceRecording() {
-            if (mediaRecorderInstance && mediaRecorderInstance.state !== 'inactive') {
-                mediaRecorderInstance.addEventListener('stop', () => {}, { once: true });
-                mediaRecorderInstance.stop();
-            }
-            recordedAudioChunks = [];
-            finishRecordingUI();
-        }
-
-        function finishRecordingUI() {
-            clearInterval(recordingTimerInterval);
-            document.getElementById('chat-recording-bar').classList.add('hidden');
-            document.getElementById('chat-mic-btn').classList.remove('hidden');
-            document.getElementById('chat-message-input').disabled = false;
-            mediaRecorderInstance = null;
         }
 
         function renderLogFeed() {
