@@ -12,6 +12,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     
     <style>
         body {
@@ -181,6 +182,9 @@
                     </button>
                     <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
                         <i data-lucide="clock-4" class="w-4 h-4 md:w-5 h-5"></i> Attendance Log
+                    </button>
+                    <button id="nav-reports" onclick="switchTab('reports')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4 md:w-5 h-5"></i> Monthly Reports
                     </button>
                     <button id="nav-settings" onclick="switchTab('settings')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
                         <i data-lucide="settings" class="w-4 h-4 md:w-5 h-5"></i> Setup Center
@@ -525,6 +529,45 @@
                 <div id="attendance-mobile-cards" class="block md:hidden space-y-3"></div>
             </div>
 
+            <div id="tab-content-reports" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Monthly Reports</h1>
+                        <p class="text-gray-400 text-xs md:text-sm mt-1">Task performance and attendance summary by month.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select id="report-month-select" onchange="renderMonthlyReport()" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500 font-medium"></select>
+                        <button onclick="downloadReportCSV()" class="bg-[#1a1e36] hover:bg-[#222746] border border-[#1e2238] text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> <span class="hidden sm:inline">CSV</span>
+                        </button>
+                        <button onclick="downloadReportPDF()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 shadow-lg shadow-red-900/20">
+                            <i data-lucide="download" class="w-4 h-4"></i> <span class="hidden sm:inline">PDF Report</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="report-summary-grid" class="grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="card p-4 md:p-5 rounded-2xl">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Task Status Breakdown</h3>
+                        <div class="relative h-64"><canvas id="chart-status-breakdown"></canvas></div>
+                    </div>
+                    <div class="card p-4 md:p-5 rounded-2xl">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Tasks by Type</h3>
+                        <div class="relative h-64"><canvas id="chart-type-breakdown"></canvas></div>
+                    </div>
+                    <div class="card p-4 md:p-5 rounded-2xl lg:col-span-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Completed Tasks by Team Member</h3>
+                        <div class="relative h-72"><canvas id="chart-employee-productivity"></canvas></div>
+                    </div>
+                    <div class="card p-4 md:p-5 rounded-2xl lg:col-span-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Hours Worked by Team Member (Attendance)</h3>
+                        <div class="relative h-72"><canvas id="chart-attendance-hours"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="tab-content-settings" class="space-y-6 hidden">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -613,6 +656,10 @@
         let loadedTaskIdsSnapshot = [];
         let attendanceLogs = [];
         let myActiveAttendanceRecord = null;
+
+        // Monthly Reports state
+        let reportSelectedMonth = null; // 'YYYY-MM'
+        let reportChartInstances = {};
         
         // Accumulative state variables for multiple file tracking queues
         let deliveryFilesQueue = [];
@@ -722,6 +769,9 @@
                     if (activeRole === 'admin' && !document.getElementById('tab-content-attendance').classList.contains('hidden')) {
                         renderAttendanceTable();
                     }
+                    if (activeRole === 'admin' && !document.getElementById('tab-content-reports').classList.contains('hidden')) {
+                        renderMonthlyReport();
+                    }
                 }
 
                 if(forcedByUser) {
@@ -808,6 +858,7 @@
                 document.getElementById('admin-assignment-panel').classList.remove('hidden');
                 document.getElementById('nav-settings').classList.remove('hidden');
                 document.getElementById('nav-attendance').classList.remove('hidden');
+                document.getElementById('nav-reports').classList.remove('hidden');
                 document.getElementById('th-actions').classList.remove('hidden');
                 document.getElementById('admin-download-wrapper').classList.remove('hidden');
                 document.getElementById('admin-download-logs-btn').classList.remove('hidden');
@@ -817,6 +868,7 @@
                 document.getElementById('admin-assignment-panel').classList.remove('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('nav-attendance').classList.add('hidden');
+                document.getElementById('nav-reports').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
@@ -828,6 +880,7 @@
                 document.getElementById('admin-assignment-panel').classList.add('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('nav-attendance').classList.add('hidden');
+                document.getElementById('nav-reports').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
@@ -945,6 +998,7 @@
             document.getElementById('tab-content-dashboard').classList.add('hidden');
             document.getElementById('tab-content-chat').classList.add('hidden');
             document.getElementById('tab-content-attendance').classList.add('hidden');
+            document.getElementById('tab-content-reports').classList.add('hidden');
             document.getElementById('tab-content-settings').classList.add('hidden');
 
             if(targetTab === 'dashboard') {
@@ -964,6 +1018,11 @@
                 document.getElementById('tab-content-attendance').classList.remove('hidden');
                 populateAttendanceEmployeeFilter();
                 renderAttendanceTable();
+            } else if (targetTab === 'reports' && activeRole === 'admin') {
+                document.getElementById('nav-reports').classList.add('active');
+                document.getElementById('tab-content-reports').classList.remove('hidden');
+                populateReportMonthSelector();
+                renderMonthlyReport();
             } else if (targetTab === 'settings' && activeRole === 'admin') {
                 document.getElementById('nav-settings').classList.add('active');
                 document.getElementById('tab-content-settings').classList.remove('hidden');
@@ -1799,6 +1858,381 @@
         }
 
         // ============================================================
+        // MONTHLY REPORTS ENGINE — task + attendance analytics, CSV/PDF export
+        // ============================================================
+
+        const REPORT_CHART_COLORS = ['#FD6D05', '#FF0000', '#10b981', '#3b82f6', '#a855f7', '#eab308', '#ec4899', '#14b8a6'];
+
+        function populateReportMonthSelector() {
+            const select = document.getElementById('report-month-select');
+            if (!select) return;
+
+            const monthKeys = new Set();
+            assignmentsList.forEach(t => {
+                const d = t.assignedDate || t.date;
+                if (d) monthKeys.add(d.slice(0, 7));
+            });
+            attendanceLogs.forEach(r => {
+                if (r.log_date) monthKeys.add(r.log_date.slice(0, 7));
+            });
+
+            const now = new Date();
+            const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            monthKeys.add(currentMonthKey);
+
+            const sortedKeys = Array.from(monthKeys).sort().reverse();
+            const previousVal = select.value;
+
+            select.innerHTML = sortedKeys.map(key => {
+                const [y, m] = key.split('-');
+                const label = new Date(`${y}-${m}-01T00:00:00`).toLocaleDateString([], { month: 'long', year: 'numeric' });
+                return `<option value="${key}">${label}</option>`;
+            }).join('');
+
+            if (previousVal && sortedKeys.includes(previousVal)) {
+                select.value = previousVal;
+            } else {
+                select.value = currentMonthKey;
+            }
+            reportSelectedMonth = select.value;
+        }
+
+        function getReportFilteredData() {
+            const monthKey = document.getElementById('report-month-select')?.value || reportSelectedMonth;
+            reportSelectedMonth = monthKey;
+
+            const tasksInMonth = assignmentsList.filter(t => {
+                const d = t.assignedDate || t.date;
+                return d && d.slice(0, 7) === monthKey;
+            });
+
+            const attendanceInMonth = attendanceLogs.filter(r => r.log_date && r.log_date.slice(0, 7) === monthKey);
+
+            return { monthKey, tasksInMonth, attendanceInMonth };
+        }
+
+        function renderMonthlyReport() {
+            if (typeof Chart === 'undefined') return;
+            const { monthKey, tasksInMonth, attendanceInMonth } = getReportFilteredData();
+
+            // ---- Summary cards ----
+            const totalTasks = tasksInMonth.length;
+            const completedTasks = tasksInMonth.filter(t => t.status === 'Completed').length;
+            const reworkTasks = tasksInMonth.filter(t => t.status === 'Rework Required').length;
+            const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            const totalHours = attendanceInMonth.reduce((sum, r) => {
+                if (r.log_in_time && r.log_out_time) {
+                    return sum + (new Date(r.log_out_time) - new Date(r.log_in_time)) / (1000 * 60 * 60);
+                }
+                return sum;
+            }, 0);
+
+            const summaryGrid = document.getElementById('report-summary-grid');
+            if (summaryGrid) {
+                summaryGrid.innerHTML = `
+                    <div class="card p-4 rounded-xl">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total Tasks</p>
+                        <p class="text-2xl font-bold text-white mt-1">${totalTasks}</p>
+                    </div>
+                    <div class="card p-4 rounded-xl">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Completed</p>
+                        <p class="text-2xl font-bold text-emerald-400 mt-1">${completedTasks}</p>
+                    </div>
+                    <div class="card p-4 rounded-xl">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Completion Rate</p>
+                        <p class="text-2xl font-bold text-orange-400 mt-1">${completionRate}%</p>
+                    </div>
+                    <div class="card p-4 rounded-xl">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total Hours Logged</p>
+                        <p class="text-2xl font-bold text-white mt-1">${totalHours.toFixed(1)}</p>
+                    </div>
+                `;
+            }
+
+            renderStatusBreakdownChart(tasksInMonth);
+            renderTypeBreakdownChart(tasksInMonth);
+            renderEmployeeProductivityChart(tasksInMonth);
+            renderAttendanceHoursChart(attendanceInMonth);
+        }
+
+        function destroyReportChart(key) {
+            if (reportChartInstances[key]) {
+                reportChartInstances[key].destroy();
+                delete reportChartInstances[key];
+            }
+        }
+
+        function renderStatusBreakdownChart(tasks) {
+            const canvas = document.getElementById('chart-status-breakdown');
+            if (!canvas) return;
+            destroyReportChart('status');
+
+            const statusCounts = {};
+            tasks.forEach(t => { statusCounts[t.status || 'Unknown'] = (statusCounts[t.status || 'Unknown'] || 0) + 1; });
+            const labels = Object.keys(statusCounts);
+            const data = Object.values(statusCounts);
+
+            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
+
+            reportChartInstances['status'] = new Chart(canvas, {
+                type: 'doughnut',
+                data: { labels, datasets: [{ data, backgroundColor: REPORT_CHART_COLORS, borderColor: '#121424', borderWidth: 2 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 11 } } } }
+                }
+            });
+        }
+
+        function renderTypeBreakdownChart(tasks) {
+            const canvas = document.getElementById('chart-type-breakdown');
+            if (!canvas) return;
+            destroyReportChart('type');
+
+            const typeCounts = {};
+            tasks.forEach(t => { typeCounts[t.type || 'Unspecified'] = (typeCounts[t.type || 'Unspecified'] || 0) + 1; });
+            const labels = Object.keys(typeCounts);
+            const data = Object.values(typeCounts);
+
+            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
+
+            reportChartInstances['type'] = new Chart(canvas, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Tasks', data, backgroundColor: '#FD6D05', borderRadius: 6 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { color: '#1e2238' } },
+                        y: { beginAtZero: true, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: '#1e2238' } }
+                    }
+                }
+            });
+        }
+
+        function renderEmployeeProductivityChart(tasks) {
+            const canvas = document.getElementById('chart-employee-productivity');
+            if (!canvas) return;
+            destroyReportChart('employee');
+
+            const completedByEmployee = {};
+            tasks.filter(t => t.status === 'Completed').forEach(t => {
+                const name = t.assignedTo || 'Unassigned';
+                completedByEmployee[name] = (completedByEmployee[name] || 0) + 1;
+            });
+
+            const labels = Object.keys(completedByEmployee);
+            const data = Object.values(completedByEmployee);
+
+            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
+
+            reportChartInstances['employee'] = new Chart(canvas, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Completed Tasks', data, backgroundColor: '#10b981', borderRadius: 6 }] },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: '#1e2238' } },
+                        y: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function renderAttendanceHoursChart(attendanceRows) {
+            const canvas = document.getElementById('chart-attendance-hours');
+            if (!canvas) return;
+            destroyReportChart('hours');
+
+            const hoursByEmployee = {};
+            attendanceRows.forEach(r => {
+                if (r.log_in_time && r.log_out_time) {
+                    const hrs = (new Date(r.log_out_time) - new Date(r.log_in_time)) / (1000 * 60 * 60);
+                    hoursByEmployee[r.employee_name] = (hoursByEmployee[r.employee_name] || 0) + hrs;
+                }
+            });
+
+            const labels = Object.keys(hoursByEmployee);
+            const data = labels.map(l => Math.round(hoursByEmployee[l] * 10) / 10);
+
+            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
+
+            reportChartInstances['hours'] = new Chart(canvas, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Hours Worked', data, backgroundColor: '#3b82f6', borderRadius: 6 }] },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#1e2238' } },
+                        y: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function showNoDataOnCanvas(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '12px system-ui';
+            ctx.fillStyle = '#6b7280';
+            ctx.textAlign = 'center';
+            ctx.fillText('No data for this month', canvas.width / 2, canvas.height / 2);
+        }
+
+        function downloadReportCSV() {
+            if (activeRole !== 'admin') return;
+            const { monthKey, tasksInMonth, attendanceInMonth } = getReportFilteredData();
+
+            let lines = [];
+            lines.push(`Monthly Report - ${monthKey}`);
+            lines.push('');
+            lines.push('TASKS');
+            lines.push(['Topic', 'Type', 'Assigned To', 'Assigned Date', 'Status'].join(','));
+            tasksInMonth.forEach(t => {
+                lines.push([`"${(t.topic || '').replace(/"/g, '""')}"`, t.type || '', t.assignedTo || '', t.assignedDate || t.date || '', t.status || ''].join(','));
+            });
+            lines.push('');
+            lines.push('ATTENDANCE');
+            lines.push(['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked'].join(','));
+            attendanceInMonth.forEach(r => {
+                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Still clocked in';
+                lines.push([r.employee_name, r.log_date, inLabel, outLabel, calcHoursLabel(r)].join(','));
+            });
+
+            let blobElement = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            let structuralAnchor = document.createElement('a');
+            structuralAnchor.setAttribute('href', URL.createObjectURL(blobElement));
+            structuralAnchor.setAttribute('download', `Broken_English_Monthly_Report_${monthKey}.csv`);
+            document.body.appendChild(structuralAnchor);
+            structuralAnchor.click();
+            document.body.removeChild(structuralAnchor);
+        }
+
+        async function downloadReportPDF() {
+            if (activeRole !== 'admin') return;
+            const { monthKey, tasksInMonth, attendanceInMonth } = getReportFilteredData();
+            const monthLabel = new Date(`${monthKey}-01T00:00:00`).toLocaleDateString([], { month: 'long', year: 'numeric' });
+
+            const totalTasks = tasksInMonth.length;
+            const completedTasks = tasksInMonth.filter(t => t.status === 'Completed').length;
+            const reworkTasks = tasksInMonth.filter(t => t.status === 'Rework Required').length;
+            const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            const totalHours = attendanceInMonth.reduce((sum, r) => {
+                if (r.log_in_time && r.log_out_time) return sum + (new Date(r.log_out_time) - new Date(r.log_in_time)) / (1000 * 60 * 60);
+                return sum;
+            }, 0);
+
+            const chartImages = {};
+            ['status', 'type', 'employee', 'hours'].forEach(key => {
+                if (reportChartInstances[key]) {
+                    chartImages[key] = reportChartInstances[key].toBase64Image();
+                }
+            });
+
+            const taskRows = tasksInMonth.map(t => `
+                <tr>
+                    <td>${escapeChatHtml(t.topic || '')}</td>
+                    <td>${escapeChatHtml(t.type || '')}</td>
+                    <td>${escapeChatHtml(t.assignedTo || '')}</td>
+                    <td>${t.assignedDate || t.date || ''}</td>
+                    <td>${t.status || ''}</td>
+                </tr>
+            `).join('');
+
+            const attendanceRows = attendanceInMonth.map(r => {
+                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
+                return `
+                    <tr>
+                        <td>${escapeChatHtml(r.employee_name || '')}</td>
+                        <td>${r.log_date || ''}</td>
+                        <td>${inLabel}</td>
+                        <td>${outLabel}</td>
+                        <td>${calcHoursLabel(r)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const reportHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Monthly Report - ${monthLabel}</title>
+                    <style>
+                        body { font-family: system-ui, -apple-system, sans-serif; color: #111; margin: 0; padding: 32px; }
+                        h1 { font-size: 22px; margin-bottom: 2px; }
+                        h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #666; margin-top: 28px; border-bottom: 2px solid #FD6D05; padding-bottom: 6px; }
+                        .subtitle { color: #666; font-size: 12px; margin-bottom: 20px; }
+                        .summary-grid { display: flex; gap: 16px; margin: 16px 0; }
+                        .summary-card { flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 12px; text-align: center; }
+                        .summary-card .label { font-size: 10px; text-transform: uppercase; color: #888; font-weight: bold; }
+                        .summary-card .value { font-size: 22px; font-weight: bold; margin-top: 4px; }
+                        .chart-grid { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+                        .chart-box { flex: 1; min-width: 45%; border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+                        .chart-box img { width: 100%; }
+                        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+                        th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left; }
+                        th { background: #f5f5f5; text-transform: uppercase; font-size: 9px; color: #666; }
+                        .footer { margin-top: 30px; font-size: 9px; color: #999; text-align: center; }
+                        @media print { body { padding: 16px; } }
+                    </style>
+                </head>
+                <body>
+                    <h1>Broken English — Monthly Performance Report</h1>
+                    <p class="subtitle">${monthLabel} · Generated ${new Date().toLocaleDateString()}</p>
+
+                    <div class="summary-grid">
+                        <div class="summary-card"><div class="label">Total Tasks</div><div class="value">${totalTasks}</div></div>
+                        <div class="summary-card"><div class="label">Completed</div><div class="value">${completedTasks}</div></div>
+                        <div class="summary-card"><div class="label">Completion Rate</div><div class="value">${completionRate}%</div></div>
+                        <div class="summary-card"><div class="label">Total Hours Logged</div><div class="value">${totalHours.toFixed(1)}</div></div>
+                    </div>
+
+                    <h2>Charts</h2>
+                    <div class="chart-grid">
+                        ${chartImages.status ? `<div class="chart-box"><img src="${chartImages.status}"></div>` : ''}
+                        ${chartImages.type ? `<div class="chart-box"><img src="${chartImages.type}"></div>` : ''}
+                        ${chartImages.employee ? `<div class="chart-box"><img src="${chartImages.employee}"></div>` : ''}
+                        ${chartImages.hours ? `<div class="chart-box"><img src="${chartImages.hours}"></div>` : ''}
+                    </div>
+
+                    <h2>Task Detail (${tasksInMonth.length})</h2>
+                    <table>
+                        <thead><tr><th>Topic</th><th>Type</th><th>Assigned To</th><th>Date</th><th>Status</th></tr></thead>
+                        <tbody>${taskRows || '<tr><td colspan="5">No tasks this month.</td></tr>'}</tbody>
+                    </table>
+
+                    <h2>Attendance Detail (${attendanceInMonth.length})</h2>
+                    <table>
+                        <thead><tr><th>Employee</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th></tr></thead>
+                        <tbody>${attendanceRows || '<tr><td colspan="5">No attendance records this month.</td></tr>'}</tbody>
+                    </table>
+
+                    <p class="footer">Broken English Production Studio Network · Confidential Internal Report</p>
+
+                    <scr` + `ipt>
+                        window.onload = function() { window.print(); };
+                    </scr` + `ipt>
+                </body>
+                </html>
+            `;
+
+            const reportWindow = window.open('', '_blank');
+            if (!reportWindow) {
+                alert('Please allow popups for this site to download the PDF report.');
+                return;
+            }
+            reportWindow.document.write(reportHtml);
+            reportWindow.document.close();
+        }
+
+        // ============================================================
         // TEAM CHAT ENGINE — presence + group room + 1-on-1 DMs
         // ============================================================
 
@@ -2385,6 +2819,15 @@
                 const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
                 const refFileBtnDesktop = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
 
+                const hasFeedbackNote = t.explanation && t.explanation !== 'None';
+                const feedbackIsActive = (t.status === 'Rework Required' || t.status === 'Rejected');
+                const feedbackCellClass = !hasFeedbackNote
+                    ? 'text-gray-500'
+                    : feedbackIsActive
+                        ? 'text-orange-400'
+                        : 'text-emerald-400';
+                const feedbackCellPrefix = (hasFeedbackNote && !feedbackIsActive) ? '✓ ' : '';
+
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
@@ -2395,7 +2838,7 @@
                     <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-orange-400 font-mono font-semibold">${t.date}</td>
                     <td class="py-3 px-4">${inputActionSelectorMarkup}</td>
-                    <td class="py-3 px-4 text-yellow-500 italic max-w-xs truncate" title="${t.explanation}">${t.explanation}</td>
+                    <td class="py-3 px-4 ${feedbackCellClass} italic max-w-xs truncate" title="${t.explanation}">${feedbackCellPrefix}${t.explanation}</td>
                     <td class="py-3 px-4">${outputLinkBtn}</td>
                     <td class="py-3 px-4">${refFileBtnDesktop}</td>
                     ${activeRole === 'admin' ? `
@@ -2433,9 +2876,9 @@
                         <p class="text-gray-400 font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
                         <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
                     </div>
-                    <div class="bg-[#121424] p-2.5 rounded-lg border border-yellow-500/10 space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
-                        <p class="text-yellow-500 font-bold text-[10px] uppercase tracking-wide">Evaluation Review Notes:</p>
-                        <p class="text-yellow-400/90 text-[11px] italic leading-relaxed">${t.explanation}</p>
+                    <div class="bg-[#121424] p-2.5 rounded-lg border ${feedbackIsActive ? 'border-orange-500/10' : 'border-emerald-500/10'} space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
+                        <p class="${feedbackIsActive ? 'text-orange-400' : 'text-emerald-400'} font-bold text-[10px] uppercase tracking-wide">${feedbackIsActive ? 'Evaluation Review Notes:' : '✓ Resolved — Evaluation Review Notes:'}</p>
+                        <p class="${feedbackIsActive ? 'text-orange-300/90' : 'text-emerald-300/80'} text-[11px] italic leading-relaxed">${t.explanation}</p>
                     </div>
                     <div class="flex items-center justify-between pt-2 border-t border-[#1e2238]/40">
                         <div class="flex items-center gap-1.5 w-full">
