@@ -275,9 +275,12 @@
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Creative Production Matrix</h1>
                         <p class="text-gray-400 text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
                     </div>
-                    <div id="admin-download-wrapper" class="hidden">
+                    <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2">
                         <button onclick="downloadWorkbookCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
                             <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
+                        </button>
+                        <button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="w-full sm:w-auto bg-[#121424] border border-[#1e2238] hover:border-orange-500/50 text-orange-400 text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2">
+                            <i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet
                         </button>
                     </div>
                 </div>
@@ -810,7 +813,7 @@
                 assetLink: t.assetLink,
                 referenceFile: t.referenceFile
             }));
-            pushToSheet('syncTasks', { rows });
+            await pushToSheet('syncTasks', { rows });
         }
 
         // Push the full attendance list to the Attendance sheet (full refresh)
@@ -824,7 +827,7 @@
                 clockOut: r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
                 hoursWorked: calcHoursWorkedDecimal(r)
             }));
-            pushToSheet('syncAttendance', { rows });
+            await pushToSheet('syncAttendance', { rows });
         }
 
         // Push a single log entry
@@ -868,6 +871,18 @@
                 creatorBreakdown: Object.entries(creatorMap).map(([name, s]) => ({
                     name, ...s,
                     rate: s.assigned > 0 ? Math.round((s.completed / s.assigned) * 100) : 0
+                })),
+                // Full task list for this month
+                taskRows: monthTasks.map(t => ({
+                    topic: t.topic,
+                    type: t.type,
+                    assignedTo: t.assignedTo,
+                    description: t.description,
+                    assignedDate: t.assignedDate,
+                    deadline: t.date,
+                    status: t.status,
+                    explanation: t.explanation,
+                    assetLink: t.assetLink
                 }))
             });
         }
@@ -1138,6 +1153,14 @@
             renderSettingsRoster();
             renderLogFeed();
             initChatSystem();
+
+            // Push all existing data to Google Sheet on login (admin only)
+            if (activeRole === 'admin') {
+                syncTasksToSheet();
+                syncAttendanceToSheet();
+                syncAllLogsToSheet();
+                syncMonthlyReportToSheet();
+            }
         }
 
         function renderEmployeeNotificationBar() {
@@ -1922,6 +1945,66 @@
             document.body.appendChild(structuralAnchor);
             structuralAnchor.click();
             document.body.removeChild(structuralAnchor);
+        }
+
+        async function manualSyncToSheet() {
+            const btn = document.getElementById('sync-sheet-btn');
+            if (!btn) return;
+
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i> Syncing...`;
+            lucide.createIcons();
+
+            try {
+                await Promise.all([
+                    syncTasksToSheet(),
+                    syncAttendanceToSheet(),
+                    syncAllLogsToSheet(),
+                    syncMonthlyReportToSheet()
+                ]);
+
+                // Success state
+                btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Synced!`;
+                btn.classList.remove('text-orange-400', 'border-[#1e2238]');
+                btn.classList.add('text-emerald-400', 'border-emerald-500/40');
+                lucide.createIcons();
+
+                // Reset after 3 seconds
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = `<i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet`;
+                    btn.classList.remove('text-emerald-400', 'border-emerald-500/40');
+                    btn.classList.add('text-orange-400', 'border-[#1e2238]');
+                    lucide.createIcons();
+                }, 3000);
+
+            } catch(e) {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet`;
+                lucide.createIcons();
+                alert('Sheet sync failed: ' + e.message);
+            }
+        }
+
+        // Push the full existing log history to the sheet at once
+        async function syncAllLogsToSheet() {
+            if (!internalLogs || internalLogs.length === 0) return;
+            try {
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'syncAllLogs',
+                        rows: internalLogs.map(l => ({
+                            date: l.created_at ? l.created_at.slice(0, 10) : '',
+                            time: l.time,
+                            text: l.text
+                        }))
+                    })
+                });
+            } catch(e) {
+                console.warn('Log sheet sync skipped:', e.message);
+            }
         }
 
         async function pushLogEntry(text) {
