@@ -12,7 +12,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     
     <style>
         body {
@@ -90,6 +89,13 @@
             #tab-content-chat.chat-mobile-thread-open #chat-contacts-panel { display: none; }
             #tab-content-chat:not(.chat-mobile-thread-open) #chat-thread-panel { display: none; }
         }
+        /* Message tick styles */
+        .msg-tick { display: inline-flex; align-items: center; gap: 0; margin-left: 3px; vertical-align: middle; }
+        .msg-tick svg { width: 11px; height: 11px; }
+        .tick-sent svg { color: #6b7280; }
+        .tick-delivered svg { color: #9ca3af; }
+        .tick-seen svg { color: #FD6D05; }
+        .last-seen-label { font-size: 9px; color: #6b7280; margin-top: 1px; }
     </style>
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -183,11 +189,11 @@
                     <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
                         <i data-lucide="clock-4" class="w-4 h-4 md:w-5 h-5"></i> Attendance Log
                     </button>
-                    <button id="nav-reports" onclick="switchTab('reports')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
-                        <i data-lucide="bar-chart-3" class="w-4 h-4 md:w-5 h-5"></i> Monthly Reports
-                    </button>
                     <button id="nav-settings" onclick="switchTab('settings')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
                         <i data-lucide="settings" class="w-4 h-4 md:w-5 h-5"></i> Setup Center
+                    </button>
+                    <button id="nav-reports" onclick="switchTab('reports')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left">
+                        <i data-lucide="bar-chart-2" class="w-4 h-4 md:w-5 h-5"></i> Monthly Reports
                     </button>
                 </nav>
             </div>
@@ -529,45 +535,6 @@
                 <div id="attendance-mobile-cards" class="block md:hidden space-y-3"></div>
             </div>
 
-            <div id="tab-content-reports" class="space-y-6 hidden">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Monthly Reports</h1>
-                        <p class="text-gray-400 text-xs md:text-sm mt-1">Task performance and attendance summary by month.</p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <select id="report-month-select" onchange="renderMonthlyReport()" class="bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500 font-medium"></select>
-                        <button onclick="downloadReportCSV()" class="bg-[#1a1e36] hover:bg-[#222746] border border-[#1e2238] text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> <span class="hidden sm:inline">CSV</span>
-                        </button>
-                        <button onclick="downloadReportPDF()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 shadow-lg shadow-red-900/20">
-                            <i data-lucide="download" class="w-4 h-4"></i> <span class="hidden sm:inline">PDF Report</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div id="report-summary-grid" class="grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div class="card p-4 md:p-5 rounded-2xl">
-                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Task Status Breakdown</h3>
-                        <div class="relative h-64"><canvas id="chart-status-breakdown"></canvas></div>
-                    </div>
-                    <div class="card p-4 md:p-5 rounded-2xl">
-                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Tasks by Type</h3>
-                        <div class="relative h-64"><canvas id="chart-type-breakdown"></canvas></div>
-                    </div>
-                    <div class="card p-4 md:p-5 rounded-2xl lg:col-span-2">
-                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Completed Tasks by Team Member</h3>
-                        <div class="relative h-72"><canvas id="chart-employee-productivity"></canvas></div>
-                    </div>
-                    <div class="card p-4 md:p-5 rounded-2xl lg:col-span-2">
-                        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Hours Worked by Team Member (Attendance)</h3>
-                        <div class="relative h-72"><canvas id="chart-attendance-hours"></canvas></div>
-                    </div>
-                </div>
-            </div>
-
             <div id="tab-content-settings" class="space-y-6 hidden">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -629,6 +596,103 @@
                 </div>
             </div>
 
+            <!-- ====== MONTHLY REPORTS TAB ====== -->
+            <div id="tab-content-reports" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Monthly Reports</h1>
+                        <p class="text-gray-400 text-xs md:text-sm mt-1">Studio performance analytics and production insights.</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <select id="report-month-select" onchange="generateReports()" class="bg-[#121424] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                            <option value="01">January</option><option value="02">February</option>
+                            <option value="03">March</option><option value="04">April</option>
+                            <option value="05">May</option><option value="06">June</option>
+                            <option value="07">July</option><option value="08">August</option>
+                            <option value="09">September</option><option value="10">October</option>
+                            <option value="11">November</option><option value="12">December</option>
+                        </select>
+                        <select id="report-year-select" onchange="generateReports()" class="bg-[#121424] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500"></select>
+                        <button onclick="downloadReportPDF()" class="brand-gradient text-white text-xs font-bold px-5 py-2.5 rounded-xl uppercase tracking-wider flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-red-900/20">
+                            <i data-lucide="download" class="w-4 h-4"></i> Download Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Summary KPI strip -->
+                <div id="report-kpi-strip" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
+
+                <!-- Charts grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Task Status Breakdown — Doughnut -->
+                    <div class="card p-5 rounded-2xl space-y-3">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="pie-chart" class="w-4 h-4"></i> Task Status Breakdown
+                        </h3>
+                        <div class="relative flex items-center justify-center" style="height:220px;">
+                            <canvas id="chart-status" width="220" height="220" class="absolute"></canvas>
+                            <div id="chart-status-center" class="relative z-10 text-center pointer-events-none">
+                                <p id="chart-status-total" class="text-2xl font-bold text-white"></p>
+                                <p class="text-[10px] text-gray-500 uppercase tracking-wider">Total Tasks</p>
+                            </div>
+                        </div>
+                        <div id="chart-status-legend" class="flex flex-wrap gap-x-4 gap-y-1.5 justify-center"></div>
+                    </div>
+
+                    <!-- Output by Type — Bar -->
+                    <div class="card p-5 rounded-2xl space-y-3">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Output by Work Type
+                        </h3>
+                        <div style="height:220px; position:relative;">
+                            <canvas id="chart-types" style="width:100%;height:220px;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Creator Workload — Horizontal Bar -->
+                    <div class="card p-5 rounded-2xl space-y-3">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="users" class="w-4 h-4"></i> Creator Workload
+                        </h3>
+                        <div style="height:220px; position:relative;">
+                            <canvas id="chart-creators" style="width:100%;height:220px;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Completion Rate Trend — Line -->
+                    <div class="card p-5 rounded-2xl space-y-3">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-4 h-4"></i> Daily Completions This Month
+                        </h3>
+                        <div style="height:220px; position:relative;">
+                            <canvas id="chart-trend" style="width:100%;height:220px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employee performance table -->
+                <div class="card p-5 rounded-2xl space-y-4">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                        <i data-lucide="table-2" class="w-4 h-4"></i> Creator Performance Summary
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider text-[10px]">
+                                    <th class="py-3 px-4">Creator</th>
+                                    <th class="py-3 px-4 text-center">Assigned</th>
+                                    <th class="py-3 px-4 text-center">Completed</th>
+                                    <th class="py-3 px-4 text-center">Reworks</th>
+                                    <th class="py-3 px-4 text-center">Rejected</th>
+                                    <th class="py-3 px-4 text-center">Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-perf-table" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
@@ -656,10 +720,6 @@
         let loadedTaskIdsSnapshot = [];
         let attendanceLogs = [];
         let myActiveAttendanceRecord = null;
-
-        // Monthly Reports state
-        let reportSelectedMonth = null; // 'YYYY-MM'
-        let reportChartInstances = {};
         
         // Accumulative state variables for multiple file tracking queues
         let deliveryFilesQueue = [];
@@ -679,6 +739,11 @@
 
         // Chat attachment state
         let pendingChatAttachment = null;     // { file, kind: 'file', previewName }
+
+        // Read receipt state: email -> ISO timestamp of when they last read each room
+        let lastSeenMap = {};   // { email: { room: isoTimestamp } }
+        // Track when current user opened each room
+        let myRoomOpenedAt = {}; // { room: isoTimestamp }
 
         // Calculate dynamic real-time browser dates for tracking filters on startup
         const defaultDateInit = new Date();
@@ -768,9 +833,6 @@
                     }
                     if (activeRole === 'admin' && !document.getElementById('tab-content-attendance').classList.contains('hidden')) {
                         renderAttendanceTable();
-                    }
-                    if (activeRole === 'admin' && !document.getElementById('tab-content-reports').classList.contains('hidden')) {
-                        renderMonthlyReport();
                     }
                 }
 
@@ -868,7 +930,6 @@
                 document.getElementById('admin-assignment-panel').classList.remove('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('nav-attendance').classList.add('hidden');
-                document.getElementById('nav-reports').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
@@ -880,7 +941,6 @@
                 document.getElementById('admin-assignment-panel').classList.add('hidden');
                 document.getElementById('nav-settings').classList.add('hidden');
                 document.getElementById('nav-attendance').classList.add('hidden');
-                document.getElementById('nav-reports').classList.add('hidden');
                 document.getElementById('th-actions').classList.add('hidden');
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
@@ -995,11 +1055,16 @@
         function switchTab(targetTab) {
             document.querySelectorAll('.sidebar-link').forEach(btn => btn.classList.remove('active'));
 
+            // Reset report animation flag when leaving reports
+            if (!document.getElementById('tab-content-reports').classList.contains('hidden') && targetTab !== 'reports') {
+                reportChartsAnimated = false;
+            }
+
             document.getElementById('tab-content-dashboard').classList.add('hidden');
             document.getElementById('tab-content-chat').classList.add('hidden');
             document.getElementById('tab-content-attendance').classList.add('hidden');
-            document.getElementById('tab-content-reports').classList.add('hidden');
             document.getElementById('tab-content-settings').classList.add('hidden');
+            document.getElementById('tab-content-reports').classList.add('hidden');
 
             if(targetTab === 'dashboard') {
                 document.getElementById('nav-dashboard').classList.add('active');
@@ -1018,16 +1083,16 @@
                 document.getElementById('tab-content-attendance').classList.remove('hidden');
                 populateAttendanceEmployeeFilter();
                 renderAttendanceTable();
-            } else if (targetTab === 'reports' && activeRole === 'admin') {
-                document.getElementById('nav-reports').classList.add('active');
-                document.getElementById('tab-content-reports').classList.remove('hidden');
-                populateReportMonthSelector();
-                renderMonthlyReport();
             } else if (targetTab === 'settings' && activeRole === 'admin') {
                 document.getElementById('nav-settings').classList.add('active');
                 document.getElementById('tab-content-settings').classList.remove('hidden');
                 editingRosterIndex = null;
                 renderSettingsRoster();
+            } else if (targetTab === 'reports' && activeRole === 'admin') {
+                document.getElementById('nav-reports').classList.add('active');
+                document.getElementById('tab-content-reports').classList.remove('hidden');
+                initReportSelectors();
+                generateReports(true); // true = animate on open
             }
         }
 
@@ -1858,381 +1923,6 @@
         }
 
         // ============================================================
-        // MONTHLY REPORTS ENGINE — task + attendance analytics, CSV/PDF export
-        // ============================================================
-
-        const REPORT_CHART_COLORS = ['#FD6D05', '#FF0000', '#10b981', '#3b82f6', '#a855f7', '#eab308', '#ec4899', '#14b8a6'];
-
-        function populateReportMonthSelector() {
-            const select = document.getElementById('report-month-select');
-            if (!select) return;
-
-            const monthKeys = new Set();
-            assignmentsList.forEach(t => {
-                const d = t.assignedDate || t.date;
-                if (d) monthKeys.add(d.slice(0, 7));
-            });
-            attendanceLogs.forEach(r => {
-                if (r.log_date) monthKeys.add(r.log_date.slice(0, 7));
-            });
-
-            const now = new Date();
-            const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            monthKeys.add(currentMonthKey);
-
-            const sortedKeys = Array.from(monthKeys).sort().reverse();
-            const previousVal = select.value;
-
-            select.innerHTML = sortedKeys.map(key => {
-                const [y, m] = key.split('-');
-                const label = new Date(`${y}-${m}-01T00:00:00`).toLocaleDateString([], { month: 'long', year: 'numeric' });
-                return `<option value="${key}">${label}</option>`;
-            }).join('');
-
-            if (previousVal && sortedKeys.includes(previousVal)) {
-                select.value = previousVal;
-            } else {
-                select.value = currentMonthKey;
-            }
-            reportSelectedMonth = select.value;
-        }
-
-        function getReportFilteredData() {
-            const monthKey = document.getElementById('report-month-select')?.value || reportSelectedMonth;
-            reportSelectedMonth = monthKey;
-
-            const tasksInMonth = assignmentsList.filter(t => {
-                const d = t.assignedDate || t.date;
-                return d && d.slice(0, 7) === monthKey;
-            });
-
-            const attendanceInMonth = attendanceLogs.filter(r => r.log_date && r.log_date.slice(0, 7) === monthKey);
-
-            return { monthKey, tasksInMonth, attendanceInMonth };
-        }
-
-        function renderMonthlyReport() {
-            if (typeof Chart === 'undefined') return;
-            const { monthKey, tasksInMonth, attendanceInMonth } = getReportFilteredData();
-
-            // ---- Summary cards ----
-            const totalTasks = tasksInMonth.length;
-            const completedTasks = tasksInMonth.filter(t => t.status === 'Completed').length;
-            const reworkTasks = tasksInMonth.filter(t => t.status === 'Rework Required').length;
-            const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-            const totalHours = attendanceInMonth.reduce((sum, r) => {
-                if (r.log_in_time && r.log_out_time) {
-                    return sum + (new Date(r.log_out_time) - new Date(r.log_in_time)) / (1000 * 60 * 60);
-                }
-                return sum;
-            }, 0);
-
-            const summaryGrid = document.getElementById('report-summary-grid');
-            if (summaryGrid) {
-                summaryGrid.innerHTML = `
-                    <div class="card p-4 rounded-xl">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total Tasks</p>
-                        <p class="text-2xl font-bold text-white mt-1">${totalTasks}</p>
-                    </div>
-                    <div class="card p-4 rounded-xl">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Completed</p>
-                        <p class="text-2xl font-bold text-emerald-400 mt-1">${completedTasks}</p>
-                    </div>
-                    <div class="card p-4 rounded-xl">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Completion Rate</p>
-                        <p class="text-2xl font-bold text-orange-400 mt-1">${completionRate}%</p>
-                    </div>
-                    <div class="card p-4 rounded-xl">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total Hours Logged</p>
-                        <p class="text-2xl font-bold text-white mt-1">${totalHours.toFixed(1)}</p>
-                    </div>
-                `;
-            }
-
-            renderStatusBreakdownChart(tasksInMonth);
-            renderTypeBreakdownChart(tasksInMonth);
-            renderEmployeeProductivityChart(tasksInMonth);
-            renderAttendanceHoursChart(attendanceInMonth);
-        }
-
-        function destroyReportChart(key) {
-            if (reportChartInstances[key]) {
-                reportChartInstances[key].destroy();
-                delete reportChartInstances[key];
-            }
-        }
-
-        function renderStatusBreakdownChart(tasks) {
-            const canvas = document.getElementById('chart-status-breakdown');
-            if (!canvas) return;
-            destroyReportChart('status');
-
-            const statusCounts = {};
-            tasks.forEach(t => { statusCounts[t.status || 'Unknown'] = (statusCounts[t.status || 'Unknown'] || 0) + 1; });
-            const labels = Object.keys(statusCounts);
-            const data = Object.values(statusCounts);
-
-            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
-
-            reportChartInstances['status'] = new Chart(canvas, {
-                type: 'doughnut',
-                data: { labels, datasets: [{ data, backgroundColor: REPORT_CHART_COLORS, borderColor: '#121424', borderWidth: 2 }] },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 11 } } } }
-                }
-            });
-        }
-
-        function renderTypeBreakdownChart(tasks) {
-            const canvas = document.getElementById('chart-type-breakdown');
-            if (!canvas) return;
-            destroyReportChart('type');
-
-            const typeCounts = {};
-            tasks.forEach(t => { typeCounts[t.type || 'Unspecified'] = (typeCounts[t.type || 'Unspecified'] || 0) + 1; });
-            const labels = Object.keys(typeCounts);
-            const data = Object.values(typeCounts);
-
-            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
-
-            reportChartInstances['type'] = new Chart(canvas, {
-                type: 'bar',
-                data: { labels, datasets: [{ label: 'Tasks', data, backgroundColor: '#FD6D05', borderRadius: 6 }] },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { color: '#1e2238' } },
-                        y: { beginAtZero: true, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: '#1e2238' } }
-                    }
-                }
-            });
-        }
-
-        function renderEmployeeProductivityChart(tasks) {
-            const canvas = document.getElementById('chart-employee-productivity');
-            if (!canvas) return;
-            destroyReportChart('employee');
-
-            const completedByEmployee = {};
-            tasks.filter(t => t.status === 'Completed').forEach(t => {
-                const name = t.assignedTo || 'Unassigned';
-                completedByEmployee[name] = (completedByEmployee[name] || 0) + 1;
-            });
-
-            const labels = Object.keys(completedByEmployee);
-            const data = Object.values(completedByEmployee);
-
-            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
-
-            reportChartInstances['employee'] = new Chart(canvas, {
-                type: 'bar',
-                data: { labels, datasets: [{ label: 'Completed Tasks', data, backgroundColor: '#10b981', borderRadius: 6 }] },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { beginAtZero: true, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: '#1e2238' } },
-                        y: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false } }
-                    }
-                }
-            });
-        }
-
-        function renderAttendanceHoursChart(attendanceRows) {
-            const canvas = document.getElementById('chart-attendance-hours');
-            if (!canvas) return;
-            destroyReportChart('hours');
-
-            const hoursByEmployee = {};
-            attendanceRows.forEach(r => {
-                if (r.log_in_time && r.log_out_time) {
-                    const hrs = (new Date(r.log_out_time) - new Date(r.log_in_time)) / (1000 * 60 * 60);
-                    hoursByEmployee[r.employee_name] = (hoursByEmployee[r.employee_name] || 0) + hrs;
-                }
-            });
-
-            const labels = Object.keys(hoursByEmployee);
-            const data = labels.map(l => Math.round(hoursByEmployee[l] * 10) / 10);
-
-            if (labels.length === 0) { showNoDataOnCanvas(canvas); return; }
-
-            reportChartInstances['hours'] = new Chart(canvas, {
-                type: 'bar',
-                data: { labels, datasets: [{ label: 'Hours Worked', data, backgroundColor: '#3b82f6', borderRadius: 6 }] },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#1e2238' } },
-                        y: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false } }
-                    }
-                }
-            });
-        }
-
-        function showNoDataOnCanvas(canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = '12px system-ui';
-            ctx.fillStyle = '#6b7280';
-            ctx.textAlign = 'center';
-            ctx.fillText('No data for this month', canvas.width / 2, canvas.height / 2);
-        }
-
-        function downloadReportCSV() {
-            if (activeRole !== 'admin') return;
-            const { monthKey, tasksInMonth, attendanceInMonth } = getReportFilteredData();
-
-            let lines = [];
-            lines.push(`Monthly Report - ${monthKey}`);
-            lines.push('');
-            lines.push('TASKS');
-            lines.push(['Topic', 'Type', 'Assigned To', 'Assigned Date', 'Status'].join(','));
-            tasksInMonth.forEach(t => {
-                lines.push([`"${(t.topic || '').replace(/"/g, '""')}"`, t.type || '', t.assignedTo || '', t.assignedDate || t.date || '', t.status || ''].join(','));
-            });
-            lines.push('');
-            lines.push('ATTENDANCE');
-            lines.push(['Employee Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked'].join(','));
-            attendanceInMonth.forEach(r => {
-                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Still clocked in';
-                lines.push([r.employee_name, r.log_date, inLabel, outLabel, calcHoursLabel(r)].join(','));
-            });
-
-            let blobElement = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-            let structuralAnchor = document.createElement('a');
-            structuralAnchor.setAttribute('href', URL.createObjectURL(blobElement));
-            structuralAnchor.setAttribute('download', `Broken_English_Monthly_Report_${monthKey}.csv`);
-            document.body.appendChild(structuralAnchor);
-            structuralAnchor.click();
-            document.body.removeChild(structuralAnchor);
-        }
-
-        async function downloadReportPDF() {
-            if (activeRole !== 'admin') return;
-            const { monthKey, tasksInMonth, attendanceInMonth } = getReportFilteredData();
-            const monthLabel = new Date(`${monthKey}-01T00:00:00`).toLocaleDateString([], { month: 'long', year: 'numeric' });
-
-            const totalTasks = tasksInMonth.length;
-            const completedTasks = tasksInMonth.filter(t => t.status === 'Completed').length;
-            const reworkTasks = tasksInMonth.filter(t => t.status === 'Rework Required').length;
-            const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-            const totalHours = attendanceInMonth.reduce((sum, r) => {
-                if (r.log_in_time && r.log_out_time) return sum + (new Date(r.log_out_time) - new Date(r.log_in_time)) / (1000 * 60 * 60);
-                return sum;
-            }, 0);
-
-            const chartImages = {};
-            ['status', 'type', 'employee', 'hours'].forEach(key => {
-                if (reportChartInstances[key]) {
-                    chartImages[key] = reportChartInstances[key].toBase64Image();
-                }
-            });
-
-            const taskRows = tasksInMonth.map(t => `
-                <tr>
-                    <td>${escapeChatHtml(t.topic || '')}</td>
-                    <td>${escapeChatHtml(t.type || '')}</td>
-                    <td>${escapeChatHtml(t.assignedTo || '')}</td>
-                    <td>${t.assignedDate || t.date || ''}</td>
-                    <td>${t.status || ''}</td>
-                </tr>
-            `).join('');
-
-            const attendanceRows = attendanceInMonth.map(r => {
-                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
-                return `
-                    <tr>
-                        <td>${escapeChatHtml(r.employee_name || '')}</td>
-                        <td>${r.log_date || ''}</td>
-                        <td>${inLabel}</td>
-                        <td>${outLabel}</td>
-                        <td>${calcHoursLabel(r)}</td>
-                    </tr>
-                `;
-            }).join('');
-
-            const reportHtml = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Monthly Report - ${monthLabel}</title>
-                    <style>
-                        body { font-family: system-ui, -apple-system, sans-serif; color: #111; margin: 0; padding: 32px; }
-                        h1 { font-size: 22px; margin-bottom: 2px; }
-                        h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #666; margin-top: 28px; border-bottom: 2px solid #FD6D05; padding-bottom: 6px; }
-                        .subtitle { color: #666; font-size: 12px; margin-bottom: 20px; }
-                        .summary-grid { display: flex; gap: 16px; margin: 16px 0; }
-                        .summary-card { flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 12px; text-align: center; }
-                        .summary-card .label { font-size: 10px; text-transform: uppercase; color: #888; font-weight: bold; }
-                        .summary-card .value { font-size: 22px; font-weight: bold; margin-top: 4px; }
-                        .chart-grid { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
-                        .chart-box { flex: 1; min-width: 45%; border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
-                        .chart-box img { width: 100%; }
-                        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
-                        th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left; }
-                        th { background: #f5f5f5; text-transform: uppercase; font-size: 9px; color: #666; }
-                        .footer { margin-top: 30px; font-size: 9px; color: #999; text-align: center; }
-                        @media print { body { padding: 16px; } }
-                    </style>
-                </head>
-                <body>
-                    <h1>Broken English — Monthly Performance Report</h1>
-                    <p class="subtitle">${monthLabel} · Generated ${new Date().toLocaleDateString()}</p>
-
-                    <div class="summary-grid">
-                        <div class="summary-card"><div class="label">Total Tasks</div><div class="value">${totalTasks}</div></div>
-                        <div class="summary-card"><div class="label">Completed</div><div class="value">${completedTasks}</div></div>
-                        <div class="summary-card"><div class="label">Completion Rate</div><div class="value">${completionRate}%</div></div>
-                        <div class="summary-card"><div class="label">Total Hours Logged</div><div class="value">${totalHours.toFixed(1)}</div></div>
-                    </div>
-
-                    <h2>Charts</h2>
-                    <div class="chart-grid">
-                        ${chartImages.status ? `<div class="chart-box"><img src="${chartImages.status}"></div>` : ''}
-                        ${chartImages.type ? `<div class="chart-box"><img src="${chartImages.type}"></div>` : ''}
-                        ${chartImages.employee ? `<div class="chart-box"><img src="${chartImages.employee}"></div>` : ''}
-                        ${chartImages.hours ? `<div class="chart-box"><img src="${chartImages.hours}"></div>` : ''}
-                    </div>
-
-                    <h2>Task Detail (${tasksInMonth.length})</h2>
-                    <table>
-                        <thead><tr><th>Topic</th><th>Type</th><th>Assigned To</th><th>Date</th><th>Status</th></tr></thead>
-                        <tbody>${taskRows || '<tr><td colspan="5">No tasks this month.</td></tr>'}</tbody>
-                    </table>
-
-                    <h2>Attendance Detail (${attendanceInMonth.length})</h2>
-                    <table>
-                        <thead><tr><th>Employee</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th></tr></thead>
-                        <tbody>${attendanceRows || '<tr><td colspan="5">No attendance records this month.</td></tr>'}</tbody>
-                    </table>
-
-                    <p class="footer">Broken English Production Studio Network · Confidential Internal Report</p>
-
-                    <scr` + `ipt>
-                        window.onload = function() { window.print(); };
-                    </scr` + `ipt>
-                </body>
-                </html>
-            `;
-
-            const reportWindow = window.open('', '_blank');
-            if (!reportWindow) {
-                alert('Please allow popups for this site to download the PDF report.');
-                return;
-            }
-            reportWindow.document.write(reportHtml);
-            reportWindow.document.close();
-        }
-
-        // ============================================================
         // TEAM CHAT ENGINE — presence + group room + 1-on-1 DMs
         // ============================================================
 
@@ -2258,13 +1948,33 @@
                 .on('presence', { event: 'sync' }, () => {
                     const state = presenceChannel.presenceState();
                     onlinePresenceMap = {};
-                    Object.keys(state).forEach(emailKey => { onlinePresenceMap[emailKey] = true; });
+                    Object.keys(state).forEach(emailKey => {
+                        onlinePresenceMap[emailKey] = true;
+                        // Collect last-seen data from others' presence payloads
+                        const payloads = state[emailKey];
+                        if (payloads && payloads.length > 0) {
+                            const p = payloads[0];
+                            if (p.lastSeen && emailKey !== activeEmail) {
+                                lastSeenMap[emailKey] = p.lastSeen; // { room: isoTimestamp }
+                            }
+                        }
+                    });
                     renderChatContacts();
                     updateThreadOnlineStatus();
+                    // Re-render messages to update tick status
+                    if (!document.getElementById('tab-content-chat').classList.contains('hidden')) {
+                        renderChatMessages();
+                    }
                 })
                 .subscribe(async (status) => {
                     if (status === 'SUBSCRIBED') {
-                        await presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString() });
+                        await presenceChannel.track({ 
+                            name: activeUser, 
+                            email: activeEmail, 
+                            role: activeRole, 
+                            online_at: new Date().toISOString(),
+                            lastSeen: myRoomOpenedAt
+                        });
                     }
                 });
         }
@@ -2302,6 +2012,19 @@
 
             if (isForActiveRoom) {
                 chatMessages.push(msg);
+
+                // If this room is open and chat tab visible, mark as seen immediately
+                if (isChatTabVisible) {
+                    const nowIso = new Date().toISOString();
+                    myRoomOpenedAt[activeChatRoom] = nowIso;
+                    if (presenceChannel) {
+                        presenceChannel.track({
+                            name: activeUser, email: activeEmail, role: activeRole,
+                            online_at: nowIso, lastSeen: myRoomOpenedAt
+                        });
+                    }
+                }
+
                 renderChatMessages();
             }
 
@@ -2348,6 +2071,24 @@
                 const isOnline = !!onlinePresenceMap[u.email];
                 const isActiveDm = activeChatPeer && activeChatPeer.email === u.email;
                 const initials = u.name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
+
+                // Compute last seen label for offline users
+                let statusLabel = isOnline ? 'Online' : 'Offline';
+                if (!isOnline) {
+                    const peerSeen = lastSeenMap[u.email];
+                    if (peerSeen) {
+                        const timestamps = Object.values(peerSeen);
+                        if (timestamps.length > 0) {
+                            const latest = new Date(Math.max(...timestamps.map(t => new Date(t).getTime())));
+                            const diffMins = Math.floor((new Date() - latest) / 60000);
+                            if (diffMins < 1) statusLabel = 'last seen just now';
+                            else if (diffMins < 60) statusLabel = `last seen ${diffMins}m ago`;
+                            else if (diffMins < 1440) statusLabel = `last seen ${Math.floor(diffMins/60)}h ago`;
+                            else statusLabel = `last seen ${latest.toLocaleDateString([], {month:'short', day:'numeric'})}`;
+                        }
+                    }
+                }
+
                 list.innerHTML += `
                     <button onclick='openChatRoom("dm", ${JSON.stringify(u.email)})' class="sidebar-link ${isActiveDm ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition">
                         <div class="relative shrink-0">
@@ -2356,7 +2097,7 @@
                         </div>
                         <div class="min-w-0 flex-1">
                             <p class="text-xs font-bold text-white truncate">${u.name}</p>
-                            <p class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} truncate">${isOnline ? 'Online' : 'Offline'} · ${u.role}</p>
+                            <p class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} truncate">${statusLabel} · ${u.role}</p>
                         </div>
                     </button>
                 `;
@@ -2370,7 +2111,28 @@
             const isOnline = !!onlinePresenceMap[activeChatPeer.email];
             const subtitleEl = document.getElementById('chat-thread-subtitle');
             if (subtitleEl) {
-                subtitleEl.innerHTML = `<span class="${isOnline ? 'text-emerald-400' : 'text-gray-500'}">${isOnline ? '● Online' : '○ Offline'}</span>`;
+                if (isOnline) {
+                    subtitleEl.innerHTML = `<span class="text-emerald-400">● Online</span>`;
+                } else {
+                    // Try to get last seen from presence map
+                    const peerSeen = lastSeenMap[activeChatPeer.email];
+                    let lastSeenText = '';
+                    if (peerSeen) {
+                        // Get the most recent timestamp across all rooms
+                        const timestamps = Object.values(peerSeen);
+                        if (timestamps.length > 0) {
+                            const latest = new Date(Math.max(...timestamps.map(t => new Date(t).getTime())));
+                            const now = new Date();
+                            const diffMs = now - latest;
+                            const diffMins = Math.floor(diffMs / 60000);
+                            if (diffMins < 1) lastSeenText = 'last seen just now';
+                            else if (diffMins < 60) lastSeenText = `last seen ${diffMins}m ago`;
+                            else if (diffMins < 1440) lastSeenText = `last seen ${Math.floor(diffMins/60)}h ago`;
+                            else lastSeenText = `last seen ${latest.toLocaleDateString([], {month:'short', day:'numeric'})}`;
+                        }
+                    }
+                    subtitleEl.innerHTML = `<span class="text-gray-500">○ Offline${lastSeenText ? ' · ' + lastSeenText : ''}</span>`;
+                }
             }
         }
 
@@ -2389,6 +2151,21 @@
                 activeChatRoom = buildDmRoomKey(activeEmail, peerEmail);
                 document.getElementById('chat-thread-title').innerText = peer.name;
                 updateThreadOnlineStatus();
+            }
+
+            // Record that current user has now "seen" this room up to now
+            const nowIso = new Date().toISOString();
+            myRoomOpenedAt[activeChatRoom] = nowIso;
+
+            // Broadcast updated last-seen via presence
+            if (presenceChannel) {
+                presenceChannel.track({
+                    name: activeUser,
+                    email: activeEmail,
+                    role: activeRole,
+                    online_at: new Date().toISOString(),
+                    lastSeen: myRoomOpenedAt
+                });
             }
 
             renderChatContacts();
@@ -2424,6 +2201,58 @@
 
             chatMessages = data || [];
             renderChatMessages();
+        }
+
+        function getMsgTickHtml(m) {
+            // Only show ticks on my own messages
+            if (m.sender_email !== activeEmail) return '';
+
+            const msgTime = m.created_at ? new Date(m.created_at).getTime() : 0;
+
+            // For DM room: check if peer has seen this message
+            if (activeChatPeer) {
+                const peerEmail = activeChatPeer.email;
+                const isRecipientOnline = !!onlinePresenceMap[peerEmail];
+
+                // Check if peer has opened this room after this message was sent
+                const peerSeenRooms = lastSeenMap[peerEmail];
+                const peerSeenThisRoomAt = peerSeenRooms && peerSeenRooms[activeChatRoom] 
+                    ? new Date(peerSeenRooms[activeChatRoom]).getTime() : 0;
+
+                if (peerSeenThisRoomAt >= msgTime) {
+                    // SEEN — double blue tick
+                    return `<span class="msg-tick tick-seen" title="Seen">${tickSvg()}${tickSvg()}</span>`;
+                } else if (isRecipientOnline) {
+                    // DELIVERED — double grey tick
+                    return `<span class="msg-tick tick-delivered" title="Delivered">${tickSvg()}${tickSvg()}</span>`;
+                } else {
+                    // SENT — single grey tick
+                    return `<span class="msg-tick tick-sent" title="Sent">${tickSvg()}</span>`;
+                }
+            }
+
+            // For group room: double tick always (delivered), seen if anyone else online has opened
+            const otherMembers = userRoster.filter(u => u.email !== activeEmail);
+            const anyoneSeenAfter = otherMembers.some(u => {
+                const seenRooms = lastSeenMap[u.email];
+                const seenAt = seenRooms && seenRooms[activeChatRoom] ? new Date(seenRooms[activeChatRoom]).getTime() : 0;
+                return seenAt >= msgTime;
+            });
+            const anyoneOnline = otherMembers.some(u => !!onlinePresenceMap[u.email]);
+
+            if (anyoneSeenAfter) {
+                return `<span class="msg-tick tick-seen" title="Seen">${tickSvg()}${tickSvg()}</span>`;
+            } else if (anyoneOnline) {
+                return `<span class="msg-tick tick-delivered" title="Delivered">${tickSvg()}${tickSvg()}</span>`;
+            } else {
+                return `<span class="msg-tick tick-sent" title="Sent">${tickSvg()}</span>`;
+            }
+        }
+
+        function tickSvg() {
+            return `<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:11px;height:11px;display:inline-block;">
+                <path d="M1.5 6.5L4.5 9.5L10.5 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
         }
 
         function renderChatMessages() {
@@ -2465,6 +2294,9 @@
                     </button>
                 ` : '';
 
+                // Tick markup — only for my messages
+                const tickHtml = isMine ? getMsgTickHtml(m) : '';
+
                 container.innerHTML += `
                     <div class="group flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'} animate-item">
                         ${isMine ? deleteBtnMarkup : ''}
@@ -2472,7 +2304,7 @@
                             ${!isMine && activeChatRoom === CHAT_GROUP_ROOM ? `<p class="text-[10px] text-gray-500 mb-0.5 px-1">${m.sender_name}</p>` : ''}
                             ${textBubble}
                             ${attachmentMarkup}
-                            <p class="text-[9px] text-gray-500 mt-0.5 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}</p>
+                            <p class="text-[9px] text-gray-500 mt-0.5 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}${tickHtml}</p>
                         </div>
                         ${!isMine ? deleteBtnMarkup : ''}
                     </div>
@@ -2819,15 +2651,6 @@
                 const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
                 const refFileBtnDesktop = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
 
-                const hasFeedbackNote = t.explanation && t.explanation !== 'None';
-                const feedbackIsActive = (t.status === 'Rework Required' || t.status === 'Rejected');
-                const feedbackCellClass = !hasFeedbackNote
-                    ? 'text-gray-500'
-                    : feedbackIsActive
-                        ? 'text-orange-400'
-                        : 'text-emerald-400';
-                const feedbackCellPrefix = (hasFeedbackNote && !feedbackIsActive) ? '✓ ' : '';
-
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
@@ -2838,7 +2661,7 @@
                     <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-orange-400 font-mono font-semibold">${t.date}</td>
                     <td class="py-3 px-4">${inputActionSelectorMarkup}</td>
-                    <td class="py-3 px-4 ${feedbackCellClass} italic max-w-xs truncate" title="${t.explanation}">${feedbackCellPrefix}${t.explanation}</td>
+                    <td class="py-3 px-4 text-yellow-500 italic max-w-xs truncate" title="${t.explanation}">${t.explanation}</td>
                     <td class="py-3 px-4">${outputLinkBtn}</td>
                     <td class="py-3 px-4">${refFileBtnDesktop}</td>
                     ${activeRole === 'admin' ? `
@@ -2876,9 +2699,9 @@
                         <p class="text-gray-400 font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
                         <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
                     </div>
-                    <div class="bg-[#121424] p-2.5 rounded-lg border ${feedbackIsActive ? 'border-orange-500/10' : 'border-emerald-500/10'} space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
-                        <p class="${feedbackIsActive ? 'text-orange-400' : 'text-emerald-400'} font-bold text-[10px] uppercase tracking-wide">${feedbackIsActive ? 'Evaluation Review Notes:' : '✓ Resolved — Evaluation Review Notes:'}</p>
-                        <p class="${feedbackIsActive ? 'text-orange-300/90' : 'text-emerald-300/80'} text-[11px] italic leading-relaxed">${t.explanation}</p>
+                    <div class="bg-[#121424] p-2.5 rounded-lg border border-yellow-500/10 space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
+                        <p class="text-yellow-500 font-bold text-[10px] uppercase tracking-wide">Evaluation Review Notes:</p>
+                        <p class="text-yellow-400/90 text-[11px] italic leading-relaxed">${t.explanation}</p>
                     </div>
                     <div class="flex items-center justify-between pt-2 border-t border-[#1e2238]/40">
                         <div class="flex items-center gap-1.5 w-full">
@@ -2897,6 +2720,554 @@
 
             loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
             lucide.createIcons();
+        }
+
+        // ============================================================
+        // MONTHLY REPORTS ENGINE — charts + PDF download
+        // ============================================================
+
+        let reportChartsAnimated = false; // only animate once per open
+
+        function initReportSelectors() {
+            const now = new Date();
+            const monthSel = document.getElementById('report-month-select');
+            const yearSel = document.getElementById('report-year-select');
+
+            // Populate years
+            if (yearSel.options.length === 0) {
+                for (let y = now.getFullYear(); y >= 2023; y--) {
+                    const opt = document.createElement('option');
+                    opt.value = y; opt.textContent = y;
+                    yearSel.appendChild(opt);
+                }
+            }
+
+            // Default to current month/year
+            monthSel.value = String(now.getMonth() + 1).padStart(2, '0');
+            yearSel.value = now.getFullYear();
+        }
+
+        function getReportData() {
+            const month = document.getElementById('report-month-select').value;
+            const year = document.getElementById('report-year-select').value;
+            const prefix = `${year}-${month}`;
+
+            const tasks = assignmentsList.filter(t => t.assignedDate && t.assignedDate.startsWith(prefix));
+
+            const statusCounts = { Pending: 0, 'In Progress': 0, Completed: 0, 'Rework Required': 0, Rejected: 0 };
+            const typeCounts = {};
+            const creatorMap = {};
+            const dailyCompleted = {};
+
+            tasks.forEach(t => {
+                // Status
+                if (statusCounts.hasOwnProperty(t.status)) statusCounts[t.status]++;
+                else statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
+
+                // Type
+                typeCounts[t.type] = (typeCounts[t.type] || 0) + 1;
+
+                // Creator
+                if (!creatorMap[t.assignedTo]) {
+                    creatorMap[t.assignedTo] = { assigned: 0, completed: 0, reworks: 0, rejected: 0 };
+                }
+                creatorMap[t.assignedTo].assigned++;
+                if (t.status === 'Completed') creatorMap[t.assignedTo].completed++;
+                if (t.status === 'Rework Required') creatorMap[t.assignedTo].reworks++;
+                if (t.status === 'Rejected') creatorMap[t.assignedTo].rejected++;
+
+                // Daily completions (use deadline date as proxy)
+                if (t.status === 'Completed' && t.date) {
+                    const day = parseInt(t.date.split('-')[2]);
+                    dailyCompleted[day] = (dailyCompleted[day] || 0) + 1;
+                }
+            });
+
+            return { tasks, statusCounts, typeCounts, creatorMap, dailyCompleted, month, year };
+        }
+
+        function generateReports(animate = false) {
+            if (!document.getElementById('tab-content-reports') ||
+                document.getElementById('tab-content-reports').classList.contains('hidden')) return;
+
+            const d = getReportData();
+            const doAnimate = animate && !reportChartsAnimated;
+            if (animate) reportChartsAnimated = true;
+
+            renderKPIStrip(d);
+            drawDoughnutChart(d, doAnimate);
+            drawBarChart(d, doAnimate);
+            drawHorizontalBarChart(d, doAnimate);
+            drawLineChart(d, doAnimate);
+            renderPerfTable(d);
+            lucide.createIcons();
+        }
+
+        function renderKPIStrip(d) {
+            const total = d.tasks.length;
+            const completed = d.statusCounts['Completed'] || 0;
+            const reworks = d.statusCounts['Rework Required'] || 0;
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+            const kpis = [
+                { label: 'Total Tasks', value: total, color: 'text-white', bg: 'bg-[#1a1e36]', icon: 'clipboard-list' },
+                { label: 'Completed', value: completed, color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: 'check-circle' },
+                { label: 'Rework Flagged', value: reworks, color: 'text-orange-400', bg: 'bg-orange-500/10', icon: 'alert-triangle' },
+                { label: 'Completion Rate', value: rate + '%', color: 'text-blue-400', bg: 'bg-blue-500/10', icon: 'trending-up' },
+            ];
+
+            document.getElementById('report-kpi-strip').innerHTML = kpis.map(k => `
+                <div class="card p-4 rounded-2xl flex items-center gap-3 ${k.bg} border border-[#1e2238]">
+                    <div class="p-2 rounded-lg bg-[#121424]">
+                        <i data-lucide="${k.icon}" class="w-5 h-5 ${k.color}"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">${k.label}</p>
+                        <p class="text-xl font-bold ${k.color}">${k.value}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ---- DOUGHNUT CHART (Status breakdown) ----
+        function drawDoughnutChart(d, animate) {
+            const canvas = document.getElementById('chart-status');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = 220, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const statusColors = {
+                'Completed':       '#10b981',
+                'In Progress':     '#3b82f6',
+                'Pending':         '#f59e0b',
+                'Rework Required': '#f97316',
+                'Rejected':        '#ef4444',
+            };
+
+            const entries = Object.entries(d.statusCounts).filter(([,v]) => v > 0);
+            const total = entries.reduce((s,[,v]) => s + v, 0);
+            document.getElementById('chart-status-total').textContent = total;
+
+            const legend = document.getElementById('chart-status-legend');
+            legend.innerHTML = entries.map(([k, v]) => `
+                <span class="flex items-center gap-1 text-[10px] text-gray-300">
+                    <span class="w-2.5 h-2.5 rounded-full inline-block shrink-0" style="background:${statusColors[k]||'#6b7280'}"></span>
+                    ${k} <span class="font-bold text-white">(${v})</span>
+                </span>`).join('');
+
+            const cx = W/2, cy = H/2, outerR = 90, innerR = 55;
+            let angles = entries.map(([,v]) => (v / total) * Math.PI * 2);
+            let startAngles = [];
+            let acc = -Math.PI / 2;
+            angles.forEach(a => { startAngles.push(acc); acc += a; });
+
+            const duration = animate ? 700 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                entries.forEach(([k,], i) => {
+                    const sa = startAngles[i];
+                    const ea = sa + angles[i] * ease;
+                    const color = statusColors[k] || '#6b7280';
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.arc(cx, cy, outerR, sa, ea);
+                    ctx.closePath();
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                });
+
+                // punch inner hole
+                ctx.beginPath();
+                ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+                ctx.fillStyle = '#121424';
+                ctx.fill();
+
+                // gap lines
+                entries.forEach((_, i) => {
+                    const angle = startAngles[i];
+                    ctx.beginPath();
+                    ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+                    ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
+                    ctx.strokeStyle = '#121424';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- BAR CHART (Output by type) ----
+        function drawBarChart(d, animate) {
+            const canvas = document.getElementById('chart-types');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 400, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const entries = Object.entries(d.typeCounts);
+            if (entries.length === 0) {
+                ctx.fillStyle = '#4b5563';
+                ctx.font = '12px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data for this period', W/2, H/2);
+                return;
+            }
+
+            const maxVal = Math.max(...entries.map(([,v]) => v));
+            const padL = 10, padR = 10, padT = 20, padB = 40;
+            const barW = Math.max(20, (W - padL - padR) / entries.length - 12);
+            const chartH = H - padT - padB;
+            const colors = ['#FF0000','#FD6D05','#3b82f6','#10b981','#8b5cf6','#f59e0b'];
+
+            const duration = animate ? 600 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                // grid lines
+                for (let i = 0; i <= 4; i++) {
+                    const y = padT + chartH - (chartH * i / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(padL, y); ctx.lineTo(W - padR, y);
+                    ctx.strokeStyle = '#1e2238'; ctx.lineWidth = 1; ctx.stroke();
+                    ctx.fillStyle = '#4b5563'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+                    ctx.fillText(Math.round(maxVal * i / 4), padL - 2, y + 3);
+                }
+
+                const totalW = W - padL - padR;
+                const gap = totalW / entries.length;
+
+                entries.forEach(([label, val], i) => {
+                    const bH = maxVal > 0 ? (val / maxVal) * chartH * ease : 0;
+                    const x = padL + gap * i + (gap - barW) / 2;
+                    const y = padT + chartH - bH;
+
+                    // gradient bar
+                    const grad = ctx.createLinearGradient(0, y, 0, padT + chartH);
+                    grad.addColorStop(0, colors[i % colors.length]);
+                    grad.addColorStop(1, colors[i % colors.length] + '44');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, barW, bH, [4,4,0,0]);
+                    ctx.fill();
+
+                    // value label
+                    if (progress > 0.8) {
+                        ctx.fillStyle = '#f3f4f6'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+                        ctx.fillText(val, x + barW/2, y - 5);
+                    }
+
+                    // x label
+                    ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+                    const shortLabel = label.length > 10 ? label.slice(0,10) + '…' : label;
+                    ctx.fillText(shortLabel, x + barW/2, H - padB + 14);
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- HORIZONTAL BAR CHART (Creator workload) ----
+        function drawHorizontalBarChart(d, animate) {
+            const canvas = document.getElementById('chart-creators');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 400, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const entries = Object.entries(d.creatorMap).sort((a,b) => b[1].assigned - a[1].assigned).slice(0,6);
+            if (entries.length === 0) {
+                ctx.fillStyle = '#4b5563'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+                ctx.fillText('No data for this period', W/2, H/2); return;
+            }
+
+            const maxVal = Math.max(...entries.map(([,v]) => v.assigned));
+            const padL = 90, padR = 30, padT = 10, padB = 10;
+            const rowH = (H - padT - padB) / entries.length;
+            const barH = Math.min(rowH * 0.5, 18);
+            const chartW = W - padL - padR;
+
+            const duration = animate ? 600 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                entries.forEach(([name, stats], i) => {
+                    const y = padT + i * rowH + (rowH - barH) / 2;
+                    const completedW = maxVal > 0 ? (stats.completed / maxVal) * chartW * ease : 0;
+                    const totalW2 = maxVal > 0 ? (stats.assigned / maxVal) * chartW * ease : 0;
+
+                    // background track
+                    ctx.fillStyle = '#1a1e36';
+                    ctx.beginPath(); ctx.roundRect(padL, y, chartW, barH, 4); ctx.fill();
+
+                    // assigned bar
+                    ctx.fillStyle = '#3b82f633';
+                    ctx.beginPath(); ctx.roundRect(padL, y, totalW2, barH, 4); ctx.fill();
+
+                    // completed bar
+                    const grad = ctx.createLinearGradient(padL, 0, padL + completedW, 0);
+                    grad.addColorStop(0, '#FF0000'); grad.addColorStop(1, '#FD6D05');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath(); ctx.roundRect(padL, y, completedW, barH, 4); ctx.fill();
+
+                    // name label
+                    ctx.fillStyle = '#e5e7eb'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+                    const shortName = name.split(' ')[0];
+                    ctx.fillText(shortName, padL - 6, y + barH/2 + 3.5);
+
+                    // stat label
+                    if (progress > 0.7) {
+                        ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+                        ctx.fillText(`${stats.completed}/${stats.assigned}`, padL + totalW2 + 4, y + barH/2 + 3.5);
+                    }
+                });
+
+                // legend
+                ctx.fillStyle = '#FF0000'; ctx.fillRect(padL, H - 8, 10, 4);
+                ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+                ctx.fillText('Completed', padL + 14, H - 4);
+                ctx.fillStyle = '#3b82f666'; ctx.fillRect(padL + 80, H - 8, 10, 4);
+                ctx.fillStyle = '#9ca3af'; ctx.fillText('Assigned', padL + 94, H - 4);
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- LINE CHART (Daily completions) ----
+        function drawLineChart(d, animate) {
+            const canvas = document.getElementById('chart-trend');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 400, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const year = parseInt(document.getElementById('report-year-select').value);
+            const month = parseInt(document.getElementById('report-month-select').value);
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
+            const values = labels.map(d2 => d.dailyCompleted[d2] || 0);
+
+            const maxVal = Math.max(...values, 1);
+            const padL = 30, padR = 15, padT = 20, padB = 30;
+            const chartW = W - padL - padR, chartH = H - padT - padB;
+            const step = chartW / (labels.length - 1 || 1);
+
+            const pts = labels.map((_, i) => ({
+                x: padL + i * step,
+                y: padT + chartH - (values[i] / maxVal) * chartH
+            }));
+
+            const duration = animate ? 800 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                // grid
+                for (let i = 0; i <= 4; i++) {
+                    const y = padT + chartH - (chartH * i / 4);
+                    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y);
+                    ctx.strokeStyle = '#1e2238'; ctx.lineWidth = 1; ctx.stroke();
+                    ctx.fillStyle = '#4b5563'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+                    ctx.fillText(Math.round(maxVal * i / 4), padL - 3, y + 3);
+                }
+
+                // x labels (every 5 days)
+                labels.forEach((l, i) => {
+                    if (l === 1 || l % 5 === 0) {
+                        ctx.fillStyle = '#6b7280'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+                        ctx.fillText(l, pts[i].x, H - padB + 14);
+                    }
+                });
+
+                const drawCount = Math.floor(pts.length * ease);
+                if (drawCount < 2) { if (progress < 1) requestAnimationFrame(drawFrame); return; }
+
+                const visiblePts = pts.slice(0, drawCount);
+
+                // area fill
+                const grad = ctx.createLinearGradient(0, padT, 0, padT + chartH);
+                grad.addColorStop(0, '#FF000033');
+                grad.addColorStop(1, '#FF000000');
+                ctx.beginPath();
+                ctx.moveTo(visiblePts[0].x, padT + chartH);
+                visiblePts.forEach(p => ctx.lineTo(p.x, p.y));
+                ctx.lineTo(visiblePts[visiblePts.length-1].x, padT + chartH);
+                ctx.closePath();
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // line
+                ctx.beginPath();
+                visiblePts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+                ctx.stroke();
+
+                // dots
+                visiblePts.forEach((p, i) => {
+                    if (values[i] > 0) {
+                        ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                        ctx.fillStyle = '#FD6D05'; ctx.fill();
+                    }
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- PERFORMANCE TABLE ----
+        function renderPerfTable(d) {
+            const tbody = document.getElementById('report-perf-table');
+            if (!tbody) return;
+            const entries = Object.entries(d.creatorMap).sort((a,b) => b[1].assigned - a[1].assigned);
+
+            if (entries.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-gray-500 italic">No task data for this period.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = entries.map(([name, stats]) => {
+                const rate = stats.assigned > 0 ? Math.round((stats.completed / stats.assigned) * 100) : 0;
+                const rateColor = rate >= 80 ? 'text-emerald-400' : rate >= 50 ? 'text-yellow-400' : 'text-red-400';
+                return `
+                    <tr class="hover:bg-[#1a1e36]/40 transition text-xs">
+                        <td class="py-3 px-4 font-bold text-white">${name}</td>
+                        <td class="py-3 px-4 text-center text-gray-300">${stats.assigned}</td>
+                        <td class="py-3 px-4 text-center text-emerald-400 font-semibold">${stats.completed}</td>
+                        <td class="py-3 px-4 text-center text-orange-400">${stats.reworks}</td>
+                        <td class="py-3 px-4 text-center text-red-400">${stats.rejected}</td>
+                        <td class="py-3 px-4 text-center font-bold ${rateColor}">${rate}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ---- PDF / IMAGE DOWNLOAD ----
+        async function downloadReportPDF() {
+            const month = document.getElementById('report-month-select');
+            const year = document.getElementById('report-year-select');
+            const monthName = month.options[month.selectedIndex].text;
+            const yearVal = year.value;
+
+            // Build a composite canvas from all 4 charts + KPI strip
+            const offscreen = document.createElement('canvas');
+            offscreen.width = 900;
+            offscreen.height = 680;
+            const ctx = offscreen.getContext('2d');
+
+            // Background
+            ctx.fillStyle = '#0b0d19';
+            ctx.fillRect(0, 0, 900, 680);
+
+            // Header
+            ctx.fillStyle = '#f3f4f6';
+            ctx.font = 'bold 22px system-ui';
+            ctx.textAlign = 'left';
+            ctx.fillText('Broken English Studio — Monthly Report', 30, 42);
+            ctx.fillStyle = '#FD6D05';
+            ctx.font = 'bold 13px system-ui';
+            ctx.fillText(`${monthName} ${yearVal}`, 30, 62);
+
+            // Divider
+            const grad = ctx.createLinearGradient(30, 0, 870, 0);
+            grad.addColorStop(0, '#FF0000'); grad.addColorStop(1, '#FD6D05');
+            ctx.fillStyle = grad;
+            ctx.fillRect(30, 72, 840, 2);
+
+            // KPI row
+            const d = getReportData();
+            const total = d.tasks.length;
+            const completed = d.statusCounts['Completed'] || 0;
+            const reworks = d.statusCounts['Rework Required'] || 0;
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+            const kpis = [
+                {label:'Total Tasks', val: total, color:'#f3f4f6'},
+                {label:'Completed', val: completed, color:'#10b981'},
+                {label:'Rework Flagged', val: reworks, color:'#f97316'},
+                {label:'Completion Rate', val: rate+'%', color:'#3b82f6'},
+            ];
+            kpis.forEach((k, i) => {
+                const kx = 30 + i * 215;
+                ctx.fillStyle = '#121424';
+                roundRectFill(ctx, kx, 84, 200, 54, 8);
+                ctx.fillStyle = '#1e2238';
+                ctx.strokeStyle = '#1e2238'; ctx.lineWidth = 1;
+                ctx.strokeRect(kx, 84, 200, 54);
+                ctx.fillStyle = k.color;
+                ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'left';
+                ctx.fillText(k.val, kx + 14, 116);
+                ctx.fillStyle = '#6b7280'; ctx.font = '10px system-ui';
+                ctx.fillText(k.label.toUpperCase(), kx + 14, 130);
+            });
+
+            // Grab the 4 chart canvases and draw them onto offscreen
+            const chartIds = ['chart-status','chart-types','chart-creators','chart-trend'];
+            const positions = [
+                {x:30, y:152, w:200, h:200},
+                {x:250, y:152, w:300, h:200},
+                {x:30, y:370, w:300, h:200},
+                {x:350, y:370, w:300, h:200},
+            ];
+
+            chartIds.forEach((id, i) => {
+                const c = document.getElementById(id);
+                if (c) {
+                    try { ctx.drawImage(c, positions[i].x, positions[i].y, positions[i].w, positions[i].h); }
+                    catch(e) {}
+                }
+            });
+
+            // Chart titles
+            const chartTitles = ['Status Breakdown','Output by Type','Creator Workload','Daily Completions'];
+            positions.forEach((pos, i) => {
+                ctx.fillStyle = '#FD6D05'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'left';
+                ctx.fillText(chartTitles[i].toUpperCase(), pos.x, pos.y - 5);
+            });
+
+            // Footer
+            ctx.fillStyle = '#374151'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+            ctx.fillText(`Generated ${new Date().toLocaleString()}  ·  Broken English Production Studio`, 870, 668);
+
+            // Download
+            const link = document.createElement('a');
+            link.download = `BE_Report_${monthName}_${yearVal}.png`;
+            link.href = offscreen.toDataURL('image/png');
+            link.click();
+        }
+
+        function roundRectFill(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            ctx.fill();
         }
 
         window.addEventListener('DOMContentLoaded', () => {
