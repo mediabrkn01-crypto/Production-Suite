@@ -2317,8 +2317,39 @@
                             online_at: new Date().toISOString(),
                             lastSeen: myRoomOpenedAt
                         });
+                        updateMyLastActive(); // record DB last-active on connect
                     }
                 });
+        }
+
+        // Update my last-active timestamp in the database (DB-backed last seen)
+        async function updateMyLastActive() {
+            if (!activeEmail) return;
+            try {
+                await dbInstance
+                    .from('user_roster')
+                    .update({ last_active: new Date().toISOString() })
+                    .eq('email', activeEmail);
+            } catch(e) {
+                // Column may not exist yet — silently ignore
+            }
+        }
+
+        // Heartbeat: update last-active every 30 seconds while app is open
+        setInterval(() => {
+            if (activeUser && activeEmail) updateMyLastActive();
+        }, 30000);
+
+        // Format a timestamp into a "last seen" label
+        function formatLastSeen(isoTime) {
+            if (!isoTime) return '';
+            const then = new Date(isoTime);
+            const diffMins = Math.floor((new Date() - then) / 60000);
+            if (diffMins < 1) return 'last seen just now';
+            if (diffMins < 60) return `last seen ${diffMins}m ago`;
+            if (diffMins < 1440) return `last seen ${Math.floor(diffMins/60)}h ago`;
+            if (diffMins < 2880) return 'last seen yesterday';
+            return `last seen ${then.toLocaleDateString([], {month:'short', day:'numeric'})}`;
         }
 
         function setupChatMessagesChannel() {
@@ -2421,20 +2452,24 @@
                 const isActiveDm = activeChatPeer && activeChatPeer.email === u.email;
                 const initials = u.name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
 
-                // Compute last seen label for offline users
+                // Compute last seen label for offline users — DB last_active is primary source
                 let statusLabel = isOnline ? 'Online' : 'Offline';
                 if (!isOnline) {
-                    const peerSeen = lastSeenMap[u.email];
-                    if (peerSeen) {
-                        const timestamps = Object.values(peerSeen);
-                        if (timestamps.length > 0) {
-                            const latest = new Date(Math.max(...timestamps.map(t => new Date(t).getTime())));
-                            const diffMins = Math.floor((new Date() - latest) / 60000);
-                            if (diffMins < 1) statusLabel = 'last seen just now';
-                            else if (diffMins < 60) statusLabel = `last seen ${diffMins}m ago`;
-                            else if (diffMins < 1440) statusLabel = `last seen ${Math.floor(diffMins/60)}h ago`;
-                            else statusLabel = `last seen ${latest.toLocaleDateString([], {month:'short', day:'numeric'})}`;
+                    let lastSeenTime = u.last_active || null; // from DB roster
+
+                    // Fallback to presence-captured room timestamps
+                    if (!lastSeenTime) {
+                        const peerSeen = lastSeenMap[u.email];
+                        if (peerSeen) {
+                            const timestamps = Object.values(peerSeen);
+                            if (timestamps.length > 0) {
+                                lastSeenTime = new Date(Math.max(...timestamps.map(t => new Date(t).getTime()))).toISOString();
+                            }
                         }
+                    }
+
+                    if (lastSeenTime) {
+                        statusLabel = formatLastSeen(lastSeenTime);
                     }
                 }
 
@@ -2459,30 +2494,30 @@
             if (!activeChatPeer) return;
             const isOnline = !!onlinePresenceMap[activeChatPeer.email];
             const subtitleEl = document.getElementById('chat-thread-subtitle');
-            if (subtitleEl) {
-                if (isOnline) {
-                    subtitleEl.innerHTML = `<span class="text-emerald-400">● Online</span>`;
-                } else {
-                    // Try to get last seen from presence map
-                    const peerSeen = lastSeenMap[activeChatPeer.email];
-                    let lastSeenText = '';
-                    if (peerSeen) {
-                        // Get the most recent timestamp across all rooms
-                        const timestamps = Object.values(peerSeen);
-                        if (timestamps.length > 0) {
-                            const latest = new Date(Math.max(...timestamps.map(t => new Date(t).getTime())));
-                            const now = new Date();
-                            const diffMs = now - latest;
-                            const diffMins = Math.floor(diffMs / 60000);
-                            if (diffMins < 1) lastSeenText = 'last seen just now';
-                            else if (diffMins < 60) lastSeenText = `last seen ${diffMins}m ago`;
-                            else if (diffMins < 1440) lastSeenText = `last seen ${Math.floor(diffMins/60)}h ago`;
-                            else lastSeenText = `last seen ${latest.toLocaleDateString([], {month:'short', day:'numeric'})}`;
-                        }
+            if (!subtitleEl) return;
+
+            if (isOnline) {
+                subtitleEl.innerHTML = `<span class="text-emerald-400">● Online</span>`;
+                return;
+            }
+
+            // Offline — get last seen. DB last_active is primary source.
+            const freshPeer = userRoster.find(u => u.email === activeChatPeer.email) || activeChatPeer;
+            let lastSeenTime = freshPeer.last_active || null;
+
+            // Fallback to presence-captured room timestamps
+            if (!lastSeenTime) {
+                const peerSeen = lastSeenMap[activeChatPeer.email];
+                if (peerSeen) {
+                    const timestamps = Object.values(peerSeen);
+                    if (timestamps.length > 0) {
+                        lastSeenTime = new Date(Math.max(...timestamps.map(t => new Date(t).getTime()))).toISOString();
                     }
-                    subtitleEl.innerHTML = `<span class="text-gray-500">○ Offline${lastSeenText ? ' · ' + lastSeenText : ''}</span>`;
                 }
             }
+
+            const lastSeenText = lastSeenTime ? formatLastSeen(lastSeenTime) : '';
+            subtitleEl.innerHTML = `<span class="text-gray-500">○ Offline${lastSeenText ? ' · ' + lastSeenText : ''}</span>`;
         }
 
         async function openChatRoom(kind, peerEmail) {
@@ -2785,7 +2820,7 @@
             if (mode === 'me') {
                 // Hide only for current user — stored in localStorage, persists across refresh
                 hideMessageLocally(messageId);
-                chatMessages = chatMessages.filter(m => m.id !== messageId);
+                chatMessages = chatMessages.filter(m => String(m.id) !== String(messageId));
                 renderChatMessages();
 
             } else if (mode === 'everyone') {
@@ -2793,10 +2828,23 @@
                 if (!confirm('Delete this message for everyone? This cannot be undone.')) return;
 
                 const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
-                if (error) { alert('Could not delete message: ' + error.message); return; }
+
+                if (error) {
+                    // DB delete blocked (e.g. RLS policy) — hide locally so it at least disappears for this user
+                    console.warn('DB delete failed, hiding locally:', error.message);
+                    hideMessageLocally(messageId);
+                    alert('Note: Message hidden for you. To delete for everyone, the database delete permission may need to be enabled.');
+                }
+
+                // Verify it's actually gone from the DB
+                const { data: check } = await dbInstance.from('chat_messages').select('id').eq('id', messageId).maybeSingle();
+                if (check) {
+                    // Still exists in DB — hide locally as fallback
+                    hideMessageLocally(messageId);
+                }
 
                 // Remove from local state immediately
-                chatMessages = chatMessages.filter(m => m.id !== messageId);
+                chatMessages = chatMessages.filter(m => String(m.id) !== String(messageId));
                 renderChatMessages();
             }
         }
