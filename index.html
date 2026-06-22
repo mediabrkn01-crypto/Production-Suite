@@ -528,10 +528,29 @@
                         </select>
                     </div>
                     <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Month:</span>
+                        <select id="attendance-filter-month" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                            <option value="all">All Months</option>
+                            <option value="01">January</option><option value="02">February</option>
+                            <option value="03">March</option><option value="04">April</option>
+                            <option value="05">May</option><option value="06">June</option>
+                            <option value="07">July</option><option value="08">August</option>
+                            <option value="09">September</option><option value="10">October</option>
+                            <option value="11">November</option><option value="12">December</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
+                        <select id="attendance-filter-year" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                            <option value="all">All Years</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
                         <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Date:</span>
                         <input type="date" id="attendance-filter-date" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
                         <button onclick="document.getElementById('attendance-filter-date').value='';renderAttendanceTable();" class="text-[10px] text-orange-400 hover:underline font-bold">Clear</button>
                     </div>
+                    <button onclick="clearAttendanceFilters()" class="text-[10px] text-gray-500 hover:text-orange-400 font-bold uppercase tracking-wider transition-colors">Reset All</button>
                 </div>
 
                 <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
@@ -705,6 +724,45 @@
                                 </tr>
                             </thead>
                             <tbody id="report-perf-table" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Attendance Log section -->
+                <div class="card p-5 rounded-2xl space-y-4">
+                    <div class="flex items-center justify-between flex-wrap gap-3">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="clock-4" class="w-4 h-4"></i> Attendance Log — This Month
+                        </h3>
+                        <button onclick="downloadReportAttendanceCSV()" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-4 py-2 rounded-xl uppercase tracking-wider flex items-center gap-2 hover:bg-emerald-600/40 transition-colors active:scale-95">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Download Attendance CSV
+                        </button>
+                    </div>
+
+                    <!-- Attendance KPI strip -->
+                    <div id="report-attendance-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+                    <!-- Attendance chart -->
+                    <div class="card p-4 rounded-xl space-y-2 border border-[#1e2238]">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Hours Worked Per Employee</p>
+                        <div style="height:180px; position:relative;">
+                            <canvas id="chart-attendance-hours" style="width:100%;height:180px;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Attendance table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider text-[10px]">
+                                    <th class="py-3 px-4">Employee</th>
+                                    <th class="py-3 px-4">Date</th>
+                                    <th class="py-3 px-4">Clock In</th>
+                                    <th class="py-3 px-4">Clock Out</th>
+                                    <th class="py-3 px-4">Hours Worked</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-attendance-table" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
                         </table>
                     </div>
                 </div>
@@ -1847,6 +1905,25 @@
                     select.innerHTML += `<option value="${u.email}">${u.name} (${u.role})</option>`;
                 });
             select.value = currentVal;
+
+            // Populate year dropdown from actual attendance data
+            const yearSel = document.getElementById('attendance-filter-year');
+            if (yearSel) {
+                const currentYearVal = yearSel.value || 'all';
+                const years = [...new Set(attendanceLogs.map(r => r.log_date ? r.log_date.slice(0,4) : null).filter(Boolean))].sort((a,b) => b-a);
+                yearSel.innerHTML = '<option value="all">All Years</option>';
+                years.forEach(y => { yearSel.innerHTML += `<option value="${y}">${y}</option>`; });
+                // Default to current year if available
+                const nowYear = new Date().getFullYear().toString();
+                yearSel.value = years.includes(nowYear) ? nowYear : (currentYearVal || 'all');
+            }
+
+            // Default month to current month
+            const monthSel = document.getElementById('attendance-filter-month');
+            if (monthSel && monthSel.value === 'all') {
+                const nowMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+                monthSel.value = nowMonth;
+            }
         }
 
         function calcHoursLabel(record) {
@@ -1856,17 +1933,40 @@
             return hours.toFixed(2) + ' hrs';
         }
 
+        function getAttendanceFilteredRows() {
+            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
+            const monthFilter = document.getElementById('attendance-filter-month')?.value || 'all';
+            const yearFilter = document.getElementById('attendance-filter-year')?.value || 'all';
+            const dateFilter = document.getElementById('attendance-filter-date')?.value || '';
+
+            let rows = attendanceLogs;
+            if (empFilter !== 'all') rows = rows.filter(r => r.employee_email === empFilter);
+            if (dateFilter) {
+                // Specific date overrides month/year
+                rows = rows.filter(r => r.log_date === dateFilter);
+            } else {
+                if (yearFilter !== 'all') rows = rows.filter(r => r.log_date && r.log_date.startsWith(yearFilter));
+                if (monthFilter !== 'all') rows = rows.filter(r => r.log_date && r.log_date.slice(5,7) === monthFilter);
+            }
+            return rows;
+        }
+
+        function clearAttendanceFilters() {
+            const now = new Date();
+            const el = id => document.getElementById(id);
+            if (el('attendance-filter-employee')) el('attendance-filter-employee').value = 'all';
+            if (el('attendance-filter-month')) el('attendance-filter-month').value = String(now.getMonth() + 1).padStart(2, '0');
+            if (el('attendance-filter-year')) el('attendance-filter-year').value = now.getFullYear().toString();
+            if (el('attendance-filter-date')) el('attendance-filter-date').value = '';
+            renderAttendanceTable();
+        }
+
         function renderAttendanceTable() {
             const tbody = document.getElementById('attendance-table-rows');
             const mobileContainer = document.getElementById('attendance-mobile-cards');
             if (!tbody || !mobileContainer) return;
 
-            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
-            const dateFilter = document.getElementById('attendance-filter-date')?.value || '';
-
-            let rows = attendanceLogs;
-            if (empFilter !== 'all') rows = rows.filter(r => r.employee_email === empFilter);
-            if (dateFilter) rows = rows.filter(r => r.log_date === dateFilter);
+            const rows = getAttendanceFilteredRows();
 
             tbody.innerHTML = '';
             mobileContainer.innerHTML = '';
@@ -1913,12 +2013,13 @@
             if (activeRole !== 'admin') return;
             if (attendanceLogs.length === 0) { alert('No attendance records to export.'); return; }
 
-            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
-            const dateFilter = document.getElementById('attendance-filter-date')?.value || '';
+            const rows = getAttendanceFilteredRows();
+            if (rows.length === 0) { alert('No records match the current filter.'); return; }
 
-            let rows = attendanceLogs;
-            if (empFilter !== 'all') rows = rows.filter(r => r.employee_email === empFilter);
-            if (dateFilter) rows = rows.filter(r => r.log_date === dateFilter);
+            const monthSel = document.getElementById('attendance-filter-month');
+            const yearSel = document.getElementById('attendance-filter-year');
+            const monthLabel = monthSel && monthSel.value !== 'all' ? monthSel.options[monthSel.selectedIndex].text : 'All';
+            const yearLabel = yearSel && yearSel.value !== 'all' ? yearSel.value : 'All';
 
             let csvHeaders = ["Employee Name", "Employee Email", "Date", "Clock In", "Clock Out", "Hours Worked"];
             let csvRows = [csvHeaders.join(",")];
@@ -1930,13 +2031,14 @@
                 csvRows.push([r.employee_name, r.employee_email, r.log_date, inLabel, outLabel, hoursLabel].join(","));
             });
 
+            const filename = `BE_Attendance_${monthLabel}_${yearLabel}.csv`;
             let blobElement = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
-            let structuralAnchor = document.createElement("a");
-            structuralAnchor.setAttribute("href", URL.createObjectURL(blobElement));
-            structuralAnchor.setAttribute("download", `Broken_English_Attendance_Log_${todayDateStr()}.csv`);
-            document.body.appendChild(structuralAnchor);
-            structuralAnchor.click();
-            document.body.removeChild(structuralAnchor);
+            let anchor = document.createElement("a");
+            anchor.setAttribute("href", URL.createObjectURL(blobElement));
+            anchor.setAttribute("download", filename);
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
         }
 
         // ============================================================
@@ -2025,6 +2127,10 @@
             const isMyDm = msg.room.includes('__') && msg.room.split('__').includes(activeEmail);
             const isRelevantToMe = isGroupMsg || isMyDm;
             if (!isRelevantToMe) return;
+
+            // Skip if this message is hidden locally
+            const hiddenIds = getHiddenMsgIds();
+            if (hiddenIds.includes(msg.id)) return;
 
             const isForActiveRoom = msg.room === activeChatRoom;
             const isChatTabVisible = !document.getElementById('tab-content-chat').classList.contains('hidden');
@@ -2218,7 +2324,9 @@
                 return;
             }
 
-            chatMessages = data || [];
+            // Filter out messages the current user has hidden locally
+            const hiddenIds = getHiddenMsgIds();
+            chatMessages = (data || []).filter(m => !hiddenIds.includes(m.id));
             renderChatMessages();
         }
 
@@ -2308,9 +2416,20 @@
 
                 const canDelete = isMine || activeRole === 'admin';
                 const deleteBtnMarkup = canDelete ? `
-                    <button onclick="deleteChatMessage(${m.id})" title="Delete message" class="chat-msg-delete-btn opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-1 shrink-0 self-center">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                    </button>
+                    <div class="relative chat-delete-wrap self-center shrink-0">
+                        <button onclick="toggleDeleteMenu(event, ${m.id})" title="Delete options" class="chat-msg-delete-btn opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-1">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <div id="del-menu-${m.id}" class="hidden absolute z-50 ${isMine ? 'right-0' : 'left-0'} bottom-7 bg-[#1a1e36] border border-[#2e3554] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+                            <button onclick="deleteChatMessage(${m.id}, 'me')" class="w-full text-left px-4 py-2.5 text-xs text-gray-300 hover:bg-[#252a4a] hover:text-white flex items-center gap-2 transition-colors">
+                                <i data-lucide="eye-off" class="w-3.5 h-3.5 text-gray-400"></i> Delete for Me
+                            </button>
+                            ${isMine || activeRole === 'admin' ? `
+                            <button onclick="deleteChatMessage(${m.id}, 'everyone')" class="w-full text-left px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-2 transition-colors border-t border-[#2e3554]">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete for Everyone
+                            </button>` : ''}
+                        </div>
+                    </div>
                 ` : '';
 
                 // Tick markup — only for my messages
@@ -2396,21 +2515,63 @@
             }
         }
 
-        async function deleteChatMessage(messageId) {
+        function toggleDeleteMenu(event, messageId) {
+            event.stopPropagation();
+            // Close any other open menus first
+            document.querySelectorAll('[id^="del-menu-"]').forEach(m => {
+                if (m.id !== `del-menu-${messageId}`) m.classList.add('hidden');
+            });
+            const menu = document.getElementById(`del-menu-${messageId}`);
+            if (menu) menu.classList.toggle('hidden');
+        }
+
+        // Close delete menus when clicking outside
+        document.addEventListener('click', () => {
+            document.querySelectorAll('[id^="del-menu-"]').forEach(m => m.classList.add('hidden'));
+        });
+
+        function getHiddenMsgIds() {
+            try {
+                const raw = localStorage.getItem(`be_hidden_msgs_${activeEmail}`);
+                return raw ? JSON.parse(raw) : [];
+            } catch(e) { return []; }
+        }
+
+        function hideMessageLocally(messageId) {
+            const hidden = getHiddenMsgIds();
+            if (!hidden.includes(messageId)) {
+                hidden.push(messageId);
+                localStorage.setItem(`be_hidden_msgs_${activeEmail}`, JSON.stringify(hidden));
+            }
+        }
+
+        async function deleteChatMessage(messageId, mode) {
+            // Close any open menu
+            const menu = document.getElementById(`del-menu-${messageId}`);
+            if (menu) menu.classList.add('hidden');
+
             const targetMsg = chatMessages.find(m => m.id === messageId);
             if (!targetMsg) return;
 
             const isMine = targetMsg.sender_email === activeEmail;
-            if (!isMine && activeRole !== 'admin') return;
 
-            if (!confirm('Delete this message? This cannot be undone.')) return;
+            if (mode === 'me') {
+                // Hide only for current user — stored in localStorage, persists across refresh
+                hideMessageLocally(messageId);
+                chatMessages = chatMessages.filter(m => m.id !== messageId);
+                renderChatMessages();
 
-            const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
-            if (error) { alert('Could not delete message: ' + error.message); return; }
+            } else if (mode === 'everyone') {
+                if (!isMine && activeRole !== 'admin') return;
+                if (!confirm('Delete this message for everyone? This cannot be undone.')) return;
 
-            // Remove from local state immediately for instant UI feedback
-            chatMessages = chatMessages.filter(m => m.id !== messageId);
-            renderChatMessages();
+                const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
+                if (error) { alert('Could not delete message: ' + error.message); return; }
+
+                // Remove from local state immediately
+                chatMessages = chatMessages.filter(m => m.id !== messageId);
+                renderChatMessages();
+            }
         }
 
         // ---------- FILE ATTACHMENTS ----------
@@ -2820,6 +2981,7 @@
             drawHorizontalBarChart(d, doAnimate);
             drawLineChart(d, doAnimate);
             renderPerfTable(d);
+            renderReportAttendance(doAnimate);
             lucide.createIcons();
         }
 
@@ -3183,6 +3345,152 @@
         }
 
         // ---- PDF / IMAGE DOWNLOAD ----
+        // ---- REPORT ATTENDANCE SECTION ----
+        function getReportAttendanceRows() {
+            const month = document.getElementById('report-month-select').value;
+            const year = document.getElementById('report-year-select').value;
+            const prefix = `${year}-${month}`;
+            return attendanceLogs.filter(r => r.log_date && r.log_date.startsWith(prefix));
+        }
+
+        function renderReportAttendance(animate) {
+            const rows = getReportAttendanceRows();
+            const tbody = document.getElementById('report-attendance-table');
+            const kpiDiv = document.getElementById('report-attendance-kpis');
+            if (!tbody || !kpiDiv) return;
+
+            // KPIs
+            const totalDays = rows.length;
+            const totalHours = rows.reduce((sum, r) => {
+                if (!r.log_in_time || !r.log_out_time) return sum;
+                return sum + (new Date(r.log_out_time) - new Date(r.log_in_time)) / 3600000;
+            }, 0);
+            const avgHours = totalDays > 0 ? (totalHours / totalDays).toFixed(1) : '0';
+            const uniqueEmployees = [...new Set(rows.map(r => r.employee_email))].length;
+            const stillIn = rows.filter(r => r.log_in_time && !r.log_out_time).length;
+
+            kpiDiv.innerHTML = [
+                { label: 'Total Check-ins', val: totalDays, color: 'text-white' },
+                { label: 'Unique Employees', val: uniqueEmployees, color: 'text-blue-400' },
+                { label: 'Total Hours', val: totalHours.toFixed(1) + 'h', color: 'text-emerald-400' },
+                { label: 'Avg hrs/session', val: avgHours + 'h', color: 'text-orange-400' },
+            ].map(k => `
+                <div class="bg-[#0b0d19] p-3 rounded-xl border border-[#1e2238] flex flex-col gap-0.5">
+                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">${k.label}</p>
+                    <p class="text-lg font-bold ${k.color}">${k.val}</p>
+                </div>
+            `).join('');
+
+            // Table
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-gray-500 italic">No attendance records for this period.</td></tr>`;
+            } else {
+                tbody.innerHTML = rows.map(r => {
+                    const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const hoursLabel = calcHoursLabel(r);
+                    const active = r.log_in_time && !r.log_out_time;
+                    return `<tr class="hover:bg-[#1a1e36]/40 transition text-xs">
+                        <td class="py-2.5 px-4 font-bold text-white">${r.employee_name}</td>
+                        <td class="py-2.5 px-4 font-mono text-gray-400">${r.log_date}</td>
+                        <td class="py-2.5 px-4 text-emerald-400 font-mono">${inLabel}</td>
+                        <td class="py-2.5 px-4 font-mono ${active ? 'text-orange-400' : 'text-red-400'}">${active ? 'Still clocked in' : outLabel}</td>
+                        <td class="py-2.5 px-4 text-gray-300 font-mono">${hoursLabel}</td>
+                    </tr>`;
+                }).join('');
+            }
+
+            // Chart
+            drawAttendanceHoursChart(rows, animate);
+        }
+
+        function drawAttendanceHoursChart(rows, animate) {
+            const canvas = document.getElementById('chart-attendance-hours');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 500, H = 180;
+            canvas.width = W; canvas.height = H;
+
+            // Aggregate hours per employee
+            const empHours = {};
+            rows.forEach(r => {
+                if (!r.log_in_time || !r.log_out_time) return;
+                const hrs = (new Date(r.log_out_time) - new Date(r.log_in_time)) / 3600000;
+                empHours[r.employee_name] = (empHours[r.employee_name] || 0) + hrs;
+            });
+
+            const entries = Object.entries(empHours).sort((a,b) => b[1]-a[1]);
+            if (entries.length === 0) {
+                ctx.fillStyle = '#4b5563'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+                ctx.fillText('No completed sessions this period', W/2, H/2); return;
+            }
+
+            const maxVal = Math.max(...entries.map(([,v]) => v));
+            const padL = 10, padR = 10, padT = 16, padB = 30;
+            const barW = Math.max(20, (W - padL - padR) / entries.length - 10);
+            const chartH = H - padT - padB;
+            const gap = (W - padL - padR) / entries.length;
+            const colors = ['#FF0000','#FD6D05','#3b82f6','#10b981','#8b5cf6','#f59e0b'];
+
+            const duration = animate ? 600 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                entries.forEach(([name, hrs], i) => {
+                    const bH = maxVal > 0 ? (hrs / maxVal) * chartH * ease : 0;
+                    const x = padL + gap * i + (gap - barW) / 2;
+                    const y = padT + chartH - bH;
+
+                    const grad = ctx.createLinearGradient(0, y, 0, padT + chartH);
+                    grad.addColorStop(0, colors[i % colors.length]);
+                    grad.addColorStop(1, colors[i % colors.length] + '44');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath(); ctx.roundRect(x, y, barW, bH, [4,4,0,0]); ctx.fill();
+
+                    if (progress > 0.8) {
+                        ctx.fillStyle = '#f3f4f6'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+                        ctx.fillText(hrs.toFixed(1) + 'h', x + barW/2, y - 4);
+                    }
+
+                    ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+                    const short = name.split(' ')[0];
+                    ctx.fillText(short, x + barW/2, H - padB + 14);
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        function downloadReportAttendanceCSV() {
+            const rows = getReportAttendanceRows();
+            if (rows.length === 0) { alert('No attendance records for this period.'); return; }
+
+            const monthSel = document.getElementById('report-month-select');
+            const yearSel = document.getElementById('report-year-select');
+            const monthName = monthSel.options[monthSel.selectedIndex].text;
+            const yearVal = yearSel.value;
+
+            const headers = ["Employee Name", "Employee Email", "Date", "Clock In", "Clock Out", "Hours Worked"];
+            const csvRows = [headers.join(",")];
+
+            rows.forEach(r => {
+                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Still clocked in';
+                csvRows.push([r.employee_name, r.employee_email, r.log_date, inLabel, outLabel, calcHoursLabel(r)].join(","));
+            });
+
+            const blob = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `BE_Attendance_${monthName}_${yearVal}.csv`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
         async function downloadReportPDF() {
             const month = document.getElementById('report-month-select');
             const year = document.getElementById('report-year-select');
