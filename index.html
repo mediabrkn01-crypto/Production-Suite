@@ -2009,11 +2009,13 @@
         }
 
         function handleDeletedChatMessage(msg) {
-            if (!msg || msg.id == null) return;
-            const wasInActiveRoom = chatMessages.some(m => m.id === msg.id);
-            if (wasInActiveRoom) {
+            // If payload.old has an id, remove that specific message from local state
+            if (msg && msg.id != null) {
                 chatMessages = chatMessages.filter(m => m.id !== msg.id);
                 renderChatMessages();
+            } else {
+                // Supabase replica identity not set — re-fetch the room to get true state
+                loadChatMessages();
             }
         }
 
@@ -2406,6 +2408,7 @@
             const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
             if (error) { alert('Could not delete message: ' + error.message); return; }
 
+            // Remove from local state immediately for instant UI feedback
             chatMessages = chatMessages.filter(m => m.id !== messageId);
             renderChatMessages();
         }
