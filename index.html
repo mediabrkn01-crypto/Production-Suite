@@ -812,8 +812,8 @@
                 deadline: t.date,
                 status: t.status,
                 explanation: t.explanation,
-                assetLink: t.assetLink,
-                referenceFile: t.referenceFile
+                assetLink: extractCleanUrls(t.assetLink),
+                referenceFile: extractCleanUrls(t.referenceFile)
             }));
             await pushToSheet('syncTasks', { rows });
         }
@@ -884,7 +884,7 @@
                     deadline: t.date,
                     status: t.status,
                     explanation: t.explanation,
-                    assetLink: t.assetLink
+                    assetLink: extractCleanUrls(t.assetLink)
                 }))
             });
         }
@@ -1003,6 +1003,32 @@
                 reader.onerror = () => reject(new Error('File conversion matrix failed'));
                 reader.readAsDataURL(file);
             });
+        }
+
+        // Read a file as base64 (helper for folder upload)
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result.split(',')[1]);
+                reader.onerror = () => reject(new Error('File read failed'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Upload multiple files into ONE Drive folder, returns the folder link
+        async function uploadFolderToDrive(filesArray, folderName) {
+            const files = [];
+            for (const f of filesArray) {
+                const base64 = await fileToBase64(f);
+                files.push({ fileName: f.name, mimeType: f.type, base64 });
+            }
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'uploadFolder', folderName, files })
+            });
+            const resData = await response.json();
+            if (resData.success) return resData.folderUrl;
+            throw new Error(resData.error || 'Folder upload failed');
         }
 
         async function syncLedgerEngine(forcedByUser = false) {
@@ -1800,25 +1826,43 @@
                 finalLinksArray = linkVal.split(',').map(l => l.trim()).filter(Boolean);
             } else {
                 if(deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
-                
+
                 submitBtn.disabled = true;
-                
-                for (let i = 0; i < deliveryFilesQueue.length; i++) {
-                    const selectedFile = deliveryFilesQueue[i];
-                    if (selectedFile.size > 60 * 1024 * 1024) {
-                        alert(`File "${selectedFile.name}" exceeds the 60MB safety upload limit guidelines.`);
+
+                // Check all file sizes first
+                for (const f of deliveryFilesQueue) {
+                    if (f.size > 60 * 1024 * 1024) {
+                        alert(`File "${f.name}" exceeds the 60MB safety upload limit guidelines.`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
                     }
-                    
-                    submitBtn.innerText = `Uploading file ${i + 1} of ${deliveryFilesQueue.length}...`;
+                }
+
+                if (deliveryFilesQueue.length === 1) {
+                    // Single file → direct file link, named after the file
+                    submitBtn.innerText = `Uploading file...`;
                     try {
-                        const fileUrl = await uploadToGoogleDrive(selectedFile);
-                        finalLinksArray.push(fileUrl);
+                        const fileUrl = await uploadToGoogleDrive(deliveryFilesQueue[0]);
+                        const cleanName = deliveryFilesQueue[0].name.replace(/\|/g, '-');
+                        finalLinksArray.push(`${cleanName}|${fileUrl}`);
                     } catch (uploadError) {
-                        console.error("Google Drive Multi-Upload Error: ", uploadError);
-                        alert(`Storage Error: Failed to push file package "${selectedFile.name}" into Google Drive.`);
+                        console.error("Drive Upload Error: ", uploadError);
+                        alert(`Storage Error: Failed to push file "${deliveryFilesQueue[0].name}" into Google Drive.`);
+                        submitBtn.disabled = false;
+                        submitBtn.innerText = "Deploy Work Package";
+                        return;
+                    }
+                } else {
+                    // Multiple files → upload all into ONE folder, single folder link
+                    submitBtn.innerText = `Uploading ${deliveryFilesQueue.length} files into one folder...`;
+                    try {
+                        const folderUrl = await uploadFolderToDrive(deliveryFilesQueue, targetTask.topic);
+                        const label = `${targetTask.topic} (${deliveryFilesQueue.length} files)`;
+                        finalLinksArray.push(`${label.replace(/\|/g, '-')}|${folderUrl}`);
+                    } catch (uploadError) {
+                        console.error("Drive Folder Upload Error: ", uploadError);
+                        alert(`Storage Error: Failed to push files into Google Drive folder.`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
@@ -1826,7 +1870,7 @@
                 }
             }
 
-            const finalPayloadValue = finalLinksArray.join(', ');
+            const finalPayloadValue = finalLinksArray.join(' ;; ');
 
             await dbInstance
                 .from('assignments')
@@ -1948,7 +1992,7 @@
                 let clExp = `"${task.explanation.replace(/"/g, '""')}"`;
                 
                 let rowData = [
-                    task.id, clTopic, task.type, task.assignedTo, task.employeeEmail, clDesc, task.assignedDate, task.date, task.status, clExp, task.assetLink || "Awaiting submission"
+                    task.id, clTopic, task.type, task.assignedTo, task.employeeEmail, clDesc, task.assignedDate, task.date, task.status, clExp, extractCleanUrls(task.assetLink) || "Awaiting submission"
                 ];
                 csvRows.push(rowData.join(","));
             });
@@ -2974,31 +3018,66 @@
         }
 
         // Split multi-link asset entries and build clean action button arrays
+        // Extract plain URLs (strip "name|" labels) from a stored asset string
+        function extractCleanUrls(assetString) {
+            if (!assetString) return '';
+            const parts = assetString.includes(';;')
+                ? assetString.split(';;')
+                : assetString.split(',');
+            return parts.map(p => {
+                p = p.trim();
+                return p.includes('|') ? p.slice(p.indexOf('|') + 1).trim() : p;
+            }).filter(Boolean).join(' | ');
+        }
+
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
-            
-            const links = assetString.split(',').map(s => s.trim()).filter(Boolean);
-            if (links.length === 0) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
+
+            // Support both new ";;" separator and legacy "," separator
+            let rawLinks = assetString.includes(';;')
+                ? assetString.split(';;').map(s => s.trim()).filter(Boolean)
+                : assetString.split(',').map(s => s.trim()).filter(Boolean);
+
+            if (rawLinks.length === 0) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
 
             let html = '<div class="flex flex-col gap-1.5">';
-            links.forEach((link, index) => {
-                const lowercaseAsset = link.toLowerCase();
-                const label = links.length > 1 ? `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> Part ${index + 1}` : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Drive`;
-                const fallbackLabel = links.length > 1 ? `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> Link ${index + 1}` : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i> View Link`;
-
-                if (lowercaseAsset.includes('drive.google.com')) {
-                    html += `
-                        <a href="${link}" target="_blank" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded font-bold hover:bg-emerald-600/40 transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95">
-                            ${label}
-                        </a>
-                    `;
+            rawLinks.forEach((raw, index) => {
+                // Parse "name|url" format; if no pipe, it's a plain url (legacy)
+                let label, url;
+                if (raw.includes('|')) {
+                    const pipeIdx = raw.indexOf('|');
+                    label = raw.slice(0, pipeIdx).trim();
+                    url = raw.slice(pipeIdx + 1).trim();
                 } else {
-                    html += `
-                        <a href="${link}" target="_blank" class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded font-bold hover:bg-blue-500/40 transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95">
-                            ${fallbackLabel}
-                        </a>
-                    `;
+                    url = raw;
+                    label = ''; // will fall back below
                 }
+
+                const lowercaseAsset = url.toLowerCase();
+                const isFolder = lowercaseAsset.includes('/folders/');
+                const isDrive = lowercaseAsset.includes('drive.google.com') || lowercaseAsset.includes('docs.google.com');
+
+                // Determine display name
+                let displayName = label;
+                if (!displayName) {
+                    displayName = isFolder ? 'Open Folder' : (isDrive ? 'Open Drive' : 'View Link');
+                }
+                // Truncate long names
+                const shownName = displayName.length > 28 ? displayName.slice(0, 28) + '…' : displayName;
+
+                const icon = isFolder
+                    ? `<i data-lucide="folder-open" class="w-3.5 h-3.5"></i>`
+                    : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i>`;
+
+                const styleClass = isDrive
+                    ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/40'
+                    : 'bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/40';
+
+                html += `
+                    <a href="${url}" target="_blank" title="${displayName}" class="${styleClass} border px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[220px]">
+                        ${icon} <span class="truncate">${shownName}</span>
+                    </a>
+                `;
             });
             html += '</div>';
             return html;
