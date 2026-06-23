@@ -451,6 +451,9 @@
 
                         <div id="production-matrix-mobile-cards" class="block md:hidden space-y-3">
                         </div>
+
+                        <div id="pipeline-pagination" class="hidden flex items-center justify-center gap-1.5 flex-wrap pt-4 mt-2 border-t border-[#1e2238]/60">
+                        </div>
                     </div>
 
                     <div class="space-y-4">
@@ -965,6 +968,8 @@
         let globalCategoryFilter = 'all';
         let globalStatusFilter = 'all';
         let globalSortConfig = 'assignedDate-desc';
+        let currentPipelinePage = 1;
+        const PIPELINE_PAGE_SIZE = 10;
 
         function triggerPipelineMatrixUpdate() {
             globalYearFilter = document.getElementById('filter-year').value;
@@ -972,7 +977,56 @@
             globalCategoryFilter = document.getElementById('filter-category').value;
             globalStatusFilter = document.getElementById('filter-status').value;
             globalSortConfig = document.getElementById('sort-config').value;
+            currentPipelinePage = 1; // reset to first page when filters change
             renderTableRows();
+        }
+
+        function goToPipelinePage(page) {
+            currentPipelinePage = page;
+            renderTableRows();
+            // Scroll table into view
+            const sheet = document.getElementById('production-matrix-rows');
+            if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function renderPipelinePagination(totalItems) {
+            const pagEl = document.getElementById('pipeline-pagination');
+            if (!pagEl) return;
+
+            const totalPages = Math.ceil(totalItems / PIPELINE_PAGE_SIZE);
+            if (totalPages <= 1) {
+                pagEl.classList.add('hidden');
+                pagEl.innerHTML = '';
+                return;
+            }
+            pagEl.classList.remove('hidden');
+
+            let html = '';
+            // Prev button
+            html += `<button onclick="goToPipelinePage(${currentPipelinePage - 1})" ${currentPipelinePage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === 1 ? 'text-gray-600 bg-[#0b0d19] cursor-not-allowed' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">‹ Prev</button>`;
+
+            // Page number buttons (show window around current)
+            const pages = [];
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentPipelinePage - 1 && i <= currentPipelinePage + 1)) {
+                    pages.push(i);
+                } else if (pages[pages.length - 1] !== '...') {
+                    pages.push('...');
+                }
+            }
+            pages.forEach(p => {
+                if (p === '...') {
+                    html += `<span class="px-2 text-gray-600 text-xs">…</span>`;
+                } else {
+                    const isActive = p === currentPipelinePage;
+                    html += `<button onclick="goToPipelinePage(${p})" class="min-w-[32px] px-2.5 py-1.5 rounded-lg text-xs font-bold ${isActive ? 'brand-gradient text-white' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">${p}</button>`;
+                }
+            });
+
+            // Next button
+            html += `<button onclick="goToPipelinePage(${currentPipelinePage + 1})" ${currentPipelinePage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === totalPages ? 'text-gray-600 bg-[#0b0d19] cursor-not-allowed' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">Next ›</button>`;
+
+            pagEl.innerHTML = html;
         }
 
         // Base64 Binary Stream Converter logic for all direct Google Drive submissions
@@ -3133,10 +3187,20 @@
             if(targetTasks.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this filtered parameter mix.</td></tr>`;
                 mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
+                renderPipelinePagination(0);
                 return;
             }
 
-            targetTasks.forEach(t => {
+            // ── Pagination: clamp page and slice to current page ──
+            const totalPages = Math.ceil(targetTasks.length / PIPELINE_PAGE_SIZE);
+            if (currentPipelinePage > totalPages) currentPipelinePage = totalPages;
+            if (currentPipelinePage < 1) currentPipelinePage = 1;
+            const startIdx = (currentPipelinePage - 1) * PIPELINE_PAGE_SIZE;
+            const pagedTasks = targetTasks.slice(startIdx, startIdx + PIPELINE_PAGE_SIZE);
+
+            renderPipelinePagination(targetTasks.length);
+
+            pagedTasks.forEach(t => {
                 let badgeColor = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20";
                 let statusDropdownStyles = "text-yellow-400 bg-yellow-400/10 border border-yellow-500/30";
                 
