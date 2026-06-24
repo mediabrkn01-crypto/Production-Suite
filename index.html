@@ -1183,7 +1183,10 @@
                         explanation: t.explanation,
                         assetLink: t.asset_link,
                         referenceFile: t.reference_file,
-                        assignedBy: t.assigned_by || ''
+                        assignedBy: t.assigned_by || '',
+                        managerApproved: t.manager_approved || false,
+                        socialApproved: t.social_approved || false,
+                        assignApproved: t.assign_approved || false
                     }));
                 }
 
@@ -1825,6 +1828,10 @@
             const todayStr = new Date().toISOString().slice(0, 10);
             const newTaskId = Date.now();
 
+            // If assigning to a social-media user, the task needs admin/manager approval
+            // before they can re-assign it. Regular creators are auto-approved.
+            const assigneeIsSocial = empObj && empObj.role === 'social_media';
+
             let refFileUrlsArray = [];
             if(taskRefFilesQueue.length > 0) {
                 const assignPanel = document.getElementById('admin-assignment-panel');
@@ -1868,7 +1875,8 @@
                     explanation: "None",
                     asset_link: "",
                     reference_file: finalRefFileUrl,
-                    assigned_by: activeUser
+                    assigned_by: activeUser,
+                    assign_approved: assigneeIsSocial ? false : true
                 }]);
 
             if(error) { alert("Database Error: Failed to push task. " + error.message); return; }
@@ -2023,7 +2031,7 @@
 
             await dbInstance
                 .from('assignments')
-                .update({ status: "Completed", asset_link: finalPayloadValue })
+                .update({ status: "Completed", asset_link: finalPayloadValue, manager_approved: false, social_approved: false })
                 .eq('id', currentTargetTaskId);
 
             await pushLogEntry(`Creator ${targetTask.assignedTo} deployed production deliverables into the matrix pipeline.`);
@@ -3333,10 +3341,17 @@
         function getHistoryTasks() {
             let tasks = assignmentsList.filter(t => t.status === 'Completed');
 
-            // Employees and social media only see their own; managers/admins see all
-            if (activeRole === 'employee' || activeRole === 'social_media') {
+            if (activeRole === 'employee') {
+                // Creators see their own completed work
                 tasks = tasks.filter(t => t.employeeEmail === activeEmail);
+            } else if (activeRole === 'social_media') {
+                // Social media history = their own completed work + work they approved
+                tasks = tasks.filter(t => t.employeeEmail === activeEmail || t.socialApproved);
+            } else if (activeRole === 'manager') {
+                // Manager history = work they approved
+                tasks = tasks.filter(t => t.managerApproved);
             }
+            // admin sees all completed work
 
             const yearF = document.getElementById('history-filter-year')?.value || 'all';
             const monthF = document.getElementById('history-filter-month')?.value || 'all';
@@ -3454,6 +3469,125 @@
             pagEl.innerHTML = html;
         }
 
+        // ── SOCIAL MEDIA ASSIGNMENT APPROVAL + REASSIGN ──
+        // Admin/manager approves a social-media task so social media can re-assign it
+        async function approveSocialAssignment(id) {
+            if (activeRole !== 'manager' && activeRole !== 'admin') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            await dbInstance.from('assignments').update({ assign_approved: true }).eq('id', id);
+            await pushLogEntry(`Assignment approved for social media: "${task.topic}" — social media can now re-assign.`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Assignment approved. Social media can now re-assign this to a creator.');
+        }
+
+        // Open a simple prompt-based re-assign for social media
+        async function openReassignModal(id) {
+            if (activeRole !== 'social_media') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            // Build a numbered list of editors/designers to pick from
+            const creators = userRoster.filter(u => u.role === 'employee');
+            if (creators.length === 0) { alert('No editors/designers available to assign.'); return; }
+
+            let listText = `Re-assign "${task.topic}" to which creator?\n\n`;
+            creators.forEach((c, i) => { listText += `${i + 1}. ${c.name} (${c.email})\n`; });
+            listText += `\nEnter the number:`;
+
+            const choice = prompt(listText);
+            if (!choice) return;
+            const idx = parseInt(choice) - 1;
+            if (isNaN(idx) || idx < 0 || idx >= creators.length) { alert('Invalid selection.'); return; }
+
+            const creator = creators[idx];
+
+            // Pass the SAME task down to the chosen creator, reset to Pending
+            await dbInstance.from('assignments').update({
+                assigned_to: creator.name,
+                employee_email: creator.email,
+                status: 'Pending',
+                explanation: 'None'
+            }).eq('id', id);
+
+            await pushLogEntry(`Social media re-assigned "${task.topic}" to ${creator.name}.`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert(`Task re-assigned to ${creator.name}.`);
+        }
+
+        // ── APPROVAL ACTIONS (manager + social media) ──
+        async function managerApproveTask(id) {
+            if (activeRole !== 'manager' && activeRole !== 'admin') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            await dbInstance.from('assignments').update({ manager_approved: true }).eq('id', id);
+            await pushLogEntry(`Manager approved completed work: "${task.topic}"`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Approved. This task now appears in your History.');
+        }
+
+        async function socialApproveTask(id) {
+            if (activeRole !== 'social_media' && activeRole !== 'admin') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            await dbInstance.from('assignments').update({ social_approved: true }).eq('id', id);
+            await pushLogEntry(`Social Media approved completed work: "${task.topic}"`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Approved. This task now appears in your History.');
+        }
+
+        // Approver sends completed work back to creator for rework
+        async function approvalReworkTask(id) {
+            if (!['manager', 'social_media', 'admin'].includes(activeRole)) return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const note = prompt(`Rework feedback for "${task.topic}":`);
+            if (!note) { alert('Rework note is required.'); return; }
+
+            // Reset to Rework Required and clear approvals so it re-enters creator's pipeline
+            await dbInstance.from('assignments').update({
+                status: 'Rework Required',
+                explanation: note,
+                manager_approved: false,
+                social_approved: false
+            }).eq('id', id);
+
+            await pushLogEntry(`${activeRole} sent "${task.topic}" back for rework. Note: ${note}`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Sent back to the creator for rework.');
+        }
+
+        // Approver rejects completed work
+        async function approvalRejectTask(id) {
+            if (!['manager', 'social_media', 'admin'].includes(activeRole)) return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const note = prompt(`Rejection reason for "${task.topic}":`);
+            if (!note) { alert('Rejection reason is required.'); return; }
+
+            await dbInstance.from('assignments').update({
+                status: 'Rejected',
+                explanation: note,
+                manager_approved: false,
+                social_approved: false
+            }).eq('id', id);
+
+            await pushLogEntry(`${activeRole} rejected "${task.topic}". Reason: ${note}`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Task rejected.');
+        }
+
         // Send a completed task back to the pipeline for rework
         async function historyReworkTask(id) {
             if (activeRole !== 'admin' && activeRole !== 'manager') return;
@@ -3484,13 +3618,35 @@
             tbody.innerHTML = '';
             mobileContainer.innerHTML = '';
 
-            let targetTasks = assignmentsList;
-            if (activeRole === 'employee' || activeRole === 'social_media') {
-                targetTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
-            }
+            let targetTasks;
 
-            // Completed tasks move to the History tab — exclude them from the active pipeline
-            targetTasks = targetTasks.filter(t => t.status !== 'Completed');
+            // Helper: is this task assigned to a social-media-role user?
+            const socialEmails = new Set(userRoster.filter(u => u.role === 'social_media').map(u => u.email));
+            const isSocialTask = (t) => socialEmails.has(t.employeeEmail);
+
+            if (activeRole === 'employee') {
+                // Editors/designers see only their own non-completed tasks
+                targetTasks = assignmentsList.filter(t =>
+                    t.employeeEmail === activeEmail && t.status !== 'Completed'
+                );
+            } else if (activeRole === 'social_media') {
+                // Social media sees: their own assigned tasks (once approved for re-assignment),
+                // plus completed tasks awaiting their approval
+                targetTasks = assignmentsList.filter(t =>
+                    (t.employeeEmail === activeEmail && t.status !== 'Completed') ||
+                    (t.status === 'Completed' && !t.socialApproved)
+                );
+            } else if (activeRole === 'manager') {
+                // Manager: non-completed tasks + completed awaiting manager approval
+                targetTasks = assignmentsList.filter(t =>
+                    t.status !== 'Completed' || (t.status === 'Completed' && !t.managerApproved)
+                );
+            } else {
+                // Admin
+                targetTasks = assignmentsList.filter(t =>
+                    t.status !== 'Completed' || (t.status === 'Completed' && (!t.managerApproved || !t.socialApproved))
+                );
+            }
 
             if (globalYearFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => t.assignedDate && t.assignedDate.startsWith(globalYearFilter));
@@ -3564,7 +3720,49 @@
                 let isNewRealtimeItem = !loadedTaskIdsSnapshot.includes(t.id);
 
                 let inputActionSelectorMarkup = '';
-                if (activeRole === 'employee' || activeRole === 'social_media') {
+
+                const taskIsSocial = isSocialTask(t);
+
+                // ── SOCIAL MEDIA ASSIGNMENT FLOW (task assigned to a social-media user, not yet completed) ──
+                if (taskIsSocial && t.status !== 'Completed') {
+                    if (!t.assignApproved) {
+                        // Awaiting admin/manager approval before social media can re-assign
+                        if (activeRole === 'manager' || activeRole === 'admin') {
+                            inputActionSelectorMarkup = `
+                                <div class="flex flex-wrap gap-1">
+                                    <button onclick="approveSocialAssignment(${t.id})" class="px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/40 text-[10px] font-bold uppercase tracking-wide transition">✓ Approve Assignment</button>
+                                    <button onclick="approvalRejectTask(${t.id})" class="px-2 py-1 rounded bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 text-[10px] font-bold uppercase tracking-wide transition">❌ Reject</button>
+                                </div>`;
+                        } else if (activeRole === 'social_media') {
+                            inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-yellow-500/10 text-yellow-400 font-bold border border-yellow-500/20 text-[10px] uppercase tracking-wide">⏳ Awaiting Approval</span>`;
+                        } else {
+                            inputActionSelectorMarkup = `<span class="text-gray-500 text-[10px] italic">Pending approval</span>`;
+                        }
+                    } else {
+                        // Approved — social media can now re-assign to a creator
+                        if (activeRole === 'social_media') {
+                            inputActionSelectorMarkup = `<button onclick="openReassignModal(${t.id})" class="px-2 py-1 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/40 text-[10px] font-bold uppercase tracking-wide transition">→ Re-assign to Creator</button>`;
+                        } else {
+                            inputActionSelectorMarkup = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Approved · with Social</span>`;
+                        }
+                    }
+                }
+                // ── COMPLETED tasks awaiting approval: show Approve/Rework/Reject ──
+                else if (t.status === 'Completed' && (activeRole === 'manager' || activeRole === 'social_media' || activeRole === 'admin')) {
+                    const approveFn = activeRole === 'social_media' ? 'socialApproveTask' : 'managerApproveTask';
+                    const alreadyApproved = activeRole === 'social_media' ? t.socialApproved : (activeRole === 'manager' ? t.managerApproved : (t.managerApproved && t.socialApproved));
+                    if (alreadyApproved) {
+                        inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20 text-[10px] uppercase tracking-wide">✓ Approved</span>`;
+                    } else {
+                        inputActionSelectorMarkup = `
+                            <div class="flex flex-wrap gap-1">
+                                <button onclick="${approveFn}(${t.id})" class="px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/40 text-[10px] font-bold uppercase tracking-wide transition">✓ Approve</button>
+                                <button onclick="approvalReworkTask(${t.id})" class="px-2 py-1 rounded bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20 text-[10px] font-bold uppercase tracking-wide transition">🔄 Rework</button>
+                                <button onclick="approvalRejectTask(${t.id})" class="px-2 py-1 rounded bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 text-[10px] font-bold uppercase tracking-wide transition">❌ Reject</button>
+                            </div>
+                        `;
+                    }
+                } else if (activeRole === 'employee' || activeRole === 'social_media') {
                     if (isRejected) {
                         inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-red-500/10 text-red-400 font-bold border border-red-500/20 text-[10px] uppercase tracking-wide">🔒 Locked</span>`;
                     } else {
