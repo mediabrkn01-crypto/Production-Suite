@@ -205,6 +205,9 @@
                         <i data-lucide="message-circle" class="w-4 h-4 md:w-5 h-5"></i> Team Chat
                         <span id="chat-unread-dot" class="hidden absolute right-3 md:right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-orange-500"></span>
                     </button>
+                    <button id="nav-history" onclick="switchTab('history')" class="sidebar-link flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left whitespace-nowrap shrink-0">
+                        <i data-lucide="history" class="w-4 h-4 md:w-5 h-5"></i> History
+                    </button>
                     <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left whitespace-nowrap shrink-0">
                         <i data-lucide="clock-4" class="w-4 h-4 md:w-5 h-5"></i> Attendance Log
                     </button>
@@ -325,6 +328,7 @@
                                 <option value="Video Editing">🎬 Video Editing</option>
                                 <option value="Thumbnail">🖼️ Thumbnail Design</option>
                                 <option value="Poster Design">🎨 Poster Design</option>
+                                <option value="Social Media">📱 Social Media</option>
                             </select>
                         </div>
                         <div>
@@ -403,6 +407,7 @@
                                     <option value="Video Editing">🎬 Video Editing</option>
                                     <option value="Thumbnail">🖼️ Thumbnail Design</option>
                                     <option value="Poster Design">🎨 Poster Design</option>
+                                    <option value="Social Media">📱 Social Media</option>
                                 </select>
                             </div>
                             <div class="flex items-center gap-2">
@@ -776,6 +781,75 @@
                 </div>
             </div>
 
+            <!-- ====== HISTORY TAB ====== -->
+            <div id="tab-content-history" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Completed Work History</h1>
+                        <p class="text-gray-400 text-xs md:text-sm mt-1">Archive of all completed deliverables.</p>
+                    </div>
+                </div>
+
+                <!-- History filters -->
+                <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs shadow-inner">
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
+                        <select id="history-filter-year" onchange="renderHistoryTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                            <option value="all">All Years</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Month:</span>
+                        <select id="history-filter-month" onchange="renderHistoryTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                            <option value="all">All Months</option>
+                            <option value="01">January</option><option value="02">February</option>
+                            <option value="03">March</option><option value="04">April</option>
+                            <option value="05">May</option><option value="06">June</option>
+                            <option value="07">July</option><option value="08">August</option>
+                            <option value="09">September</option><option value="10">October</option>
+                            <option value="11">November</option><option value="12">December</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Date:</span>
+                        <input type="date" id="history-filter-date" onchange="renderHistoryTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                        <button onclick="document.getElementById('history-filter-date').value='';renderHistoryTable();" class="text-[10px] text-orange-400 hover:underline font-bold">Clear</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Category:</span>
+                        <select id="history-filter-category" onchange="renderHistoryTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                            <option value="all">All</option>
+                            <option value="Video Editing">Video Editing</option>
+                            <option value="Thumbnail">Thumbnail</option>
+                            <option value="Poster Design">Poster Design</option>
+                            <option value="Social Media">Social Media</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="overflow-x-auto hidden md:block">
+                        <table class="w-full text-left text-xs border-collapse min-w-[900px]">
+                            <thead>
+                                <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider text-[10px]">
+                                    <th class="py-3 px-4">Campaign Topic</th>
+                                    <th class="py-3 px-4">Category</th>
+                                    <th class="py-3 px-4">Creator</th>
+                                    <th class="py-3 px-4">Assigned Date</th>
+                                    <th class="py-3 px-4">Completed</th>
+                                    <th class="py-3 px-4">Delivery Output</th>
+                                    <th id="history-th-actions" class="py-3 px-4 text-center hidden">Manager Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-rows" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
+                        </table>
+                    </div>
+                    <div id="history-mobile-cards" class="block md:hidden space-y-3 p-3"></div>
+                </div>
+
+                <div id="history-pagination" class="hidden flex items-center justify-center gap-1.5 flex-wrap pt-2"></div>
+            </div>
+
         </main>
     </div>
 
@@ -1106,7 +1180,8 @@
                         status: t.status,
                         explanation: t.explanation,
                         assetLink: t.asset_link,
-                        referenceFile: t.reference_file
+                        referenceFile: t.reference_file,
+                        assignedBy: t.assigned_by || ''
                     }));
                 }
 
@@ -1119,6 +1194,7 @@
                 if (activeUser) {
                     renderCountersGrid();
                     renderTableRows();
+                    renderHistoryTable();
                     renderSettingsRoster();
                     renderLogFeed();
                     if (activeRole === 'employee' || activeRole === 'manager') refreshAttendanceClockCard();
@@ -1370,6 +1446,7 @@
             document.getElementById('tab-content-attendance').classList.add('hidden');
             document.getElementById('tab-content-settings').classList.add('hidden');
             document.getElementById('tab-content-reports').classList.add('hidden');
+            document.getElementById('tab-content-history').classList.add('hidden');
 
             if(targetTab === 'dashboard') {
                 document.getElementById('nav-dashboard').classList.add('active');
@@ -1383,6 +1460,11 @@
                 if (window.innerWidth < 768) {
                     document.getElementById('tab-content-chat').classList.remove('chat-mobile-thread-open');
                 }
+            } else if (targetTab === 'history') {
+                document.getElementById('nav-history').classList.add('active');
+                document.getElementById('tab-content-history').classList.remove('hidden');
+                initHistoryYearFilter();
+                renderHistoryTable();
             } else if (targetTab === 'attendance' && activeRole === 'admin') {
                 document.getElementById('nav-attendance').classList.add('active');
                 document.getElementById('tab-content-attendance').classList.remove('hidden');
@@ -1775,7 +1857,8 @@
                     status: "Pending",
                     explanation: "None",
                     asset_link: "",
-                    reference_file: finalRefFileUrl
+                    reference_file: finalRefFileUrl,
+                    assigned_by: activeUser
                 }]);
 
             if(error) { alert("Database Error: Failed to push task. " + error.message); return; }
@@ -3139,6 +3222,169 @@
             return html;
         }
 
+        // ============================================================
+        // HISTORY TAB — completed work archive
+        // ============================================================
+        let currentHistoryPage = 1;
+        const HISTORY_PAGE_SIZE = 12;
+
+        function initHistoryYearFilter() {
+            const yearSel = document.getElementById('history-filter-year');
+            if (!yearSel) return;
+            const current = yearSel.value || 'all';
+            const years = [...new Set(assignmentsList
+                .filter(t => t.status === 'Completed' && t.assignedDate)
+                .map(t => t.assignedDate.slice(0,4)))].sort((a,b) => b-a);
+            yearSel.innerHTML = '<option value="all">All Years</option>';
+            years.forEach(y => { yearSel.innerHTML += `<option value="${y}">${y}</option>`; });
+            yearSel.value = current;
+        }
+
+        function getHistoryTasks() {
+            let tasks = assignmentsList.filter(t => t.status === 'Completed');
+
+            // Employees only see their own; managers/admins see all
+            if (activeRole === 'employee') {
+                tasks = tasks.filter(t => t.employeeEmail === activeEmail);
+            }
+
+            const yearF = document.getElementById('history-filter-year')?.value || 'all';
+            const monthF = document.getElementById('history-filter-month')?.value || 'all';
+            const dateF = document.getElementById('history-filter-date')?.value || '';
+            const catF = document.getElementById('history-filter-category')?.value || 'all';
+
+            if (dateF) {
+                tasks = tasks.filter(t => t.assignedDate === dateF);
+            } else {
+                if (yearF !== 'all') tasks = tasks.filter(t => t.assignedDate && t.assignedDate.startsWith(yearF));
+                if (monthF !== 'all') tasks = tasks.filter(t => t.assignedDate && t.assignedDate.slice(5,7) === monthF);
+            }
+            if (catF !== 'all') tasks = tasks.filter(t => t.type === catF);
+
+            // Newest first
+            tasks.sort((a,b) => (b.assignedDate || '').localeCompare(a.assignedDate || ''));
+            return tasks;
+        }
+
+        function goToHistoryPage(page) {
+            currentHistoryPage = page;
+            renderHistoryTable();
+        }
+
+        function renderHistoryTable() {
+            const tbody = document.getElementById('history-table-rows');
+            const mobileC = document.getElementById('history-mobile-cards');
+            const thActions = document.getElementById('history-th-actions');
+            if (!tbody || !mobileC) return;
+
+            // Show manager actions column for admin/manager
+            const canManage = (activeRole === 'admin' || activeRole === 'manager');
+            if (thActions) thActions.classList.toggle('hidden', !canManage);
+
+            const allTasks = getHistoryTasks();
+
+            tbody.innerHTML = '';
+            mobileC.innerHTML = '';
+
+            if (allTasks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-500 italic">No completed work in history for this filter.</td></tr>`;
+                mobileC.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">No completed work yet.</p>`;
+                renderHistoryPagination(0);
+                return;
+            }
+
+            // Pagination
+            const totalPages = Math.ceil(allTasks.length / HISTORY_PAGE_SIZE);
+            if (currentHistoryPage > totalPages) currentHistoryPage = totalPages;
+            if (currentHistoryPage < 1) currentHistoryPage = 1;
+            const start = (currentHistoryPage - 1) * HISTORY_PAGE_SIZE;
+            const pageTasks = allTasks.slice(start, start + HISTORY_PAGE_SIZE);
+            renderHistoryPagination(allTasks.length);
+
+            pageTasks.forEach(t => {
+                const delivery = buildMediaOutputMarkup(t.assetLink, t.topic);
+                const managerCol = canManage ? `
+                    <td class="py-3 px-4 text-center whitespace-nowrap">
+                        <button onclick="historyReworkTask(${t.id})" class="text-orange-400 hover:text-orange-300 text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded border border-orange-500/30 hover:bg-orange-500/10 transition">↩ Rework</button>
+                    </td>` : '';
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-[#1a1e36]/40 transition">
+                        <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
+                        <td class="py-3 px-4 text-gray-400">${t.type}</td>
+                        <td class="py-3 px-4 text-gray-300">${t.assignedTo}</td>
+                        <td class="py-3 px-4 font-mono text-gray-400">${t.assignedDate || '—'}</td>
+                        <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Completed</span></td>
+                        <td class="py-3 px-4">${delivery}</td>
+                        ${managerCol}
+                    </tr>
+                `;
+
+                const mobileActions = canManage ? `
+                    <button onclick="historyReworkTask(${t.id})" class="mt-2 w-full text-orange-400 text-[11px] font-bold uppercase tracking-wide px-2 py-1.5 rounded border border-orange-500/30 hover:bg-orange-500/10 transition">↩ Send Back for Rework</button>` : '';
+
+                mobileC.innerHTML += `
+                    <div class="card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238]">
+                        <div class="flex justify-between items-start gap-2">
+                            <h4 class="text-white font-bold text-sm">${t.topic}</h4>
+                            <span class="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 shrink-0">✓ Done</span>
+                        </div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
+                            <span>${t.type}</span>
+                            <span>👤 ${t.assignedTo}</span>
+                            <span class="font-mono">${t.assignedDate || ''}</span>
+                        </div>
+                        <div class="pt-1">${delivery}</div>
+                        ${mobileActions}
+                    </div>
+                `;
+            });
+
+            lucide.createIcons();
+        }
+
+        function renderHistoryPagination(totalItems) {
+            const pagEl = document.getElementById('history-pagination');
+            if (!pagEl) return;
+            const totalPages = Math.ceil(totalItems / HISTORY_PAGE_SIZE);
+            if (totalPages <= 1) { pagEl.classList.add('hidden'); pagEl.innerHTML = ''; return; }
+            pagEl.classList.remove('hidden');
+
+            let html = `<button onclick="goToHistoryPage(${currentHistoryPage - 1})" ${currentHistoryPage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentHistoryPage === 1 ? 'text-gray-600 bg-[#0b0d19]' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">‹ Prev</button>`;
+            const pages = [];
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentHistoryPage - 1 && i <= currentHistoryPage + 1)) pages.push(i);
+                else if (pages[pages.length - 1] !== '...') pages.push('...');
+            }
+            pages.forEach(p => {
+                if (p === '...') html += `<span class="px-2 text-gray-600 text-xs">…</span>`;
+                else html += `<button onclick="goToHistoryPage(${p})" class="min-w-[32px] px-2.5 py-1.5 rounded-lg text-xs font-bold ${p === currentHistoryPage ? 'brand-gradient text-white' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">${p}</button>`;
+            });
+            html += `<button onclick="goToHistoryPage(${currentHistoryPage + 1})" ${currentHistoryPage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentHistoryPage === totalPages ? 'text-gray-600 bg-[#0b0d19]' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">Next ›</button>`;
+            pagEl.innerHTML = html;
+        }
+
+        // Send a completed task back to the pipeline for rework
+        async function historyReworkTask(id) {
+            if (activeRole !== 'admin' && activeRole !== 'manager') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const note = prompt(`Enter rework feedback for "${task.topic}":`);
+            if (!note) { alert('Rework note is required.'); return; }
+
+            await dbInstance
+                .from('assignments')
+                .update({ status: 'Rework Required', explanation: note })
+                .eq('id', id);
+
+            await pushLogEntry(`Task "${task.topic}" sent back for rework from history. Note: ${note}`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
+            alert('Task sent back to the pipeline for rework.');
+        }
+
         function renderTableRows() {
             const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
@@ -3152,6 +3398,9 @@
             if (activeRole === 'employee') {
                 targetTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             }
+
+            // Completed tasks move to the History tab — exclude them from the active pipeline
+            targetTasks = targetTasks.filter(t => t.status !== 'Completed');
 
             if (globalYearFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => t.assignedDate && t.assignedDate.startsWith(globalYearFilter));
@@ -3262,10 +3511,15 @@
                 const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
                 const refFileBtnDesktop = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
 
+                // Employees see who assigned the work
+                const assignedByLine = (activeRole === 'employee' && t.assignedBy)
+                    ? `<br><span class="text-orange-400/70 text-[10px]">Assigned by: ${t.assignedBy}</span>`
+                    : '';
+
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
+                    <td class="py-3 px-4 font-bold text-white">${t.topic}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
                     <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail}</span></td>
                     <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
@@ -3300,6 +3554,7 @@
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Assigned On</p><p class="font-mono">${t.assignedDate}</p></div>
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Target Deadline</p><p class="font-mono text-orange-400 font-semibold">${t.date}</p></div>
                         <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Delivery Link</p><div class="mt-1">${outputLinkBtn}</div></div>
+                        ${(activeRole === 'employee' && t.assignedBy) ? `<div class="col-span-2"><p class="text-gray-500 text-[10px] uppercase font-semibold">Assigned By</p><p class="font-medium text-orange-400/80">${t.assignedBy}</p></div>` : ''}
                     </div>
                     ${t.referenceFile ? `
                     <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-blue-500/20">
