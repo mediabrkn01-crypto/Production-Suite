@@ -571,7 +571,7 @@
                         <thead>
                             <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
                                 <th class="py-3.5 px-4">Employee</th>
-                                <th class="py-3.5 px-4">Date</th>
+                                <th class="py-3.5 px-4">Status / Date</th>
                                 <th class="py-3.5 px-4">Clock In</th>
                                 <th class="py-3.5 px-4">Clock Out</th>
                                 <th class="py-3.5 px-4">Hours Worked</th>
@@ -610,6 +610,7 @@
                                 <label class="text-gray-400 text-xs block mb-1">Network Role Scope</label>
                                 <select id="new-user-role" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
                                     <option value="employee">🎨 Employee / Creative Creator</option>
+                                    <option value="social_media">📱 Social Media / Publishing</option>
                                     <option value="manager">💼 Studio Manager / Evaluation Control</option>
                                     <option value="admin">🔑 Network Admin / Master Control</option>
                                 </select>
@@ -1318,7 +1319,7 @@
                 document.getElementById('admin-download-wrapper').classList.add('hidden');
                 document.getElementById('admin-download-logs-btn').classList.add('hidden');
                 
-                if (activeRole === 'employee') {
+                if (activeRole === 'employee' || activeRole === 'social_media') {
                     renderEmployeeNotificationBar();
                     document.getElementById('attendance-clock-card').classList.remove('hidden');
                     refreshAttendanceClockCard();
@@ -2380,11 +2381,85 @@
             const mobileContainer = document.getElementById('attendance-mobile-cards');
             if (!tbody || !mobileContainer) return;
 
-            const rows = getAttendanceFilteredRows();
+            const dateFilter = document.getElementById('attendance-filter-date')?.value || '';
+            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
+            const monthFilter = document.getElementById('attendance-filter-month')?.value || 'all';
+            const yearFilter = document.getElementById('attendance-filter-year')?.value || 'all';
 
             tbody.innerHTML = '';
             mobileContainer.innerHTML = '';
 
+            // ── DAILY ROSTER MODE ──
+            // When a single date is selected (or no month/range), show EVERY employee
+            // for that day, marking absentees. Defaults to today if nothing chosen.
+            const singleDayMode = dateFilter || (monthFilter === 'all' && yearFilter === 'all');
+            const targetDay = dateFilter || todayDateStr();
+
+            if (singleDayMode) {
+                // All clockable employees (employee + social_media + manager)
+                let roster = userRoster.filter(u => ['employee', 'social_media', 'manager'].includes(u.role));
+                if (empFilter !== 'all') roster = roster.filter(u => u.email === empFilter);
+
+                if (roster.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-gray-500 italic">No employees in roster.</td></tr>`;
+                    mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">No employees found.</p>`;
+                    return;
+                }
+
+                // Build a header note showing the day
+                const dayLabel = new Date(targetDay + 'T00:00:00').toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+                let presentCount = 0, absentCount = 0;
+
+                roster.forEach(u => {
+                    const rec = attendanceLogs.find(r => r.employee_email === u.email && r.log_date === targetDay);
+                    const inLabel = rec && rec.log_in_time ? new Date(rec.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    const outLabel = rec && rec.log_out_time ? new Date(rec.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    const stillIn = rec && rec.log_in_time && !rec.log_out_time;
+                    const isPresent = !!(rec && rec.log_in_time);
+                    if (isPresent) presentCount++; else absentCount++;
+
+                    const statusBadge = isPresent
+                        ? (stillIn
+                            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-400/10 text-orange-400 border border-orange-400/20">● Clocked In</span>`
+                            : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Present</span>`)
+                        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">✕ Absent</span>`;
+
+                    const hoursLabel = rec ? calcHoursLabel(rec) : '—';
+
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-[#1a1e36]/40 transition ${!isPresent ? 'opacity-70' : ''}">
+                            <td class="py-3 px-4 font-bold text-white">${u.name} <span class="text-gray-500 text-[10px] font-normal">(${u.role})</span></td>
+                            <td class="py-3 px-4">${statusBadge}</td>
+                            <td class="py-3 px-4 text-emerald-400 font-mono">${inLabel || '—'}</td>
+                            <td class="py-3 px-4 font-mono ${stillIn ? 'text-orange-400' : 'text-red-400'}">${stillIn ? 'Still in' : (outLabel || '—')}</td>
+                            <td class="py-3 px-4 text-gray-300 font-mono">${hoursLabel}</td>
+                        </tr>
+                    `;
+
+                    mobileContainer.innerHTML += `
+                        <div class="card p-4 rounded-xl space-y-2 text-xs border ${isPresent ? 'border-[#1e2238]' : 'border-red-500/20'}">
+                            <div class="flex justify-between items-start gap-2">
+                                <h4 class="text-white font-bold text-sm">${u.name}</h4>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-gray-500 text-[10px]">${u.role}</p>
+                            <div class="grid grid-cols-3 gap-2 pt-1">
+                                <div><p class="text-gray-500 text-[10px] uppercase font-semibold">In</p><p class="font-mono text-emerald-400">${inLabel || '—'}</p></div>
+                                <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Out</p><p class="font-mono ${stillIn ? 'text-orange-400' : 'text-red-400'}">${stillIn ? 'Active' : (outLabel || '—')}</p></div>
+                                <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Hours</p><p class="font-mono text-gray-300">${hoursLabel}</p></div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                // Summary header injected at top
+                const summary = `<tr class="bg-[#0b0d19]"><td colspan="5" class="py-2 px-4 text-[11px] text-gray-400"><span class="font-bold text-white">${dayLabel}</span> · <span class="text-emerald-400">${presentCount} present</span> · <span class="text-red-400">${absentCount} absent</span></td></tr>`;
+                tbody.innerHTML = summary + tbody.innerHTML;
+                return;
+            }
+
+            // ── HISTORICAL/RANGE MODE (month/year) — show actual records only ──
+            const rows = getAttendanceFilteredRows();
             if (rows.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-500 italic">No attendance records found for this filter.</td></tr>`;
                 mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">No attendance records found.</p>`;
@@ -3117,6 +3192,7 @@
                             <td class="py-2 px-1">
                                 <select id="edit-roster-role-${i}" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
                                     <option value="employee" ${u.role === 'employee' ? 'selected' : ''}>employee</option>
+                                    <option value="social_media" ${u.role === 'social_media' ? 'selected' : ''}>social_media</option>
                                     <option value="manager" ${u.role === 'manager' ? 'selected' : ''}>manager</option>
                                     <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
                                 </select>
@@ -3243,8 +3319,8 @@
         function getHistoryTasks() {
             let tasks = assignmentsList.filter(t => t.status === 'Completed');
 
-            // Employees only see their own; managers/admins see all
-            if (activeRole === 'employee') {
+            // Employees and social media only see their own; managers/admins see all
+            if (activeRole === 'employee' || activeRole === 'social_media') {
                 tasks = tasks.filter(t => t.employeeEmail === activeEmail);
             }
 
@@ -3395,7 +3471,7 @@
             mobileContainer.innerHTML = '';
 
             let targetTasks = assignmentsList;
-            if (activeRole === 'employee') {
+            if (activeRole === 'employee' || activeRole === 'social_media') {
                 targetTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             }
 
@@ -3474,7 +3550,7 @@
                 let isNewRealtimeItem = !loadedTaskIdsSnapshot.includes(t.id);
 
                 let inputActionSelectorMarkup = '';
-                if (activeRole === 'employee') {
+                if (activeRole === 'employee' || activeRole === 'social_media') {
                     if (isRejected) {
                         inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-red-500/10 text-red-400 font-bold border border-red-500/20 text-[10px] uppercase tracking-wide">🔒 Locked</span>`;
                     } else {
