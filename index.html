@@ -523,27 +523,37 @@
             </div>
 
             <div id="tab-content-attendance" class="space-y-6 hidden">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Attendance Log</h1>
-                        <p class="text-gray-400 text-xs md:text-sm mt-1">Clock in/out history for employees and managers.</p>
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                            <i data-lucide="user-check" class="w-6 h-6 text-blue-400"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Employee Attendance</h1>
+                            <p class="text-gray-400 text-xs md:text-sm mt-0.5">Track daily attendance and working hours.</p>
+                        </div>
                     </div>
-                    <button onclick="downloadAttendanceCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
-                        <i data-lucide="download" class="w-4 h-4"></i> Download Attendance CSV
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="downloadAttendanceCSV()" class="bg-[#121424] border border-[#1e2238] hover:border-emerald-500/40 text-emerald-400 text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i> Export
+                        </button>
+                        <button onclick="window.print()" class="brand-gradient text-white text-xs font-bold px-5 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 shadow-lg shadow-red-900/20">
+                            <i data-lucide="printer" class="w-4 h-4"></i> Print
+                        </button>
+                    </div>
                 </div>
 
+                <!-- Filters -->
                 <div class="flex flex-wrap items-center gap-3 bg-[#121424] p-3 rounded-xl border border-[#1e2238] text-xs shadow-inner">
                     <div class="flex items-center gap-2">
                         <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Employee:</span>
-                        <select id="attendance-filter-employee" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
+                        <select id="attendance-filter-employee" onchange="renderAttendanceGrid()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
                             <option value="all">All Team Members</option>
                         </select>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Month:</span>
-                        <select id="attendance-filter-month" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
-                            <option value="all">All Months</option>
+                        <select id="attendance-grid-month" onchange="renderAttendanceGrid()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
                             <option value="01">January</option><option value="02">February</option>
                             <option value="03">March</option><option value="04">April</option>
                             <option value="05">May</option><option value="06">June</option>
@@ -554,35 +564,33 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Year:</span>
-                        <select id="attendance-filter-year" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
-                            <option value="all">All Years</option>
-                        </select>
+                        <select id="attendance-grid-year" onchange="renderAttendanceGrid()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium"></select>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Date:</span>
-                        <input type="date" id="attendance-filter-date" onchange="renderAttendanceTable()" class="bg-[#0b0d19] border border-[#1e2238] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium">
-                        <button onclick="document.getElementById('attendance-filter-date').value='';renderAttendanceTable();" class="text-[10px] text-orange-400 hover:underline font-bold">Clear</button>
-                    </div>
-                    <button onclick="clearAttendanceFilters()" class="text-[10px] text-gray-500 hover:text-orange-400 font-bold uppercase tracking-wider transition-colors">Reset All</button>
+                    <span class="text-[10px] text-gray-500 ml-auto hidden sm:block">💡 Click any cell to mark Leave / Week-Off / Holiday</span>
                 </div>
 
-                <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
-                    <table class="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
-                                <th class="py-3.5 px-4">Employee</th>
-                                <th class="py-3.5 px-4">Status</th>
-                                <th class="py-3.5 px-4">Date</th>
-                                <th class="py-3.5 px-4">Clock In</th>
-                                <th class="py-3.5 px-4">Clock Out</th>
-                                <th class="py-3.5 px-4">Hours Worked</th>
-                            </tr>
-                        </thead>
-                        <tbody id="attendance-table-rows" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
-                    </table>
+                <!-- Monthly grid -->
+                <div class="card rounded-2xl overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table id="attendance-grid-table" class="border-collapse text-xs w-full min-w-[1100px]">
+                            <thead id="attendance-grid-head"></thead>
+                            <tbody id="attendance-grid-body" class="text-gray-300"></tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div id="attendance-mobile-cards" class="block md:hidden space-y-3"></div>
+                <!-- Legend + Summary -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="card p-4 rounded-2xl flex items-center flex-wrap gap-4">
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400">Legend:</span>
+                        <span class="flex items-center gap-1.5 text-[11px]"><span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-[9px]">P</span> Present</span>
+                        <span class="flex items-center gap-1.5 text-[11px]"><span class="w-5 h-5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-[9px]">A</span> Absent</span>
+                        <span class="flex items-center gap-1.5 text-[11px]"><span class="w-5 h-5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 flex items-center justify-center font-bold text-[9px]">L</span> Leave</span>
+                        <span class="flex items-center gap-1.5 text-[11px]"><span class="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center font-bold text-[8px]">WO</span> Week Off</span>
+                        <span class="flex items-center gap-1.5 text-[11px]"><span class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-[8px]">HD</span> Holiday</span>
+                    </div>
+                    <div id="attendance-summary" class="card p-4 rounded-2xl flex items-center gap-2 flex-wrap"></div>
+                </div>
             </div>
 
             <div id="tab-content-settings" class="space-y-6 hidden">
@@ -1208,7 +1216,7 @@
                         renderChatContacts();
                     }
                     if (activeRole === 'admin' && !document.getElementById('tab-content-attendance').classList.contains('hidden')) {
-                        renderAttendanceTable();
+                        renderAttendanceGrid();
                     }
                 }
 
@@ -1481,7 +1489,8 @@
                 document.getElementById('nav-attendance').classList.add('active');
                 document.getElementById('tab-content-attendance').classList.remove('hidden');
                 populateAttendanceEmployeeFilter();
-                renderAttendanceTable();
+                initAttendanceGridSelectors();
+                renderAttendanceGrid();
             } else if (targetTab === 'settings' && activeRole === 'admin') {
                 document.getElementById('nav-settings').classList.add('active');
                 document.getElementById('tab-content-settings').classList.remove('hidden');
@@ -2339,30 +2348,11 @@
             const currentVal = select.value || 'all';
             select.innerHTML = '<option value="all">All Team Members</option>';
             userRoster
-                .filter(u => u.role === 'employee' || u.role === 'manager')
+                .filter(u => ['employee', 'manager', 'social_media'].includes(u.role))
                 .forEach(u => {
                     select.innerHTML += `<option value="${u.email}">${u.name} (${u.role})</option>`;
                 });
             select.value = currentVal;
-
-            // Populate year dropdown from actual attendance data
-            const yearSel = document.getElementById('attendance-filter-year');
-            if (yearSel) {
-                const currentYearVal = yearSel.value || 'all';
-                const years = [...new Set(attendanceLogs.map(r => r.log_date ? r.log_date.slice(0,4) : null).filter(Boolean))].sort((a,b) => b-a);
-                yearSel.innerHTML = '<option value="all">All Years</option>';
-                years.forEach(y => { yearSel.innerHTML += `<option value="${y}">${y}</option>`; });
-                // Default to current year if available
-                const nowYear = new Date().getFullYear().toString();
-                yearSel.value = years.includes(nowYear) ? nowYear : (currentYearVal || 'all');
-            }
-
-            // Default month to current month
-            const monthSel = document.getElementById('attendance-filter-month');
-            if (monthSel && monthSel.value === 'all') {
-                const nowMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-                monthSel.value = nowMonth;
-            }
         }
 
         function calcHoursLabel(record) {
@@ -2398,6 +2388,167 @@
             if (el('attendance-filter-year')) el('attendance-filter-year').value = now.getFullYear().toString();
             if (el('attendance-filter-date')) el('attendance-filter-date').value = '';
             renderAttendanceTable();
+        }
+
+        // ============================================================
+        // MONTHLY ATTENDANCE GRID
+        // ============================================================
+        // Manual overrides stored in localStorage: { "email_YYYY-MM-DD": "L"|"WO"|"HD" }
+        function getAttendanceOverrides() {
+            try { return JSON.parse(localStorage.getItem('be_attendance_overrides') || '{}'); }
+            catch(e) { return {}; }
+        }
+        function setAttendanceOverride(key, mark) {
+            const o = getAttendanceOverrides();
+            if (mark === null) delete o[key];
+            else o[key] = mark;
+            localStorage.setItem('be_attendance_overrides', JSON.stringify(o));
+        }
+
+        function initAttendanceGridSelectors() {
+            const now = new Date();
+            const monthSel = document.getElementById('attendance-grid-month');
+            const yearSel = document.getElementById('attendance-grid-year');
+            if (yearSel && yearSel.options.length === 0) {
+                for (let y = now.getFullYear(); y >= 2023; y--) {
+                    yearSel.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+            }
+            if (monthSel && !monthSel.dataset.init) {
+                monthSel.value = String(now.getMonth() + 1).padStart(2, '0');
+                monthSel.dataset.init = '1';
+            }
+            if (yearSel && !yearSel.dataset.init) {
+                yearSel.value = now.getFullYear();
+                yearSel.dataset.init = '1';
+            }
+        }
+
+        function cycleAttendanceMark(email, dateStr) {
+            if (activeRole !== 'admin') return; // only admin can override
+            // Cycle: (auto) → L → WO → HD → clear
+            const key = `${email}_${dateStr}`;
+            const o = getAttendanceOverrides();
+            const current = o[key] || null;
+            const next = current === null ? 'L' : current === 'L' ? 'WO' : current === 'WO' ? 'HD' : null;
+            setAttendanceOverride(key, next);
+            renderAttendanceGrid();
+        }
+
+        function renderAttendanceGrid() {
+            initAttendanceGridSelectors();
+            const head = document.getElementById('attendance-grid-head');
+            const body = document.getElementById('attendance-grid-body');
+            if (!head || !body) return;
+
+            const month = parseInt(document.getElementById('attendance-grid-month').value);
+            const year = parseInt(document.getElementById('attendance-grid-year').value);
+            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const overrides = getAttendanceOverrides();
+            const todayStr = todayDateStr();
+
+            // Roster of clockable people
+            let roster = userRoster.filter(u => ['employee', 'social_media', 'manager'].includes(u.role));
+            if (empFilter !== 'all') roster = roster.filter(u => u.email === empFilter);
+
+            // ── Header row ──
+            const dowShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let headHtml = `<tr class="bg-[#181b30] text-gray-400 uppercase tracking-wider text-[9px]">
+                <th class="py-2 px-2 sticky left-0 bg-[#181b30] z-10 text-left min-w-[40px]">#</th>
+                <th class="py-2 px-2 sticky left-[40px] bg-[#181b30] z-10 text-left min-w-[150px]">Employee</th>`;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dt = new Date(year, month - 1, d);
+                const dow = dt.getDay();
+                const isWeekend = (dow === 0); // Sunday red
+                headHtml += `<th class="py-1 px-1 text-center min-w-[26px] ${isWeekend ? 'text-red-400' : ''}">
+                    <div class="font-bold">${d}</div>
+                    <div class="text-[8px] font-normal opacity-70">${dowShort[dow]}</div>
+                </th>`;
+            }
+            headHtml += `<th class="py-2 px-2 text-center min-w-[60px]">In</th>
+                <th class="py-2 px-2 text-center min-w-[60px]">Out</th>
+                <th class="py-2 px-2 text-center min-w-[70px]">Hours</th>
+                <th class="py-2 px-2 text-center min-w-[70px]">Status</th></tr>`;
+            head.innerHTML = headHtml;
+
+            // ── Body rows ──
+            if (roster.length === 0) {
+                body.innerHTML = `<tr><td colspan="${daysInMonth + 6}" class="py-8 text-center text-gray-500 italic">No employees in roster.</td></tr>`;
+                document.getElementById('attendance-summary').innerHTML = '';
+                return;
+            }
+
+            let totalPresent = 0, totalAbsent = 0, totalLeave = 0, totalWO = 0, totalHD = 0;
+
+            body.innerHTML = roster.map((u, idx) => {
+                let lastIn = '', lastOut = '', lastHours = '—', monthStatus = 'Absent';
+                let cells = '';
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const key = `${u.email}_${dateStr}`;
+                    const override = overrides[key];
+                    const rec = attendanceLogs.find(r => r.employee_email === u.email && r.log_date === dateStr);
+                    const isFuture = new Date(dateStr + 'T23:59:59') > new Date();
+                    const dow = new Date(year, month - 1, d).getDay();
+
+                    let mark, cls;
+                    if (override === 'L') { mark = 'L'; cls = 'bg-yellow-500/20 text-yellow-400'; totalLeave++; }
+                    else if (override === 'WO') { mark = 'WO'; cls = 'bg-purple-500/20 text-purple-400 text-[7px]'; totalWO++; }
+                    else if (override === 'HD') { mark = 'HD'; cls = 'bg-blue-500/20 text-blue-400 text-[7px]'; totalHD++; }
+                    else if (rec && rec.log_in_time) {
+                        mark = 'P'; cls = 'bg-emerald-500/20 text-emerald-400';
+                        totalPresent++;
+                        lastIn = new Date(rec.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        lastOut = rec.log_out_time ? new Date(rec.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                        lastHours = calcHoursLabel(rec);
+                        monthStatus = 'Present';
+                    }
+                    else if (isFuture) { mark = '·'; cls = 'text-gray-700'; }
+                    else { mark = 'A'; cls = 'bg-red-500/15 text-red-400'; totalAbsent++; }
+
+                    const clickable = activeRole === 'admin' && !isFuture;
+                    cells += `<td class="text-center px-0.5 py-1 ${dow === 0 ? 'bg-[#0b0d19]/40' : ''}">
+                        <span onclick="${clickable ? `cycleAttendanceMark('${u.email}','${dateStr}')` : ''}"
+                            class="inline-flex items-center justify-center w-5 h-5 rounded-full font-bold text-[8px] ${cls} ${clickable ? 'cursor-pointer hover:ring-1 hover:ring-orange-500' : ''}">${mark}</span>
+                    </td>`;
+                }
+
+                const statusBadge = monthStatus === 'Present'
+                    ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">Present</span>`
+                    : `<span class="px-2 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-400 border border-red-500/25">Absent</span>`;
+
+                return `<tr class="border-b border-[#1e2238]/50 hover:bg-[#1a1e36]/30">
+                    <td class="py-2 px-2 sticky left-0 bg-[#0b0d19] z-10 text-gray-500">${idx + 1}</td>
+                    <td class="py-2 px-2 sticky left-[40px] bg-[#0b0d19] z-10">
+                        <div class="font-bold text-white whitespace-nowrap">${u.name}</div>
+                        <div class="text-[9px] text-gray-500">${u.role}</div>
+                    </td>
+                    ${cells}
+                    <td class="py-2 px-2 text-center font-mono text-emerald-400 whitespace-nowrap">${lastIn || '—'}</td>
+                    <td class="py-2 px-2 text-center font-mono text-gray-400 whitespace-nowrap">${lastOut || '—'}</td>
+                    <td class="py-2 px-2 text-center font-mono text-gray-300 whitespace-nowrap">${lastHours}</td>
+                    <td class="py-2 px-2 text-center">${statusBadge}</td>
+                </tr>`;
+            }).join('');
+
+            // ── Summary ──
+            const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
+            document.getElementById('attendance-summary').innerHTML = `
+                <i data-lucide="clock" class="w-4 h-4 text-orange-400"></i>
+                <span class="text-[11px] font-bold text-white">Summary (${monthName} ${year}):</span>
+                <span class="text-[11px] text-emerald-400 font-bold ml-1">Present: ${totalPresent}</span>
+                <span class="text-gray-600">·</span>
+                <span class="text-[11px] text-red-400 font-bold">Absent: ${totalAbsent}</span>
+                <span class="text-gray-600">·</span>
+                <span class="text-[11px] text-yellow-400 font-bold">Leave: ${totalLeave}</span>
+                <span class="text-gray-600">·</span>
+                <span class="text-[11px] text-purple-400 font-bold">Week Off: ${totalWO}</span>
+                <span class="text-gray-600">·</span>
+                <span class="text-[11px] text-blue-400 font-bold">Holiday: ${totalHD}</span>
+            `;
+            lucide.createIcons();
         }
 
         function renderAttendanceTable() {
@@ -2529,16 +2680,18 @@
 
         function downloadAttendanceCSV() {
             if (activeRole !== 'admin') return;
-            if (attendanceLogs.length === 0) { alert('No attendance records to export.'); return; }
 
-            const rows = getAttendanceFilteredRows();
-            if (rows.length === 0) { alert('No records match the current filter.'); return; }
+            const month = parseInt(document.getElementById('attendance-grid-month').value);
+            const year = parseInt(document.getElementById('attendance-grid-year').value);
+            const empFilter = document.getElementById('attendance-filter-employee')?.value || 'all';
+            const prefix = `${year}-${String(month).padStart(2,'0')}`;
 
-            const monthSel = document.getElementById('attendance-filter-month');
-            const yearSel = document.getElementById('attendance-filter-year');
-            const monthLabel = monthSel && monthSel.value !== 'all' ? monthSel.options[monthSel.selectedIndex].text : 'All';
-            const yearLabel = yearSel && yearSel.value !== 'all' ? yearSel.value : 'All';
+            let rows = attendanceLogs.filter(r => r.log_date && r.log_date.startsWith(prefix));
+            if (empFilter !== 'all') rows = rows.filter(r => r.employee_email === empFilter);
 
+            if (rows.length === 0) { alert('No attendance records for this month.'); return; }
+
+            const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
             let csvHeaders = ["Employee Name", "Employee Email", "Date", "Clock In", "Clock Out", "Hours Worked"];
             let csvRows = [csvHeaders.join(",")];
 
@@ -2549,7 +2702,7 @@
                 csvRows.push([r.employee_name, r.employee_email, r.log_date, inLabel, outLabel, hoursLabel].join(","));
             });
 
-            const filename = `BE_Attendance_${monthLabel}_${yearLabel}.csv`;
+            const filename = `BE_Attendance_${monthName}_${year}.csv`;
             let blobElement = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
             let anchor = document.createElement("a");
             anchor.setAttribute("href", URL.createObjectURL(blobElement));
