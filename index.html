@@ -3630,11 +3630,12 @@
                     t.employeeEmail === activeEmail && t.status !== 'Completed'
                 );
             } else if (activeRole === 'social_media') {
-                // Social media sees: their own assigned tasks (once approved for re-assignment),
-                // plus completed tasks awaiting their approval
+                // Social media sees:
+                //  1. Their own assigned tasks (the social-assignment re-assign flow)
+                //  2. Completed work the MANAGER has approved, ready for them to post/approve
                 targetTasks = assignmentsList.filter(t =>
                     (t.employeeEmail === activeEmail && t.status !== 'Completed') ||
-                    (t.status === 'Completed' && !t.socialApproved)
+                    (t.status === 'Completed' && t.managerApproved && !t.socialApproved)
                 );
             } else if (activeRole === 'manager') {
                 // Manager: non-completed tasks + completed awaiting manager approval
@@ -3648,12 +3649,21 @@
                 );
             }
 
+            // Tasks that need action should NOT be hidden by date filters.
+            // (social-media assignment tasks, and completed tasks awaiting approval)
+            const needsActionAlways = (t) => {
+                if (t.status === 'Completed') return true; // awaiting approval
+                if (isSocialTask(t)) return true; // social assignment flow
+                return false;
+            };
+
             if (globalYearFilter !== 'all') {
-                targetTasks = targetTasks.filter(t => t.assignedDate && t.assignedDate.startsWith(globalYearFilter));
+                targetTasks = targetTasks.filter(t => needsActionAlways(t) || (t.assignedDate && t.assignedDate.startsWith(globalYearFilter)));
             }
 
             if (globalMonthFilter !== 'all') {
                 targetTasks = targetTasks.filter(t => {
+                    if (needsActionAlways(t)) return true;
                     if (!t.assignedDate) return false;
                     const trackingSegments = t.assignedDate.split('-');
                     return trackingSegments[1] === globalMonthFilter;
@@ -3754,9 +3764,10 @@
                     if (alreadyApproved) {
                         inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20 text-[10px] uppercase tracking-wide">✓ Approved</span>`;
                     } else {
+                        const approveLabel = activeRole === 'social_media' ? '✓ Approve &amp; Post' : '✓ Approve';
                         inputActionSelectorMarkup = `
                             <div class="flex flex-wrap gap-1">
-                                <button onclick="${approveFn}(${t.id})" class="px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/40 text-[10px] font-bold uppercase tracking-wide transition">✓ Approve</button>
+                                <button onclick="${approveFn}(${t.id})" class="px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/40 text-[10px] font-bold uppercase tracking-wide transition">${approveLabel}</button>
                                 <button onclick="approvalReworkTask(${t.id})" class="px-2 py-1 rounded bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20 text-[10px] font-bold uppercase tracking-wide transition">🔄 Rework</button>
                                 <button onclick="approvalRejectTask(${t.id})" class="px-2 py-1 rounded bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 text-[10px] font-bold uppercase tracking-wide transition">❌ Reject</button>
                             </div>
