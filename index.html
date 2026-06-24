@@ -1258,7 +1258,7 @@
                 } else {
                     if (pwdInput === foundUser.pass || !foundUser.pass) {
                         activeUser = foundUser.name;
-                        activeRole = "employee";
+                        activeRole = foundUser.role || "employee"; // use actual role (employee or social_media)
                         activeEmail = foundUser.email;
                     } else {
                         alert("Authentication Error: Secure Password Key Invalid."); 
@@ -1284,6 +1284,13 @@
             if (!activeUser) return;
 
             await syncLedgerEngine(false);
+
+            // Always refresh the active role from the live roster (fixes stale cached roles)
+            const liveMe = userRoster.find(u => u.email === activeEmail || u.name === activeUser);
+            if (liveMe && liveMe.role && liveMe.role !== activeRole) {
+                activeRole = liveMe.role;
+                localStorage.setItem('be_active_role', activeRole);
+            }
 
             const loginScreen = document.getElementById('portal-login-screen');
             loginScreen.classList.add('hidden');
@@ -3524,11 +3531,16 @@
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
 
-            await dbInstance.from('assignments').update({ manager_approved: true }).eq('id', id);
-            await pushLogEntry(`Manager approved completed work: "${task.topic}"`);
+            const { error } = await dbInstance.from('assignments').update({ manager_approved: true }).eq('id', id);
+            if (error) {
+                console.error('Manager approve error:', error);
+                alert('Could not approve: ' + error.message + '\n\nIf this mentions a missing column, run in Supabase SQL editor:\nALTER TABLE assignments ADD COLUMN IF NOT EXISTS manager_approved boolean DEFAULT false;');
+                return;
+            }
+            await pushLogEntry(`Manager approved completed work: "${task.topic}" — sent to Social Media for posting.`);
             await syncLedgerEngine(false);
             syncTasksToSheet();
-            alert('Approved. This task now appears in your History.');
+            alert('Approved. Sent to Social Media pipeline for posting.');
         }
 
         async function socialApproveTask(id) {
@@ -3536,11 +3548,16 @@
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
 
-            await dbInstance.from('assignments').update({ social_approved: true }).eq('id', id);
-            await pushLogEntry(`Social Media approved completed work: "${task.topic}"`);
+            const { error } = await dbInstance.from('assignments').update({ social_approved: true }).eq('id', id);
+            if (error) {
+                console.error('Social approve error:', error);
+                alert('Could not approve: ' + error.message + '\n\nIf this mentions a missing column, run in Supabase SQL editor:\nALTER TABLE assignments ADD COLUMN IF NOT EXISTS social_approved boolean DEFAULT false;');
+                return;
+            }
+            await pushLogEntry(`Social Media posted/approved completed work: "${task.topic}"`);
             await syncLedgerEngine(false);
             syncTasksToSheet();
-            alert('Approved. This task now appears in your History.');
+            alert('Approved &amp; posted. This task now appears in your History.');
         }
 
         // Approver sends completed work back to creator for rework
