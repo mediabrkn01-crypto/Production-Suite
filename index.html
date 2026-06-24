@@ -571,7 +571,8 @@
                         <thead>
                             <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
                                 <th class="py-3.5 px-4">Employee</th>
-                                <th class="py-3.5 px-4">Status / Date</th>
+                                <th class="py-3.5 px-4">Status</th>
+                                <th class="py-3.5 px-4">Date</th>
                                 <th class="py-3.5 px-4">Clock In</th>
                                 <th class="py-3.5 px-4">Clock Out</th>
                                 <th class="py-3.5 px-4">Hours Worked</th>
@@ -1675,7 +1676,15 @@
                 .insert([{ name, email, role, pass }]);
 
             if(error) {
-                alert("Database Error: Could not save user schema. Email may be a duplicate."); return;
+                console.error('Add user error:', error);
+                let msg = "Database Error: " + (error.message || 'Could not save user.');
+                if (error.message && error.message.toLowerCase().includes('check')) {
+                    msg += "\n\nLikely cause: the 'role' column has a CHECK constraint that doesn't allow 'social_media' yet. Run this in Supabase SQL editor:\n\nALTER TABLE user_roster DROP CONSTRAINT IF EXISTS user_roster_role_check;";
+                } else if (error.message && (error.message.toLowerCase().includes('duplicate') || error.code === '23505')) {
+                    msg = "This email already exists in the roster. Use a different email.";
+                }
+                alert(msg);
+                return;
             }
 
             await pushLogEntry(`Registered: ${name} as ${role}`);
@@ -2430,6 +2439,7 @@
                         <tr class="hover:bg-[#1a1e36]/40 transition ${!isPresent ? 'opacity-70' : ''}">
                             <td class="py-3 px-4 font-bold text-white">${u.name} <span class="text-gray-500 text-[10px] font-normal">(${u.role})</span></td>
                             <td class="py-3 px-4">${statusBadge}</td>
+                            <td class="py-3 px-4 font-mono text-gray-400">${targetDay}</td>
                             <td class="py-3 px-4 text-emerald-400 font-mono">${inLabel || '—'}</td>
                             <td class="py-3 px-4 font-mono ${stillIn ? 'text-orange-400' : 'text-red-400'}">${stillIn ? 'Still in' : (outLabel || '—')}</td>
                             <td class="py-3 px-4 text-gray-300 font-mono">${hoursLabel}</td>
@@ -2453,7 +2463,7 @@
                 });
 
                 // Summary header injected at top
-                const summary = `<tr class="bg-[#0b0d19]"><td colspan="5" class="py-2 px-4 text-[11px] text-gray-400"><span class="font-bold text-white">${dayLabel}</span> · <span class="text-emerald-400">${presentCount} present</span> · <span class="text-red-400">${absentCount} absent</span></td></tr>`;
+                const summary = `<tr class="bg-[#0b0d19]"><td colspan="6" class="py-2 px-4 text-[11px] text-gray-400"><span class="font-bold text-white">${dayLabel}</span> · <span class="text-emerald-400">${presentCount} present</span> · <span class="text-red-400">${absentCount} absent</span></td></tr>`;
                 tbody.innerHTML = summary + tbody.innerHTML;
                 return;
             }
@@ -2461,7 +2471,7 @@
             // ── HISTORICAL/RANGE MODE (month/year) — show actual records only ──
             const rows = getAttendanceFilteredRows();
             if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-500 italic">No attendance records found for this filter.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-gray-500 italic">No attendance records found for this filter.</td></tr>`;
                 mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">No attendance records found.</p>`;
                 return;
             }
@@ -2471,10 +2481,14 @@
                 const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
                 const hoursLabel = calcHoursLabel(r);
                 const stillIn = r.log_in_time && !r.log_out_time;
+                const statusBadge = stillIn
+                    ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-400/10 text-orange-400 border border-orange-400/20">● In</span>`
+                    : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Present</span>`;
 
                 tbody.innerHTML += `
                     <tr class="hover:bg-[#1a1e36]/40 transition">
                         <td class="py-3 px-4 font-bold text-white">${r.employee_name}</td>
+                        <td class="py-3 px-4">${statusBadge}</td>
                         <td class="py-3 px-4 font-mono text-gray-400">${r.log_date}</td>
                         <td class="py-3 px-4 text-emerald-400 font-mono">${inLabel}</td>
                         <td class="py-3 px-4 font-mono ${stillIn ? 'text-orange-400' : 'text-red-400'}">${stillIn ? 'Still clocked in' : outLabel}</td>
