@@ -3881,6 +3881,35 @@
             });
         }
 
+        async function editTopicInline(td, id) {
+            if (activeRole !== 'admin' && activeRole !== 'manager') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+            if (td.querySelector('input')) return; // already editing
+
+            const oldTopic = task.topic;
+            td.innerHTML = `<input type="text" value="${(oldTopic||'').replace(/"/g,'&quot;')}" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">`;
+            const input = td.querySelector('input');
+            input.focus();
+            input.select();
+
+            const save = async () => {
+                const val = input.value.trim();
+                if (!val || val === oldTopic) { renderTableRows(); return; }
+                const { error } = await dbInstance.from('assignments').update({ topic: val }).eq('id', id);
+                if (error) { alert('Could not save: ' + error.message); renderTableRows(); return; }
+                await pushLogEntry(`Topic edited: "${oldTopic}" → "${val}"`);
+                await syncLedgerEngine(false);
+                syncTasksToSheet();
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { input.blur(); }
+                if (e.key === 'Escape') { renderTableRows(); }
+            });
+        }
+
         function renderTableRows() {
             const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
@@ -4101,7 +4130,7 @@
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-[#0b0d19] z-10 min-w-[160px]">${t.topic}${assignedByLine}</td>
+                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-[#0b0d19] z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
                     <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail}</span></td>
                     <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
