@@ -115,6 +115,7 @@
         .last-seen-label { font-size: 9px; color: #6b7280; margin-top: 1px; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     </style>
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -177,6 +178,15 @@
                     <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30" multiple onchange="handleDeliveryFilesSelect()">
                     <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1.5 max-h-32 overflow-y-auto"></div>
                     <p class="text-[10px] text-gray-500 italic mt-1">Click choose files multiple times to accumulate items. Assets route straight to Google Drive.</p>
+                </div>
+                <div id="upload-progress-wrap" class="hidden space-y-1">
+                    <div class="flex justify-between text-[11px] font-bold">
+                        <span class="text-gray-400 uppercase tracking-wide">Uploading...</span>
+                        <span id="upload-progress-pct" class="text-orange-400">0%</span>
+                    </div>
+                    <div class="w-full h-2 bg-[#0b0d19] rounded-full overflow-hidden border border-[#1e2238]">
+                        <div id="upload-progress-bar" class="h-full brand-gradient transition-all duration-200" style="width:0%"></div>
+                    </div>
                 </div>
                 <button id="btn-submit-delivery" onclick="submitAssetDeliveryAction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-blue-900/30">
                     <i data-lucide="cloud-upload" class="w-4 h-4"></i> Deploy Work Package
@@ -436,7 +446,7 @@
                             <table class="w-full text-left border-collapse text-xs">
                                 <thead>
                                     <tr class="bg-[#181b30] border-b border-[#1e2238] text-gray-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
-                                        <th class="py-3.5 px-4">Campaign Topic</th>
+                                        <th class="py-3.5 px-4 sticky left-0 bg-[#181b30] z-20 min-w-[160px]">Campaign Topic</th>
                                         <th class="py-3.5 px-4">Category</th>
                                         <th class="py-3.5 px-4">Assigned Creator</th>
                                         <th class="py-3.5 px-4">Description Info</th>
@@ -1114,33 +1124,47 @@
         }
 
         // Base64 Binary Stream Converter logic for all direct Google Drive submissions
-        async function uploadToGoogleDrive(file) {
+        function setUploadProgress(pct) {
+            const wrap = document.getElementById('upload-progress-wrap');
+            const bar = document.getElementById('upload-progress-bar');
+            const lbl = document.getElementById('upload-progress-pct');
+            if (!wrap) return;
+            if (pct === null) { wrap.classList.add('hidden'); return; }
+            wrap.classList.remove('hidden');
+            const p = Math.min(100, Math.round(pct));
+            bar.style.width = p + '%';
+            lbl.innerText = p + '%';
+        }
+
+        // POST JSON via XHR so we get real upload progress
+        function xhrPostWithProgress(payload) {
             return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = async function(e) {
-                    const base64Data = e.target.result.split(',')[1];
-                    try {
-                        const response = await fetch(GOOGLE_SCRIPT_URL, {
-                            method: 'POST',
-                            body: JSON.stringify({
-                                fileName: file.name,
-                                mimeType: file.type,
-                                base64: base64Data
-                            })
-                        });
-                        const resData = await response.json();
-                        if (resData.success) {
-                            resolve(resData.fileUrl);
-                        } else {
-                            reject(new Error(resData.error || 'Apps Script Core Error'));
-                        }
-                    } catch (err) {
-                        reject(err);
-                    }
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', GOOGLE_SCRIPT_URL, true);
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) setUploadProgress((e.loaded / e.total) * 100);
                 };
-                reader.onerror = () => reject(new Error('File conversion matrix failed'));
-                reader.readAsDataURL(file);
+                xhr.onload = () => {
+                    setUploadProgress(100);
+                    try { resolve(JSON.parse(xhr.responseText)); }
+                    catch(err) { reject(new Error('Bad server response')); }
+                };
+                xhr.onerror = () => reject(new Error('Network error during upload'));
+                xhr.send(JSON.stringify(payload));
             });
+        }
+
+        async function uploadToGoogleDrive(file) {
+            const base64Data = await fileToBase64(file);
+            setUploadProgress(0);
+            const resData = await xhrPostWithProgress({
+                fileName: file.name,
+                mimeType: file.type,
+                base64: base64Data
+            });
+            setUploadProgress(null);
+            if (resData.success) return resData.fileUrl;
+            throw new Error(resData.error || 'Apps Script Core Error');
         }
 
         // Read a file as base64 (helper for folder upload)
@@ -1160,13 +1184,9 @@
                 const base64 = await fileToBase64(f);
                 files.push({ fileName: f.name, mimeType: f.type, base64 });
             }
-            const response = await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'uploadFolder', folderName, files })
-            });
-            if (!response.ok) throw new Error('Server responded ' + response.status);
-            const resData = await response.json();
+            setUploadProgress(0);
+            const resData = await xhrPostWithProgress({ action: 'uploadFolder', folderName, files });
+            setUploadProgress(null);
             if (resData.success) return resData.folderUrl;
             throw new Error(resData.error || 'Folder upload failed');
         }
@@ -2021,6 +2041,7 @@
                         finalLinksArray.push(`${cleanName}|${fileUrl}`);
                     } catch (uploadError) {
                         console.error("Drive Upload Error: ", uploadError);
+                        setUploadProgress(null);
                         alert(`Storage Error: Failed to push file "${deliveryFilesQueue[0].name}" into Google Drive.`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
@@ -2035,6 +2056,7 @@
                         finalLinksArray.push(`${label.replace(/\|/g, '-')}|${folderUrl}`);
                     } catch (uploadError) {
                         console.error("Drive Folder Upload Error: ", uploadError);
+                        setUploadProgress(null);
                         alert(`Storage Error: Failed to push files into Google Drive folder.`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
@@ -3796,6 +3818,11 @@
             alert('Task sent back to the pipeline for rework.');
         }
 
+        function showFullExplanation(el) {
+            const full = el.getAttribute('data-full') || el.textContent;
+            alert(full);
+        }
+
         function renderTableRows() {
             const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
@@ -4016,14 +4043,18 @@
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-white">${t.topic}${assignedByLine}</td>
+                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-[#0b0d19] z-10 min-w-[160px]">${t.topic}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
                     <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail}</span></td>
                     <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
                     <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-orange-400 font-mono font-semibold">${t.date}</td>
                     <td class="py-3 px-4">${inputActionSelectorMarkup}</td>
-                    <td class="py-3 px-4 italic max-w-xs truncate ${t.status === 'Completed' && t.explanation !== 'None' ? 'text-emerald-400' : 'text-yellow-500'}" title="${t.explanation}">${t.explanation}</td>
+                    <td class="py-3 px-4 italic max-w-xs ${t.status === 'Completed' && t.explanation !== 'None' ? 'text-emerald-400' : 'text-yellow-500'}">
+                        ${t.explanation && t.explanation !== 'None'
+                            ? `<span class="line-clamp-2 cursor-pointer hover:underline" onclick="showFullExplanation(this)" data-full="${(t.explanation||'').replace(/"/g,'&quot;')}" title="Click to read full note">${t.explanation}</span>`
+                            : `<span class="text-gray-500">${t.explanation}</span>`}
+                    </td>
                     <td class="py-3 px-4">${outputLinkBtn}</td>
                     <td class="py-3 px-4">${refFileBtnDesktop}</td>
                     ${activeRole === 'admin' ? `
