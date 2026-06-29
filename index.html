@@ -149,6 +149,23 @@
         </div>
     </div>
 
+    <div id="note-modal" class="fixed inset-0 bg-black/80 z-[60] hidden items-center justify-center p-4 backdrop-blur-sm">
+        <div class="card w-full max-w-lg rounded-2xl p-5 space-y-3 relative animate-item">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                    <i data-lucide="file-text" class="w-4 h-4"></i> Explanation Note
+                </h3>
+                <button onclick="document.getElementById('note-modal').classList.add('hidden')" class="text-gray-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="note-modal-body" class="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto bg-[#0b0d19] border border-[#1e2238] rounded-xl p-4 select-text"></div>
+            <button onclick="copyNoteText()" id="note-copy-btn" class="w-full brand-gradient text-white font-bold py-2.5 rounded-xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 active:scale-[0.98] transition">
+                <i data-lucide="copy" class="w-4 h-4"></i> Copy Text
+            </button>
+        </div>
+    </div>
+
     <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-all duration-300">
         <div class="card w-full max-w-lg rounded-2xl p-6 space-y-4 relative animate-item">
             <button onclick="closeAssetModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200">
@@ -3820,7 +3837,31 @@
 
         function showFullExplanation(el) {
             const full = el.getAttribute('data-full') || el.textContent;
-            alert(full);
+            const body = document.getElementById('note-modal-body');
+            body.textContent = full;
+            document.getElementById('note-modal').classList.remove('hidden');
+            document.getElementById('note-modal').classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function copyNoteText() {
+            const txt = document.getElementById('note-modal-body').textContent;
+            const btn = document.getElementById('note-copy-btn');
+            navigator.clipboard.writeText(txt).then(() => {
+                btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Copied!';
+                lucide.createIcons();
+                setTimeout(() => {
+                    btn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i> Copy Text';
+                    lucide.createIcons();
+                }, 2000);
+            }).catch(() => {
+                // fallback select
+                const range = document.createRange();
+                range.selectNodeContents(document.getElementById('note-modal-body'));
+                const sel = window.getSelection();
+                sel.removeAllRanges(); sel.addRange(range);
+                document.execCommand('copy');
+            });
         }
 
         function renderTableRows() {
