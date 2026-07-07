@@ -1523,6 +1523,7 @@
 
             // Load notifications for this user
             loadNotifs();
+            loadKnownTasks();
             renderNotifBadges();
             renderDashboardNotifFeed();
             requestBrowserNotifPermission();
@@ -3217,7 +3218,10 @@
 
         async function loadChatMessages() {
             const container = document.getElementById('chat-messages-container');
-            if (container) container.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Loading conversation...</p>`;
+            if (container) {
+                container.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Loading conversation...</p>`;
+                container._hasRendered = false;
+            }
 
             const { data, error } = await dbInstance
                 .from('chat_messages')
@@ -3433,7 +3437,7 @@
                 const avatarHtml = !isMine ? getUserAvatar(m.sender_email, m.sender_name) : '';
 
                 container.innerHTML += `
-                    <div id="msg-${m.id}" class="group flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'} relative animate-item">
+                    <div id="msg-${m.id}" class="group flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'} relative">
                         ${!isMine ? avatarHtml : ''}
                         ${!isMine ? actionMenu : ''}
                         <div class="max-w-[75%] sm:max-w-[60%] space-y-0.5 relative">
@@ -3452,6 +3456,8 @@
 
             if (scrollBottom) container.scrollTop = container.scrollHeight;
             lucide.createIcons();
+            // Always force scroll on first load (container was empty before render)
+            if (!container._hasRendered) { container.scrollTop = container.scrollHeight; container._hasRendered = true; }
 
             // Restore audio playback if it was playing before re-render
             if (playingAudioId) {
@@ -5351,44 +5357,49 @@
             try { notifications = JSON.parse(localStorage.getItem(`be_notifs_${activeEmail}`) || '[]'); } catch(e) { notifications = []; }
         }
         function saveNotifs() {
-            localStorage.setItem(`be_notifs_${activeEmail}`, JSON.stringify(notifications.slice(0, 100)));
+            localStorage.setItem(`be_notifs_${activeEmail}`, JSON.stringify(notifications.slice(0, 50)));
         }
         function addNotif(type, topic, assignedTo) {
-            notifications.unshift({ id: Date.now(), type, topic, assignedTo, time: new Date().toISOString(), read: false });
+            notifications.unshift({ id: Date.now(), type, topic, assignedTo, time: new Date().toISOString() });
             saveNotifs();
             renderNotifBadges();
+            renderDashboardNotifFeed();
+        }
+        function dismissAllNotifs() {
+            // Seen = permanently deleted
+            notifications = [];
+            saveNotifs();
+            renderNotifBadges();
+            renderDashboardNotifFeed();
+            renderNotifList();
+        }
+        function dismissNotif(id) {
+            notifications = notifications.filter(n => n.id !== id);
+            saveNotifs();
+            renderNotifBadges();
+            renderDashboardNotifFeed();
             renderNotifList();
         }
         function renderNotifBadges() {
-            const newCount = notifications.filter(n => !n.read && n.type === 'new').length;
-            const reworkCount = notifications.filter(n => !n.read && n.type === 'rework').length;
-
-            ['notif-badge-new-nav'].forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                if (newCount > 0) { el.textContent = newCount > 99 ? '99+' : newCount; el.classList.remove('hidden'); }
-                else el.classList.add('hidden');
-            });
-            ['notif-badge-rework-nav'].forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                if (reworkCount > 0) { el.textContent = reworkCount > 99 ? '99+' : reworkCount; el.classList.remove('hidden'); }
-                else el.classList.add('hidden');
-            });
+            const newCount = notifications.filter(n => n.type === 'new').length;
+            const reworkCount = notifications.filter(n => n.type === 'rework').length;
+            const newEl = document.getElementById('notif-badge-new-nav');
+            const rwEl = document.getElementById('notif-badge-rework-nav');
+            if (newEl) { if (newCount > 0) { newEl.textContent = newCount > 99 ? '99+' : newCount; newEl.classList.remove('hidden'); } else newEl.classList.add('hidden'); }
+            if (rwEl) { if (reworkCount > 0) { rwEl.textContent = reworkCount > 99 ? '99+' : reworkCount; rwEl.classList.remove('hidden'); } else rwEl.classList.add('hidden'); }
             renderDashboardNotifFeed();
         }
-
         function renderDashboardNotifFeed() {
             const feed = document.getElementById('dashboard-notif-feed');
             if (!feed) return;
             if (notifications.length === 0) {
-                feed.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No notifications yet.</p>`;
+                feed.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No new notifications.</p>`;
                 return;
             }
             feed.innerHTML = notifications.map(n => {
                 const isNew = n.type === 'new';
                 const timeAgo = formatLastSeen(n.time).replace('last seen ', '');
-                return `<div class="flex items-start gap-3 px-4 py-3 border-b border-[#1e2238]/50 ${n.read ? 'opacity-50' : ''} hover:bg-[#1a1e36]/40 transition cursor-pointer" onclick="markNotifRead(${n.id})">
+                return `<div class="flex items-start gap-3 px-4 py-3 border-b border-[#1e2238]/50 hover:bg-[#1a1e36]/40 transition">
                     <div class="w-8 h-8 rounded-full ${isNew ? 'bg-orange-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5">
                         <i data-lucide="${isNew ? 'plus-circle' : 'refresh-cw'}" class="w-4 h-4 ${isNew ? 'text-orange-400' : 'text-red-400'}"></i>
                     </div>
@@ -5397,7 +5408,7 @@
                         <p class="text-[11px] text-gray-300 truncate">${n.topic}</p>
                         <p class="text-[10px] text-gray-500 mt-0.5">${timeAgo}</p>
                     </div>
-                    ${!n.read ? `<div class="w-2 h-2 rounded-full ${isNew ? 'bg-orange-500' : 'bg-red-500'} shrink-0 mt-1.5"></div>` : ''}
+                    <button onclick="dismissNotif(${n.id})" class="text-gray-600 hover:text-red-400 p-1 shrink-0 transition"><i data-lucide="x" class="w-3 h-3"></i></button>
                 </div>`;
             }).join('');
             lucide.createIcons();
@@ -5406,13 +5417,13 @@
             const list = document.getElementById('notif-list');
             if (!list) return;
             if (notifications.length === 0) {
-                list.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No notifications yet.</p>`;
+                list.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No new notifications.</p>`;
                 return;
             }
             list.innerHTML = notifications.map(n => {
                 const isNew = n.type === 'new';
                 const timeAgo = formatLastSeen(n.time).replace('last seen ', '');
-                return `<div class="flex items-start gap-3 px-4 py-3 ${n.read ? 'opacity-60' : ''} hover:bg-[#1a1e36] transition cursor-pointer" onclick="markNotifRead(${n.id})">
+                return `<div class="flex items-start gap-3 px-4 py-3 hover:bg-[#1a1e36] transition">
                     <div class="w-8 h-8 rounded-full ${isNew ? 'bg-orange-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5">
                         <i data-lucide="${isNew ? 'plus-circle' : 'refresh-cw'}" class="w-4 h-4 ${isNew ? 'text-orange-400' : 'text-red-400'}"></i>
                     </div>
@@ -5421,27 +5432,22 @@
                         <p class="text-[11px] text-gray-300 truncate">${n.topic}</p>
                         <p class="text-[10px] text-gray-500 mt-0.5">${timeAgo}</p>
                     </div>
-                    ${!n.read ? `<div class="w-2 h-2 rounded-full ${isNew ? 'bg-orange-500' : 'bg-red-500'} shrink-0 mt-1.5"></div>` : ''}
+                    <button onclick="dismissNotif(${n.id})" class="text-gray-600 hover:text-red-400 p-1 shrink-0 transition"><i data-lucide="x" class="w-3 h-3"></i></button>
                 </div>`;
             }).join('');
             lucide.createIcons();
         }
-        function markNotifRead(id) {
-            const n = notifications.find(x => x.id === id);
-            if (n) { n.read = true; saveNotifs(); renderNotifBadges(); renderNotifList(); renderDashboardNotifFeed(); }
-        }
-        function markAllNotifsRead() {
-            notifications.forEach(n => n.read = true);
-            saveNotifs(); renderNotifBadges(); renderNotifList(); renderDashboardNotifFeed();
-        }
+        function markNotifRead(id) { dismissNotif(id); }
+        function markAllNotifsRead() { dismissAllNotifs(); }
         function toggleNotifPanel() {
             const panel = document.getElementById('notif-panel');
-            if (panel.classList.contains('hidden')) {
-                panel.classList.remove('hidden');
+            const isHidden = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden');
+            if (isHidden) {
                 renderNotifList();
                 lucide.createIcons();
-            } else {
-                panel.classList.add('hidden');
+                // Dismiss all after 3 seconds of viewing
+                setTimeout(() => { dismissAllNotifs(); closeNotifPanel(); }, 4000);
             }
         }
         function closeNotifPanel() {
@@ -5451,28 +5457,49 @@
         // Watch assignmentsList for new tasks / rework assigned to me
         let _lastKnownTaskIds = new Set();
         let _lastKnownStatuses = {};
+
+        function loadKnownTasks() {
+            try {
+                const ids = JSON.parse(localStorage.getItem(`be_known_ids_${activeEmail}`) || '[]');
+                _lastKnownTaskIds = new Set(ids);
+                _lastKnownStatuses = JSON.parse(localStorage.getItem(`be_known_statuses_${activeEmail}`) || '{}');
+            } catch(e) { _lastKnownTaskIds = new Set(); _lastKnownStatuses = {}; }
+        }
+        function saveKnownTasks() {
+            localStorage.setItem(`be_known_ids_${activeEmail}`, JSON.stringify([..._lastKnownTaskIds]));
+            localStorage.setItem(`be_known_statuses_${activeEmail}`, JSON.stringify(_lastKnownStatuses));
+        }
+
         function checkForNewNotifications() {
             if (!activeEmail || !activeUser) return;
-            const myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
+            const myTasks = assignmentsList.filter(t =>
+                (t.employeeEmail || '').toLowerCase() === (activeEmail || '').toLowerCase()
+            );
+            let changed = false;
             myTasks.forEach(t => {
                 const idStr = String(t.id);
                 if (!_lastKnownTaskIds.has(idStr)) {
-                    // Brand new task
-                    if (_lastKnownTaskIds.size > 0) { // skip first load
+                    // New task — only notify if we already had known tasks (not first-ever load)
+                    if (_lastKnownTaskIds.size > 0) {
                         addNotif('new', t.topic, t.assignedBy || 'Admin');
                         sendBrowserNotif(`New task assigned: ${t.topic}`, `Assigned by ${t.assignedBy || 'Admin'}`);
                     }
                     _lastKnownTaskIds.add(idStr);
                     _lastKnownStatuses[idStr] = t.status;
+                    changed = true;
                 } else {
                     const prev = _lastKnownStatuses[idStr];
-                    if (prev !== 'Rework Required' && t.status === 'Rework Required') {
+                    if (prev && prev !== 'Rework Required' && t.status === 'Rework Required') {
                         addNotif('rework', t.topic, t.assignedBy || 'Manager');
                         sendBrowserNotif(`Rework required: ${t.topic}`, 'Please review the feedback.');
                     }
-                    _lastKnownStatuses[idStr] = t.status;
+                    if (prev !== t.status) {
+                        _lastKnownStatuses[idStr] = t.status;
+                        changed = true;
+                    }
                 }
             });
+            if (changed) saveKnownTasks();
         }
 
         // ── BROWSER PUSH NOTIFICATIONS ──
