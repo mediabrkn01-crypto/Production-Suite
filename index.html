@@ -235,6 +235,11 @@
                     <button id="nav-history" onclick="switchTab('history')" class="sidebar-link flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left whitespace-nowrap shrink-0">
                         <i data-lucide="history" class="w-4 h-4 md:w-5 h-5"></i> History
                     </button>
+                    <button onclick="toggleNotifPanel()" class="sidebar-link relative flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left whitespace-nowrap shrink-0" id="nav-notif-btn">
+                        <i data-lucide="bell" class="w-4 h-4 md:w-5 h-5"></i> Notifications
+                        <span id="notif-badge-new-nav" class="hidden min-w-[16px] h-4 rounded-full bg-orange-500 text-white text-[8px] font-bold flex items-center justify-center px-1"></span>
+                        <span id="notif-badge-rework-nav" class="hidden min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center px-1"></span>
+                    </button>
                     <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link hidden flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-medium text-left whitespace-nowrap shrink-0">
                         <i data-lucide="clock-4" class="w-4 h-4 md:w-5 h-5"></i> Attendance Log
                     </button>
@@ -261,11 +266,6 @@
                     </button>
                 </div>
 
-                <button onclick="toggleNotifPanel()" class="relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-400 hover:bg-[#1a1e36] transition duration-200" id="notif-bell-desktop">
-                    <i data-lucide="bell" class="w-5 h-5"></i> Notifications
-                    <span id="notif-badge-new" class="hidden ml-auto min-w-[20px] h-5 rounded-full bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center px-1"></span>
-                    <span id="notif-badge-rework" class="hidden min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1"></span>
-                </button>
                 <button onclick="logoutPortal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition duration-200">
                     <i data-lucide="log-out" class="w-5 h-5"></i> Log Out
                 </button>
@@ -311,11 +311,6 @@
                     </button>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button onclick="toggleNotifPanel()" class="relative text-gray-400 p-1 hover:text-orange-400 transition" id="notif-bell-mobile">
-                        <i data-lucide="bell" class="w-4 h-4"></i>
-                        <span id="notif-badge-new-mobile" class="hidden absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-orange-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5"></span>
-                        <span id="notif-badge-rework-mobile" class="hidden absolute -top-1 -left-1 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5"></span>
-                    </button>
                     <button onclick="syncLedgerEngine(true)" class="text-orange-400 p-1 flex items-center gap-1 font-bold bg-orange-500/10 rounded-lg px-2 border border-orange-500/20 transition-all duration-200" title="Force Sync Matrix Data">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync
                     </button>
@@ -515,13 +510,14 @@
                     <div class="space-y-4">
                         <div class="flex items-center justify-between">
                             <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
-                                <i data-lucide="activity" class="text-blue-400"></i> Studio Update Feed
+                                <i data-lucide="bell" class="text-orange-400"></i> Notifications
                             </h3>
-                            <button id="admin-download-logs-btn" onclick="downloadActivityLogs()" class="hidden text-[11px] text-orange-400 hover:underline font-bold flex items-center gap-1">
-                                <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i> Export Logs
+                            <button onclick="markAllNotifsRead()" class="text-[11px] text-orange-400 hover:underline font-bold flex items-center gap-1">
+                                <i data-lucide="check-check" class="w-3.5 h-3.5"></i> Mark all read
                             </button>
                         </div>
-                        <div class="card p-4 rounded-2xl h-[300px] md:h-[430px] overflow-y-auto space-y-3" id="workspace-activity-log">
+                        <div class="card rounded-2xl h-[300px] md:h-[430px] overflow-y-auto" id="dashboard-notif-feed">
+                            <p class="text-center text-gray-500 text-xs italic py-6">No notifications yet.</p>
                         </div>
                     </div>
                 </div>
@@ -1521,6 +1517,7 @@
             // Load notifications for this user
             loadNotifs();
             renderNotifBadges();
+            renderDashboardNotifFeed();
             requestBrowserNotifPermission();
 
             // Auto-delete chat messages older than 7 days (runs for everyone)
@@ -3002,7 +2999,24 @@
             const isChatTabVisible = !document.getElementById('tab-content-chat').classList.contains('hidden');
 
             if (isForActiveRoom) {
-                chatMessages.push(msg);
+                // Voice messages have large audio_data — realtime may truncate them.
+                // Re-fetch the full row from DB to get complete audio_data.
+                if (msg.audio_data === undefined || msg.audio_data === null) {
+                    // Check if this is a voice msg row by refetching
+                    dbInstance.from('chat_messages').select('*').eq('id', msg.id).single().then(({ data }) => {
+                        if (data) {
+                            const hiddenIds = getHiddenMsgIds();
+                            if (!hiddenIds.includes(String(data.id))) {
+                                // Replace or add
+                                const idx = chatMessages.findIndex(m => m.id === data.id);
+                                if (idx >= 0) chatMessages[idx] = data; else chatMessages.push(data);
+                                renderChatMessages();
+                            }
+                        }
+                    });
+                } else {
+                    chatMessages.push(msg);
+                }
 
                 // If this room is open and chat tab visible, mark as seen immediately
                 if (isChatTabVisible) {
@@ -3318,9 +3332,11 @@
             document.getElementById('chat-reply-strip').classList.add('hidden');
         }
 
+        let _voicePlaying = false; // true while any voice message is playing
+
         function renderChatMessages() {
             // Don't rebuild DOM while a voice message is playing — it destroys the audio element
-            if (document.querySelector('audio:not([paused])') || [...document.querySelectorAll('audio')].some(a => !a.paused)) return;
+            if (_voicePlaying) return;
 
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
@@ -3450,14 +3466,17 @@
             if (audio.paused) {
                 document.querySelectorAll('audio').forEach(a => { if (a !== audio) { a.pause(); } });
                 audio.play();
+                _voicePlaying = true;
                 btn.innerHTML = '<i data-lucide="pause-circle" class="w-7 h-7 text-orange-400"></i>';
             } else {
                 audio.pause();
+                _voicePlaying = false;
                 btn.innerHTML = '<i data-lucide="play-circle" class="w-7 h-7 text-orange-400"></i>';
             }
             lucide.createIcons();
         }
         function voiceEnded(msgId) {
+            _voicePlaying = false;
             const btn = document.querySelector(`#audio-${msgId}`)?.previousElementSibling;
             if (btn) { btn.innerHTML = '<i data-lucide="play-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
         }
@@ -5305,18 +5324,44 @@
             const newCount = notifications.filter(n => !n.read && n.type === 'new').length;
             const reworkCount = notifications.filter(n => !n.read && n.type === 'rework').length;
 
-            ['notif-badge-new', 'notif-badge-new-mobile'].forEach(id => {
+            ['notif-badge-new-nav'].forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
                 if (newCount > 0) { el.textContent = newCount > 99 ? '99+' : newCount; el.classList.remove('hidden'); }
                 else el.classList.add('hidden');
             });
-            ['notif-badge-rework', 'notif-badge-rework-mobile'].forEach(id => {
+            ['notif-badge-rework-nav'].forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
                 if (reworkCount > 0) { el.textContent = reworkCount > 99 ? '99+' : reworkCount; el.classList.remove('hidden'); }
                 else el.classList.add('hidden');
             });
+            renderDashboardNotifFeed();
+        }
+
+        function renderDashboardNotifFeed() {
+            const feed = document.getElementById('dashboard-notif-feed');
+            if (!feed) return;
+            if (notifications.length === 0) {
+                feed.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No notifications yet.</p>`;
+                return;
+            }
+            feed.innerHTML = notifications.map(n => {
+                const isNew = n.type === 'new';
+                const timeAgo = formatLastSeen(n.time).replace('last seen ', '');
+                return `<div class="flex items-start gap-3 px-4 py-3 border-b border-[#1e2238]/50 ${n.read ? 'opacity-50' : ''} hover:bg-[#1a1e36]/40 transition cursor-pointer" onclick="markNotifRead(${n.id})">
+                    <div class="w-8 h-8 rounded-full ${isNew ? 'bg-orange-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5">
+                        <i data-lucide="${isNew ? 'plus-circle' : 'refresh-cw'}" class="w-4 h-4 ${isNew ? 'text-orange-400' : 'text-red-400'}"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-white">${isNew ? '🆕 New task assigned' : '🔄 Rework required'}</p>
+                        <p class="text-[11px] text-gray-300 truncate">${n.topic}</p>
+                        <p class="text-[10px] text-gray-500 mt-0.5">${timeAgo}</p>
+                    </div>
+                    ${!n.read ? `<div class="w-2 h-2 rounded-full ${isNew ? 'bg-orange-500' : 'bg-red-500'} shrink-0 mt-1.5"></div>` : ''}
+                </div>`;
+            }).join('');
+            lucide.createIcons();
         }
         function renderNotifList() {
             const list = document.getElementById('notif-list');
@@ -5344,11 +5389,11 @@
         }
         function markNotifRead(id) {
             const n = notifications.find(x => x.id === id);
-            if (n) { n.read = true; saveNotifs(); renderNotifBadges(); renderNotifList(); }
+            if (n) { n.read = true; saveNotifs(); renderNotifBadges(); renderNotifList(); renderDashboardNotifFeed(); }
         }
         function markAllNotifsRead() {
             notifications.forEach(n => n.read = true);
-            saveNotifs(); renderNotifBadges(); renderNotifList();
+            saveNotifs(); renderNotifBadges(); renderNotifList(); renderDashboardNotifFeed();
         }
         function toggleNotifPanel() {
             const panel = document.getElementById('notif-panel');
