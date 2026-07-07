@@ -2028,12 +2028,17 @@
         function populateDropdownSelectors() {
             const empDropdown = document.getElementById('task-assigned-employee');
             if(!empDropdown) return;
+            // Don't rebuild if user is actively interacting with this dropdown
+            if (document.activeElement === empDropdown) return;
+            const prevVal = empDropdown.value;
             empDropdown.innerHTML = '<option value="">-- Select Employee --</option>';
             const assignable = userRoster.filter(u => u.role !== 'admin');
             const list = assignable.length > 0 ? assignable : userRoster;
             list.forEach(u => {
                 empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.role})</option>`;
             });
+            // Restore previous selection if still valid
+            if (prevVal) empDropdown.value = prevVal;
         }
 
         async function addNewUser() {
@@ -6033,22 +6038,28 @@
         // ============================================================
         // NOTIFICATION ENGINE
         // ============================================================
-        let notifications = [];  // { id, type:'new'|'rework', topic, assignedTo, time, read }
+        let notifications = [];  // { id, type:'new'|'rework', topic, assignedTo, time }
+        let _readNotifIds = new Set();
 
         function loadNotifs() {
             try { notifications = JSON.parse(localStorage.getItem(`be_notifs_${activeEmail}`) || '[]'); } catch(e) { notifications = []; }
+            try { _readNotifIds = new Set(JSON.parse(localStorage.getItem(`be_read_notifs_${activeEmail}`) || '[]')); } catch(e) { _readNotifIds = new Set(); }
+            notifications = notifications.filter(n => !_readNotifIds.has(n.id));
         }
         function saveNotifs() {
             localStorage.setItem(`be_notifs_${activeEmail}`, JSON.stringify(notifications.slice(0, 50)));
+            localStorage.setItem(`be_read_notifs_${activeEmail}`, JSON.stringify([..._readNotifIds].slice(0, 200)));
         }
         function addNotif(type, topic, assignedTo) {
-            notifications.unshift({ id: Date.now(), type, topic, assignedTo, time: new Date().toISOString() });
+            const newId = Date.now();
+            if (_readNotifIds.has(newId)) return; // already dismissed
+            notifications.unshift({ id: newId, type, topic, assignedTo, time: new Date().toISOString() });
             saveNotifs();
             renderNotifBadges();
             renderDashboardNotifFeed();
         }
         function dismissAllNotifs() {
-            // Seen = permanently deleted
+            notifications.forEach(n => _readNotifIds.add(n.id));
             notifications = [];
             saveNotifs();
             renderNotifBadges();
@@ -6056,6 +6067,7 @@
             renderNotifList();
         }
         function dismissNotif(id) {
+            _readNotifIds.add(id);
             notifications = notifications.filter(n => n.id !== id);
             saveNotifs();
             renderNotifBadges();
@@ -6128,8 +6140,7 @@
             if (isHidden) {
                 renderNotifList();
                 lucide.createIcons();
-                // Dismiss all after 3 seconds of viewing
-                setTimeout(() => { dismissAllNotifs(); closeNotifPanel(); }, 4000);
+                // No auto-dismiss — user controls via X button or Mark All Read
             }
         }
         function closeNotifPanel() {
