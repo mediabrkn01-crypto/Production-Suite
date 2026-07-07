@@ -1632,9 +1632,17 @@
             document.getElementById('tab-content-reports').classList.add('hidden');
             document.getElementById('tab-content-history').classList.add('hidden');
 
+            // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
+            // force it hidden by default on every tab switch, then re-show it (if applicable)
+            // only inside the dashboard branch below.
+            document.getElementById('employee-notification-banner').classList.add('hidden');
+
             if(targetTab === 'dashboard') {
                 document.getElementById('nav-dashboard').classList.add('active');
                 document.getElementById('tab-content-dashboard').classList.remove('hidden');
+                if (activeRole === 'employee' || activeRole === 'social_media') {
+                    renderEmployeeNotificationBar();
+                }
             } else if (targetTab === 'chat') {
                 document.getElementById('nav-chat').classList.add('active');
                 document.getElementById('tab-content-chat').classList.remove('hidden');
@@ -3343,8 +3351,6 @@
         let _voicePlaying = false; // true while any voice message is playing
 
         function renderChatMessages() {
-            if (_voicePlaying) return;
-
             // Save all audio playback states before wiping DOM
             const audioStates = {};
             document.querySelectorAll('audio[id^="audio-"]').forEach(a => {
@@ -3395,7 +3401,7 @@
                 if (m.audio_data) {
                     voiceHtml = `
                         <div class="flex items-center gap-2 px-3 py-2 rounded-2xl ${isMine ? 'bg-orange-600/20' : 'bg-[#1a1e36]'} min-w-[180px] max-w-[260px]">
-                            <button onclick="toggleVoicePlay(this,'${m.id}')" class="text-orange-400 shrink-0">
+                            <button id="voice-btn-${m.id}" onclick="toggleVoicePlay(this,'${m.id}')" class="text-orange-400 shrink-0">
                                 <i data-lucide="play-circle" class="w-7 h-7"></i>
                             </button>
                             <div class="flex-1">
@@ -3467,7 +3473,7 @@
                     audio.play().catch(()=>{});
                     _voicePlaying = true;
                     const msgId = id.replace('audio-', '');
-                    const btn = audio.previousElementSibling;
+                    const btn = document.getElementById(`voice-btn-${msgId}`);
                     if (btn) { btn.innerHTML = '<i data-lucide="pause-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
                 }
             });
@@ -3505,7 +3511,7 @@
         }
         function voiceEnded(msgId) {
             _voicePlaying = false;
-            const btn = document.querySelector(`#audio-${msgId}`)?.previousElementSibling;
+            const btn = document.getElementById(`voice-btn-${msgId}`);
             if (btn) { btn.innerHTML = '<i data-lucide="play-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
         }
 
