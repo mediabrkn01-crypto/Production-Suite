@@ -2920,10 +2920,7 @@
                     renderChatContacts();
                     updateThreadOnlineStatus();
                     updateTypingIndicator();
-                    // Re-render messages to update tick status
-                    if (!document.getElementById('tab-content-chat').classList.contains('hidden')) {
-                        renderChatMessages();
-                    }
+                    // Tick status updates on next natural render — don't force here (disrupts audio)
                 })
                 .subscribe(async (status) => {
                     if (status === 'SUBSCRIBED') {
@@ -3768,42 +3765,32 @@
         }
 
         async function deleteChatMessage(messageId, mode) {
-            // Close any open menu
             const menu = document.getElementById(`del-menu-${messageId}`);
             if (menu) menu.classList.add('hidden');
 
-            const targetMsg = chatMessages.find(m => m.id === messageId);
-            if (!targetMsg) return;
+            // Compare as strings to handle number/string type mismatch
+            const targetMsg = chatMessages.find(m => String(m.id) === String(messageId));
+            if (!targetMsg) { console.warn('deleteChatMessage: message not found', messageId, chatMessages.map(m=>m.id)); return; }
 
             const isMine = (targetMsg.sender_email || '').toLowerCase() === (activeEmail || '').toLowerCase();
 
             if (mode === 'me') {
-                // Hide only for current user — stored in localStorage, persists across refresh
                 hideMessageLocally(messageId);
                 chatMessages = chatMessages.filter(m => String(m.id) !== String(messageId));
                 renderChatMessages();
 
             } else if (mode === 'everyone') {
-                if (!isMine && activeRole !== 'admin') return;
+                if (!isMine && activeRole !== 'admin') { alert('You can only delete your own messages.'); return; }
                 if (!confirm('Delete this message for everyone? This cannot be undone.')) return;
 
                 const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
-
                 if (error) {
-                    // DB delete blocked (e.g. RLS policy) — hide locally so it at least disappears for this user
-                    console.warn('DB delete failed, hiding locally:', error.message);
+                    console.warn('DB delete failed:', error.message);
                     hideMessageLocally(messageId);
-                    alert('Note: Message hidden for you. To delete for everyone, the database delete permission may need to be enabled.');
-                }
-
-                // Verify it's actually gone from the DB
-                const { data: check } = await dbInstance.from('chat_messages').select('id').eq('id', messageId).maybeSingle();
-                if (check) {
-                    // Still exists in DB — hide locally as fallback
+                    alert('Hidden for you only. Run this SQL to allow deletes:\nALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;\nCREATE POLICY "delete own" ON chat_messages FOR DELETE USING (true);');
+                } else {
                     hideMessageLocally(messageId);
                 }
-
-                // Remove from local state immediately
                 chatMessages = chatMessages.filter(m => String(m.id) !== String(messageId));
                 renderChatMessages();
             }
