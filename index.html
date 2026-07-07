@@ -1422,7 +1422,6 @@
             // 40-90%: network transit (ease-to-90 fake, same as before)
             // 90-100%: server processing → fires on response
             setUploadProgress(0);
-            setBubbleProgress(0);
 
             // Kick off a smooth animated progress that eases to 88% while fetch runs
             let _animPct = 2;
@@ -1431,7 +1430,6 @@
                 _animPct += Math.max(0.3, (88 - _animPct) * 0.025);
                 if (_animPct > 88) _animPct = 88;
                 setUploadProgress(_animPct);
-                setBubbleProgress(_animPct);
                 _animFrame = requestAnimationFrame(animStep);
             };
             _animFrame = requestAnimationFrame(animStep);
@@ -1443,91 +1441,18 @@
                 });
                 cancelAnimationFrame(_animFrame);
                 setUploadProgress(100);
-                setBubbleProgress(100);
                 setTimeout(() => setUploadProgress(null), 500);
                 const data = await response.json();
                 return data;
             } catch (err) {
                 cancelAnimationFrame(_animFrame);
                 setUploadProgress(null);
-                hideBubble();
-                throw err;
+                    throw err;
             }
         }
 
-        // ── Floating Upload Bubble ──
-        let _bubbleDragging = false, _bubbleDX = 0, _bubbleDY = 0;
 
-        function showBubble(filename) {
-            const b = document.getElementById('upload-bubble');
-            const spinner = document.getElementById('upload-bubble-spinner');
-            const name = document.getElementById('upload-bubble-name');
-            const status = document.getElementById('upload-bubble-status');
-            if (!b) return;
-            name.textContent = filename || 'Uploading...';
-            status.textContent = 'Routing to Google Drive...';
-            spinner.classList.remove('hidden');
-            setBubbleProgress(0);
-            b.classList.remove('hidden');
-            // Setup drag (use addEventListener to not stomp other handlers)
-            if (!b._dragInit) {
-                b._dragInit = true;
-                b.addEventListener('mousedown', (e) => {
-                    if (e.button !== 0) return;
-                    _bubbleDragging = true;
-                    const rect = b.getBoundingClientRect();
-                    _bubbleDX = e.clientX - rect.left;
-                    _bubbleDY = e.clientY - rect.top;
-                    b.style.cursor = 'grabbing';
-                    e.preventDefault();
-                });
-                document.addEventListener('mousemove', (e) => {
-                    if (!_bubbleDragging) return;
-                    b.style.right = 'auto'; b.style.bottom = 'auto';
-                    b.style.left = Math.max(0, e.clientX - _bubbleDX) + 'px';
-                    b.style.top = Math.max(0, e.clientY - _bubbleDY) + 'px';
-                });
-                document.addEventListener('mouseup', () => { _bubbleDragging = false; b.style.cursor = 'grab'; });
-                b.addEventListener('touchstart', (e) => {
-                    const t = e.touches[0];
-                    const rect = b.getBoundingClientRect();
-                    _bubbleDragging = true;
-                    _bubbleDX = t.clientX - rect.left;
-                    _bubbleDY = t.clientY - rect.top;
-                }, { passive: true });
-                document.addEventListener('touchmove', (e) => {
-                    if (!_bubbleDragging) return;
-                    const t = e.touches[0];
-                    b.style.right = 'auto'; b.style.bottom = 'auto';
-                    b.style.left = Math.max(0, t.clientX - _bubbleDX) + 'px';
-                    b.style.top = Math.max(0, t.clientY - _bubbleDY) + 'px';
-                }, { passive: true });
-                document.addEventListener('touchend', () => { _bubbleDragging = false; });
-            }
-        }
 
-        function setBubbleProgress(pct) {
-            const bar = document.getElementById('upload-bubble-bar');
-            const label = document.getElementById('upload-bubble-pct');
-            const status = document.getElementById('upload-bubble-status');
-            if (!bar) return;
-            const p = Math.min(100, Math.round(pct));
-            bar.style.width = p + '%';
-            if (label) label.textContent = p + '%';
-            if (status) {
-                if (p < 30) status.textContent = 'Encoding & routing...';
-                else if (p < 70) status.textContent = 'Transferring to Drive...';
-                else if (p < 100) status.textContent = 'Almost there...';
-                else status.textContent = '✓ Upload complete!';
-            }
-        }
-
-        function hideBubble() {
-            setTimeout(() => {
-                const b = document.getElementById('upload-bubble');
-                if (b) b.classList.add('hidden');
-            }, 1500);
-        }
 
         let _fakeTimer = null;
         function startFakeProgress() { setUploadProgress(0); }
@@ -1535,14 +1460,12 @@
 
         async function uploadToGoogleDrive(file) {
             const base64Data = await fileToBase64(file);
-            showBubble(file.name);
             setUploadProgress(0);
             const resData = await xhrPostWithProgress({
                 fileName: file.name,
                 mimeType: file.type,
                 base64: base64Data
             });
-            hideBubble();
             if (resData.success) return resData.fileUrl;
             throw new Error(resData.error || 'Apps Script Core Error');
         }
@@ -1564,10 +1487,8 @@
                 const base64 = await fileToBase64(f);
                 files.push({ fileName: f.name, mimeType: f.type, base64 });
             }
-            showBubble(`${folderName} (${files.length} files)`);
             setUploadProgress(0);
             const resData = await xhrPostWithProgress({ action: 'uploadFolder', folderName, files });
-            hideBubble();
             if (resData.success) return resData.folderUrl;
             throw new Error(resData.error || 'Folder upload failed');
         }
@@ -6320,23 +6241,6 @@
         <span id="chat-toast-text">1 message received</span>
     </div>
 
-
-    <!-- Floating Upload Progress Bubble -->
-    <div id="upload-bubble" class="hidden fixed z-[200] select-none" style="bottom:24px;right:24px;cursor:grab">
-        <div class="bg-[#121424] border border-orange-500/40 rounded-2xl shadow-2xl shadow-black/60 p-3 w-64 space-y-2">
-            <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2 min-w-0">
-                    <div id="upload-bubble-spinner" class="w-4 h-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin shrink-0"></div>
-                    <span id="upload-bubble-name" class="text-[11px] text-white font-bold truncate">Uploading...</span>
-                </div>
-                <span id="upload-bubble-pct" class="text-orange-400 text-xs font-bold shrink-0">0%</span>
-            </div>
-            <div class="w-full h-1.5 bg-[#0b0d19] rounded-full overflow-hidden">
-                <div id="upload-bubble-bar" class="h-full brand-gradient transition-all duration-150" style="width:0%"></div>
-            </div>
-            <p id="upload-bubble-status" class="text-[10px] text-gray-500 text-center">Routing to Google Drive...</p>
-        </div>
-    </div>
 
 </body>
 </html>
