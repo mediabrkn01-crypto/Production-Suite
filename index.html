@@ -3348,8 +3348,11 @@
         function renderChatMessages() {
             if (_voicePlaying) return;
 
-            // Save currently playing audio state before wiping DOM
-            const playingAudioId = [...document.querySelectorAll('audio')].find(a => !a.paused)?.id;
+            // Save all audio playback states before wiping DOM
+            const audioStates = {};
+            document.querySelectorAll('audio[id^="audio-"]').forEach(a => {
+                audioStates[a.id] = { currentTime: a.currentTime, paused: a.paused };
+            });
 
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
@@ -3456,20 +3459,21 @@
 
             if (scrollBottom) container.scrollTop = container.scrollHeight;
             lucide.createIcons();
-            // Always force scroll on first load (container was empty before render)
             if (!container._hasRendered) { container.scrollTop = container.scrollHeight; container._hasRendered = true; }
 
-            // Restore audio playback if it was playing before re-render
-            if (playingAudioId) {
-                const audio = document.getElementById(playingAudioId);
-                if (audio) {
+            // Restore audio playback states after re-render
+            Object.entries(audioStates).forEach(([id, state]) => {
+                const audio = document.getElementById(id);
+                if (!audio) return;
+                audio.currentTime = state.currentTime;
+                if (!state.paused) {
                     audio.play().catch(()=>{});
                     _voicePlaying = true;
-                    const msgId = playingAudioId.replace('audio-','');
+                    const msgId = id.replace('audio-', '');
                     const btn = audio.previousElementSibling;
                     if (btn) { btn.innerHTML = '<i data-lucide="pause-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
                 }
-            }
+            });
         }
 
         // Reaction picker popup
@@ -3771,7 +3775,7 @@
             const targetMsg = chatMessages.find(m => m.id === messageId);
             if (!targetMsg) return;
 
-            const isMine = targetMsg.sender_email === activeEmail;
+            const isMine = (targetMsg.sender_email || '').toLowerCase() === (activeEmail || '').toLowerCase();
 
             if (mode === 'me') {
                 // Hide only for current user — stored in localStorage, persists across refresh
