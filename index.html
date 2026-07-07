@@ -532,17 +532,57 @@
 
                         <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
 
+                        <!-- Reply-to strip -->
+                        <div id="chat-reply-strip" class="hidden px-3 pt-2 pb-0">
+                            <div class="flex items-center justify-between bg-[#1a1e36] border-l-2 border-orange-500 rounded-r-xl px-3 py-2">
+                                <div class="min-w-0">
+                                    <p class="text-[10px] text-orange-400 font-bold">Replying to <span id="chat-reply-name"></span></p>
+                                    <p id="chat-reply-preview" class="text-[11px] text-gray-400 truncate max-w-[280px]"></p>
+                                </div>
+                                <button onclick="clearReply()" class="text-gray-500 hover:text-white ml-2 shrink-0"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Typing indicator -->
+                        <div id="chat-typing-indicator" class="hidden px-4 py-1">
+                            <span id="chat-typing-text" class="text-[10px] text-gray-500 italic"></span>
+                        </div>
+
                         <div id="chat-attachment-preview" class="hidden px-3 pt-2"></div>
 
-                        <div class="p-3 border-t border-[#1e2238] flex items-center gap-2">
+                        <!-- Voice recording UI -->
+                        <div id="voice-record-bar" class="hidden px-3 py-2 border-t border-[#1e2238] flex items-center gap-3">
+                            <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                            <span id="voice-timer" class="text-xs font-mono text-red-400">0:00</span>
+                            <div class="flex-1 h-1 bg-[#1e2238] rounded-full overflow-hidden">
+                                <div id="voice-wave" class="h-full bg-red-500/50 rounded-full" style="width:0%"></div>
+                            </div>
+                            <button onclick="cancelVoiceRecording()" class="text-gray-400 hover:text-red-400 p-1 transition"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            <button onclick="stopAndSendVoice()" class="brand-gradient text-white p-2 rounded-xl shrink-0 active:scale-95 transition"><i data-lucide="send" class="w-4 h-4"></i></button>
+                        </div>
+
+                        <div id="chat-input-bar" class="p-3 border-t border-[#1e2238] flex items-center gap-2">
                             <input type="file" id="chat-file-input" class="hidden" onchange="handleChatFileSelect()">
-                            <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="text-gray-400 hover:text-orange-400 p-2.5 rounded-xl shrink-0 transition-colors">
+                            <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
                                 <i data-lucide="paperclip" class="w-4 h-4"></i>
                             </button>
-                            <input type="text" id="chat-message-input" placeholder="Type a message..." class="flex-1 bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500" onkeydown="if(event.key==='Enter'){event.preventDefault();sendChatMessage();}">
+                            <button onclick="toggleEmojiPicker()" title="Emoji" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
+                                <i data-lucide="smile" class="w-4 h-4"></i>
+                            </button>
+                            <input type="text" id="chat-message-input" placeholder="Type a message..." class="flex-1 bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500" onkeydown="handleChatInputKey(event)" oninput="broadcastTyping()">
+                            <button id="chat-mic-btn" onclick="toggleVoiceRecording()" title="Voice message" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
+                                <i data-lucide="mic" class="w-4 h-4"></i>
+                            </button>
                             <button id="chat-send-btn" onclick="sendChatMessage()" class="brand-gradient text-white p-2.5 rounded-xl shrink-0 active:scale-95 transition-transform">
                                 <i data-lucide="send" class="w-4 h-4"></i>
                             </button>
+                        </div>
+
+                        <!-- Emoji picker -->
+                        <div id="emoji-picker" class="hidden absolute bottom-16 left-4 right-4 z-30 bg-[#1a1e36] border border-[#2e3554] rounded-2xl p-3 shadow-2xl">
+                            <div class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                                ${['😀','😂','😍','🥰','😎','😭','🤔','👍','👎','❤️','🔥','✅','🎉','😅','🙏','💯','😤','🤩','😴','👏','🫡','💪','😮','🤣','😊','🥳','😬','🤯','😱','🎯'].map(e => `<button onclick="insertEmoji('${e}')" class="text-xl hover:scale-125 transition-transform p-0.5">${e}</button>`).join('')}
+                            </div>
                         </div>
                     </div>
 
@@ -629,7 +669,30 @@
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="card p-4 md:p-6 rounded-2xl space-y-4">
+                    <!-- My Profile Card -->
+                    <div class="card p-4 md:p-6 rounded-2xl space-y-4 lg:col-span-1">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                            <i data-lucide="user-circle" class="w-4 h-4"></i> My Profile Photo
+                        </h3>
+                        <div class="flex flex-col items-center gap-4">
+                            <div class="relative">
+                                <div id="my-avatar-wrap" class="w-20 h-20 rounded-full brand-gradient flex items-center justify-center text-white font-bold text-2xl overflow-hidden border-2 border-orange-500/30">
+                                    <span id="my-avatar-initials"></span>
+                                    <img id="my-avatar-img" class="my-avatar-img w-full h-full object-cover hidden absolute inset-0 rounded-full">
+                                </div>
+                            </div>
+                            <div class="flex gap-2 w-full">
+                                <input type="file" id="profile-photo-input" class="hidden" accept="image/*" onchange="uploadProfilePhoto(this)">
+                                <button onclick="document.getElementById('profile-photo-input').click()" class="flex-1 bg-[#0b0d19] border border-[#1e2238] hover:border-orange-500/50 text-gray-300 text-xs font-bold py-2 rounded-xl uppercase tracking-wider transition flex items-center justify-center gap-2">
+                                    <i data-lucide="upload" class="w-3.5 h-3.5"></i> Upload
+                                </button>
+                                <button onclick="takeProfilePhoto()" class="flex-1 bg-[#0b0d19] border border-[#1e2238] hover:border-orange-500/50 text-gray-300 text-xs font-bold py-2 rounded-xl uppercase tracking-wider transition flex items-center justify-center gap-2">
+                                    <i data-lucide="camera" class="w-3.5 h-3.5"></i> Camera
+                                </button>
+                            </div>
+                            <p class="text-[10px] text-gray-500 text-center">Max 5MB. Shown in chat to all team members.</p>
+                        </div>
+                    </div>
                         <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
                             <i data-lucide="user-plus" class="w-4 h-4"></i> Add Account Key
                         </h3>
@@ -1352,6 +1415,15 @@
             if (liveMe && liveMe.role && liveMe.role !== activeRole) {
                 activeRole = liveMe.role;
                 localStorage.setItem('be_active_role', activeRole);
+            }
+
+            // Load profile photo
+            if (liveMe) {
+                const initials = activeUser.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+                const ini = document.getElementById('my-avatar-initials');
+                const img = document.getElementById('my-avatar-img');
+                if (ini) ini.textContent = initials;
+                if (img && liveMe.avatar) { img.src = liveMe.avatar; img.classList.remove('hidden'); }
             }
 
             const loginScreen = document.getElementById('portal-login-screen');
@@ -2808,6 +2880,7 @@
                     persistLastSeenMap(); // save to localStorage so it survives refresh
                     renderChatContacts();
                     updateThreadOnlineStatus();
+                    updateTypingIndicator();
                     // Re-render messages to update tick status
                     if (!document.getElementById('tab-content-chat').classList.contains('hidden')) {
                         renderChatMessages();
@@ -2981,7 +3054,9 @@
                 list.innerHTML += `
                     <button onclick='openChatRoom("dm", ${JSON.stringify(u.email)})' class="sidebar-link ${isActiveDm ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition">
                         <div class="relative shrink-0">
-                            <div class="w-9 h-9 rounded-full bg-[#1e2238] flex items-center justify-center text-gray-300 font-bold text-xs">${initials}</div>
+                            ${u.avatar
+                                ? `<img src="${u.avatar}" class="w-9 h-9 rounded-full object-cover">`
+                                : `<div class="w-9 h-9 rounded-full bg-[#1e2238] flex items-center justify-center text-gray-300 font-bold text-xs">${initials}</div>`}
                             <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${isOnline ? 'online-dot' : 'offline-dot'}"></span>
                         </div>
                         <div class="min-w-0 flex-1">
@@ -3147,75 +3222,195 @@
             </svg>`;
         }
 
+        function getStarredMsgs() {
+            try { return JSON.parse(localStorage.getItem(`be_starred_${activeEmail}`) || '[]'); } catch(e) { return []; }
+        }
+        function toggleStarMsg(id) {
+            const starred = getStarredMsgs();
+            const idStr = String(id);
+            const idx = starred.indexOf(idStr);
+            if (idx >= 0) starred.splice(idx, 1); else starred.push(idStr);
+            localStorage.setItem(`be_starred_${activeEmail}`, JSON.stringify(starred));
+            renderChatMessages();
+        }
+        function getUserAvatar(email, name) {
+            const u = userRoster.find(u => u.email === email);
+            if (u && u.avatar) return `<img src="${u.avatar}" class="w-7 h-7 rounded-full object-cover shrink-0">`;
+            const initials = (name||'?').split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+            return `<div class="w-7 h-7 rounded-full brand-gradient flex items-center justify-center text-white font-bold text-[10px] shrink-0">${initials}</div>`;
+        }
+
+        const REACTION_EMOJIS = ['👍','❤️','😂','😮','😢','🔥'];
+
+        async function addReaction(msgId, emoji) {
+            const msg = chatMessages.find(m => m.id == msgId);
+            if (!msg) return;
+            let reactions = {};
+            try { reactions = msg.reactions ? JSON.parse(msg.reactions) : {}; } catch(e) {}
+            if (!reactions[emoji]) reactions[emoji] = [];
+            const arr = reactions[emoji];
+            const idx = arr.indexOf(activeEmail);
+            if (idx >= 0) arr.splice(idx, 1); else arr.push(activeEmail);
+            if (arr.length === 0) delete reactions[emoji];
+            await dbInstance.from('chat_messages').update({ reactions: JSON.stringify(reactions) }).eq('id', msgId);
+            msg.reactions = JSON.stringify(reactions);
+            renderChatMessages();
+        }
+
+        let replyTo = null;
+        function setReply(msgId) {
+            const msg = chatMessages.find(m => m.id == msgId);
+            if (!msg) return;
+            replyTo = { id: msg.id, name: msg.sender_name, preview: msg.message || '🎤 Voice message' };
+            document.getElementById('chat-reply-strip').classList.remove('hidden');
+            document.getElementById('chat-reply-name').textContent = replyTo.name;
+            document.getElementById('chat-reply-preview').textContent = replyTo.preview;
+            document.getElementById('chat-message-input').focus();
+        }
+        function clearReply() {
+            replyTo = null;
+            document.getElementById('chat-reply-strip').classList.add('hidden');
+        }
+
         function renderChatMessages() {
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
-
             if (chatMessages.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No messages yet. Say hello 👋</p>`;
                 return;
             }
+            const starred = getStarredMsgs();
+            const scrollBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
 
             container.innerHTML = '';
             chatMessages.forEach(m => {
                 const isMine = m.sender_email === activeEmail;
                 const timeLabel = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const isStarred = starred.includes(String(m.id));
 
+                // Reactions
+                let reactionsHtml = '';
+                try {
+                    const reacts = m.reactions ? JSON.parse(m.reactions) : {};
+                    const entries = Object.entries(reacts).filter(([,v]) => v.length > 0);
+                    if (entries.length > 0) {
+                        reactionsHtml = `<div class="flex flex-wrap gap-1 mt-1 ${isMine ? 'justify-end' : ''}">` +
+                            entries.map(([emoji, users]) =>
+                                `<button onclick="addReaction(${m.id},'${emoji}')" class="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${users.includes(activeEmail) ? 'bg-orange-500/20 border border-orange-500/40' : 'bg-[#1a1e36] border border-[#2e3554]'} hover:scale-105 transition">${emoji} <span class="text-gray-300">${users.length}</span></button>`
+                            ).join('') + `</div>`;
+                    }
+                } catch(e) {}
+
+                // Reply-to quote
+                let replyQuoteHtml = '';
+                if (m.reply_to_id) {
+                    const orig = chatMessages.find(x => x.id == m.reply_to_id);
+                    if (orig) replyQuoteHtml = `
+                        <div class="border-l-2 border-orange-500/60 pl-2 mb-1 opacity-70 cursor-pointer" onclick="document.getElementById('msg-${orig.id}')?.scrollIntoView({behavior:'smooth'})">
+                            <p class="text-[9px] text-orange-400 font-bold">${orig.sender_name}</p>
+                            <p class="text-[10px] text-gray-400 truncate max-w-[200px]">${orig.message || '🎤 Voice message'}</p>
+                        </div>`;
+                }
+
+                // Voice message
+                let voiceHtml = '';
+                if (m.audio_data) {
+                    voiceHtml = `
+                        <div class="flex items-center gap-2 px-3 py-2 rounded-2xl ${isMine ? 'bg-orange-600/20' : 'bg-[#1a1e36]'} min-w-[180px] max-w-[260px]">
+                            <button onclick="toggleVoicePlay(this,'${m.id}')" class="text-orange-400 shrink-0">
+                                <i data-lucide="play-circle" class="w-7 h-7"></i>
+                            </button>
+                            <div class="flex-1">
+                                <div class="voice-waveform h-6 flex items-center gap-px" id="wave-${m.id}">
+                                    ${Array.from({length:20},(_,i)=>`<div class="bg-orange-400/50 rounded-full flex-1" style="height:${20+Math.sin(i*0.8)*14}px"></div>`).join('')}
+                                </div>
+                                <span class="text-[9px] text-gray-500" id="voice-dur-${m.id}">${m.audio_duration||'0:00'}</span>
+                            </div>
+                            <audio id="audio-${m.id}" src="${m.audio_data}" preload="none" onended="voiceEnded('${m.id}')"></audio>
+                        </div>`;
+                }
+
+                // Attachment
                 let attachmentMarkup = '';
                 if (m.attachment_url) {
                     const fileName = m.attachment_name || 'Attachment';
-                    attachmentMarkup = `
-                        <a href="${m.attachment_url}" target="_blank" class="chat-attachment-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs hover:border-orange-500 transition-colors">
-                            <i data-lucide="file-text" class="w-4 h-4 text-orange-400 shrink-0"></i>
-                            <span class="truncate max-w-[160px] text-gray-200">${fileName}</span>
-                            <i data-lucide="download" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i>
-                        </a>
-                    `;
+                    attachmentMarkup = `<a href="${m.attachment_url}" target="_blank" class="chat-attachment-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs hover:border-orange-500 transition-colors"><i data-lucide="file-text" class="w-4 h-4 text-orange-400 shrink-0"></i><span class="truncate max-w-[160px] text-gray-200">${fileName}</span><i data-lucide="download" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i></a>`;
                 }
 
-                const textBubble = m.message ? `
-                    <div class="${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'} px-3.5 py-2 text-xs leading-relaxed break-words">
-                        ${escapeChatHtml(m.message)}
-                    </div>
-                ` : '';
+                const textBubble = m.message ? `<div class="${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'} px-3.5 py-2 text-xs leading-relaxed break-words">${replyQuoteHtml}${escapeChatHtml(m.message)}</div>` : voiceHtml ? `<div class="${isMine ? 'chat-bubble-mine' : 'chat-bubble-theirs'} p-1.5">${replyQuoteHtml}${voiceHtml}</div>` : '';
 
-                const canDelete = isMine || activeRole === 'admin';
-                const deleteBtnMarkup = canDelete ? `
-                    <div class="relative chat-delete-wrap self-center shrink-0">
-                        <button onclick="toggleDeleteMenu(event, ${m.id})" title="Delete options" class="chat-msg-delete-btn opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-1">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                        </button>
-                        <div id="del-menu-${m.id}" class="hidden absolute z-50 ${isMine ? 'right-0' : 'left-0'} bottom-7 bg-[#1a1e36] border border-[#2e3554] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
-                            <button onclick="deleteChatMessage(${m.id}, 'me')" class="w-full text-left px-4 py-2.5 text-xs text-gray-300 hover:bg-[#252a4a] hover:text-white flex items-center gap-2 transition-colors">
-                                <i data-lucide="eye-off" class="w-3.5 h-3.5 text-gray-400"></i> Delete for Me
-                            </button>
-                            ${isMine || activeRole === 'admin' ? `
-                            <button onclick="deleteChatMessage(${m.id}, 'everyone')" class="w-full text-left px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-2 transition-colors border-t border-[#2e3554]">
-                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete for Everyone
-                            </button>` : ''}
-                        </div>
-                    </div>
-                ` : '';
-
-                // Tick markup — only for my messages
                 const tickHtml = isMine ? getMsgTickHtml(m) : '';
+                const canDelete = isMine || activeRole === 'admin';
+
+                const actionMenu = `
+                    <div class="chat-msg-actions opacity-0 group-hover:opacity-100 flex flex-col gap-0.5 transition-opacity self-center shrink-0">
+                        <button onclick="setReply(${m.id})" class="text-gray-500 hover:text-blue-400 p-1 transition" title="Reply"><i data-lucide="reply" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="showReactionPicker(event,${m.id})" class="text-gray-500 hover:text-yellow-400 p-1 transition" title="React"><i data-lucide="smile-plus" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="toggleStarMsg(${m.id})" class="p-1 transition ${isStarred ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}" title="Star"><i data-lucide="star" class="w-3.5 h-3.5"></i></button>
+                        ${canDelete ? `<button onclick="toggleDeleteMenu(event,${m.id})" class="text-gray-500 hover:text-red-400 p-1 transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+                    </div>`;
+
+                const deleteMenu = canDelete ? `
+                    <div id="del-menu-${m.id}" class="hidden absolute z-50 ${isMine ? 'right-0' : 'left-0'} bottom-7 bg-[#1a1e36] border border-[#2e3554] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+                        <button onclick="deleteChatMessage(${m.id},'me')" class="w-full text-left px-4 py-2.5 text-xs text-gray-300 hover:bg-[#252a4a] hover:text-white flex items-center gap-2"><i data-lucide="eye-off" class="w-3.5 h-3.5 text-gray-400"></i> Delete for Me</button>
+                        ${isMine || activeRole === 'admin' ? `<button onclick="deleteChatMessage(${m.id},'everyone')" class="w-full text-left px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2 border-t border-[#2e3554]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete for Everyone</button>` : ''}
+                    </div>` : '';
+
+                const avatarHtml = !isMine ? getUserAvatar(m.sender_email, m.sender_name) : '';
 
                 container.innerHTML += `
-                    <div class="group flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'} animate-item">
-                        ${isMine ? deleteBtnMarkup : ''}
-                        <div class="max-w-[78%] sm:max-w-[60%] space-y-1">
-                            ${!isMine && activeChatRoom === CHAT_GROUP_ROOM ? `<p class="text-[10px] text-gray-500 mb-0.5 px-1">${m.sender_name}</p>` : ''}
-                            ${textBubble}
-                            ${attachmentMarkup}
-                            <p class="text-[9px] text-gray-500 mt-0.5 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}${tickHtml}</p>
+                    <div id="msg-${m.id}" class="group flex items-end gap-1.5 ${isMine ? 'justify-end' : 'justify-start'} relative animate-item">
+                        ${!isMine ? avatarHtml : ''}
+                        ${!isMine ? actionMenu : ''}
+                        <div class="max-w-[75%] sm:max-w-[60%] space-y-0.5 relative">
+                            <div id="del-menu-wrap-${m.id}" class="relative">
+                                ${!isMine && activeChatRoom === CHAT_GROUP_ROOM ? `<p class="text-[10px] text-gray-500 mb-0.5 px-1">${m.sender_name}</p>` : ''}
+                                ${textBubble}
+                                ${attachmentMarkup}
+                                ${deleteMenu}
+                            </div>
+                            ${reactionsHtml}
+                            <p class="text-[9px] text-gray-500 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}${isStarred ? ' ⭐' : ''}${tickHtml}</p>
                         </div>
-                        ${!isMine ? deleteBtnMarkup : ''}
-                    </div>
-                `;
+                        ${isMine ? actionMenu : ''}
+                    </div>`;
             });
 
-            container.scrollTop = container.scrollHeight;
+            if (scrollBottom) container.scrollTop = container.scrollHeight;
             lucide.createIcons();
+        }
+
+        // Reaction picker popup
+        function showReactionPicker(e, msgId) {
+            e.stopPropagation();
+            document.querySelectorAll('.reaction-picker').forEach(el => el.remove());
+            const picker = document.createElement('div');
+            picker.className = 'reaction-picker fixed z-50 bg-[#1a1e36] border border-[#2e3554] rounded-2xl p-2 shadow-2xl flex gap-1';
+            picker.style.cssText = `left:${e.clientX - 80}px;top:${e.clientY - 50}px;`;
+            picker.innerHTML = REACTION_EMOJIS.map(em =>
+                `<button onclick="addReaction(${msgId},'${em}');this.closest('.reaction-picker').remove()" class="text-xl hover:scale-125 transition-transform p-1">${em}</button>`
+            ).join('');
+            document.body.appendChild(picker);
+            setTimeout(() => document.addEventListener('click', () => picker.remove(), { once: true }), 10);
+        }
+
+        // Voice play/pause toggle
+        function toggleVoicePlay(btn, msgId) {
+            const audio = document.getElementById(`audio-${msgId}`);
+            if (!audio) return;
+            if (audio.paused) {
+                document.querySelectorAll('audio').forEach(a => { if (a !== audio) { a.pause(); } });
+                audio.play();
+                btn.innerHTML = '<i data-lucide="pause-circle" class="w-7 h-7 text-orange-400"></i>';
+            } else {
+                audio.pause();
+                btn.innerHTML = '<i data-lucide="play-circle" class="w-7 h-7 text-orange-400"></i>';
+            }
+            lucide.createIcons();
+        }
+        function voiceEnded(msgId) {
+            const btn = document.querySelector(`#audio-${msgId}`)?.previousElementSibling;
+            if (btn) { btn.innerHTML = '<i data-lucide="play-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
         }
 
         function escapeChatHtml(str) {
@@ -3229,40 +3424,34 @@
             const sendBtn = document.getElementById('chat-send-btn');
             if (!input) return;
             const text = input.value.trim();
-
             if (!text && !pendingChatAttachment) return;
 
             const attachmentToSend = pendingChatAttachment;
             input.value = '';
             clearPendingAttachment();
+            stopTypingBroadcast();
 
-            let attachmentUrl = '';
-            let attachmentType = '';
-            let attachmentName = '';
-
+            let attachmentUrl = '', attachmentType = '', attachmentName = '';
             if (attachmentToSend) {
                 sendBtn.disabled = true;
-                const originalIcon = sendBtn.innerHTML;
+                const orig = sendBtn.innerHTML;
                 sendBtn.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i>`;
                 lucide.createIcons();
                 try {
                     attachmentUrl = await uploadToGoogleDrive(attachmentToSend.file);
                     attachmentType = attachmentToSend.kind;
                     attachmentName = attachmentToSend.file.name;
-                } catch (e) {
+                } catch(e) {
                     alert('Attachment upload failed: ' + e.message);
-                    sendBtn.disabled = false;
-                    sendBtn.innerHTML = originalIcon;
-                    lucide.createIcons();
-                    input.value = text;
-                    pendingChatAttachment = attachmentToSend;
-                    renderPendingAttachmentPreview();
-                    return;
+                    sendBtn.disabled = false; sendBtn.innerHTML = orig; lucide.createIcons();
+                    input.value = text; pendingChatAttachment = attachmentToSend;
+                    renderPendingAttachmentPreview(); return;
                 }
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = originalIcon;
-                lucide.createIcons();
+                sendBtn.disabled = false; sendBtn.innerHTML = orig; lucide.createIcons();
             }
+
+            const replyId = replyTo ? replyTo.id : null;
+            clearReply();
 
             const { error } = await dbInstance.from('chat_messages').insert([{
                 room: activeChatRoom,
@@ -3271,13 +3460,162 @@
                 message: text,
                 attachment_url: attachmentUrl,
                 attachment_type: attachmentType,
-                attachment_name: attachmentName
+                attachment_name: attachmentName,
+                reply_to_id: replyId
             }]);
+            if (error) { alert('Message failed to send: ' + error.message); input.value = text; }
+        }
 
-            if (error) {
-                alert('Message failed to send: ' + error.message);
-                input.value = text;
+        // ── TYPING INDICATOR ──
+        let _typingTimeout = null;
+        function broadcastTyping() {
+            if (!presenceChannel) return;
+            presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: activeChatRoom });
+            clearTimeout(_typingTimeout);
+            _typingTimeout = setTimeout(stopTypingBroadcast, 3000);
+        }
+        function stopTypingBroadcast() {
+            clearTimeout(_typingTimeout);
+            if (!presenceChannel) return;
+            presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: null });
+        }
+        function updateTypingIndicator() {
+            const el = document.getElementById('chat-typing-indicator');
+            const txt = document.getElementById('chat-typing-text');
+            if (!el || !txt) return;
+            const state = presenceChannel ? presenceChannel.presenceState() : {};
+            const typers = Object.keys(state)
+                .filter(k => k !== activeEmail)
+                .map(k => state[k][0])
+                .filter(p => p && p.isTyping === activeChatRoom)
+                .map(p => p.name);
+            if (typers.length === 0) { el.classList.add('hidden'); return; }
+            el.classList.remove('hidden');
+            txt.textContent = typers.length === 1 ? `${typers[0]} is typing...` : `${typers.slice(0,-1).join(', ')} and ${typers.at(-1)} are typing...`;
+        }
+
+        // ── EMOJI PICKER ──
+        function toggleEmojiPicker() {
+            const p = document.getElementById('emoji-picker');
+            p.classList.toggle('hidden');
+        }
+        function insertEmoji(em) {
+            const input = document.getElementById('chat-message-input');
+            if (input) { input.value += em; input.focus(); }
+            document.getElementById('emoji-picker')?.classList.add('hidden');
+        }
+        document.addEventListener('click', e => {
+            if (!e.target.closest('#emoji-picker') && !e.target.closest('[onclick="toggleEmojiPicker()"]')) {
+                document.getElementById('emoji-picker')?.classList.add('hidden');
             }
+        });
+
+        // ── VOICE RECORDING ──
+        let _mediaRecorder = null, _audioChunks = [], _voiceTimerInterval = null, _voiceSeconds = 0;
+
+        async function toggleVoiceRecording() {
+            if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+                stopAndSendVoice(); return;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                _mediaRecorder = new MediaRecorder(stream);
+                _audioChunks = [];
+                _mediaRecorder.ondataavailable = e => _audioChunks.push(e.data);
+                _mediaRecorder.start(100);
+                document.getElementById('voice-record-bar').classList.remove('hidden');
+                document.getElementById('chat-input-bar').classList.add('hidden');
+                _voiceSeconds = 0;
+                document.getElementById('voice-timer').textContent = '0:00';
+                _voiceTimerInterval = setInterval(() => {
+                    _voiceSeconds++;
+                    const m = Math.floor(_voiceSeconds/60), s = _voiceSeconds%60;
+                    document.getElementById('voice-timer').textContent = `${m}:${String(s).padStart(2,'0')}`;
+                    document.getElementById('voice-wave').style.width = Math.min(100, (_voiceSeconds/120)*100) + '%';
+                    if (_voiceSeconds >= 120) stopAndSendVoice(); // 2 min max
+                }, 1000);
+            } catch(e) {
+                alert('Microphone access denied. Please allow mic in browser settings.');
+            }
+        }
+
+        function cancelVoiceRecording() {
+            if (_mediaRecorder) { _mediaRecorder.stop(); _mediaRecorder.stream.getTracks().forEach(t=>t.stop()); _mediaRecorder = null; }
+            clearInterval(_voiceTimerInterval);
+            document.getElementById('voice-record-bar').classList.add('hidden');
+            document.getElementById('chat-input-bar').classList.remove('hidden');
+            _audioChunks = [];
+        }
+
+        async function stopAndSendVoice() {
+            if (!_mediaRecorder || _mediaRecorder.state !== 'recording') return;
+            clearInterval(_voiceTimerInterval);
+            const m = Math.floor(_voiceSeconds/60), s = _voiceSeconds%60;
+            const durLabel = `${m}:${String(s).padStart(2,'0')}`;
+
+            await new Promise(resolve => { _mediaRecorder.onstop = resolve; _mediaRecorder.stop(); });
+            _mediaRecorder.stream.getTracks().forEach(t => t.stop());
+
+            const blob = new Blob(_audioChunks, { type: 'audio/webm' });
+            const base64 = await new Promise(resolve => {
+                const r = new FileReader();
+                r.onload = e => resolve(e.target.result);
+                r.readAsDataURL(blob);
+            });
+
+            document.getElementById('voice-record-bar').classList.add('hidden');
+            document.getElementById('chat-input-bar').classList.remove('hidden');
+            _audioChunks = [];
+
+            const replyId = replyTo ? replyTo.id : null;
+            clearReply();
+
+            const { error } = await dbInstance.from('chat_messages').insert([{
+                room: activeChatRoom,
+                sender_email: activeEmail,
+                sender_name: activeUser,
+                message: '',
+                audio_data: base64,
+                audio_duration: durLabel,
+                reply_to_id: replyId
+            }]);
+            if (error) alert('Voice send failed: ' + error.message);
+        }
+
+        function handleChatInputKey(e) {
+            if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(); }
+        }
+
+        // ── PROFILE PHOTO ──
+        async function uploadProfilePhoto(input) {
+            const file = input.files[0];
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) { alert('Max 5MB for profile photo.'); return; }
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const base64 = e.target.result;
+                const { error } = await dbInstance.from('user_roster').update({ avatar: base64 }).eq('email', activeEmail);
+                if (error) { alert('Could not save photo: ' + error.message); return; }
+                // Update local roster
+                const me = userRoster.find(u => u.email === activeEmail);
+                if (me) me.avatar = base64;
+                // Update sidebar avatar
+                renderAvatarSidebar(base64);
+                alert('Profile photo updated!');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderAvatarSidebar(src) {
+            const els = document.querySelectorAll('.my-avatar-img');
+            els.forEach(el => { el.src = src; el.style.display = 'block'; });
+        }
+
+        function takeProfilePhoto() {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'image/*'; input.capture = 'user';
+            input.onchange = () => uploadProfilePhoto(input);
+            input.click();
         }
 
         function toggleDeleteMenu(event, messageId) {
