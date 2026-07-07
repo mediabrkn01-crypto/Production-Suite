@@ -250,6 +250,10 @@
                 <p id="call-duration" class="text-[11px] text-gray-300 font-mono drop-shadow">00:00</p>
             </div>
 
+            <button id="call-tap-to-enable" onclick="retryCallPlayback()" class="hidden absolute top-16 left-1/2 -translate-x-1/2 z-20 brand-gradient text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl items-center gap-2">
+                <i data-lucide="volume-2" class="w-4 h-4"></i> Tap to enable audio/video
+            </button>
+
             <div class="relative z-10 pb-8 pt-4 flex items-center justify-center gap-5">
                 <button id="call-mute-btn" onclick="toggleCallMic()" title="Mute" class="call-ctrl-btn w-14 h-14 rounded-full flex items-center justify-center text-white transition">
                     <i data-lucide="mic" class="w-5 h-5"></i>
@@ -1278,6 +1282,7 @@
         let currentCallType = null;      // 'audio' | 'video'
         let currentCallRole = null;      // 'caller' | 'callee'
         let pendingIncomingOffer = null; // {callId, from, fromName, callType, sdp}
+        let pendingRemoteIce = []; // ICE candidates that arrived before remoteDescription was set
         let callNoAnswerTimer = null;
         let callDurationInterval = null;
         let callStartTime = null;
@@ -3338,7 +3343,35 @@
             lucide.createIcons();
         }
 
+        function attemptPlay(mediaEl) {
+            const p = mediaEl.play();
+            if (p && p.catch) {
+                p.catch(() => {
+                    const banner = document.getElementById('call-tap-to-enable');
+                    if (banner) { banner.classList.remove('hidden'); banner.classList.add('flex'); lucide.createIcons(); }
+                });
+            }
+        }
+        function retryCallPlayback() {
+            const rv = document.getElementById('call-remote-video');
+            const ra = document.getElementById('call-remote-audio');
+            if (rv && rv.srcObject) attemptPlay(rv);
+            if (ra && ra.srcObject) attemptPlay(ra);
+            const banner = document.getElementById('call-tap-to-enable');
+            if (banner) { banner.classList.add('hidden'); banner.classList.remove('flex'); }
+        }
+
+        async function flushPendingIce() {
+            if (!callPc || !pendingRemoteIce.length) return;
+            const queued = pendingRemoteIce;
+            pendingRemoteIce = [];
+            for (const cand of queued) {
+                try { await callPc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) { /* skip bad candidate */ }
+            }
+        }
+
         function createCallPeerConnection() {
+            pendingRemoteIce = [];
             callPc = new RTCPeerConnection(RTC_CONFIG);
             callPc.onicecandidate = (e) => {
                 if (e.candidate && currentCallPeerEmail && currentCallId) {
@@ -3352,8 +3385,11 @@
                     rv.srcObject = stream;
                     rv.classList.remove('hidden');
                     document.getElementById('call-audio-centerpiece').classList.add('hidden');
+                    attemptPlay(rv);
                 } else if (e.track.kind === 'audio') {
-                    document.getElementById('call-remote-audio').srcObject = stream;
+                    const ra = document.getElementById('call-remote-audio');
+                    ra.srcObject = stream;
+                    attemptPlay(ra);
                 }
             };
             callPc.onconnectionstatechange = () => {
@@ -3449,6 +3485,7 @@
             }
 
             await callPc.setRemoteDescription(new RTCSessionDescription(offer.sdp));
+            await flushPendingIce();
             const answer = await callPc.createAnswer();
             await callPc.setLocalDescription(answer);
             await sendCallSignal(offer.from, { kind: 'answer', callId: offer.callId, sdp: callPc.localDescription });
@@ -3491,12 +3528,14 @@
 
             if (callLocalStream) { callLocalStream.getTracks().forEach(t => t.stop()); callLocalStream = null; }
             if (callPc) { try { callPc.close(); } catch (e) {} callPc = null; }
+            pendingRemoteIce = [];
             if (peerCallChannel) { dbInstance.removeChannel(peerCallChannel); peerCallChannel = null; peerCallChannelEmail = null; }
 
             const rv = document.getElementById('call-remote-video'); if (rv) { rv.srcObject = null; rv.classList.add('hidden'); }
             const ra = document.getElementById('call-remote-audio'); if (ra) ra.srcObject = null;
             const lv = document.getElementById('call-local-video'); if (lv) { lv.srcObject = null; lv.classList.add('hidden'); }
             const centerpiece = document.getElementById('call-audio-centerpiece'); if (centerpiece) centerpiece.classList.remove('hidden');
+            const tapBanner = document.getElementById('call-tap-to-enable'); if (tapBanner) { tapBanner.classList.add('hidden'); tapBanner.classList.remove('flex'); }
 
             currentCallId = null;
             currentCallPeerEmail = null;
@@ -3534,13 +3573,20 @@
                 case 'answer': {
                     if (payload.callId === currentCallId && currentCallRole === 'caller' && callPc) {
                         clearTimeout(callNoAnswerTimer);
-                        callPc.setRemoteDescription(new RTCSessionDescription(payload.sdp)).then(renderConnectedUI);
+                        callPc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+                            .then(flushPendingIce)
+                            .then(renderConnectedUI);
                     }
                     break;
                 }
                 case 'ice': {
                     if (payload.callId === currentCallId && callPc && payload.candidate) {
-                        callPc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
+                        if (callPc.remoteDescription && callPc.remoteDescription.type) {
+                            callPc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
+                        } else {
+                            // Remote description not set yet — queue and flush once it is
+                            pendingRemoteIce.push(payload.candidate);
+                        }
                     }
                     break;
                 }
