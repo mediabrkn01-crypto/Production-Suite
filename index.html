@@ -3404,6 +3404,41 @@
                     }
                 }
             };
+            callPc.oniceconnectionstatechange = () => {
+                console.log('[call] iceConnectionState:', callPc.iceConnectionState);
+                if (callPc.iceConnectionState === 'connected' || callPc.iceConnectionState === 'completed') {
+                    logSelectedCandidatePair();
+                }
+            };
+        }
+
+        // Debug helper: logs which local/remote candidate type won (host / srflx / relay)
+        // and periodically logs outbound audio byte counts, so a stuck one-way-audio
+        // issue can be told apart from "no connection at all" via the browser console.
+        async function logSelectedCandidatePair() {
+            if (!callPc) return;
+            try {
+                const stats = await callPc.getStats();
+                let pairInfo = null;
+                stats.forEach(r => {
+                    if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated) pairInfo = r;
+                });
+                if (pairInfo) {
+                    const local = stats.get(pairInfo.localCandidateId);
+                    const remote = stats.get(pairInfo.remoteCandidateId);
+                    console.log('[call] active path — local:', local && local.candidateType, 'remote:', remote && remote.candidateType,
+                        (local && local.candidateType === 'relay') || (remote && remote.candidateType === 'relay') ? '(via TURN relay)' : '(direct P2P)');
+                }
+                let audioSent = 0, audioRecv = 0;
+                stats.forEach(r => {
+                    if (r.type === 'outbound-rtp' && r.kind === 'audio') audioSent = r.bytesSent;
+                    if (r.type === 'inbound-rtp' && r.kind === 'audio') audioRecv = r.bytesReceived;
+                });
+                console.log('[call] audio bytesSent:', audioSent, 'bytesReceived:', audioRecv);
+                if (currentCallId) {
+                    setTimeout(logSelectedCandidatePair, 4000);
+                }
+            } catch (e) { /* stats unavailable */ }
         }
 
         async function startCall(peerEmail, peerName, callType) {
