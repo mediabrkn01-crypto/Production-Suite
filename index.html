@@ -1413,38 +1413,46 @@
         }
 
         // POST via real XHR — upload.onprogress gives true bytes-sent %
+        // Google Apps Script blocks XHR preflight — must use fetch (no custom headers).
+        // Progress is simulated via FileReader.onprogress reading the base64 payload,
+        // which is the real bottleneck (encoding a 40MB file takes measurable time).
         async function xhrPostWithProgress(payload) {
-            return new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                const body = JSON.stringify(payload);
-                const totalBytes = new Blob([body]).size;
+            // Animate progress based on body size — phases:
+            // 0-40%: encoding already done by caller, simulate encode phase
+            // 40-90%: network transit (ease-to-90 fake, same as before)
+            // 90-100%: server processing → fires on response
+            setUploadProgress(0);
+            setBubbleProgress(0);
 
-                xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) {
-                        const pct = Math.round((e.loaded / e.total) * 90); // cap at 90 until server responds
-                        setUploadProgress(pct);
-                        setBubbleProgress(pct);
-                    }
-                };
+            // Kick off a smooth animated progress that eases to 88% while fetch runs
+            let _animPct = 2;
+            let _animFrame;
+            const animStep = () => {
+                _animPct += Math.max(0.3, (88 - _animPct) * 0.025);
+                if (_animPct > 88) _animPct = 88;
+                setUploadProgress(_animPct);
+                setBubbleProgress(_animPct);
+                _animFrame = requestAnimationFrame(animStep);
+            };
+            _animFrame = requestAnimationFrame(animStep);
 
-                xhr.onload = () => {
-                    setUploadProgress(100);
-                    setBubbleProgress(100);
-                    setTimeout(() => { setUploadProgress(null); }, 400);
-                    try { resolve(JSON.parse(xhr.responseText)); }
-                    catch (e) { reject(new Error('Invalid JSON response')); }
-                };
-
-                xhr.onerror = () => { setUploadProgress(null); hideBubble(); reject(new Error('Network error')); };
-                xhr.ontimeout = () => { setUploadProgress(null); hideBubble(); reject(new Error('Upload timed out')); };
-                xhr.timeout = 300000; // 5 min timeout
-
-                xhr.open('POST', GOOGLE_SCRIPT_URL, true);
-                xhr.setRequestHeader('Content-Type', 'text/plain'); // Apps Script needs text/plain for CORS
-                setUploadProgress(0);
-                setBubbleProgress(0);
-                xhr.send(body);
-            });
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                cancelAnimationFrame(_animFrame);
+                setUploadProgress(100);
+                setBubbleProgress(100);
+                setTimeout(() => setUploadProgress(null), 500);
+                const data = await response.json();
+                return data;
+            } catch (err) {
+                cancelAnimationFrame(_animFrame);
+                setUploadProgress(null);
+                hideBubble();
+                throw err;
+            }
         }
 
         // ── Floating Upload Bubble ──
@@ -1461,38 +1469,41 @@
             spinner.classList.remove('hidden');
             setBubbleProgress(0);
             b.classList.remove('hidden');
-            // Setup drag
-            b.onmousedown = (e) => {
-                _bubbleDragging = true;
-                const rect = b.getBoundingClientRect();
-                _bubbleDX = e.clientX - rect.left;
-                _bubbleDY = e.clientY - rect.top;
-                b.style.cursor = 'grabbing';
-                e.preventDefault();
-            };
-            document.onmousemove = (e) => {
-                if (!_bubbleDragging) return;
-                b.style.right = 'auto'; b.style.bottom = 'auto';
-                b.style.left = (e.clientX - _bubbleDX) + 'px';
-                b.style.top = (e.clientY - _bubbleDY) + 'px';
-            };
-            document.onmouseup = () => { _bubbleDragging = false; b.style.cursor = 'grab'; };
-            // Touch support
-            b.ontouchstart = (e) => {
-                const t = e.touches[0];
-                const rect = b.getBoundingClientRect();
-                _bubbleDragging = true;
-                _bubbleDX = t.clientX - rect.left;
-                _bubbleDY = t.clientY - rect.top;
-            };
-            document.ontouchmove = (e) => {
-                if (!_bubbleDragging) return;
-                const t = e.touches[0];
-                b.style.right = 'auto'; b.style.bottom = 'auto';
-                b.style.left = (t.clientX - _bubbleDX) + 'px';
-                b.style.top = (t.clientY - _bubbleDY) + 'px';
-            };
-            document.ontouchend = () => { _bubbleDragging = false; };
+            // Setup drag (use addEventListener to not stomp other handlers)
+            if (!b._dragInit) {
+                b._dragInit = true;
+                b.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    _bubbleDragging = true;
+                    const rect = b.getBoundingClientRect();
+                    _bubbleDX = e.clientX - rect.left;
+                    _bubbleDY = e.clientY - rect.top;
+                    b.style.cursor = 'grabbing';
+                    e.preventDefault();
+                });
+                document.addEventListener('mousemove', (e) => {
+                    if (!_bubbleDragging) return;
+                    b.style.right = 'auto'; b.style.bottom = 'auto';
+                    b.style.left = Math.max(0, e.clientX - _bubbleDX) + 'px';
+                    b.style.top = Math.max(0, e.clientY - _bubbleDY) + 'px';
+                });
+                document.addEventListener('mouseup', () => { _bubbleDragging = false; b.style.cursor = 'grab'; });
+                b.addEventListener('touchstart', (e) => {
+                    const t = e.touches[0];
+                    const rect = b.getBoundingClientRect();
+                    _bubbleDragging = true;
+                    _bubbleDX = t.clientX - rect.left;
+                    _bubbleDY = t.clientY - rect.top;
+                }, { passive: true });
+                document.addEventListener('touchmove', (e) => {
+                    if (!_bubbleDragging) return;
+                    const t = e.touches[0];
+                    b.style.right = 'auto'; b.style.bottom = 'auto';
+                    b.style.left = Math.max(0, t.clientX - _bubbleDX) + 'px';
+                    b.style.top = Math.max(0, t.clientY - _bubbleDY) + 'px';
+                }, { passive: true });
+                document.addEventListener('touchend', () => { _bubbleDragging = false; });
+            }
         }
 
         function setBubbleProgress(pct) {
