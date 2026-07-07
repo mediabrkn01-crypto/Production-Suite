@@ -599,10 +599,17 @@
                         </div>
 
                         <!-- Emoji picker -->
-                        <div id="emoji-picker" class="hidden absolute bottom-16 left-4 right-4 z-30 bg-[#1a1e36] border border-[#2e3554] rounded-2xl p-3 shadow-2xl">
-                            <div class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-                                ${['😀','😂','😍','🥰','😎','😭','🤔','👍','👎','❤️','🔥','✅','🎉','😅','🙏','💯','😤','🤩','😴','👏','🫡','💪','😮','🤣','😊','🥳','😬','🤯','😱','🎯'].map(e => `<button onclick="insertEmoji('${e}')" class="text-xl hover:scale-125 transition-transform p-0.5">${e}</button>`).join('')}
+                        <div id="emoji-picker" class="hidden absolute bottom-16 left-0 right-0 z-30 bg-[#1a1e36] border border-[#2e3554] rounded-2xl shadow-2xl" style="max-height:220px;">
+                            <div class="flex gap-1 px-3 pt-2 pb-1 border-b border-[#2e3554] overflow-x-auto scrollbar-hide text-xs text-gray-400">
+                                <button onclick="showEmojiCat('smileys')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">😀</button>
+                                <button onclick="showEmojiCat('gestures')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">👋</button>
+                                <button onclick="showEmojiCat('hearts')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">❤️</button>
+                                <button onclick="showEmojiCat('animals')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">🐶</button>
+                                <button onclick="showEmojiCat('food')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">🍕</button>
+                                <button onclick="showEmojiCat('travel')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">✈️</button>
+                                <button onclick="showEmojiCat('symbols')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">💯</button>
                             </div>
+                            <div id="emoji-grid" class="flex flex-wrap gap-0.5 p-2 overflow-y-auto" style="max-height:160px;"></div>
                         </div>
                     </div>
 
@@ -3335,8 +3342,10 @@
         let _voicePlaying = false; // true while any voice message is playing
 
         function renderChatMessages() {
-            // Don't rebuild DOM while a voice message is playing — it destroys the audio element
             if (_voicePlaying) return;
+
+            // Save currently playing audio state before wiping DOM
+            const playingAudioId = [...document.querySelectorAll('audio')].find(a => !a.paused)?.id;
 
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
@@ -3349,7 +3358,7 @@
 
             container.innerHTML = '';
             chatMessages.forEach(m => {
-                const isMine = m.sender_email === activeEmail;
+                const isMine = (m.sender_email || '').toLowerCase() === (activeEmail || '').toLowerCase();
                 const timeLabel = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                 const isStarred = starred.includes(String(m.id));
 
@@ -3443,6 +3452,18 @@
 
             if (scrollBottom) container.scrollTop = container.scrollHeight;
             lucide.createIcons();
+
+            // Restore audio playback if it was playing before re-render
+            if (playingAudioId) {
+                const audio = document.getElementById(playingAudioId);
+                if (audio) {
+                    audio.play().catch(()=>{});
+                    _voicePlaying = true;
+                    const msgId = playingAudioId.replace('audio-','');
+                    const btn = audio.previousElementSibling;
+                    if (btn) { btn.innerHTML = '<i data-lucide="pause-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
+                }
+            }
         }
 
         // Reaction picker popup
@@ -3562,10 +3583,28 @@
             txt.textContent = typers.length === 1 ? `${typers[0]} is typing...` : `${typers.slice(0,-1).join(', ')} and ${typers.at(-1)} are typing...`;
         }
 
-        // ── EMOJI PICKER ──
+        const EMOJI_CATS = {
+            smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🫢','🫣','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥸','🥳','😎','🤓','🧐','😕','🫤','😟','🙁','☹️','😮','😯','😲','😳','🥺','🫠','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
+            gestures: ['👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁️','👅','👄','🫦'],
+            hearts: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','❤️‍🔥','❤️‍🩹','💔','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☯️','🕉️','✡️','🔯','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'],
+            animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🪲','🦟','🦗','🪳','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🦭','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🐓','🦃','🦤','🦚','🦜','🦢','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿️','🦔'],
+            food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🫒','🥦','🥬','🥒','🌶️','🫑','🥕','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🦴','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🫘','🍯','🧃','🥤','🧋','🍵','☕','🫖','🍺','🍻','🥂','🍷','🫗','🥃','🍸','🍹','🧉','🍾','🧊'],
+            travel: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🚤','🛥️','🛳️','⛴️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🎆','🎇','🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🛝','🎡','🎢','💈','🎪'],
+            symbols: ['💯','🔔','🔕','🎵','🎶','💤','🔊','📢','📣','🔇','🔈','🔉','✅','❌','❎','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻','🔷','🔶','🔹','🔸','🔲','🔳','▪️','▫️','◾','◽','◼️','◻️','⬛','⬜','🟥','🟧','🟨','🟩','🟦','🟪','⭐','🌟','💫','✨','🔥','💥','🌈','☀️','🌤️','⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','💧','💦','🌊','🔑','🗝️','🔒','🔓','❗','❕','❓','❔','‼️','⁉️','🆕','🆙','🆒','🆓','🆖','🆗','🆘','🆔','🔝','🔙','🔛','🔜','🔚','🆚','🆎','🅰️','🅱️','🅾️','🅿️','🈳','🈹','🈵','🈲','🉐','🈶','🉑','🈸','🈺','🈷️','✴️','🆑','🈴','🈚']
+        };
+
+        function showEmojiCat(cat) {
+            const grid = document.getElementById('emoji-grid');
+            if (!grid) return;
+            const emojis = EMOJI_CATS[cat] || EMOJI_CATS.smileys;
+            grid.innerHTML = emojis.map(e => `<button onclick="insertEmoji('${e}')" class="text-xl hover:scale-110 transition-transform p-1 leading-none">${e}</button>`).join('');
+        }
+
         function toggleEmojiPicker() {
             const p = document.getElementById('emoji-picker');
+            const isHidden = p.classList.contains('hidden');
             p.classList.toggle('hidden');
+            if (isHidden) showEmojiCat('smileys');
         }
         function insertEmoji(em) {
             const input = document.getElementById('chat-message-input');
