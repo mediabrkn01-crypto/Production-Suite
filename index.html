@@ -261,6 +261,11 @@
                     </button>
                 </div>
 
+                <button onclick="toggleNotifPanel()" class="relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-400 hover:bg-[#1a1e36] transition duration-200" id="notif-bell-desktop">
+                    <i data-lucide="bell" class="w-5 h-5"></i> Notifications
+                    <span id="notif-badge-new" class="hidden ml-auto min-w-[20px] h-5 rounded-full bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center px-1"></span>
+                    <span id="notif-badge-rework" class="hidden min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1"></span>
+                </button>
                 <button onclick="logoutPortal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition duration-200">
                     <i data-lucide="log-out" class="w-5 h-5"></i> Log Out
                 </button>
@@ -268,6 +273,20 @@
         </aside>
 
         <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+
+            <!-- Notification Panel -->
+            <div id="notif-panel" class="hidden fixed inset-0 z-[70] flex items-start justify-end p-4 pt-16" onclick="if(event.target===this)closeNotifPanel()">
+                <div class="w-full max-w-sm bg-[#121424] border border-[#1e2238] rounded-2xl shadow-2xl overflow-hidden animate-item">
+                    <div class="flex items-center justify-between px-4 py-3 border-b border-[#1e2238]">
+                        <h3 class="font-bold text-sm text-white flex items-center gap-2"><i data-lucide="bell" class="w-4 h-4 text-orange-400"></i> Notifications</h3>
+                        <button onclick="closeNotifPanel()" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    </div>
+                    <div id="notif-list" class="max-h-[70vh] overflow-y-auto divide-y divide-[#1e2238]"></div>
+                    <div class="px-4 py-2 border-t border-[#1e2238]">
+                        <button onclick="markAllNotifsRead()" class="text-[10px] text-orange-400 hover:underline font-bold uppercase tracking-wide">Mark all as read</button>
+                    </div>
+                </div>
+            </div>
             
             <div id="employee-notification-banner" class="hidden bg-blue-900/40 border border-blue-500/40 rounded-xl p-4 flex items-start gap-3 animate-item">
                 <div class="bg-blue-500/20 text-blue-400 p-2 rounded-lg shrink-0">
@@ -292,6 +311,11 @@
                     </button>
                 </div>
                 <div class="flex items-center gap-3">
+                    <button onclick="toggleNotifPanel()" class="relative text-gray-400 p-1 hover:text-orange-400 transition" id="notif-bell-mobile">
+                        <i data-lucide="bell" class="w-4 h-4"></i>
+                        <span id="notif-badge-new-mobile" class="hidden absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-orange-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5"></span>
+                        <span id="notif-badge-rework-mobile" class="hidden absolute -top-1 -left-1 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5"></span>
+                    </button>
                     <button onclick="syncLedgerEngine(true)" class="text-orange-400 p-1 flex items-center gap-1 font-bold bg-orange-500/10 rounded-lg px-2 border border-orange-500/20 transition-all duration-200" title="Force Sync Matrix Data">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync
                     </button>
@@ -1097,6 +1121,7 @@
         let activeChatRoom = CHAT_GROUP_ROOM;       // 'group_room' or a DM room key
         let activeChatPeer = null;                  // the other user's roster object, when in a DM
         let chatMessages = [];                       // messages currently loaded for activeChatRoom
+        let unreadCounts = {};                       // { roomKey: count } unread per room
         let chatRoomsChannel = null;                  // realtime channel for message inserts
         let presenceChannel = null;                   // realtime presence channel
         let onlinePresenceMap = {};                    // email -> true while online
@@ -1327,6 +1352,7 @@
                     renderHistoryTable();
                     renderSettingsRoster();
                     renderLogFeed();
+                    checkForNewNotifications();
                     if (activeRole === 'employee' || activeRole === 'manager') refreshAttendanceClockCard();
                     if (activeRole === 'employee') renderEmployeeNotificationBar();
                     if (!document.getElementById('tab-content-chat').classList.contains('hidden')) {
@@ -1491,6 +1517,14 @@
                 syncAllLogsToSheet();
                 syncMonthlyReportToSheet();
             }
+
+            // Load notifications for this user
+            loadNotifs();
+            renderNotifBadges();
+            requestBrowserNotifPermission();
+
+            // Auto-delete chat messages older than 7 days (runs for everyone)
+            autoDeleteOldChatMessages();
         }
 
         function renderEmployeeNotificationBar() {
@@ -2988,6 +3022,10 @@
 
             if (!isMine && (!isForActiveRoom || !isChatTabVisible)) {
                 showChatUnreadDot();
+                // Track per-room unread
+                const roomKey = msg.room;
+                unreadCounts[roomKey] = (unreadCounts[roomKey] || 0) + 1;
+                renderChatContacts();
             }
         }
 
@@ -3006,6 +3044,7 @@
             list.innerHTML = '';
 
             const isGroupActive = activeChatRoom === CHAT_GROUP_ROOM;
+            const groupUnread = unreadCounts[CHAT_GROUP_ROOM] || 0;
             list.innerHTML += `
                 <button onclick="openChatRoom('group')" class="sidebar-link ${isGroupActive ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition">
                     <div class="w-9 h-9 rounded-full brand-gradient flex items-center justify-center text-white shrink-0">
@@ -3015,6 +3054,7 @@
                         <p class="text-xs font-bold text-white truncate">Studio Group Room</p>
                         <p class="text-[10px] text-gray-500">Everyone in the studio</p>
                     </div>
+                    ${groupUnread > 0 ? `<span class="shrink-0 min-w-[18px] h-[18px] rounded-full brand-gradient text-white text-[9px] font-bold flex items-center justify-center px-1">${groupUnread > 99 ? '99+' : groupUnread}</span>` : ''}
                 </button>
                 <div class="px-3 pt-3 pb-1 text-[10px] text-gray-500 uppercase font-bold tracking-wider">Direct Messages</div>
             `;
@@ -3051,6 +3091,9 @@
                     }
                 }
 
+                const dmRoomKey = buildDmRoomKey(activeEmail, u.email);
+                const dmUnread = unreadCounts[dmRoomKey] || 0;
+
                 list.innerHTML += `
                     <button onclick='openChatRoom("dm", ${JSON.stringify(u.email)})' class="sidebar-link ${isActiveDm ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition">
                         <div class="relative shrink-0">
@@ -3063,6 +3106,7 @@
                             <p class="text-xs font-bold text-white truncate">${u.name}</p>
                             <p class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} truncate">${statusLabel} · ${u.role}</p>
                         </div>
+                        ${dmUnread > 0 ? `<span class="shrink-0 min-w-[18px] h-[18px] rounded-full brand-gradient text-white text-[9px] font-bold flex items-center justify-center px-1">${dmUnread > 99 ? '99+' : dmUnread}</span>` : ''}
                     </button>
                 `;
             });
@@ -3120,7 +3164,9 @@
             // Record that current user has now "seen" this room up to now
             const nowIso = new Date().toISOString();
             myRoomOpenedAt[activeChatRoom] = nowIso;
-            persistMyRoomOpened(); // save to localStorage so it survives refresh
+            persistMyRoomOpened();
+            // Clear unread for this room
+            unreadCounts[activeChatRoom] = 0;
 
             // Broadcast updated last-seen via presence
             if (presenceChannel) {
@@ -3273,6 +3319,9 @@
         }
 
         function renderChatMessages() {
+            // Don't rebuild DOM while a voice message is playing — it destroys the audio element
+            if (document.querySelector('audio:not([paused])') || [...document.querySelectorAll('audio')].some(a => !a.paused)) return;
+
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
             if (chatMessages.length === 0) {
@@ -5233,6 +5282,141 @@
             ctx.quadraticCurveTo(x, y, x + r, y);
             ctx.closePath();
             ctx.fill();
+        }
+
+        // ============================================================
+        // NOTIFICATION ENGINE
+        // ============================================================
+        let notifications = [];  // { id, type:'new'|'rework', topic, assignedTo, time, read }
+
+        function loadNotifs() {
+            try { notifications = JSON.parse(localStorage.getItem(`be_notifs_${activeEmail}`) || '[]'); } catch(e) { notifications = []; }
+        }
+        function saveNotifs() {
+            localStorage.setItem(`be_notifs_${activeEmail}`, JSON.stringify(notifications.slice(0, 100)));
+        }
+        function addNotif(type, topic, assignedTo) {
+            notifications.unshift({ id: Date.now(), type, topic, assignedTo, time: new Date().toISOString(), read: false });
+            saveNotifs();
+            renderNotifBadges();
+            renderNotifList();
+        }
+        function renderNotifBadges() {
+            const newCount = notifications.filter(n => !n.read && n.type === 'new').length;
+            const reworkCount = notifications.filter(n => !n.read && n.type === 'rework').length;
+
+            ['notif-badge-new', 'notif-badge-new-mobile'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (newCount > 0) { el.textContent = newCount > 99 ? '99+' : newCount; el.classList.remove('hidden'); }
+                else el.classList.add('hidden');
+            });
+            ['notif-badge-rework', 'notif-badge-rework-mobile'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (reworkCount > 0) { el.textContent = reworkCount > 99 ? '99+' : reworkCount; el.classList.remove('hidden'); }
+                else el.classList.add('hidden');
+            });
+        }
+        function renderNotifList() {
+            const list = document.getElementById('notif-list');
+            if (!list) return;
+            if (notifications.length === 0) {
+                list.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No notifications yet.</p>`;
+                return;
+            }
+            list.innerHTML = notifications.map(n => {
+                const isNew = n.type === 'new';
+                const timeAgo = formatLastSeen(n.time).replace('last seen ', '');
+                return `<div class="flex items-start gap-3 px-4 py-3 ${n.read ? 'opacity-60' : ''} hover:bg-[#1a1e36] transition cursor-pointer" onclick="markNotifRead(${n.id})">
+                    <div class="w-8 h-8 rounded-full ${isNew ? 'bg-orange-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5">
+                        <i data-lucide="${isNew ? 'plus-circle' : 'refresh-cw'}" class="w-4 h-4 ${isNew ? 'text-orange-400' : 'text-red-400'}"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-white">${isNew ? '🆕 New task assigned' : '🔄 Rework required'}</p>
+                        <p class="text-[11px] text-gray-300 truncate">${n.topic}</p>
+                        <p class="text-[10px] text-gray-500 mt-0.5">${timeAgo}</p>
+                    </div>
+                    ${!n.read ? `<div class="w-2 h-2 rounded-full ${isNew ? 'bg-orange-500' : 'bg-red-500'} shrink-0 mt-1.5"></div>` : ''}
+                </div>`;
+            }).join('');
+            lucide.createIcons();
+        }
+        function markNotifRead(id) {
+            const n = notifications.find(x => x.id === id);
+            if (n) { n.read = true; saveNotifs(); renderNotifBadges(); renderNotifList(); }
+        }
+        function markAllNotifsRead() {
+            notifications.forEach(n => n.read = true);
+            saveNotifs(); renderNotifBadges(); renderNotifList();
+        }
+        function toggleNotifPanel() {
+            const panel = document.getElementById('notif-panel');
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                renderNotifList();
+                lucide.createIcons();
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+        function closeNotifPanel() {
+            document.getElementById('notif-panel')?.classList.add('hidden');
+        }
+
+        // Watch assignmentsList for new tasks / rework assigned to me
+        let _lastKnownTaskIds = new Set();
+        let _lastKnownStatuses = {};
+        function checkForNewNotifications() {
+            if (!activeEmail || !activeUser) return;
+            const myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
+            myTasks.forEach(t => {
+                const idStr = String(t.id);
+                if (!_lastKnownTaskIds.has(idStr)) {
+                    // Brand new task
+                    if (_lastKnownTaskIds.size > 0) { // skip first load
+                        addNotif('new', t.topic, t.assignedBy || 'Admin');
+                        sendBrowserNotif(`New task assigned: ${t.topic}`, `Assigned by ${t.assignedBy || 'Admin'}`);
+                    }
+                    _lastKnownTaskIds.add(idStr);
+                    _lastKnownStatuses[idStr] = t.status;
+                } else {
+                    const prev = _lastKnownStatuses[idStr];
+                    if (prev !== 'Rework Required' && t.status === 'Rework Required') {
+                        addNotif('rework', t.topic, t.assignedBy || 'Manager');
+                        sendBrowserNotif(`Rework required: ${t.topic}`, 'Please review the feedback.');
+                    }
+                    _lastKnownStatuses[idStr] = t.status;
+                }
+            });
+        }
+
+        // ── BROWSER PUSH NOTIFICATIONS ──
+        async function requestBrowserNotifPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                await Notification.requestPermission();
+            }
+        }
+        function sendBrowserNotif(title, body) {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            new Notification(title, { body, icon: 'Broken English Final Logo-02 (1).png' });
+        }
+
+        // ── CHAT AUTO-DELETE (messages older than 7 days) ──
+        async function autoDeleteOldChatMessages() {
+            try {
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - 7);
+                const cutoffIso = cutoff.toISOString();
+                const { error } = await dbInstance
+                    .from('chat_messages')
+                    .delete()
+                    .lt('created_at', cutoffIso);
+                if (error) console.warn('Chat auto-delete error:', error.message);
+                else console.log('Chat auto-delete ran. Cutoff:', cutoffIso);
+            } catch(e) {
+                console.warn('Chat auto-delete failed:', e.message);
+            }
         }
 
         window.addEventListener('DOMContentLoaded', () => {
