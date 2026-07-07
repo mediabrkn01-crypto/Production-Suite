@@ -1487,7 +1487,12 @@
         async function syncLedgerEngine(forcedByUser = false) {
             try {
                 const { data: users, error: errU } = await dbInstance.from('user_roster').select('*');
-                if (!errU && users) userRoster = users;
+                if (!errU && users) {
+                    userRoster = users;
+                    populateDropdownSelectors();
+                } else if (errU) {
+                    console.error('[BE] user_roster fetch error:', errU);
+                }
 
                 const { data: tasks, error: errT } = await dbInstance.from('assignments').select('*');
                 if (!errT && tasks) {
@@ -2023,8 +2028,10 @@
         function populateDropdownSelectors() {
             const empDropdown = document.getElementById('task-assigned-employee');
             if(!empDropdown) return;
-            empDropdown.innerHTML = '<option value="">-- Select Creator / Profile --</option>';
-            userRoster.forEach(u => {
+            empDropdown.innerHTML = '<option value="">-- Select Employee --</option>';
+            const assignable = userRoster.filter(u => u.role !== 'admin');
+            const list = assignable.length > 0 ? assignable : userRoster;
+            list.forEach(u => {
                 empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.role})</option>`;
             });
         }
