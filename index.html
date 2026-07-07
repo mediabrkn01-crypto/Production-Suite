@@ -299,7 +299,7 @@
                     <textarea id="delivery-url-input" placeholder="Paste links here. (Separate multiple links with commas)" rows="2" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500 resize-none transition-all duration-200"></textarea>
                 </div>
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Video or Image Assets (Up to 50MB each)</label>
+                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Video or Image Assets (Up to 25MB each — larger files fail silently)</label>
                     <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30" multiple onchange="handleDeliveryFilesSelect()">
                     <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1.5 max-h-32 overflow-y-auto"></div>
                     <p class="text-[10px] text-gray-500 italic mt-1">Click choose files multiple times to accumulate items. Assets route straight to Google Drive.</p>
@@ -2373,8 +2373,8 @@
 
                 // Check all file sizes first
                 for (const f of deliveryFilesQueue) {
-                    if (f.size > 60 * 1024 * 1024) {
-                        alert(`File "${f.name}" exceeds the 60MB safety upload limit guidelines.`);
+                    if (f.size > 25 * 1024 * 1024) {
+                        alert(`File "${f.name}" is too large (${(f.size/1024/1024).toFixed(1)}MB). Google Drive uploads are capped at 25MB per file — base64 encoding inflates the transfer size, and larger files get silently rejected by the upload service. Please compress the file or use the External URL Link option instead.`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
@@ -2391,7 +2391,7 @@
                     } catch (uploadError) {
                         console.error("Drive Upload Error: ", uploadError);
                         setUploadProgress(null);
-                        alert(`Storage Error: Failed to push file "${deliveryFilesQueue[0].name}" into Google Drive.`);
+                        alert(`Storage Error: Failed to push file "${deliveryFilesQueue[0].name}" into Google Drive.\n\nReason: ${uploadError.message || 'Unknown error — check console for details.'}`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
@@ -2406,7 +2406,7 @@
                     } catch (uploadError) {
                         console.error("Drive Folder Upload Error: ", uploadError);
                         setUploadProgress(null);
-                        alert(`Storage Error: Failed to push files into Google Drive folder.`);
+                        alert(`Storage Error: Failed to push files into Google Drive folder.\n\nReason: ${uploadError.message || 'Unknown error — check console for details.'}`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
@@ -4509,8 +4509,8 @@
             if (!fileInput || !fileInput.files.length) return;
             const file = fileInput.files[0];
 
-            if (file.size > 60 * 1024 * 1024) {
-                alert(`File "${file.name}" exceeds the 60MB upload limit.`);
+            if (file.size > 25 * 1024 * 1024) {
+                alert(`File "${file.name}" is too large (${(file.size/1024/1024).toFixed(1)}MB). Upload cap is 25MB per file. Please compress or use External URL Link instead.`);
                 fileInput.value = '';
                 return;
             }
