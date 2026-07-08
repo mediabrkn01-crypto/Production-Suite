@@ -1243,6 +1243,48 @@
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log('%c[BE Studio Suite] Build: 2026-07-07-clockfix-v2', 'color:#FF4B2B;font-weight:bold;font-size:14px;');
 
+        // ── Custom Alert / Confirm Modal System (replaces native browser dialogs) ──
+        function _beModalShow({ message, okText = 'OK', showCancel = false, cancelText = 'Cancel', danger = false }) {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('be-modal-overlay');
+                const msgEl = document.getElementById('be-modal-message');
+                const okBtn = document.getElementById('be-modal-ok-btn');
+                const cancelBtn = document.getElementById('be-modal-cancel-btn');
+                const iconWrap = document.getElementById('be-modal-icon-wrap');
+                if (!overlay) { resolve(true); return; }
+
+                msgEl.textContent = message;
+                okBtn.textContent = okText;
+                cancelBtn.textContent = cancelText;
+                cancelBtn.classList.toggle('hidden', !showCancel);
+                okBtn.className = showCancel
+                    ? (danger
+                        ? 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide bg-red-600 hover:bg-red-700 text-white transition active:scale-95'
+                        : 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95')
+                    : 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95';
+                iconWrap.className = danger
+                    ? 'shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-red-500/10 flex items-center justify-center'
+                    : 'shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-orange-500/10 flex items-center justify-center';
+
+                overlay.classList.remove('hidden');
+                if (window.lucide) lucide.createIcons();
+
+                const cleanup = (result) => {
+                    overlay.classList.add('hidden');
+                    okBtn.onclick = null;
+                    cancelBtn.onclick = null;
+                    resolve(result);
+                };
+                okBtn.onclick = () => cleanup(true);
+                cancelBtn.onclick = () => cleanup(false);
+            });
+        }
+        function beAlert(message) { return _beModalShow({ message, showCancel: false }); }
+        function beConfirm(message, danger = false) { return _beModalShow({ message, showCancel: true, okText: 'OK', danger }); }
+        // Override native alert globally so every existing alert('...') call in the app
+        // automatically uses the branded modal instead of the browser's default dialog.
+        window.alert = beAlert;
+
         let activeUser = localStorage.getItem('be_active_user') || null;
         let activeRole = localStorage.getItem('be_active_role') || null; 
         let activeEmail = localStorage.getItem('be_active_email') || null;
@@ -2088,7 +2130,7 @@
         }
 
         async function removeUser(index) {
-            if(confirm("Wipe account profile key database rows mapping completely?")) {
+            if(await beConfirm("Wipe account profile key database rows mapping completely?", true)) {
                 const targetUser = userRoster[index];
                 
                 const { error } = await dbInstance
@@ -2517,7 +2559,7 @@
         }
 
         async function deleteAssignment(id) {
-            if(confirm("Delete this pipeline entity row item completely?")) {
+            if(await beConfirm("Delete this pipeline entity row item completely?", true)) {
                 await dbInstance.from('assignments').delete().eq('id', id);
                 await syncLedgerEngine(false);
                 syncTasksToSheet();
@@ -4488,7 +4530,7 @@
 
             } else if (mode === 'everyone') {
                 if (!isMine && activeRole !== 'admin') { alert('You can only delete your own messages.'); return; }
-                if (!confirm('Delete this message for everyone? This cannot be undone.')) return;
+                if (!await beConfirm('Delete this message for everyone? This cannot be undone.', true)) return;
 
                 const { error } = await dbInstance.from('chat_messages').delete().eq('id', messageId);
                 if (error) {
@@ -4884,18 +4926,18 @@
 
         // ── APPROVAL ACTIONS (manager + social media) ──
         // Confirmation wrappers to prevent accidental mis-taps
-        function confirmApprove(id) {
+        async function confirmApprove(id) {
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
-            if (confirm(`Approve "${task.topic}"?\n\nThis sends it to Social Media for posting.`)) {
+            if (await beConfirm(`Approve "${task.topic}"?\n\nThis sends it to Social Media for posting.`)) {
                 managerApproveTask(id);
             }
         }
 
-        function confirmSocialPost(id) {
+        async function confirmSocialPost(id) {
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
-            if (confirm(`Approve & Post "${task.topic}"?\n\nThis marks it as published and moves it to your History.`)) {
+            if (await beConfirm(`Approve & Post "${task.topic}"?\n\nThis marks it as published and moves it to your History.`)) {
                 socialApproveTask(id);
             }
         }
@@ -6244,5 +6286,23 @@
     </div>
 
 
+    <!-- Custom Alert / Confirm Modal (replaces native browser dialogs) -->
+    <div id="be-modal-overlay" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div id="be-modal-box" class="bg-[#121424] border border-orange-500/30 rounded-2xl shadow-2xl shadow-black/60 w-full max-w-sm sm:max-w-md p-4 sm:p-6 space-y-3 sm:space-y-4">
+            <div class="flex items-start gap-3">
+                <div id="be-modal-icon-wrap" class="shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 sm:w-5 sm:h-5 text-orange-400"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <p id="be-modal-title" class="text-white font-bold text-sm sm:text-base leading-snug">Notice</p>
+                    <p id="be-modal-message" class="text-gray-400 text-xs sm:text-sm mt-1 leading-relaxed whitespace-pre-line break-words"></p>
+                </div>
+            </div>
+            <div id="be-modal-actions" class="flex items-center justify-end gap-2 pt-1 sm:pt-2">
+                <button id="be-modal-cancel-btn" class="hidden px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wide bg-[#1e2238] hover:bg-[#2a2f4a] text-gray-300 transition active:scale-95">Cancel</button>
+                <button id="be-modal-ok-btn" class="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95">OK</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
