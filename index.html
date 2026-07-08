@@ -299,7 +299,7 @@
                     <textarea id="delivery-url-input" placeholder="Paste links here. (Separate multiple links with commas)" rows="2" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500 resize-none transition-all duration-200"></textarea>
                 </div>
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Video or Image Assets (Up to 50MB each)</label>
+                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Video or Image Assets (Up to 1GB each)</label>
                     <input type="file" id="delivery-file-input" accept="image/*,video/*" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30" multiple onchange="handleDeliveryFilesSelect()">
                     <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1.5 max-h-32 overflow-y-auto"></div>
                     <p class="text-[10px] text-gray-500 italic mt-1">Click choose files multiple times to accumulate items. Assets route straight to Google Drive.</p>
@@ -1455,65 +1455,84 @@
             lbl.innerText = p + '%';
         }
 
-        // POST via real XHR — upload.onprogress gives true bytes-sent %
-        // Google Apps Script blocks XHR preflight — must use fetch (no custom headers).
-        // Progress is simulated via FileReader.onprogress reading the base64 payload,
-        // which is the real bottleneck (encoding a 40MB file takes measurable time).
-        async function xhrPostWithProgress(payload) {
-            // Animate progress based on body size — phases:
-            // 0-40%: encoding already done by caller, simulate encode phase
-            // 40-90%: network transit (ease-to-90 fake, same as before)
-            // 90-100%: server processing → fires on response
-            setUploadProgress(0);
-
-            // Kick off a smooth animated progress that eases to 88% while fetch runs
-            let _animPct = 2;
-            let _animFrame;
-            const animStep = () => {
-                _animPct += Math.max(0.3, (88 - _animPct) * 0.025);
-                if (_animPct > 88) _animPct = 88;
-                setUploadProgress(_animPct);
-                _animFrame = requestAnimationFrame(animStep);
-            };
-            _animFrame = requestAnimationFrame(animStep);
-
-            try {
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify(payload)
-                });
-                cancelAnimationFrame(_animFrame);
-                setUploadProgress(100);
-                setTimeout(() => setUploadProgress(null), 500);
-                const data = await response.json();
-                return data;
-            } catch (err) {
-                cancelAnimationFrame(_animFrame);
-                setUploadProgress(null);
-                    throw err;
-            }
-        }
-
-
-
-
         let _fakeTimer = null;
         function startFakeProgress() { setUploadProgress(0); }
         function stopFakeProgress() { setUploadProgress(100); setTimeout(() => setUploadProgress(null), 400); }
 
-        async function uploadToGoogleDrive(file) {
-            const base64Data = await fileToBase64(file);
-            setUploadProgress(0);
-            const resData = await xhrPostWithProgress({
-                fileName: file.name,
-                mimeType: file.type,
-                base64: base64Data
+        // ── Chunked resumable upload (handles files up to 1GB+, avoids Apps Script's
+        //    request-size cap by sending small sequential chunks instead of one big base64 blob) ──
+        const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk (must be multiple of 256KB per Drive API spec)
+
+        function readFileChunkAsBase64(file, start, end) {
+            return new Promise((resolve, reject) => {
+                const blob = file.slice(start, end);
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result.split(',')[1]);
+                reader.onerror = () => reject(new Error('Chunk read failed'));
+                reader.readAsDataURL(blob);
             });
-            if (resData.success) return resData.fileUrl;
-            throw new Error(resData.error || 'Apps Script Core Error');
         }
 
-        // Read a file as base64 (helper for folder upload)
+        // Uploads a single file via chunked resumable protocol.
+        // onProgress(pct) is called after every chunk with overall percent complete.
+        async function uploadFileChunked(file, folderBatchId, folderName, onProgress) {
+            const startResp = await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'startUpload',
+                    fileName: file.name,
+                    mimeType: file.type || 'application/octet-stream',
+                    fileSize: file.size,
+                    folderBatchId: folderBatchId || undefined,
+                    folderName: folderName || undefined
+                })
+            }).then(r => r.json());
+
+            if (!startResp.success) throw new Error(startResp.error || 'Could not start upload session');
+            const uploadId = startResp.uploadId;
+
+            const total = file.size;
+            let start = 0;
+            let lastResult = null;
+
+            while (start < total) {
+                const end = Math.min(start + UPLOAD_CHUNK_SIZE, total);
+                const isLast = end >= total;
+                const chunkBase64 = await readFileChunkAsBase64(file, start, end);
+
+                const chunkResp = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'uploadChunk',
+                        uploadId,
+                        chunkBase64,
+                        start,
+                        end: end - 1,
+                        total,
+                        isLast
+                    })
+                }).then(r => r.json());
+
+                if (!chunkResp.success) throw new Error(chunkResp.error || 'Chunk upload failed');
+                lastResult = chunkResp;
+
+                start = end;
+                if (onProgress) onProgress(Math.round((start / total) * 100));
+            }
+
+            return lastResult; // { success, done: true, fileUrl, fileName }
+        }
+
+        async function uploadToGoogleDrive(file) {
+            setUploadProgress(0);
+            const result = await uploadFileChunked(file, null, null, (pct) => setUploadProgress(pct));
+            setUploadProgress(100);
+            setTimeout(() => setUploadProgress(null), 500);
+            if (result && result.fileUrl) return result.fileUrl;
+            throw new Error('Upload did not complete');
+        }
+
+        // Read a file as base64 (kept for legacy small-file paths, e.g. profile photos/attachments)
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -1523,17 +1542,33 @@
             });
         }
 
-        // Upload multiple files into ONE Drive folder, returns the folder link
+        // Upload multiple files into ONE Drive folder (each file chunked), returns the folder link
         async function uploadFolderToDrive(filesArray, folderName) {
-            const files = [];
-            for (const f of filesArray) {
-                const base64 = await fileToBase64(f);
-                files.push({ fileName: f.name, mimeType: f.type, base64 });
-            }
+            const folderBatchId = 'batch_' + Date.now() + '_' + Math.random().toString(36).slice(2);
             setUploadProgress(0);
-            const resData = await xhrPostWithProgress({ action: 'uploadFolder', folderName, files });
-            if (resData.success) return resData.folderUrl;
-            throw new Error(resData.error || 'Folder upload failed');
+
+            const totalBytes = filesArray.reduce((sum, f) => sum + f.size, 0);
+            let bytesDoneSoFar = 0;
+
+            for (const f of filesArray) {
+                await uploadFileChunked(f, folderBatchId, folderName, (pctOfThisFile) => {
+                    const doneForThisFile = (pctOfThisFile / 100) * f.size;
+                    const overallPct = Math.round(((bytesDoneSoFar + doneForThisFile) / totalBytes) * 100);
+                    setUploadProgress(overallPct);
+                });
+                bytesDoneSoFar += f.size;
+            }
+
+            const finalizeResp = await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'finalizeFolder', folderBatchId })
+            }).then(r => r.json());
+
+            setUploadProgress(100);
+            setTimeout(() => setUploadProgress(null), 500);
+
+            if (finalizeResp.success) return finalizeResp.folderUrl;
+            throw new Error(finalizeResp.error || 'Folder upload failed to finalize');
         }
 
         async function syncLedgerEngine(forcedByUser = false) {
@@ -2416,8 +2451,8 @@
 
                 // Check all file sizes first
                 for (const f of deliveryFilesQueue) {
-                    if (f.size > 60 * 1024 * 1024) {
-                        alert(`File "${f.name}" exceeds the 60MB safety upload limit guidelines.`);
+                    if (f.size > 1024 * 1024 * 1024) {
+                        alert(`File "${f.name}" exceeds the 1GB upload limit.`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
@@ -4552,8 +4587,8 @@
             if (!fileInput || !fileInput.files.length) return;
             const file = fileInput.files[0];
 
-            if (file.size > 60 * 1024 * 1024) {
-                alert(`File "${file.name}" exceeds the 60MB upload limit.`);
+            if (file.size > 1024 * 1024 * 1024) {
+                alert(`File "${file.name}" exceeds the 1GB upload limit.`);
                 fileInput.value = '';
                 return;
             }
