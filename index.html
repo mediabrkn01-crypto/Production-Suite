@@ -821,14 +821,6 @@
                                 <p id="chat-thread-title" class="text-sm font-bold text-white truncate">Studio Group Room</p>
                                 <p id="chat-thread-subtitle" class="text-[10px] text-gray-500">Everyone in the studio</p>
                             </div>
-                            <div id="chat-call-buttons" class="hidden items-center gap-1 shrink-0">
-                                <button onclick="startCall(activeChatPeer.email, activeChatPeer.name, 'audio')" title="Audio call" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl transition-colors">
-                                    <i data-lucide="phone" class="w-4 h-4"></i>
-                                </button>
-                                <button onclick="startCall(activeChatPeer.email, activeChatPeer.name, 'video')" title="Video call" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl transition-colors">
-                                    <i data-lucide="video" class="w-4 h-4"></i>
-                                </button>
-                            </div>
                             <button onclick="openChatSettingsPanel()" title="Chat settings" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
                                 <i data-lucide="settings" class="w-4 h-4"></i>
                             </button>
@@ -3329,7 +3321,11 @@
         // ============================================================
 
         function buildDmRoomKey(emailA, emailB) {
-            return [emailA, emailB].sort().join('__');
+            // Lowercase both emails before sorting — without this, two users whose
+            // login-typed casing differs from their roster's stored casing could each
+            // compute a DIFFERENT room key string, silently breaking "seen" lookups
+            // (delivered tick would work, but it could never flip to the seen color).
+            return [(emailA || '').toLowerCase(), (emailB || '').toLowerCase()].sort().join('__');
         }
 
         function initChatSystem() {
@@ -4583,6 +4579,10 @@
             }
             const starred = getStarredMsgs();
             const scrollBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+            // Preserve exact reading position even when NOT at the bottom — innerHTML=''
+            // resets scrollTop to 0, which previously made the view jump to the oldest
+            // messages whenever a new message arrived while the user was scrolled up.
+            const distanceFromBottom = container.scrollHeight - container.scrollTop;
 
             container.innerHTML = '';
             let _lastDateLabel = null;
@@ -4689,7 +4689,12 @@
                     </div>`;
             });
 
-            if (scrollBottom) container.scrollTop = container.scrollHeight;
+            if (scrollBottom) {
+                container.scrollTop = container.scrollHeight;
+            } else if (container._hasRendered) {
+                // Restore the same relative scroll position instead of snapping to top
+                container.scrollTop = container.scrollHeight - distanceFromBottom;
+            }
 
             // Wire up scroll-to-bottom floating button (WhatsApp/Telegram style)
             if (!container._scrollBtnWired) {
