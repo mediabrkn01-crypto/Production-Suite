@@ -114,11 +114,14 @@
             background-color: #1a1e36;
             clip-path: polygon(100% 0, 0 100%, 100% 100%);
         }
-        /* Chat wallpaper texture — subtle brand-tinted dot pattern, WhatsApp-style */
+        /* Chat wallpaper texture — brand-tinted layered dot pattern, WhatsApp-style */
         #chat-messages-container {
             background-color: #0e1020;
-            background-image: radial-gradient(rgba(253, 109, 5, 0.035) 1px, transparent 1px);
-            background-size: 22px 22px;
+            background-image:
+                radial-gradient(rgba(253, 109, 5, 0.09) 1.5px, transparent 1.5px),
+                radial-gradient(rgba(255, 45, 120, 0.05) 1px, transparent 1px);
+            background-size: 24px 24px, 24px 24px;
+            background-position: 0 0, 12px 12px;
         }
         /* Date separator pill */
         .chat-date-separator {
@@ -808,8 +811,11 @@
                             <button onclick="chatBackToContacts()" class="md:hidden text-gray-400 hover:text-white p-1 -ml-1">
                                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
                             </button>
-                            <div class="w-9 h-9 rounded-full brand-gradient flex items-center justify-center text-white font-bold text-xs shrink-0">
-                                <i data-lucide="users" class="w-4 h-4"></i>
+                            <div id="chat-thread-avatar-wrap" class="relative shrink-0">
+                                <div id="chat-thread-avatar" class="w-9 h-9 rounded-full brand-gradient flex items-center justify-center text-white font-bold text-xs">
+                                    <i data-lucide="users" class="w-4 h-4"></i>
+                                </div>
+                                <span id="chat-thread-online-dot" class="hidden absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full online-dot"></span>
                             </div>
                             <div class="min-w-0 flex-1">
                                 <p id="chat-thread-title" class="text-sm font-bold text-white truncate">Studio Group Room</p>
@@ -3358,7 +3364,7 @@
                     renderChatContacts();
                     updateThreadOnlineStatus();
                     updateTypingIndicator();
-                    // Tick status updates on next natural render — don't force here (disrupts audio)
+                    refreshMessageTicks(); // lightweight targeted update — doesn't touch audio elements
                 })
                 .subscribe(async (status) => {
                     if (status === 'SUBSCRIBED') {
@@ -4082,7 +4088,10 @@
             if (!activeChatPeer) return;
             const isOnline = !!onlinePresenceMap[activeChatPeer.email];
             const subtitleEl = document.getElementById('chat-thread-subtitle');
+            const dotEl = document.getElementById('chat-thread-online-dot');
             if (!subtitleEl) return;
+
+            if (dotEl) dotEl.classList.toggle('hidden', !isOnline);
 
             if (isOnline) {
                 subtitleEl.innerHTML = `<span class="text-emerald-400">● Online</span>`;
@@ -4112,21 +4121,31 @@
             clearPendingAttachment();
 
             const callBtnsEl = document.getElementById('chat-call-buttons');
+            const avatarEl = document.getElementById('chat-thread-avatar');
             if (kind === 'group') {
                 activeChatRoom = CHAT_GROUP_ROOM;
                 activeChatPeer = null;
                 document.getElementById('chat-thread-title').innerText = 'Studio Group Room';
                 document.getElementById('chat-thread-subtitle').innerHTML = `<span class="text-gray-500">Everyone in the studio</span>`;
                 if (callBtnsEl) callBtnsEl.classList.add('hidden');
+                if (avatarEl) avatarEl.innerHTML = '<i data-lucide="users" class="w-4 h-4"></i>';
+                document.getElementById('chat-thread-online-dot')?.classList.add('hidden');
             } else {
                 const peer = userRoster.find(u => u.email === peerEmail);
                 if (!peer) return;
                 activeChatPeer = peer;
                 activeChatRoom = buildDmRoomKey(activeEmail, peerEmail);
                 document.getElementById('chat-thread-title').innerText = peer.name;
+                if (avatarEl) {
+                    const initials = peer.name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
+                    avatarEl.innerHTML = peer.avatar
+                        ? `<img src="${peer.avatar}" class="w-full h-full rounded-full object-cover">`
+                        : `<span>${initials}</span>`;
+                }
                 updateThreadOnlineStatus();
                 if (callBtnsEl) { callBtnsEl.classList.remove('hidden'); callBtnsEl.classList.add('flex'); }
             }
+            if (window.lucide) lucide.createIcons();
 
             // Clear unread for this room (always, local-only, not privacy related)
             unreadCounts[activeChatRoom] = 0;
@@ -4189,6 +4208,20 @@
             const hiddenIds = getHiddenMsgIds();
             chatMessages = (data || []).filter(m => !hiddenIds.includes(String(m.id)));
             renderChatMessages();
+        }
+
+        // Lightweight tick refresh — updates ONLY the tick spans of my own messages
+        // (sent/delivered/seen) without rebuilding the whole message list, so audio
+        // playback and scroll position are never disrupted. Called on every presence sync.
+        function refreshMessageTicks() {
+            if (!chatMessages || chatMessages.length === 0) return;
+            chatMessages.forEach(m => {
+                if ((m.sender_email || '').toLowerCase() !== (activeEmail || '').toLowerCase()) return;
+                const wrap = document.getElementById(`tick-wrap-${m.id}`);
+                if (!wrap) return;
+                wrap.innerHTML = getMsgTickHtml(m);
+            });
+            if (window.lucide) lucide.createIcons();
         }
 
         function getMsgTickHtml(m) {
@@ -4557,7 +4590,7 @@
                                 ${deleteMenu}
                             </div>
                             ${reactionsHtml}
-                            <p class="text-[9px] text-gray-500 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}${isStarred ? ' ⭐' : ''}${tickHtml}</p>
+                            <p class="text-[9px] text-gray-500 px-1 ${isMine ? 'text-right' : 'text-left'}">${timeLabel}${isStarred ? ' ⭐' : ''}<span id="tick-wrap-${m.id}">${tickHtml}</span></p>
                         </div>
                         ${isMine ? actionMenu : ''}
                     </div>`;
@@ -4686,7 +4719,7 @@
         let _typingTimeout = null;
         function broadcastTyping() {
             if (!presenceChannel) return;
-            presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: activeChatRoom });
+            presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: activeChatRoom, isRecording: null });
             clearTimeout(_typingTimeout);
             _typingTimeout = setTimeout(stopTypingBroadcast, 3000);
         }
@@ -4695,19 +4728,52 @@
             if (!presenceChannel) return;
             presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: null });
         }
+        function broadcastRecording() {
+            if (!presenceChannel) return;
+            presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: null, isRecording: activeChatRoom });
+        }
+        function stopRecordingBroadcast() {
+            if (!presenceChannel) return;
+            presenceChannel.track({ name: activeUser, email: activeEmail, role: activeRole, online_at: new Date().toISOString(), lastSeen: myRoomOpenedAt, isTyping: null, isRecording: null });
+        }
         function updateTypingIndicator() {
             const el = document.getElementById('chat-typing-indicator');
             const txt = document.getElementById('chat-typing-text');
-            if (!el || !txt) return;
+            const subtitleEl = document.getElementById('chat-thread-subtitle');
             const state = presenceChannel ? presenceChannel.presenceState() : {};
+
+            const recorders = Object.keys(state)
+                .filter(k => k !== activeEmail)
+                .map(k => state[k][0])
+                .filter(p => p && p.isRecording === activeChatRoom)
+                .map(p => p.name);
             const typers = Object.keys(state)
                 .filter(k => k !== activeEmail)
                 .map(k => state[k][0])
                 .filter(p => p && p.isTyping === activeChatRoom)
                 .map(p => p.name);
-            if (typers.length === 0) { el.classList.add('hidden'); return; }
-            el.classList.remove('hidden');
-            txt.textContent = typers.length === 1 ? `${typers[0]} is typing...` : `${typers.slice(0,-1).join(', ')} and ${typers.at(-1)} are typing...`;
+
+            let activityText = '';
+            if (recorders.length > 0) {
+                activityText = recorders.length === 1 ? `🎤 ${recorders[0]} is recording...` : `🎤 ${recorders.length} people recording...`;
+            } else if (typers.length > 0) {
+                activityText = typers.length === 1 ? `${typers[0]} is typing...` : `${typers.slice(0,-1).join(', ')} and ${typers.at(-1)} are typing...`;
+            }
+
+            // In-thread indicator strip (existing behavior)
+            if (el && txt) {
+                if (activityText) { el.classList.remove('hidden'); txt.textContent = activityText; }
+                else { el.classList.add('hidden'); }
+            }
+
+            // Top-of-view header subtitle — WhatsApp/Telegram-style live activity replaces "Online"
+            if (subtitleEl && activeChatPeer) {
+                if (activityText) {
+                    subtitleEl.innerHTML = `<span class="text-orange-400">${activityText}</span>`;
+                } else {
+                    updateThreadOnlineStatus(); // restore normal Online/Offline text
+                }
+            }
         }
 
         const EMOJI_CATS = {
@@ -4759,6 +4825,7 @@
                 _mediaRecorder.start(100);
                 document.getElementById('voice-record-bar').classList.remove('hidden');
                 document.getElementById('chat-input-bar').classList.add('hidden');
+                broadcastRecording();
                 _voiceSeconds = 0;
                 document.getElementById('voice-timer').textContent = '0:00';
                 _voiceTimerInterval = setInterval(() => {
@@ -4779,6 +4846,7 @@
             document.getElementById('voice-record-bar').classList.add('hidden');
             document.getElementById('chat-input-bar').classList.remove('hidden');
             _audioChunks = [];
+            stopRecordingBroadcast();
         }
 
         async function stopAndSendVoice() {
@@ -4800,6 +4868,7 @@
             document.getElementById('voice-record-bar').classList.add('hidden');
             document.getElementById('chat-input-bar').classList.remove('hidden');
             _audioChunks = [];
+            stopRecordingBroadcast();
 
             const replyId = replyTo ? replyTo.id : null;
             clearReply();
