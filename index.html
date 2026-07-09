@@ -3349,13 +3349,14 @@
                     const state = presenceChannel.presenceState();
                     onlinePresenceMap = {};
                     Object.keys(state).forEach(emailKey => {
-                        onlinePresenceMap[emailKey] = true;
+                        const normKey = emailKey.toLowerCase();
+                        onlinePresenceMap[normKey] = true;
                         // Collect last-seen data from others' presence payloads
                         const payloads = state[emailKey];
                         if (payloads && payloads.length > 0) {
                             const p = payloads[0];
-                            if (p.lastSeen && emailKey !== activeEmail) {
-                                lastSeenMap[emailKey] = p.lastSeen; // { room: isoTimestamp }
+                            if (p.lastSeen && normKey !== (activeEmail || '').toLowerCase()) {
+                                lastSeenMap[normKey] = p.lastSeen; // { room: isoTimestamp }
                             }
                         }
                     });
@@ -3716,7 +3717,7 @@
         async function startCall(peerEmail, peerName, callType) {
             if (currentCallId) { showCallToast('Already on a call'); return; }
             if (!peerEmail) return;
-            if (!onlinePresenceMap[peerEmail]) { showCallToast(`${peerName} is offline`); return; }
+            if (!onlinePresenceMap[(peerEmail||"").toLowerCase()]) { showCallToast(`${peerName} is offline`); return; }
 
             currentCallId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('c' + Date.now() + Math.random().toString(36).slice(2));
             currentCallPeerEmail = peerEmail;
@@ -4054,7 +4055,7 @@
             }
 
             otherUsers.forEach(u => {
-                const isOnline = !!onlinePresenceMap[u.email];
+                const isOnline = !!onlinePresenceMap[(u.email||"").toLowerCase()];
                 const isActiveDm = activeChatPeer && activeChatPeer.email === u.email;
                 const initials = u.name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
 
@@ -4065,7 +4066,7 @@
 
                     // Fallback to presence-captured room timestamps
                     if (!lastSeenTime) {
-                        const peerSeen = lastSeenMap[u.email];
+                        const peerSeen = lastSeenMap[(u.email||"").toLowerCase()];
                         if (peerSeen) {
                             const timestamps = Object.values(peerSeen);
                             if (timestamps.length > 0) {
@@ -4104,7 +4105,7 @@
 
         function updateThreadOnlineStatus() {
             if (!activeChatPeer) return;
-            const isOnline = !!onlinePresenceMap[activeChatPeer.email];
+            const isOnline = !!onlinePresenceMap[(activeChatPeer.email||"").toLowerCase()];
             const subtitleEl = document.getElementById('chat-thread-subtitle');
             const dotEl = document.getElementById('chat-thread-online-dot');
             if (!subtitleEl) return;
@@ -4122,7 +4123,7 @@
 
             // Fallback to presence-captured room timestamps
             if (!lastSeenTime) {
-                const peerSeen = lastSeenMap[activeChatPeer.email];
+                const peerSeen = lastSeenMap[(activeChatPeer.email||"").toLowerCase()];
                 if (peerSeen) {
                     const timestamps = Object.values(peerSeen);
                     if (timestamps.length > 0) {
@@ -4252,10 +4253,10 @@
             // For DM room: check if peer has seen this message
             if (activeChatPeer) {
                 const peerEmail = activeChatPeer.email;
-                const isRecipientOnline = !!onlinePresenceMap[peerEmail];
+                const isRecipientOnline = !!onlinePresenceMap[(peerEmail||"").toLowerCase()];
 
                 // Check if peer has opened this room after this message was sent
-                const peerSeenRooms = lastSeenMap[peerEmail];
+                const peerSeenRooms = lastSeenMap[(peerEmail||"").toLowerCase()];
                 const peerSeenThisRoomAt = peerSeenRooms && peerSeenRooms[activeChatRoom] 
                     ? new Date(peerSeenRooms[activeChatRoom]).getTime() : 0;
 
@@ -4274,11 +4275,11 @@
             // For group room: double tick always (delivered), seen if anyone else online has opened
             const otherMembers = userRoster.filter(u => u.email !== activeEmail);
             const anyoneSeenAfter = otherMembers.some(u => {
-                const seenRooms = lastSeenMap[u.email];
+                const seenRooms = lastSeenMap[(u.email||"").toLowerCase()];
                 const seenAt = seenRooms && seenRooms[activeChatRoom] ? new Date(seenRooms[activeChatRoom]).getTime() : 0;
                 return seenAt >= msgTime;
             });
-            const anyoneOnline = otherMembers.some(u => !!onlinePresenceMap[u.email]);
+            const anyoneOnline = otherMembers.some(u => !!onlinePresenceMap[(u.email||"").toLowerCase()]);
 
             if (anyoneSeenAfter) {
                 return `<span class="msg-tick tick-seen" title="Seen">${tickSvg()}${tickSvg()}</span>`;
@@ -4346,6 +4347,7 @@
         }
 
         let _voicePlaying = false; // true while any voice message is playing
+        let _forceScrollToBottomNext = false; // set true right before rendering my own newly-sent message
 
         // ── Chat Settings (WhatsApp/Telegram-style) ──────────────────────
         // Global settings apply across all rooms; per-room settings (mute, disappearing)
@@ -4689,8 +4691,9 @@
                     </div>`;
             });
 
-            if (scrollBottom) {
+            if (scrollBottom || _forceScrollToBottomNext) {
                 container.scrollTop = container.scrollHeight;
+                _forceScrollToBottomNext = false;
             } else if (container._hasRendered) {
                 // Restore the same relative scroll position instead of snapping to top
                 container.scrollTop = container.scrollHeight - distanceFromBottom;
@@ -4799,6 +4802,7 @@
 
             const replyId = replyTo ? replyTo.id : null;
             clearReply();
+            _forceScrollToBottomNext = true; // always jump to bottom for my own outgoing message
 
             const { error } = await dbInstance.from('chat_messages').insert([{
                 room: activeChatRoom,
@@ -4970,6 +4974,7 @@
 
             const replyId = replyTo ? replyTo.id : null;
             clearReply();
+            _forceScrollToBottomNext = true; // always jump to bottom for my own outgoing voice message
 
             const { error } = await dbInstance.from('chat_messages').insert([{
                 room: activeChatRoom,
