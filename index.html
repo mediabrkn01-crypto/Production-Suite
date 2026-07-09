@@ -235,6 +235,17 @@
         #chat-messages-container.chat-wallpaper-off {
             background-image: none;
         }
+        /* ── Mobile compact mode (phones < 640px) — tighter paddings, always-visible
+              message actions (no hover on touch), smaller bubbles & input bar ── */
+        @media (max-width: 639px) {
+            #chat-messages-container { padding: 10px !important; }
+            #chat-input-bar { padding: 8px !important; gap: 6px !important; }
+            .chat-bubble-mine, .chat-bubble-theirs { max-width: 82vw; }
+            .chat-msg-actions { opacity: 1 !important; flex-direction: row !important; gap: 2px !important; }
+            .chat-date-separator span { font-size: 9px; padding: 3px 10px; }
+            #chat-scroll-bottom-btn { bottom: 72px; right: 10px; width: 34px; height: 34px; }
+            .card { border-radius: 14px; }
+        }
         .chat-contact-active {
             background-color: #1e2345 !important;
             border-left-color: #FF0000 !important;
@@ -863,14 +874,27 @@
 
                         <div id="chat-input-bar" class="p-3 border-t border-[#1e2238] flex items-center gap-2">
                             <input type="file" id="chat-file-input" class="hidden" onchange="handleChatFileSelect()">
-                            <div class="chat-input-pill flex-1 flex items-center gap-1 px-2 py-1">
+                            <div class="chat-input-pill flex-1 flex items-center gap-1 px-2 py-1 relative">
                                 <button onclick="toggleEmojiPicker()" title="Emoji" class="text-gray-400 hover:text-orange-400 p-2 rounded-full shrink-0 transition-colors">
                                     <i data-lucide="smile" class="w-4 h-4"></i>
                                 </button>
                                 <input type="text" id="chat-message-input" placeholder="Type a message..." class="flex-1 bg-transparent border-none px-1 py-2 text-sm text-white focus:outline-none" onkeydown="handleChatInputKey(event)" oninput="broadcastTyping()">
-                                <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="text-gray-400 hover:text-orange-400 p-2 rounded-full shrink-0 transition-colors">
+                                <!-- Desktop: inline paperclip. Mobile: hidden, replaced by "+" action sheet -->
+                                <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="hidden sm:block text-gray-400 hover:text-orange-400 p-2 rounded-full shrink-0 transition-colors">
                                     <i data-lucide="paperclip" class="w-4 h-4"></i>
                                 </button>
+                                <button onclick="toggleChatPlusSheet()" title="More" class="sm:hidden text-gray-400 hover:text-orange-400 p-2 rounded-full shrink-0 transition-colors">
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                </button>
+                                <!-- Mobile action sheet (WhatsApp-style) -->
+                                <div id="chat-plus-sheet" class="hidden absolute bottom-12 right-0 z-40 bg-[#1a1e36] border border-[#2e3554] rounded-2xl shadow-2xl p-2 min-w-[170px]">
+                                    <button onclick="document.getElementById('chat-file-input').click(); toggleChatPlusSheet();" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs text-gray-200 hover:bg-[#242946] transition">
+                                        <i data-lucide="paperclip" class="w-4 h-4 text-orange-400"></i> Attach file
+                                    </button>
+                                    <button onclick="toggleChatPlusSheet(); openChatSettingsPanel();" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs text-gray-200 hover:bg-[#242946] transition">
+                                        <i data-lucide="settings" class="w-4 h-4 text-orange-400"></i> Chat settings
+                                    </button>
+                                </div>
                             </div>
                             <button id="chat-mic-btn" onclick="toggleVoiceRecording()" title="Voice message" class="text-gray-400 hover:text-orange-400 p-2.5 rounded-full shrink-0 transition-colors bg-[#0b0d19] border border-[#1e2238]">
                                 <i data-lucide="mic" class="w-4 h-4"></i>
@@ -4303,6 +4327,14 @@
         function getStarredMsgs() {
             try { return JSON.parse(localStorage.getItem(`be_starred_${activeEmail}`) || '[]'); } catch(e) { return []; }
         }
+        function copyChatMessage(id) {
+            const m = chatMessages.find(x => x.id === id);
+            if (!m || !m.message) return;
+            navigator.clipboard.writeText(m.message).then(() => {
+                showCallToast('Copied to clipboard');
+            }).catch(() => {});
+        }
+
         function toggleStarMsg(id) {
             const starred = getStarredMsgs();
             const idStr = String(id);
@@ -4666,6 +4698,7 @@
                         <button onclick="setReply(${m.id})" class="text-gray-500 hover:text-blue-400 p-1 transition" title="Reply"><i data-lucide="reply" class="w-3.5 h-3.5"></i></button>
                         <button onclick="showReactionPicker(event,${m.id})" class="text-gray-500 hover:text-yellow-400 p-1 transition" title="React"><i data-lucide="smile-plus" class="w-3.5 h-3.5"></i></button>
                         <button onclick="toggleStarMsg(${m.id})" class="p-1 transition ${isStarred ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}" title="Star"><i data-lucide="star" class="w-3.5 h-3.5"></i></button>
+                        ${m.message ? `<button onclick="copyChatMessage(${m.id})" class="text-gray-500 hover:text-emerald-400 p-1 transition" title="Copy"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>` : ''}
                         ${canDelete ? `<button onclick="toggleDeleteMenu(event,${m.id})" class="text-gray-500 hover:text-red-400 p-1 transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
                     </div>`;
 
@@ -4906,6 +4939,11 @@
             if (!grid) return;
             const emojis = EMOJI_CATS[cat] || EMOJI_CATS.smileys;
             grid.innerHTML = emojis.map(e => `<button onclick="insertEmoji('${e}')" class="text-xl hover:scale-110 transition-transform p-1 leading-none">${e}</button>`).join('');
+        }
+
+        function toggleChatPlusSheet() {
+            document.getElementById('chat-plus-sheet')?.classList.toggle('hidden');
+            if (window.lucide) lucide.createIcons();
         }
 
         function toggleEmojiPicker() {
@@ -6659,13 +6697,35 @@
             localStorage.setItem(`be_notifs_${activeEmail}`, JSON.stringify(notifications.slice(0, 50)));
             localStorage.setItem(`be_read_notifs_${activeEmail}`, JSON.stringify([..._readNotifIds].slice(0, 200)));
         }
-        function addNotif(type, topic, assignedTo) {
-            const newId = Date.now();
-            if (_readNotifIds.has(newId)) return; // already dismissed
+        function addNotif(type, topic, assignedTo, taskId) {
+            // Stable ID per (type, task) — previously this was Date.now(), meaning a
+            // regenerated notification for the SAME task always got a fresh id, so the
+            // dismissed-ids set could never block it and cleared notifications kept
+            // coming back (especially on other devices with their own localStorage).
+            const newId = taskId ? `${type}_${taskId}` : `${type}_${Date.now()}`;
+            if (_readNotifIds.has(newId)) return; // permanently dismissed — never re-add
+            if (notifications.some(n => n.id === newId)) return; // already showing
             notifications.unshift({ id: newId, type, topic, assignedTo, time: new Date().toISOString() });
             saveNotifs();
             renderNotifBadges();
             renderDashboardNotifFeed();
+        }
+        // Remove any notifications for a task once it's completed/approved — done work
+        // should never keep showing a "pending" notification.
+        function clearNotifsForTask(taskId) {
+            if (!taskId) return;
+            const before = notifications.length;
+            notifications = notifications.filter(n => n.id !== `new_${taskId}` && n.id !== `rework_${taskId}`);
+            _readNotifIds.add(`new_${taskId}`);
+            _readNotifIds.add(`rework_${taskId}`);
+            if (notifications.length !== before) {
+                saveNotifs();
+                renderNotifBadges();
+                renderDashboardNotifFeed();
+                renderNotifList();
+            } else {
+                saveNotifs(); // still persist the read-ids so it can't come back later
+            }
         }
         function dismissAllNotifs() {
             notifications.forEach(n => _readNotifIds.add(n.id));
@@ -6778,12 +6838,15 @@
                 (t.employeeEmail || '').toLowerCase() === (activeEmail || '').toLowerCase()
             );
             let changed = false;
+            const doneStatuses = ['Completed', 'Approved', 'Posted', 'Published'];
             myTasks.forEach(t => {
                 const idStr = String(t.id);
                 if (!_lastKnownTaskIds.has(idStr)) {
-                    // New task — only notify if we already had known tasks (not first-ever load)
-                    if (_lastKnownTaskIds.size > 0) {
-                        addNotif('new', t.topic, t.assignedBy || 'Admin');
+                    // New task — only notify if we already had known tasks (not first-ever load
+                    // on this device, and not right after a site update wiped localStorage —
+                    // both cases would otherwise re-notify EVERY existing task at once)
+                    if (_lastKnownTaskIds.size > 0 && !doneStatuses.includes(t.status)) {
+                        addNotif('new', t.topic, t.assignedBy || 'Admin', idStr);
                         sendBrowserNotif(`New task assigned: ${t.topic}`, `Assigned by ${t.assignedBy || 'Admin'}`);
                     }
                     _lastKnownTaskIds.add(idStr);
@@ -6792,13 +6855,17 @@
                 } else {
                     const prev = _lastKnownStatuses[idStr];
                     if (prev && prev !== 'Rework Required' && t.status === 'Rework Required') {
-                        addNotif('rework', t.topic, t.assignedBy || 'Manager');
+                        addNotif('rework', t.topic, t.assignedBy || 'Manager', idStr);
                         sendBrowserNotif(`Rework required: ${t.topic}`, 'Please review the feedback.');
                     }
                     if (prev !== t.status) {
                         _lastKnownStatuses[idStr] = t.status;
                         changed = true;
                     }
+                }
+                // Work finished → its notification disappears everywhere automatically
+                if (doneStatuses.includes(t.status)) {
+                    clearNotifsForTask(idStr);
                 }
             });
             if (changed) saveKnownTasks();
