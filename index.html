@@ -4695,9 +4695,11 @@
                     </div>`;
             });
 
-            if (scrollBottom || _forceScrollToBottomNext) {
+            const shouldSnapToBottom = scrollBottom || _forceScrollToBottomNext;
+            _forceScrollToBottomNext = false;
+
+            if (shouldSnapToBottom) {
                 container.scrollTop = container.scrollHeight;
-                _forceScrollToBottomNext = false;
             } else if (container._hasRendered) {
                 // Restore the same relative scroll position instead of snapping to top
                 container.scrollTop = container.scrollHeight - distanceFromBottom;
@@ -4715,6 +4717,13 @@
             }
             lucide.createIcons();
             if (!container._hasRendered) { container.scrollTop = container.scrollHeight; container._hasRendered = true; }
+
+            // Icon replacement above can subtly change layout height AFTER we already
+            // scrolled — re-snap to the true bottom once more on the next frame so the
+            // newest message is never left a few pixels short of fully visible.
+            if (shouldSnapToBottom) {
+                requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+            }
 
             // Restore audio playback states after re-render
             Object.entries(audioStates).forEach(([id, state]) => {
