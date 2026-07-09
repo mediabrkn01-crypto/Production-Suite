@@ -85,11 +85,152 @@
             background: linear-gradient(135deg, #FF0000, #FD6D05);
             color: #fff;
             border-radius: 14px 14px 4px 14px;
+            position: relative;
         }
         .chat-bubble-theirs {
             background-color: #1a1e36;
             color: #f3f4f6;
             border-radius: 14px 14px 14px 4px;
+            position: relative;
+        }
+        /* WhatsApp/Telegram-style message tails */
+        .chat-bubble-mine::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: -6px;
+            width: 12px;
+            height: 12px;
+            background: linear-gradient(135deg, #FF0000, #FD6D05);
+            clip-path: polygon(0 0, 0 100%, 100% 100%);
+        }
+        .chat-bubble-theirs::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: -6px;
+            width: 12px;
+            height: 12px;
+            background-color: #1a1e36;
+            clip-path: polygon(100% 0, 0 100%, 100% 100%);
+        }
+        /* Chat wallpaper texture — subtle brand-tinted dot pattern, WhatsApp-style */
+        #chat-messages-container {
+            background-color: #0e1020;
+            background-image: radial-gradient(rgba(253, 109, 5, 0.035) 1px, transparent 1px);
+            background-size: 22px 22px;
+        }
+        /* Date separator pill */
+        .chat-date-separator {
+            display: flex;
+            justify-content: center;
+            margin: 14px 0 10px;
+        }
+        .chat-date-separator span {
+            background-color: #1a1e36;
+            color: #9ca3af;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid #2e3554;
+        }
+        /* Telegram-style contact rows — cleaner divider, bigger touch target */
+        .chat-contact-row {
+            border-bottom: 1px solid rgba(30, 34, 56, 0.5);
+        }
+        .chat-contact-row:last-child { border-bottom: none; }
+        /* Floating scroll-to-bottom button */
+        #chat-scroll-bottom-btn {
+            position: absolute;
+            right: 16px;
+            bottom: 84px;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background-color: #1a1e36;
+            border: 1px solid #2e3554;
+            color: #FD6D05;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+            transition: transform 0.15s ease;
+            z-index: 20;
+        }
+        #chat-scroll-bottom-btn:hover { transform: scale(1.08); }
+        #chat-scroll-bottom-btn.show { display: flex; }
+        #chat-scroll-bottom-btn span {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            min-width: 16px;
+            height: 16px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #FF0000, #FD6D05);
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 3px;
+        }
+        /* WhatsApp-style pill input bar */
+        .chat-input-pill {
+            background-color: #0b0d19;
+            border: 1px solid #1e2238;
+            border-radius: 999px;
+            transition: border-color 0.2s ease;
+        }
+        .chat-input-pill:focus-within {
+            border-color: #FD6D05;
+        }
+        /* WhatsApp/Telegram-style toggle switch */
+        .chat-toggle-switch {
+            width: 40px;
+            height: 22px;
+            border-radius: 999px;
+            background-color: #2e3554;
+            position: relative;
+            transition: background-color 0.2s ease;
+            shrink: 0;
+            flex-shrink: 0;
+        }
+        .chat-toggle-switch.on {
+            background: linear-gradient(135deg, #FF0000, #FD6D05);
+        }
+        .chat-toggle-knob {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: #fff;
+            transition: transform 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        .chat-toggle-switch.on .chat-toggle-knob {
+            transform: translateX(18px);
+        }
+        /* Chat font-size variants applied to #chat-messages-container */
+        #chat-messages-container.chat-font-small .chat-bubble-mine,
+        #chat-messages-container.chat-font-small .chat-bubble-theirs {
+            font-size: 11px !important;
+        }
+        #chat-messages-container.chat-font-medium .chat-bubble-mine,
+        #chat-messages-container.chat-font-medium .chat-bubble-theirs {
+            font-size: 13px !important;
+        }
+        #chat-messages-container.chat-font-large .chat-bubble-mine,
+        #chat-messages-container.chat-font-large .chat-bubble-theirs {
+            font-size: 15px !important;
+        }
+        #chat-messages-container.chat-wallpaper-off {
+            background-image: none;
         }
         .chat-contact-active {
             background-color: #1e2345 !important;
@@ -682,9 +823,16 @@
                                     <i data-lucide="video" class="w-4 h-4"></i>
                                 </button>
                             </div>
+                            <button onclick="openChatSettingsPanel()" title="Chat settings" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
+                                <i data-lucide="settings" class="w-4 h-4"></i>
+                            </button>
                         </div>
 
-                        <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+                        <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 relative"></div>
+                        <button id="chat-scroll-bottom-btn" onclick="scrollChatToBottom()" title="Scroll to latest">
+                            <i data-lucide="chevron-down" class="w-5 h-5"></i>
+                            <span id="chat-scroll-unread-badge" class="hidden">0</span>
+                        </button>
 
                         <!-- Reply-to strip -->
                         <div id="chat-reply-strip" class="hidden px-3 pt-2 pb-0">
@@ -717,17 +865,19 @@
 
                         <div id="chat-input-bar" class="p-3 border-t border-[#1e2238] flex items-center gap-2">
                             <input type="file" id="chat-file-input" class="hidden" onchange="handleChatFileSelect()">
-                            <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
-                                <i data-lucide="paperclip" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="toggleEmojiPicker()" title="Emoji" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
-                                <i data-lucide="smile" class="w-4 h-4"></i>
-                            </button>
-                            <input type="text" id="chat-message-input" placeholder="Type a message..." class="flex-1 bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500" onkeydown="handleChatInputKey(event)" oninput="broadcastTyping()">
-                            <button id="chat-mic-btn" onclick="toggleVoiceRecording()" title="Voice message" class="text-gray-400 hover:text-orange-400 p-2 rounded-xl shrink-0 transition-colors">
+                            <div class="chat-input-pill flex-1 flex items-center gap-1 px-2 py-1">
+                                <button onclick="toggleEmojiPicker()" title="Emoji" class="text-gray-400 hover:text-orange-400 p-2 rounded-full shrink-0 transition-colors">
+                                    <i data-lucide="smile" class="w-4 h-4"></i>
+                                </button>
+                                <input type="text" id="chat-message-input" placeholder="Type a message..." class="flex-1 bg-transparent border-none px-1 py-2 text-sm text-white focus:outline-none" onkeydown="handleChatInputKey(event)" oninput="broadcastTyping()">
+                                <button onclick="document.getElementById('chat-file-input').click()" title="Attach file" class="text-gray-400 hover:text-orange-400 p-2 rounded-full shrink-0 transition-colors">
+                                    <i data-lucide="paperclip" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <button id="chat-mic-btn" onclick="toggleVoiceRecording()" title="Voice message" class="text-gray-400 hover:text-orange-400 p-2.5 rounded-full shrink-0 transition-colors bg-[#0b0d19] border border-[#1e2238]">
                                 <i data-lucide="mic" class="w-4 h-4"></i>
                             </button>
-                            <button id="chat-send-btn" onclick="sendChatMessage()" class="brand-gradient text-white p-2.5 rounded-xl shrink-0 active:scale-95 transition-transform">
+                            <button id="chat-send-btn" onclick="sendChatMessage()" class="brand-gradient text-white p-2.5 rounded-full shrink-0 active:scale-95 transition-transform">
                                 <i data-lucide="send" class="w-4 h-4"></i>
                             </button>
                         </div>
@@ -1788,6 +1938,10 @@
             loadKnownTasks();
             renderNotifBadges();
             renderDashboardNotifFeed();
+
+            // Load chat settings (WhatsApp/Telegram-style) and apply appearance
+            loadChatSettings();
+            applyGlobalChatSettingsToUI();
             requestBrowserNotifPermission();
 
             // Auto-delete chat messages older than 7 days (runs for everyone)
@@ -3788,7 +3942,8 @@
                 }
 
                 // If this room is open and chat tab visible, mark as seen immediately
-                if (isChatTabVisible) {
+                // (only if Read Receipts is enabled in Chat Settings)
+                if (isChatTabVisible && chatSettingsGlobal.readReceiptsEnabled) {
                     const nowIso = new Date().toISOString();
                     myRoomOpenedAt[activeChatRoom] = nowIso;
                     persistMyRoomOpened(); // persist so it survives refresh
@@ -3804,12 +3959,19 @@
             }
 
             if (!isMine && (!isForActiveRoom || !isChatTabVisible)) {
-                showChatUnreadDot();
-                // Track per-room unread
                 const roomKey = msg.room;
-                unreadCounts[roomKey] = (unreadCounts[roomKey] || 0) + 1;
-                renderChatContacts();
-                showChatToast();
+                if (!isChatMuted(roomKey)) {
+                    showChatUnreadDot();
+                    // Track per-room unread
+                    unreadCounts[roomKey] = (unreadCounts[roomKey] || 0) + 1;
+                    renderChatContacts();
+                    showChatToast();
+                    playChatNotifSound();
+                } else {
+                    // Muted room — still track unread count silently, no toast/sound/dot
+                    unreadCounts[roomKey] = (unreadCounts[roomKey] || 0) + 1;
+                    renderChatContacts();
+                }
             }
         }
 
@@ -3848,9 +4010,9 @@
             const isGroupActive = activeChatRoom === CHAT_GROUP_ROOM;
             const groupUnread = unreadCounts[CHAT_GROUP_ROOM] || 0;
             list.innerHTML += `
-                <button onclick="openChatRoom('group')" class="sidebar-link ${isGroupActive ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition">
-                    <div class="w-9 h-9 rounded-full brand-gradient flex items-center justify-center text-white shrink-0">
-                        <i data-lucide="users" class="w-4 h-4"></i>
+                <button onclick="openChatRoom('group')" class="chat-contact-row sidebar-link ${isGroupActive ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition">
+                    <div class="w-11 h-11 rounded-full brand-gradient flex items-center justify-center text-white shrink-0">
+                        <i data-lucide="users" class="w-5 h-5"></i>
                     </div>
                     <div class="min-w-0 flex-1">
                         <p class="text-xs font-bold text-white truncate">Studio Group Room</p>
@@ -3897,11 +4059,11 @@
                 const dmUnread = unreadCounts[dmRoomKey] || 0;
 
                 list.innerHTML += `
-                    <button onclick='openChatRoom("dm", ${JSON.stringify(u.email)})' class="sidebar-link ${isActiveDm ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition">
+                    <button onclick='openChatRoom("dm", ${JSON.stringify(u.email)})' class="chat-contact-row sidebar-link ${isActiveDm ? 'chat-contact-active' : ''} w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition">
                         <div class="relative shrink-0">
                             ${u.avatar
-                                ? `<img src="${u.avatar}" class="w-9 h-9 rounded-full object-cover">`
-                                : `<div class="w-9 h-9 rounded-full bg-[#1e2238] flex items-center justify-center text-gray-300 font-bold text-xs">${initials}</div>`}
+                                ? `<img src="${u.avatar}" class="w-11 h-11 rounded-full object-cover">`
+                                : `<div class="w-11 h-11 rounded-full bg-[#1e2238] flex items-center justify-center text-gray-300 font-bold text-xs">${initials}</div>`}
                             <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${isOnline ? 'online-dot' : 'offline-dot'}"></span>
                         </div>
                         <div class="min-w-0 flex-1">
@@ -3966,22 +4128,27 @@
                 if (callBtnsEl) { callBtnsEl.classList.remove('hidden'); callBtnsEl.classList.add('flex'); }
             }
 
-            // Record that current user has now "seen" this room up to now
-            const nowIso = new Date().toISOString();
-            myRoomOpenedAt[activeChatRoom] = nowIso;
-            persistMyRoomOpened();
-            // Clear unread for this room
+            // Clear unread for this room (always, local-only, not privacy related)
             unreadCounts[activeChatRoom] = 0;
 
-            // Broadcast updated last-seen via presence
-            if (presenceChannel) {
-                presenceChannel.track({
-                    name: activeUser,
-                    email: activeEmail,
-                    role: activeRole,
-                    online_at: new Date().toISOString(),
-                    lastSeen: myRoomOpenedAt
-                });
+            // Record that current user has now "seen" this room up to now —
+            // only broadcast this (which powers double-tick "Seen" receipts for the
+            // other person) if Read Receipts is enabled in Chat Settings.
+            if (chatSettingsGlobal.readReceiptsEnabled) {
+                const nowIso = new Date().toISOString();
+                myRoomOpenedAt[activeChatRoom] = nowIso;
+                persistMyRoomOpened();
+
+                // Broadcast updated last-seen via presence
+                if (presenceChannel) {
+                    presenceChannel.track({
+                        name: activeUser,
+                        email: activeEmail,
+                        role: activeRole,
+                        online_at: new Date().toISOString(),
+                        lastSeen: myRoomOpenedAt
+                    });
+                }
             }
 
             renderChatContacts();
@@ -4128,6 +4295,138 @@
 
         let _voicePlaying = false; // true while any voice message is playing
 
+        // ── Chat Settings (WhatsApp/Telegram-style) ──────────────────────
+        // Global settings apply across all rooms; per-room settings (mute, disappearing)
+        // are keyed by room id. Everything stored in localStorage — purely client-side,
+        // additive, and never blocks or alters existing chat behavior unless the user
+        // explicitly opts into a change.
+        let chatSettingsGlobal = { soundEnabled: true, readReceiptsEnabled: true, lastSeenEnabled: true, wallpaperEnabled: true, fontSize: 'medium' };
+        let chatSettingsRooms = {}; // { [roomKey]: { muted: bool, disappearing: 'off'|'24h'|'7d'|'90d', clearedAt: isoString } }
+
+        function loadChatSettings() {
+            try { chatSettingsGlobal = { ...chatSettingsGlobal, ...JSON.parse(localStorage.getItem(`be_chat_settings_global_${activeEmail}`) || '{}') }; } catch(e) {}
+            try { chatSettingsRooms = JSON.parse(localStorage.getItem(`be_chat_settings_rooms_${activeEmail}`) || '{}'); } catch(e) { chatSettingsRooms = {}; }
+        }
+        function saveChatSettingsGlobal() {
+            localStorage.setItem(`be_chat_settings_global_${activeEmail}`, JSON.stringify(chatSettingsGlobal));
+        }
+        function saveChatSettingsRooms() {
+            localStorage.setItem(`be_chat_settings_rooms_${activeEmail}`, JSON.stringify(chatSettingsRooms));
+        }
+        function getRoomSettings(roomKey) {
+            return chatSettingsRooms[roomKey] || { muted: false, disappearing: 'off', clearedAt: null };
+        }
+        function isChatMuted(roomKey) {
+            return !!getRoomSettings(roomKey).muted;
+        }
+
+        function applyGlobalChatSettingsToUI() {
+            const container = document.getElementById('chat-messages-container');
+            if (container) {
+                container.classList.toggle('chat-wallpaper-off', !chatSettingsGlobal.wallpaperEnabled);
+                container.classList.remove('chat-font-small', 'chat-font-medium', 'chat-font-large');
+                container.classList.add(`chat-font-${chatSettingsGlobal.fontSize}`);
+            }
+        }
+
+        function refreshChatSettingsPanelUI() {
+            const setToggle = (id, on) => {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle('on', !!on);
+            };
+            setToggle('chat-set-sound-toggle', chatSettingsGlobal.soundEnabled);
+            setToggle('chat-set-receipts-toggle', chatSettingsGlobal.readReceiptsEnabled);
+            setToggle('chat-set-lastseen-toggle', chatSettingsGlobal.lastSeenEnabled);
+            setToggle('chat-set-wallpaper-toggle', chatSettingsGlobal.wallpaperEnabled);
+
+            const fontSel = document.getElementById('chat-set-fontsize-select');
+            if (fontSel) fontSel.value = chatSettingsGlobal.fontSize;
+
+            const roomSettings = getRoomSettings(activeChatRoom);
+            setToggle('chat-set-mute-toggle', roomSettings.muted);
+            const disSel = document.getElementById('chat-set-disappearing-select');
+            if (disSel) disSel.value = roomSettings.disappearing || 'off';
+        }
+
+        function openChatSettingsPanel() {
+            refreshChatSettingsPanelUI();
+            document.getElementById('chat-settings-overlay')?.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+        function closeChatSettingsPanel() {
+            document.getElementById('chat-settings-overlay')?.classList.add('hidden');
+        }
+
+        function toggleGlobalChatSetting(key) {
+            chatSettingsGlobal[key] = !chatSettingsGlobal[key];
+            saveChatSettingsGlobal();
+            refreshChatSettingsPanelUI();
+            applyGlobalChatSettingsToUI();
+        }
+        function setChatFontSize(val) {
+            chatSettingsGlobal.fontSize = val;
+            saveChatSettingsGlobal();
+            applyGlobalChatSettingsToUI();
+        }
+        function toggleRoomMute() {
+            const s = getRoomSettings(activeChatRoom);
+            s.muted = !s.muted;
+            chatSettingsRooms[activeChatRoom] = s;
+            saveChatSettingsRooms();
+            refreshChatSettingsPanelUI();
+        }
+        function setRoomDisappearing(val) {
+            const s = getRoomSettings(activeChatRoom);
+            s.disappearing = val;
+            chatSettingsRooms[activeChatRoom] = s;
+            saveChatSettingsRooms();
+            renderChatMessages();
+        }
+        async function clearThisChat() {
+            const ok = await beConfirm('Clear all messages in this chat? This only hides them on this device — it does not delete them for anyone else.', true);
+            if (!ok) return;
+            const s = getRoomSettings(activeChatRoom);
+            s.clearedAt = new Date().toISOString();
+            chatSettingsRooms[activeChatRoom] = s;
+            saveChatSettingsRooms();
+            renderChatMessages();
+            closeChatSettingsPanel();
+        }
+
+        // Simple two-tone beep using Web Audio API — no external asset needed
+        function playChatNotifSound() {
+            if (!chatSettingsGlobal.soundEnabled) return;
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.frequency.value = 880;
+                g.gain.setValueAtTime(0.001, ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+                o.start();
+                o.stop(ctx.currentTime + 0.2);
+            } catch(e) {}
+        }
+
+        function chatDateLabel(dateObj) {
+            const now = new Date();
+            const isToday = dateObj.toDateString() === now.toDateString();
+            const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+            const isYesterday = dateObj.toDateString() === yesterday.toDateString();
+            if (isToday) return 'Today';
+            if (isYesterday) return 'Yesterday';
+            return dateObj.toLocaleDateString([], { day: 'numeric', month: 'short', year: dateObj.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+        }
+
+        function scrollChatToBottom() {
+            const container = document.getElementById('chat-messages-container');
+            if (container) container.scrollTop = container.scrollHeight;
+            const btn = document.getElementById('chat-scroll-bottom-btn');
+            if (btn) btn.classList.remove('show');
+        }
+
         function renderChatMessages() {
             // Save all audio playback states before wiping DOM
             const audioStates = {};
@@ -4137,7 +4436,22 @@
 
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
-            if (chatMessages.length === 0) {
+
+            // Apply "Clear This Chat" (local hide) and "Disappearing Messages" (local hide)
+            // from Chat Settings — visual-only filter, never touches the database.
+            const roomSettings = getRoomSettings(activeChatRoom);
+            let visibleMessages = chatMessages;
+            if (roomSettings.clearedAt) {
+                const clearedTime = new Date(roomSettings.clearedAt).getTime();
+                visibleMessages = visibleMessages.filter(m => !m.created_at || new Date(m.created_at).getTime() > clearedTime);
+            }
+            if (roomSettings.disappearing && roomSettings.disappearing !== 'off') {
+                const hours = { '24h': 24, '7d': 24 * 7, '90d': 24 * 90 }[roomSettings.disappearing] || 0;
+                const cutoff = Date.now() - hours * 3600 * 1000;
+                visibleMessages = visibleMessages.filter(m => !m.created_at || new Date(m.created_at).getTime() > cutoff);
+            }
+
+            if (visibleMessages.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-6">No messages yet. Say hello 👋</p>`;
                 return;
             }
@@ -4145,10 +4459,21 @@
             const scrollBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
 
             container.innerHTML = '';
-            chatMessages.forEach(m => {
+            let _lastDateLabel = null;
+            visibleMessages.forEach(m => {
                 const isMine = (m.sender_email || '').toLowerCase() === (activeEmail || '').toLowerCase();
-                const timeLabel = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const msgDate = m.created_at ? new Date(m.created_at) : null;
+                const timeLabel = msgDate ? msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                 const isStarred = starred.includes(String(m.id));
+
+                // Date separator — WhatsApp/Telegram style "Today" / "Yesterday" / date pill
+                if (msgDate) {
+                    const dateLabel = chatDateLabel(msgDate);
+                    if (dateLabel !== _lastDateLabel) {
+                        container.innerHTML += `<div class="chat-date-separator"><span>${dateLabel}</span></div>`;
+                        _lastDateLabel = dateLabel;
+                    }
+                }
 
                 // Reactions
                 let reactionsHtml = '';
@@ -4239,6 +4564,17 @@
             });
 
             if (scrollBottom) container.scrollTop = container.scrollHeight;
+
+            // Wire up scroll-to-bottom floating button (WhatsApp/Telegram style)
+            if (!container._scrollBtnWired) {
+                container._scrollBtnWired = true;
+                container.addEventListener('scroll', () => {
+                    const btn = document.getElementById('chat-scroll-bottom-btn');
+                    if (!btn) return;
+                    const nearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 80;
+                    btn.classList.toggle('show', !nearBottom);
+                });
+            }
             lucide.createIcons();
             if (!container._hasRendered) { container.scrollTop = container.scrollHeight; container._hasRendered = true; }
 
@@ -6320,6 +6656,113 @@
         <span id="chat-toast-text">1 message received</span>
     </div>
 
+
+    <!-- Chat Settings Panel (WhatsApp/Telegram-style) -->
+    <div id="chat-settings-overlay" class="hidden fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div class="bg-[#121424] border border-[#1e2238] rounded-2xl shadow-2xl shadow-black/60 w-full max-w-sm sm:max-w-md max-h-[85vh] overflow-y-auto">
+            <div class="sticky top-0 bg-[#121424] border-b border-[#1e2238] p-4 flex items-center justify-between z-10">
+                <h3 class="text-white font-bold text-sm flex items-center gap-2"><i data-lucide="settings" class="w-4 h-4 text-orange-400"></i> Chat Settings</h3>
+                <button onclick="closeChatSettingsPanel()" class="text-gray-400 hover:text-white p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-4 space-y-5">
+                <!-- Notifications -->
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 px-1">Notifications</p>
+                    <div class="bg-[#1a1e36] rounded-xl divide-y divide-[#2e3554]/60">
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="bell-off" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Mute this chat</span>
+                            </div>
+                            <button id="chat-set-mute-toggle" onclick="toggleRoomMute()" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
+                        </div>
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="volume-2" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Message sound</span>
+                            </div>
+                            <button id="chat-set-sound-toggle" onclick="toggleGlobalChatSetting('soundEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Privacy -->
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 px-1">Privacy</p>
+                    <div class="bg-[#1a1e36] rounded-xl divide-y divide-[#2e3554]/60">
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="check-check" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Read receipts</span>
+                            </div>
+                            <button id="chat-set-receipts-toggle" onclick="toggleGlobalChatSetting('readReceiptsEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
+                        </div>
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="eye" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Show last seen</span>
+                            </div>
+                            <button id="chat-set-lastseen-toggle" onclick="toggleGlobalChatSetting('lastSeenEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Appearance -->
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 px-1">Appearance</p>
+                    <div class="bg-[#1a1e36] rounded-xl divide-y divide-[#2e3554]/60">
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="image" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Chat wallpaper</span>
+                            </div>
+                            <button id="chat-set-wallpaper-toggle" onclick="toggleGlobalChatSetting('wallpaperEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
+                        </div>
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="type" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Font size</span>
+                            </div>
+                            <select id="chat-set-fontsize-select" onchange="setChatFontSize(this.value)" class="bg-[#0b0d19] border border-[#2e3554] rounded-lg text-[11px] text-white px-2 py-1.5 focus:outline-none focus:border-orange-500">
+                                <option value="small">Small</option>
+                                <option value="medium">Medium</option>
+                                <option value="large">Large</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disappearing messages -->
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 px-1">This Chat</p>
+                    <div class="bg-[#1a1e36] rounded-xl divide-y divide-[#2e3554]/60">
+                        <div class="flex items-center justify-between px-3.5 py-3">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="timer" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-200">Disappearing messages</span>
+                            </div>
+                            <select id="chat-set-disappearing-select" onchange="setRoomDisappearing(this.value)" class="bg-[#0b0d19] border border-[#2e3554] rounded-lg text-[11px] text-white px-2 py-1.5 focus:outline-none focus:border-orange-500">
+                                <option value="off">Off</option>
+                                <option value="24h">24 Hours</option>
+                                <option value="7d">7 Days</option>
+                                <option value="90d">90 Days</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-gray-500 mt-1.5 px-1">Older messages will be hidden from view in this chat on this device.</p>
+                </div>
+
+                <!-- Danger zone -->
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2 px-1">Danger Zone</p>
+                    <button onclick="clearThisChat()" class="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold px-3.5 py-3 rounded-xl flex items-center gap-2.5 transition">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Clear This Chat
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Custom Alert / Confirm Modal (replaces native browser dialogs) -->
     <div id="be-modal-overlay" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
