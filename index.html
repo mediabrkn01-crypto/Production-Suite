@@ -3947,27 +3947,9 @@
             const isChatTabVisible = !document.getElementById('tab-content-chat').classList.contains('hidden');
 
             if (isForActiveRoom) {
-                // Voice messages have large audio_data — realtime may truncate them.
-                // Re-fetch the full row from DB to get complete audio_data.
-                if (msg.audio_data === undefined || msg.audio_data === null) {
-                    // Check if this is a voice msg row by refetching
-                    dbInstance.from('chat_messages').select('*').eq('id', msg.id).single().then(({ data }) => {
-                        if (data) {
-                            const hiddenIds = getHiddenMsgIds();
-                            if (!hiddenIds.includes(String(data.id))) {
-                                // Replace or add
-                                const idx = chatMessages.findIndex(m => m.id === data.id);
-                                if (idx >= 0) chatMessages[idx] = data; else chatMessages.push(data);
-                                renderChatMessages();
-                            }
-                        }
-                    });
-                } else {
-                    chatMessages.push(msg);
-                }
-
-                // If this room is open and chat tab visible, mark as seen immediately
-                // (only if Read Receipts is enabled in Chat Settings)
+                // Mark as seen immediately if this room is open and chat tab visible
+                // (only if Read Receipts is enabled in Chat Settings) — done BEFORE the
+                // push/render below so it never races with it.
                 if (isChatTabVisible && chatSettingsGlobal.readReceiptsEnabled) {
                     const nowIso = new Date().toISOString();
                     myRoomOpenedAt[activeChatRoom] = nowIso;
@@ -3980,7 +3962,29 @@
                     }
                 }
 
-                renderChatMessages();
+                // Voice messages have large audio_data — realtime may truncate them, so those
+                // specifically need a re-fetch of the full row. Text/attachment messages never
+                // set audio_duration, so this check (NOT audio_data undefined/null, which is
+                // true for every plain text message too) correctly limits the re-fetch to only
+                // actual voice messages. Exactly ONE render happens per message — never both a
+                // premature sync render AND a later async one — so the "scroll to bottom on
+                // send" flag is never eaten by a render that doesn't even contain the message yet.
+                const looksLikeVoiceMsg = !!msg.audio_duration;
+                if (looksLikeVoiceMsg && (msg.audio_data === undefined || msg.audio_data === null)) {
+                    dbInstance.from('chat_messages').select('*').eq('id', msg.id).single().then(({ data }) => {
+                        if (data) {
+                            const hiddenIds = getHiddenMsgIds();
+                            if (!hiddenIds.includes(String(data.id))) {
+                                const idx = chatMessages.findIndex(m => m.id === data.id);
+                                if (idx >= 0) chatMessages[idx] = data; else chatMessages.push(data);
+                                renderChatMessages();
+                            }
+                        }
+                    });
+                } else {
+                    chatMessages.push(msg);
+                    renderChatMessages();
+                }
             }
 
             if (!isMine && (!isForActiveRoom || !isChatTabVisible)) {
