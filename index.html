@@ -246,6 +246,19 @@
             #chat-scroll-bottom-btn { bottom: 72px; right: 10px; width: 34px; height: 34px; }
             .card { border-radius: 14px; }
         }
+        /* ── Voice recording animated waveform bars (WhatsApp-style) ── */
+        @keyframes voiceBarBounce {
+            0%, 100% { height: 4px; }
+            50%       { height: 22px; }
+        }
+        .voice-bar {
+            width: 3px;
+            min-height: 4px;
+            background: linear-gradient(to top, #FF2D78, #FD6D05);
+            border-radius: 3px;
+            animation: voiceBarBounce 0.6s ease-in-out infinite;
+            animation-delay: var(--d, 0s);
+        }
         .chat-contact-active {
             background-color: #1e2345 !important;
             border-left-color: #FF0000 !important;
@@ -862,14 +875,36 @@
                         <div id="chat-attachment-preview" class="hidden px-3 pt-2"></div>
 
                         <!-- Voice recording UI -->
-                        <div id="voice-record-bar" class="hidden px-3 py-2 border-t border-[#1e2238] flex items-center gap-3">
-                            <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-                            <span id="voice-timer" class="text-xs font-mono text-red-400">0:00</span>
-                            <div class="flex-1 h-1 bg-[#1e2238] rounded-full overflow-hidden">
-                                <div id="voice-wave" class="h-full bg-red-500/50 rounded-full" style="width:0%"></div>
+                        <div id="voice-record-bar" class="hidden px-3 py-2.5 border-t border-[#1e2238] flex items-center gap-2.5">
+                            <!-- Red pulsing dot -->
+                            <div class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" id="voice-rec-dot"></div>
+                            <span id="voice-timer" class="text-xs font-mono text-red-400 shrink-0 w-9">0:00</span>
+                            <!-- Animated waveform bars (WhatsApp-style) -->
+                            <div class="flex-1 flex items-center gap-0.5 overflow-hidden" id="voice-live-wave" style="height:28px;">
+                                <div class="voice-bar" style="--d:0s"></div>
+                                <div class="voice-bar" style="--d:.08s"></div>
+                                <div class="voice-bar" style="--d:.16s"></div>
+                                <div class="voice-bar" style="--d:.24s"></div>
+                                <div class="voice-bar" style="--d:.32s"></div>
+                                <div class="voice-bar" style="--d:.1s"></div>
+                                <div class="voice-bar" style="--d:.22s"></div>
+                                <div class="voice-bar" style="--d:.05s"></div>
+                                <div class="voice-bar" style="--d:.18s"></div>
+                                <div class="voice-bar" style="--d:.36s"></div>
+                                <div class="voice-bar" style="--d:.13s"></div>
+                                <div class="voice-bar" style="--d:.28s"></div>
+                                <div class="voice-bar" style="--d:.06s"></div>
+                                <div class="voice-bar" style="--d:.2s"></div>
+                                <div class="voice-bar" style="--d:.4s"></div>
+                                <div class="voice-bar" style="--d:.15s"></div>
+                                <div class="voice-bar" style="--d:.3s"></div>
+                                <div class="voice-bar" style="--d:.09s"></div>
+                                <div class="voice-bar" style="--d:.25s"></div>
+                                <div class="voice-bar" style="--d:.35s"></div>
                             </div>
-                            <button onclick="cancelVoiceRecording()" class="text-gray-400 hover:text-red-400 p-1 transition"><i data-lucide="x" class="w-4 h-4"></i></button>
-                            <button onclick="stopAndSendVoice()" class="brand-gradient text-white p-2 rounded-xl shrink-0 active:scale-95 transition"><i data-lucide="send" class="w-4 h-4"></i></button>
+                            <span class="text-[10px] text-gray-500 hidden sm:inline shrink-0">Slide to cancel</span>
+                            <button onclick="cancelVoiceRecording()" class="text-gray-400 hover:text-red-400 p-1.5 transition shrink-0" title="Cancel"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            <button onclick="stopAndSendVoice()" class="brand-gradient text-white p-2.5 rounded-full shrink-0 active:scale-95 transition" title="Send"><i data-lucide="send" class="w-4 h-4"></i></button>
                         </div>
 
                         <div id="chat-input-bar" class="p-3 border-t border-[#1e2238] flex items-center gap-2">
@@ -905,7 +940,7 @@
                         </div>
 
                         <!-- Emoji picker -->
-                        <div id="emoji-picker" class="hidden absolute bottom-16 left-0 right-0 z-30 bg-[#1a1e36] border border-[#2e3554] rounded-2xl shadow-2xl" style="max-height:220px;">
+                        <div id="emoji-picker" class="hidden fixed z-[150] bg-[#1a1e36] border border-[#2e3554] rounded-2xl shadow-2xl" style="max-height:260px;width:min(340px,92vw);">
                             <div class="flex gap-1 px-3 pt-2 pb-1 border-b border-[#2e3554] overflow-x-auto scrollbar-hide text-xs text-gray-400">
                                 <button onclick="showEmojiCat('smileys')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">😀</button>
                                 <button onclick="showEmojiCat('gestures')" class="emoji-cat-btn px-2 py-1 rounded hover:bg-[#252a4a] shrink-0">👋</button>
@@ -4666,18 +4701,32 @@
                 // Voice message
                 let voiceHtml = '';
                 if (m.audio_data) {
+                    const bars = Array.from({length:24},(_,i)=>`<div class="vbar flex-1 rounded-full bg-orange-400/40" id="vbar-${m.id}-${i}" style="height:${Math.max(3,Math.round(14+Math.sin(i*0.7+m.id%6)*11))}px"></div>`).join('');
                     voiceHtml = `
-                        <div class="flex items-center gap-2 px-3 py-2 rounded-2xl ${isMine ? 'bg-orange-600/20' : 'bg-[#1a1e36]'} min-w-[180px] max-w-[260px]">
-                            <button id="voice-btn-${m.id}" onclick="toggleVoicePlay(this,'${m.id}')" class="text-orange-400 shrink-0">
-                                <i data-lucide="play-circle" class="w-7 h-7"></i>
-                            </button>
-                            <div class="flex-1">
-                                <div class="voice-waveform h-6 flex items-center gap-px" id="wave-${m.id}">
-                                    ${Array.from({length:20},(_,i)=>`<div class="bg-orange-400/50 rounded-full flex-1" style="height:${20+Math.sin(i*0.8)*14}px"></div>`).join('')}
+                        <div class="flex flex-col gap-1 px-3 py-2 rounded-2xl ${isMine ? 'bg-orange-600/20' : 'bg-[#1a1e36]'} min-w-[200px] max-w-[280px]">
+                            <div class="flex items-center gap-2">
+                                <button id="voice-btn-${m.id}" onclick="toggleVoicePlay(this,'${m.id}')" class="text-orange-400 shrink-0">
+                                    <i data-lucide="play-circle" class="w-7 h-7"></i>
+                                </button>
+                                <div class="flex-1 relative cursor-pointer" id="voice-seekbar-${m.id}" onclick="seekVoice(event,'${m.id}')" title="Seek">
+                                    <!-- Background bars -->
+                                    <div class="flex items-center gap-px h-6 pointer-events-none" id="wave-${m.id}">${bars}</div>
+                                    <!-- Seek scrubber (invisible drag overlay) -->
+                                    <input type="range" min="0" max="100" value="0" id="voice-seek-${m.id}"
+                                        oninput="onVoiceSeek(this,'${m.id}')"
+                                        class="absolute inset-0 w-full opacity-0 cursor-pointer" style="height:100%">
                                 </div>
+                                <!-- Speed badge: tap to cycle 1x → 1.5x → 2x -->
+                                <button id="voice-speed-${m.id}" onclick="cycleVoiceSpeed('${m.id}')" class="text-[10px] font-bold text-orange-400 bg-orange-400/10 border border-orange-400/30 rounded-md px-1.5 py-0.5 shrink-0 hover:bg-orange-400/20 transition" title="Playback speed">1x</button>
+                            </div>
+                            <div class="flex items-center gap-1 px-0.5">
+                                <span class="text-[9px] text-gray-500 flex-1" id="voice-cur-${m.id}">0:00</span>
                                 <span class="text-[9px] text-gray-500" id="voice-dur-${m.id}">${m.audio_duration||'0:00'}</span>
                             </div>
-                            <audio id="audio-${m.id}" src="${m.audio_data}" preload="none" onended="voiceEnded('${m.id}')"></audio>
+                            <audio id="audio-${m.id}" src="${m.audio_data}" preload="metadata"
+                                ontimeupdate="updateVoiceProgress('${m.id}')"
+                                onended="voiceEnded('${m.id}')"
+                                onloadedmetadata="voiceMetaLoaded('${m.id}')"></audio>
                         </div>`;
                 }
 
@@ -4788,11 +4837,82 @@
         }
 
         // Voice play/pause toggle
+        // Cycle speed badge: 1x → 1.5x → 2x → 1x
+        const _voiceSpeedMap = {}; // msgId → current speed
+        function cycleVoiceSpeed(msgId) {
+            const audio = document.getElementById(`audio-${msgId}`);
+            const btn = document.getElementById(`voice-speed-${msgId}`);
+            if (!audio || !btn) return;
+            const cur = _voiceSpeedMap[msgId] || 1;
+            const next = cur === 1 ? 1.5 : cur === 1.5 ? 2 : 1;
+            _voiceSpeedMap[msgId] = next;
+            audio.playbackRate = next;
+            btn.textContent = next === 1 ? '1x' : next + 'x';
+        }
+
+        // Seek by clicking the waveform bars area
+        function seekVoice(e, msgId) {
+            const audio = document.getElementById(`audio-${msgId}`);
+            const bar = document.getElementById(`voice-seekbar-${msgId}`);
+            if (!audio || !bar || !audio.duration) return;
+            const rect = bar.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            audio.currentTime = pct * audio.duration;
+            updateVoiceProgress(msgId);
+        }
+
+        // Range input drag seek
+        function onVoiceSeek(input, msgId) {
+            const audio = document.getElementById(`audio-${msgId}`);
+            if (!audio || !audio.duration) return;
+            audio.currentTime = (input.value / 100) * audio.duration;
+            updateVoiceProgress(msgId);
+        }
+
+        // Live time update — called every timeupdate event
+        function updateVoiceProgress(msgId) {
+            const audio = document.getElementById(`audio-${msgId}`);
+            if (!audio || !audio.duration) return;
+            const pct = audio.currentTime / audio.duration;
+
+            // Update seek range input
+            const range = document.getElementById(`voice-seek-${msgId}`);
+            if (range) range.value = pct * 100;
+
+            // Current time label
+            const curEl = document.getElementById(`voice-cur-${msgId}`);
+            if (curEl) {
+                const s = Math.floor(audio.currentTime);
+                curEl.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+            }
+
+            // Tint bars to show playback position (filled = orange, remaining = dimmed)
+            const waveEl = document.getElementById(`wave-${msgId}`);
+            if (waveEl) {
+                const bars = waveEl.querySelectorAll('.vbar');
+                const filledCount = Math.round(pct * bars.length);
+                bars.forEach((b, i) => {
+                    b.style.backgroundColor = i < filledCount ? 'rgba(253,109,5,0.85)' : 'rgba(251,146,60,0.3)';
+                });
+            }
+        }
+
+        // When metadata loaded, update duration display
+        function voiceMetaLoaded(msgId) {
+            const audio = document.getElementById(`audio-${msgId}`);
+            const durEl = document.getElementById(`voice-dur-${msgId}`);
+            if (audio && durEl && audio.duration && isFinite(audio.duration)) {
+                const s = Math.floor(audio.duration);
+                durEl.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+            }
+        }
+
         function toggleVoicePlay(btn, msgId) {
             const audio = document.getElementById(`audio-${msgId}`);
             if (!audio) return;
             if (audio.paused) {
-                document.querySelectorAll('audio').forEach(a => { if (a !== audio) { a.pause(); } });
+                document.querySelectorAll('audio').forEach(a => { if (a !== audio) a.pause(); });
+                audio.playbackRate = _voiceSpeedMap[msgId] || 1;
                 audio.play();
                 _voicePlaying = true;
                 btn.innerHTML = '<i data-lucide="pause-circle" class="w-7 h-7 text-orange-400"></i>';
@@ -4807,6 +4927,13 @@
             _voicePlaying = false;
             const btn = document.getElementById(`voice-btn-${msgId}`);
             if (btn) { btn.innerHTML = '<i data-lucide="play-circle" class="w-7 h-7 text-orange-400"></i>'; lucide.createIcons(); }
+            // Reset bars and seek
+            const range = document.getElementById(`voice-seek-${msgId}`);
+            if (range) range.value = 0;
+            const curEl = document.getElementById(`voice-cur-${msgId}`);
+            if (curEl) curEl.textContent = '0:00';
+            const waveEl = document.getElementById(`wave-${msgId}`);
+            if (waveEl) waveEl.querySelectorAll('.vbar').forEach(b => { b.style.backgroundColor = 'rgba(251,146,60,0.3)'; });
         }
 
         function escapeChatHtml(str) {
@@ -4950,7 +5077,27 @@
             const p = document.getElementById('emoji-picker');
             const isHidden = p.classList.contains('hidden');
             p.classList.toggle('hidden');
-            if (isHidden) showEmojiCat('smileys');
+            if (!isHidden) return;
+            showEmojiCat('smileys');
+            // Position the picker above the emoji button, clamped within viewport
+            // Now it uses fixed positioning so it never clips off-screen on mobile
+            requestAnimationFrame(() => {
+                const btn = document.querySelector('[onclick="toggleEmojiPicker()"]');
+                if (!btn) return;
+                const bRect = btn.getBoundingClientRect();
+                const pW = Math.min(340, window.innerWidth * 0.92);
+                const pH = 260;
+                let left = bRect.left;
+                let top = bRect.top - pH - 8;
+                // Keep within viewport horizontally
+                if (left + pW > window.innerWidth - 8) left = window.innerWidth - pW - 8;
+                if (left < 8) left = 8;
+                // If would go off top, show below button instead
+                if (top < 8) top = bRect.bottom + 8;
+                p.style.left = left + 'px';
+                p.style.top = top + 'px';
+                p.style.width = pW + 'px';
+            });
         }
         function insertEmoji(em) {
             const input = document.getElementById('chat-message-input');
