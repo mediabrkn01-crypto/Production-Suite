@@ -1483,17 +1483,20 @@
         let pendingIncomingOffer = null; // {callId, from, fromName, callType, sdp}
         let pendingRemoteIce = []; // ICE candidates that arrived before remoteDescription was set
         let callNoAnswerTimer = null;
+        let _iceStallWarningTimer = null;
         let callDurationInterval = null;
         let callStartTime = null;
         let isCallMicMuted = false;
         let isCallCamOff = false;
         let ringToneCtx = null, ringToneTimer = null;
         const RTC_CONFIG = { iceServers: [
-            { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+            { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+            { urls: 'stun:stun.stunprotocol.org:3478' },
             { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:3478', username: 'openrelayproject', credential: 'openrelayproject' },
             { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
             { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-        ], iceCandidatePoolSize: 4 };
+        ], iceCandidatePoolSize: 6, bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
         let onlinePresenceMap = {};                    // email -> true while online
         let lastReadTimestamps = {};                    // room -> ISO string of last message we've seen
         let chatHasUnread = false;
@@ -3667,7 +3670,20 @@
             callPc.oniceconnectionstatechange = () => {
                 console.log('[call] iceConnectionState:', callPc.iceConnectionState);
                 if (callPc.iceConnectionState === 'connected' || callPc.iceConnectionState === 'completed') {
+                    clearTimeout(_iceStallWarningTimer);
                     logSelectedCandidatePair();
+                } else if (callPc.iceConnectionState === 'checking') {
+                    // If ICE negotiation is still stuck after 8s, the network path likely
+                    // needs the TURN relay and it may be unreachable — warn instead of
+                    // silently sitting in a "connected-looking" call with no audio.
+                    clearTimeout(_iceStallWarningTimer);
+                    _iceStallWarningTimer = setTimeout(() => {
+                        if (callPc && callPc.iceConnectionState === 'checking') {
+                            showCallToast('Weak connection — audio may be delayed or silent');
+                        }
+                    }, 8000);
+                } else if (callPc.iceConnectionState === 'disconnected') {
+                    showCallToast('Connection unstable — trying to reconnect...');
                 }
             };
         }
@@ -3713,9 +3729,12 @@
             currentCallRole = 'caller';
 
             try {
-                callLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callType === 'video' });
+                callLocalStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                    video: callType === 'video'
+                });
             } catch (e) {
-                showCallToast('Camera/microphone access denied');
+                showCallToast(e && e.name === 'NotFoundError' ? 'No microphone/camera found on this device' : 'Camera/microphone access denied');
                 cleanupCallState();
                 return;
             }
@@ -3766,9 +3785,12 @@
             currentCallRole = 'callee';
 
             try {
-                callLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: offer.callType === 'video' });
+                callLocalStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                    video: offer.callType === 'video'
+                });
             } catch (e) {
-                showCallToast('Camera/microphone access denied');
+                showCallToast(e && e.name === 'NotFoundError' ? 'No microphone/camera found on this device' : 'Camera/microphone access denied');
                 sendCallSignal(offer.from, { kind: 'reject', callId: offer.callId });
                 cleanupCallState();
                 return;
@@ -4225,8 +4247,9 @@
         }
 
         function getMsgTickHtml(m) {
-            // Only show ticks on my own messages
-            if (m.sender_email !== activeEmail) return '';
+            // Only show ticks on my own messages (case-insensitive — email casing can
+            // differ between signup/login and was silently killing all ticks before)
+            if ((m.sender_email || '').toLowerCase() !== (activeEmail || '').toLowerCase()) return '';
 
             const msgTime = m.created_at ? new Date(m.created_at).getTime() : 0;
 
@@ -4333,7 +4356,7 @@
         // are keyed by room id. Everything stored in localStorage — purely client-side,
         // additive, and never blocks or alters existing chat behavior unless the user
         // explicitly opts into a change.
-        let chatSettingsGlobal = { soundEnabled: true, readReceiptsEnabled: true, lastSeenEnabled: true, wallpaperEnabled: true, fontSize: 'medium' };
+        let chatSettingsGlobal = { soundEnabled: true, readReceiptsEnabled: true, lastSeenEnabled: true, wallpaperEnabled: true, fontSize: 'medium', customWallpaper: null };
         let chatSettingsRooms = {}; // { [roomKey]: { muted: bool, disappearing: 'off'|'24h'|'7d'|'90d', clearedAt: isoString } }
 
         function loadChatSettings() {
@@ -4359,7 +4382,77 @@
                 container.classList.toggle('chat-wallpaper-off', !chatSettingsGlobal.wallpaperEnabled);
                 container.classList.remove('chat-font-small', 'chat-font-medium', 'chat-font-large');
                 container.classList.add(`chat-font-${chatSettingsGlobal.fontSize}`);
+
+                // Custom wallpaper image overrides the default dot texture when set + enabled
+                if (chatSettingsGlobal.wallpaperEnabled && chatSettingsGlobal.customWallpaper) {
+                    container.style.backgroundImage = `linear-gradient(rgba(14,16,32,0.78), rgba(14,16,32,0.78)), url(${chatSettingsGlobal.customWallpaper})`;
+                    container.style.backgroundSize = 'cover';
+                    container.style.backgroundPosition = 'center';
+                    container.style.backgroundRepeat = 'no-repeat';
+                } else {
+                    // Clear inline overrides so the default CSS dot-pattern (or chat-wallpaper-off) applies
+                    container.style.backgroundImage = '';
+                    container.style.backgroundSize = '';
+                    container.style.backgroundPosition = '';
+                    container.style.backgroundRepeat = '';
+                }
             }
+
+            // Sync the settings-panel preview thumbnail + remove button visibility
+            const previewWrap = document.getElementById('chat-wallpaper-preview-wrap');
+            const previewImg = document.getElementById('chat-wallpaper-preview');
+            const removeBtn = document.getElementById('chat-wallpaper-remove-btn');
+            if (chatSettingsGlobal.customWallpaper) {
+                if (previewWrap) previewWrap.classList.remove('hidden');
+                if (previewImg) previewImg.src = chatSettingsGlobal.customWallpaper;
+                if (removeBtn) removeBtn.classList.remove('hidden');
+            } else {
+                if (previewWrap) previewWrap.classList.add('hidden');
+                if (removeBtn) removeBtn.classList.add('hidden');
+            }
+        }
+
+        // Resize/compress an uploaded wallpaper image client-side before storing in
+        // localStorage (which has a ~5-10MB per-origin cap), so even large photos fit.
+        function handleWallpaperUpload(inputEl) {
+            const file = inputEl.files && inputEl.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const maxDim = 1280;
+                    let { width, height } = img;
+                    if (width > maxDim || height > maxDim) {
+                        const scale = maxDim / Math.max(width, height);
+                        width = Math.round(width * scale);
+                        height = Math.round(height * scale);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width; canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+
+                    chatSettingsGlobal.customWallpaper = resizedDataUrl;
+                    chatSettingsGlobal.wallpaperEnabled = true; // uploading implies wanting it visible
+                    saveChatSettingsGlobal();
+                    applyGlobalChatSettingsToUI();
+                    refreshChatSettingsPanelUI();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            inputEl.value = ''; // allow re-selecting the same file later
+        }
+
+        function removeCustomWallpaper() {
+            chatSettingsGlobal.customWallpaper = null;
+            saveChatSettingsGlobal();
+            applyGlobalChatSettingsToUI();
+            refreshChatSettingsPanelUI();
         }
 
         function refreshChatSettingsPanelUI() {
@@ -6787,6 +6880,23 @@
                                 <span class="text-xs text-gray-200">Chat wallpaper</span>
                             </div>
                             <button id="chat-set-wallpaper-toggle" onclick="toggleGlobalChatSetting('wallpaperEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
+                        </div>
+                        <div class="px-3.5 py-3">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2.5">
+                                    <i data-lucide="upload" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-xs text-gray-200">Custom wallpaper</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <input type="file" id="chat-wallpaper-file-input" accept="image/*" class="hidden" onchange="handleWallpaperUpload(this)">
+                                    <button onclick="document.getElementById('chat-wallpaper-file-input').click()" class="bg-[#0b0d19] border border-[#2e3554] hover:border-orange-500/50 text-gray-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition">Upload</button>
+                                    <button id="chat-wallpaper-remove-btn" onclick="removeCustomWallpaper()" class="hidden bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition">Remove</button>
+                                </div>
+                            </div>
+                            <div id="chat-wallpaper-preview-wrap" class="hidden mt-2.5">
+                                <img id="chat-wallpaper-preview" class="w-full h-16 object-cover rounded-lg border border-[#2e3554]">
+                            </div>
+                            <p class="text-[9px] text-gray-500 mt-1.5">Applies only on this device. Large images are auto-resized.</p>
                         </div>
                         <div class="flex items-center justify-between px-3.5 py-3">
                             <div class="flex items-center gap-2.5">
