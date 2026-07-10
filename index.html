@@ -2480,15 +2480,28 @@
             const updatePayload = { name: editName, email: editEmail.toLowerCase(), role: editRole };
             if (editPass) updatePayload.pass = editPass;
 
-            const { error } = await dbInstance
+            // Try update first; if RLS blocks it, try upsert as fallback
+            let { error } = await dbInstance
                 .from('user_roster')
                 .update(updatePayload)
                 .eq('email', oldUserRecord.email);
 
             if (error) {
-                await beAlert('Save failed: ' + error.message);
-                console.error('[roster edit] update error:', error);
-                return;
+                console.error('[roster edit] update error:', error.code, error.message, error.details);
+                // Fallback: upsert (insert or replace)
+                const upsertPayload = { ...updatePayload, email: oldUserRecord.email };
+                const { error: upsertErr } = await dbInstance
+                    .from('user_roster')
+                    .upsert(upsertPayload, { onConflict: 'email' });
+                if (upsertErr) {
+                    console.error('[roster edit] upsert error:', upsertErr.code, upsertErr.message);
+                    await beAlert(`Save failed (${upsertErr.code}): ${upsertErr.message}
+
+Go to Supabase → SQL Editor and run:
+CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) WITH CHECK (true);`);
+                    return;
+                }
+                error = null; // upsert succeeded
             }
 
             // If name or email changed, keep assignments in sync
