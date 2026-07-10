@@ -5982,8 +5982,15 @@
             }]);
             if (error) { alert('Failed to send to chat: ' + error.message); console.error('[share] chat insert error:', error); return; }
             logActivity(`${activeUser} shared task "${t.topic}" to chat.`);
+
+            // Switch to chat tab first, then open the room and force scroll to bottom
+            // so the shared message is immediately visible
             switchTab('chat');
-            openChatRoom(room.roomKey === CHAT_GROUP_ROOM ? 'group' : 'dm', room.peerEmail);
+            const roomKind = room.roomKey === CHAT_GROUP_ROOM ? 'group' : 'dm';
+            await openChatRoom(roomKind, room.peerEmail);
+            // Force scroll to bottom so shared message is visible (not buried above)
+            _forceScrollToBottomNext = true;
+            renderChatMessages();
         }
 
         // WhatsApp button — open wa.me with clean message
