@@ -5940,10 +5940,10 @@
 
                 titleEl.textContent = 'Send to Team Chat';
                 msgEl.innerHTML = `
-                    <p class="text-xs text-gray-400 mb-2">Choose conversation:</p>
+                    <p class="text-xs text-gray-400 mb-2">Choose who to send to:</p>
                     ${roomOptions.map((r, i) => `
                     <label class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[#1e2238] cursor-pointer transition">
-                        <input type="radio" name="share-room-pick" value="${i}" class="accent-orange-500 shrink-0" ${i === 0 ? 'checked' : ''}>
+                        <input type="radio" name="share-room-pick" value="${i}" class="accent-orange-500 shrink-0">
                         <span class="text-xs text-gray-200">${r.label}</span>
                     </label>`).join('')}
                 `;
@@ -5955,13 +5955,19 @@
                 if (window.lucide) lucide.createIcons();
 
                 const cleanup = (ok) => {
+                    const sel = overlay.querySelector('input[name="share-room-pick"]:checked');
+                    if (ok && !sel) {
+                        // Nothing selected — shake the list instead of silently going to group
+                        msgEl.querySelector('p').textContent = '⚠️ Please choose a conversation first:';
+                        msgEl.querySelector('p').className = 'text-xs text-red-400 mb-2';
+                        return; // don't close — let user pick
+                    }
                     overlay.classList.add('hidden');
                     okBtn.onclick = null; cancelBtn.onclick = null;
                     titleEl.textContent = 'Notice';
                     msgEl.innerHTML = '';
                     if (!ok) { resolve(null); return; }
-                    const sel = overlay.querySelector('input[name="share-room-pick"]:checked');
-                    resolve(sel ? roomOptions[parseInt(sel.value)] : roomOptions[0]);
+                    resolve(roomOptions[parseInt(sel.value)]);
                 };
                 okBtn.onclick = () => cleanup(true);
                 cancelBtn.onclick = () => cleanup(false);
