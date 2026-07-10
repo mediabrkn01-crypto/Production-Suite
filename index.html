@@ -2463,36 +2463,47 @@
         }
 
         async function saveEditedRoster(index) {
-            const editName = document.getElementById(`edit-roster-name-${index}`).value.trim();
-            const editEmail = document.getElementById(`edit-roster-email-${index}`).value.trim();
-            const editRole = document.getElementById(`edit-roster-role-${index}`).value;
-            const editPass = document.getElementById(`edit-roster-pass-${index}`).value.trim();
+            const editName = document.getElementById(`edit-roster-name-${index}`)?.value.trim();
+            const editEmail = document.getElementById(`edit-roster-email-${index}`)?.value.trim();
+            const editRole = document.getElementById(`edit-roster-role-${index}`)?.value;
+            const editPass = document.getElementById(`edit-roster-pass-${index}`)?.value.trim();
 
-            if(!editName || !editEmail || !editPass) {
-                alert("Roster parameters cannot be blank!"); return;
+            // Pass key is optional — only name and email are required
+            if (!editName || !editEmail) {
+                await beAlert('Name and email cannot be blank.'); return;
             }
 
             const oldUserRecord = userRoster[index];
+            if (!oldUserRecord) { await beAlert('User not found. Please refresh.'); return; }
+
+            // Build update payload — include pass only if it was filled in
+            const updatePayload = { name: editName, email: editEmail.toLowerCase(), role: editRole };
+            if (editPass) updatePayload.pass = editPass;
 
             const { error } = await dbInstance
                 .from('user_roster')
-                .update({ name: editName, email: editEmail, role: editRole, pass: editPass })
+                .update(updatePayload)
                 .eq('email', oldUserRecord.email);
 
-            if(error) { alert("Database Update Error."); return; }
+            if (error) {
+                await beAlert('Save failed: ' + error.message);
+                console.error('[roster edit] update error:', error);
+                return;
+            }
 
-            if (oldUserRecord.email !== editEmail || oldUserRecord.name !== editName) {
+            // If name or email changed, keep assignments in sync
+            if (oldUserRecord.email !== editEmail.toLowerCase() || oldUserRecord.name !== editName) {
                 await dbInstance
                     .from('assignments')
-                    .update({ assigned_to: editName, employee_email: editEmail })
+                    .update({ assigned_to: editName, employee_email: editEmail.toLowerCase() })
                     .eq('employee_email', oldUserRecord.email);
             }
 
-            await pushLogEntry(`Admin updated configuration metrics for: ${editName}`);
-            
+            await pushLogEntry(`Admin updated roster entry for: ${editName}`);
             editingRosterIndex = null;
             await syncLedgerEngine(false);
             populateDropdownSelectors();
+            renderSettingsRoster();
         }
 
         // UPGRADED MULTI-FILE QUEUE TRACKER FOR ASSIGNMENT PANEL
