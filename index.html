@@ -2453,8 +2453,12 @@
         }
 
         function startEditingRoster(index) {
-            editingRosterIndex = index;
+            editingRosterIndex = parseInt(index); // force number to avoid === type mismatch
             renderSettingsRoster();
+            // Focus the name input after render
+            setTimeout(() => {
+                document.getElementById(`edit-roster-name-${editingRosterIndex}`)?.focus();
+            }, 50);
         }
 
         function cancelEditingRoster() {
@@ -5468,7 +5472,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const tbody = document.getElementById('roster-settings-rows');
             if(!tbody) return; tbody.innerHTML = '';
             userRoster.forEach((u, i) => {
-                if(editingRosterIndex === i) {
+                if(editingRosterIndex !== null && parseInt(editingRosterIndex) === i) {
                     tbody.innerHTML += `
                         <tr class="bg-[#1e2238]/60 text-gray-300">
                             <td class="py-2 px-1">
