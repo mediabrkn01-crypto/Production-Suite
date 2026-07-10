@@ -1314,6 +1314,7 @@
                                     <th class="py-3 px-4">Completed</th>
                                     <th class="py-3 px-4">Delivery Output</th>
                                     <th id="history-th-actions" class="py-3 px-4 text-center hidden">Manager Actions</th>
+                                    <th class="py-3 px-4 text-center text-gray-400 text-[11px] font-bold uppercase tracking-wide">Share</th>
                                 </tr>
                             </thead>
                             <tbody id="history-table-rows" class="divide-y divide-[#1e2238]/60 text-gray-300"></tbody>
@@ -1488,9 +1489,44 @@
         }
         function beAlert(message) { return _beModalShow({ message, showCancel: false }); }
         function beConfirm(message, danger = false) { return _beModalShow({ message, showCancel: true, okText: 'OK', danger }); }
-        // Override native alert globally so every existing alert('...') call in the app
-        // automatically uses the branded modal instead of the browser's default dialog.
         window.alert = beAlert;
+
+        // Branded prompt — text input inside our modal, replaces all native prompt() calls
+        function bePrompt(message, placeholder = '') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('be-modal-overlay');
+                const msgEl = document.getElementById('be-modal-message');
+                const okBtn = document.getElementById('be-modal-ok-btn');
+                const cancelBtn = document.getElementById('be-modal-cancel-btn');
+                const iconWrap = document.getElementById('be-modal-icon-wrap');
+                if (!overlay) { resolve(null); return; }
+
+                msgEl.innerHTML = `${message}<br><input id="be-modal-prompt-input" type="text" placeholder="${placeholder}" class="mt-3 w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500 transition">`;
+                okBtn.textContent = 'OK';
+                okBtn.className = 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.classList.remove('hidden');
+                iconWrap.className = 'shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-orange-500/10 flex items-center justify-center';
+
+                overlay.classList.remove('hidden');
+                if (window.lucide) lucide.createIcons();
+                setTimeout(() => document.getElementById('be-modal-prompt-input')?.focus(), 80);
+
+                const cleanup = (ok) => {
+                    const val = document.getElementById('be-modal-prompt-input')?.value || '';
+                    overlay.classList.add('hidden');
+                    okBtn.onclick = null; cancelBtn.onclick = null;
+                    msgEl.innerHTML = '';
+                    resolve(ok ? val : null);
+                };
+                okBtn.onclick = () => cleanup(true);
+                cancelBtn.onclick = () => cleanup(false);
+                setTimeout(() => {
+                    const inp = document.getElementById('be-modal-prompt-input');
+                    if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); cleanup(true); } };
+                }, 90);
+            });
+        }
 
         let activeUser = localStorage.getItem('be_active_user') || null;
         let activeRole = localStorage.getItem('be_active_role') || null; 
@@ -2762,7 +2798,7 @@
             let feedbackLog = targetTask.explanation;
 
             if (nextStatus === "Rework Required" || nextStatus === "Rejected") {
-                const explanationText = prompt(`Enter evaluation feedback notes for status alteration [${nextStatus.toUpperCase()}]:`);
+                const explanationText = await bePrompt(`Enter evaluation feedback notes for status alteration [${nextStatus.toUpperCase()}]:`);
                 if (!explanationText) {
                     alert("Operation Denied: Notes are mandatory to flag anomalies.");
                     renderTableRows(); return;
@@ -2790,7 +2826,7 @@
             let assetLinkVal = targetTask.assetLink;
 
             if (newStatus === "Rework Required" || newStatus === "Rejected") {
-                const explanationText = prompt(`Enter feedback summary text mapping for status tracking:`);
+                const explanationText = await bePrompt('Enter feedback summary text mapping for status tracking:');
                 if (explanationText) feedbackLog = explanationText;
             }
             
@@ -5569,6 +5605,11 @@
                         <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Completed</span></td>
                         <td class="py-3 px-4">${delivery}</td>
                         ${managerCol}
+                        <td class="py-3 px-4 text-center">
+                            <button onclick="shareHistoryTask(${t.id})" title="Share" class="inline-flex items-center gap-1 text-[11px] font-bold text-gray-400 hover:text-orange-400 transition p-1.5 rounded-xl hover:bg-orange-500/10">
+                                <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </td>
                     </tr>
                 `;
 
@@ -5588,6 +5629,7 @@
                         </div>
                         <div class="pt-1">${delivery}</div>
                         ${mobileActions}
+                        <button onclick="shareHistoryTask(${t.id})" class="w-full mt-2 flex items-center justify-center gap-2 text-xs font-bold text-orange-400 border border-orange-500/30 rounded-xl py-2 hover:bg-orange-500/10 transition"><i data-lucide="share-2" class="w-3.5 h-3.5"></i> Share to Chat & WhatsApp</button>
                     </div>
                 `;
             });
@@ -5644,7 +5686,7 @@
             creators.forEach((c, i) => { listText += `${i + 1}. ${c.name} (${c.email})\n`; });
             listText += `\nEnter the number:`;
 
-            const choice = prompt(listText);
+            const choice = await bePrompt(listText);
             if (!choice) return;
             const idx = parseInt(choice) - 1;
             if (isNaN(idx) || idx < 0 || idx >= creators.length) { alert('Invalid selection.'); return; }
@@ -5723,7 +5765,7 @@
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
 
-            const note = prompt(`Rework feedback for "${task.topic}":`);
+            const note = await bePrompt(`Rework feedback for "${task.topic}":`, 'Describe what needs to be changed...');
             if (!note) { alert('Rework note is required.'); return; }
 
             // Reset to Rework Required and clear approvals so it re-enters creator's pipeline
@@ -5746,7 +5788,7 @@
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
 
-            const note = prompt(`Rejection reason for "${task.topic}":`);
+            const note = await bePrompt(`Rejection reason for "${task.topic}":`, 'Reason for rejection...');
             if (!note) { alert('Rejection reason is required.'); return; }
 
             await dbInstance.from('assignments').update({
@@ -5763,12 +5805,46 @@
         }
 
         // Send a completed task back to the pipeline for rework
+        // Share completed task to Team Chat and optionally WhatsApp
+        async function shareHistoryTask(id) {
+            const t = assignmentsList.find(x => x.id == id);
+            if (!t) return;
+
+            const deliveryUrl = (t.assetLink || '').split(',').map(s => s.trim()).filter(Boolean)[0] || '';
+            const shareText = `✅ *${t.topic}*\n📂 ${t.type} | 👤 ${t.assignedTo}\n📅 Completed: ${t.date || t.assignedDate || ''}\n${deliveryUrl ? `🔗 Delivery: ${deliveryUrl}` : 'No delivery link'}`;
+
+            // 1. Send to Team Chat
+            if (activeEmail && activeChatRoom) {
+                const { error } = await dbInstance.from('chat_messages').insert([{
+                    room: activeChatRoom,
+                    sender_email: activeEmail,
+                    sender_name: activeUser,
+                    message: shareText,
+                    attachment_url: null,
+                    attachment_type: null,
+                    reply_to: null,
+                    created_at: new Date().toISOString()
+                }]);
+                if (!error) logActivity(`${activeUser} (${activeRole}) shared completed task "${t.topic}" to chat.`);
+            } else {
+                await beAlert('Open a Team Chat conversation first, then share.');
+                return;
+            }
+
+            // 2. Ask whether to also share via WhatsApp
+            const wantsWA = await beConfirm('Shared to Team Chat! Also open WhatsApp to share this delivery?');
+            if (wantsWA) {
+                const waText = encodeURIComponent(shareText);
+                window.open(`https://wa.me/?text=${waText}`, '_blank');
+            }
+        }
+
         async function historyReworkTask(id) {
             if (activeRole !== 'admin' && activeRole !== 'manager') return;
             const task = assignmentsList.find(t => t.id == id);
             if (!task) return;
 
-            const note = prompt(`Enter rework feedback for "${task.topic}":`);
+            const note = await bePrompt(`Enter rework feedback for "${task.topic}":`, 'Describe what needs to be changed...');
             if (!note) { alert('Rework note is required.'); return; }
 
             await dbInstance
