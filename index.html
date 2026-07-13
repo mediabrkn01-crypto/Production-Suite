@@ -2067,7 +2067,6 @@
 
         function logoutPortal() {
             hangUpAllCallResources();
-            // Chat removed — no presence/chat channels to clean up
             localStorage.removeItem('be_active_user');
             localStorage.removeItem('be_active_role');
             localStorage.removeItem('be_active_email');
@@ -2179,7 +2178,6 @@
             }
 
             hangUpAllCallResources();
-            // Chat section removed — no chat channels to clean up
 
             activeUser = target.name;
             activeRole = target.role;
@@ -3305,224 +3303,1643 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.body.removeChild(anchor);
         }
 
-        async function startCall(peerEmail, peerName, callType) {
-            if (currentCallId) { showCallToast('Already on a call'); return; }
-            if (!peerEmail) return;
-            // online check removed (chat/presence removed)
+        function renderLogFeed() {
+            const logBox = document.getElementById('workspace-activity-log');
+            if(!logBox) return; logBox.innerHTML = '';
+            internalLogs.forEach(l => {
+                logBox.innerHTML += `
+                    <div class="text-[11px] border-b border-[#1e2238]/30 pb-1.5 animate-item">
+                        <span class="text-orange-500 font-mono">[${l.time}]</span> 
+                        <span class="text-gray-300 ml-1">${l.text}</span>
+                    </div>
+                `;
+            });
+        }
 
-            currentCallId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('c' + Date.now() + Math.random().toString(36).slice(2));
-            currentCallPeerEmail = peerEmail;
-            currentCallPeerName = peerName;
-            currentCallType = callType;
-            currentCallRole = 'caller';
+        function renderSettingsRoster() {
+            const tbody = document.getElementById('roster-settings-rows');
+            if(!tbody) return; tbody.innerHTML = '';
+            userRoster.forEach((u, i) => {
+                if(editingRosterIndex !== null && parseInt(editingRosterIndex) === i) {
+                    tbody.innerHTML += `
+                        <tr class="bg-[#1e2238]/60 text-gray-300">
+                            <td class="py-2 px-1">
+                                <input type="text" id="edit-roster-name-${i}" value="${u.name}" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
+                            </td>
+                            <td class="py-2 px-1">
+                                <input type="email" id="edit-roster-email-${i}" value="${u.email}" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
+                            </td>
+                            <td class="py-2 px-1">
+                                <select id="edit-roster-role-${i}" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
+                                    <option value="employee" ${u.role === 'employee' ? 'selected' : ''}>employee</option>
+                                    <option value="social_media" ${u.role === 'social_media' ? 'selected' : ''}>social_media</option>
+                                    <option value="manager" ${u.role === 'manager' ? 'selected' : ''}>manager</option>
+                                    <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
+                                </select>
+                            </td>
+                            <td class="py-2 px-1">
+                                <input type="text" id="edit-roster-pass-${i}" value="${u.pass || ''}" placeholder="Set pass key" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
+                            </td>
+                            <td class="py-2 text-center whitespace-nowrap space-x-2">
+                                <button onclick="saveEditedRoster(${i})" class="text-emerald-400 hover:text-emerald-500 font-bold px-1">
+                                    <i data-lucide="check" class="w-4 h-4 inline"></i>
+                                </button>
+                                <button onclick="cancelEditingRoster()" class="text-red-400 hover:text-red-500 font-bold px-1">
+                                    <i data-lucide="x" class="w-4 h-4 inline"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML += `
+                        <tr class="text-gray-300 hover:bg-[#1a1e36]/20 transition duration-150">
+                            <td class="py-2.5 font-bold text-white">${u.name}</td>
+                            <td class="py-2.5 font-mono text-gray-400">${u.email}</td>
+                            <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${u.role==='admin'?'bg-red-500/20 text-red-400':u.role==='manager'?'bg-purple-500/20 text-purple-400':'bg-blue-500/20 text-blue-400'}">${u.role}</span></td>
+                            <td class="py-2.5 font-mono text-gray-400">${u.pass || '•••••'}</td>
+                            <td class="py-2.5 text-center whitespace-nowrap space-x-2">
+                                <button onclick="startEditingRoster(${i})" class="text-blue-400 hover:text-blue-500" title="Edit Credentials">
+                                    <i data-lucide="edit-3" class="w-4 h-4 inline"></i>
+                                </button>
+                                <button onclick="removeUser(${i})" class="text-gray-500 hover:text-red-500 transition" title="Delete Account">
+                                    <i data-lucide="trash" class="w-4 h-4 inline"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+            lucide.createIcons();
+        }
 
-            try {
-                callLocalStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                    video: callType === 'video'
-                });
-            } catch (e) {
-                showCallToast(e && e.name === 'NotFoundError' ? 'No microphone/camera found on this device' : 'Camera/microphone access denied');
-                cleanupCallState();
+        // Split multi-link asset entries and build clean action button arrays
+        // Extract plain URLs (strip "name|" labels) from a stored asset string
+        function extractCleanUrls(assetString) {
+            if (!assetString) return '';
+            const parts = assetString.includes(';;')
+                ? assetString.split(';;')
+                : assetString.split(',');
+            return parts.map(p => {
+                p = p.trim();
+                return p.includes('|') ? p.slice(p.indexOf('|') + 1).trim() : p;
+            }).filter(Boolean).join(' | ');
+        }
+
+        function buildMediaOutputMarkup(assetString, topicName) {
+            if (!assetString) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
+
+            // Support both new ";;" separator and legacy "," separator
+            let rawLinks = assetString.includes(';;')
+                ? assetString.split(';;').map(s => s.trim()).filter(Boolean)
+                : assetString.split(',').map(s => s.trim()).filter(Boolean);
+
+            if (rawLinks.length === 0) return `<span class="text-gray-500 italic text-[11px]">No deliverable</span>`;
+
+            let html = '<div class="flex flex-col gap-1.5">';
+            rawLinks.forEach((raw, index) => {
+                // Parse "name|url" format; if no pipe, it's a plain url (legacy)
+                let label, url;
+                if (raw.includes('|')) {
+                    const pipeIdx = raw.indexOf('|');
+                    label = raw.slice(0, pipeIdx).trim();
+                    url = raw.slice(pipeIdx + 1).trim();
+                } else {
+                    url = raw;
+                    label = ''; // will fall back below
+                }
+
+                const lowercaseAsset = url.toLowerCase();
+                const isFolder = lowercaseAsset.includes('/folders/');
+                const isDrive = lowercaseAsset.includes('drive.google.com') || lowercaseAsset.includes('docs.google.com');
+
+                // Determine display name
+                let displayName = label;
+                if (!displayName) {
+                    displayName = isFolder ? 'Open Folder' : (isDrive ? 'Open Drive' : 'View Link');
+                }
+                // Truncate long names
+                const shownName = displayName.length > 28 ? displayName.slice(0, 28) + '…' : displayName;
+
+                const icon = isFolder
+                    ? `<i data-lucide="folder-open" class="w-3.5 h-3.5"></i>`
+                    : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i>`;
+
+                const styleClass = isDrive
+                    ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/40'
+                    : 'bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/40';
+
+                html += `
+                    <a href="${url}" target="_blank" title="${displayName}" class="${styleClass} border px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[220px]">
+                        ${icon} <span class="truncate">${shownName}</span>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            return html;
+        }
+
+        // ============================================================
+        // HISTORY TAB — completed work archive
+        // ============================================================
+        let currentHistoryPage = 1;
+        const HISTORY_PAGE_SIZE = 12;
+
+        function initHistoryYearFilter() {
+            const yearSel = document.getElementById('history-filter-year');
+            if (!yearSel) return;
+            const current = yearSel.value || 'all';
+            const years = [...new Set(assignmentsList
+                .filter(t => t.status === 'Completed' && t.assignedDate)
+                .map(t => t.assignedDate.slice(0,4)))].sort((a,b) => b-a);
+            yearSel.innerHTML = '<option value="all">All Years</option>';
+            years.forEach(y => { yearSel.innerHTML += `<option value="${y}">${y}</option>`; });
+            yearSel.value = current;
+        }
+
+        function getHistoryTasks() {
+            let tasks = assignmentsList.filter(t => t.status === 'Completed');
+
+            if (activeRole === 'employee') {
+                // Creators see their own completed work
+                tasks = tasks.filter(t => t.employeeEmail === activeEmail);
+            } else if (activeRole === 'social_media') {
+                // Social media history = their own completed work + work they approved
+                tasks = tasks.filter(t => t.employeeEmail === activeEmail || t.socialApproved);
+            } else if (activeRole === 'manager') {
+                // Manager history = work they approved
+                tasks = tasks.filter(t => t.managerApproved);
+            }
+            // admin sees all completed work
+
+            const yearF = document.getElementById('history-filter-year')?.value || 'all';
+            const monthF = document.getElementById('history-filter-month')?.value || 'all';
+            const dateF = document.getElementById('history-filter-date')?.value || '';
+            const catF = document.getElementById('history-filter-category')?.value || 'all';
+
+            if (dateF) {
+                tasks = tasks.filter(t => t.assignedDate === dateF);
+            } else {
+                if (yearF !== 'all') tasks = tasks.filter(t => t.assignedDate && t.assignedDate.startsWith(yearF));
+                if (monthF !== 'all') tasks = tasks.filter(t => t.assignedDate && t.assignedDate.slice(5,7) === monthF);
+            }
+            if (catF !== 'all') tasks = tasks.filter(t => t.type === catF);
+
+            // Newest first
+            tasks.sort((a,b) => (b.assignedDate || '').localeCompare(a.assignedDate || ''));
+            return tasks;
+        }
+
+        function goToHistoryPage(page) {
+            currentHistoryPage = page;
+            renderHistoryTable();
+        }
+
+        function renderHistoryTable() {
+            const tbody = document.getElementById('history-table-rows');
+            const mobileC = document.getElementById('history-mobile-cards');
+            const thActions = document.getElementById('history-th-actions');
+            if (!tbody || !mobileC) return;
+
+            // Show manager actions column for admin/manager
+            const canManage = (activeRole === 'admin' || activeRole === 'manager');
+            if (thActions) thActions.classList.toggle('hidden', !canManage);
+
+            const allTasks = getHistoryTasks();
+
+            tbody.innerHTML = '';
+            mobileC.innerHTML = '';
+
+            if (allTasks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-500 italic">No completed work in history for this filter.</td></tr>`;
+                mobileC.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">No completed work yet.</p>`;
+                renderHistoryPagination(0);
                 return;
             }
 
-            renderRingUI('outgoing', peerEmail, peerName, callType);
-            createCallPeerConnection();
-            callLocalStream.getTracks().forEach(t => callPc.addTrack(t, callLocalStream));
-            if (callType === 'video') {
-                const lv = document.getElementById('call-local-video');
-                lv.srcObject = callLocalStream;
-                lv.classList.remove('hidden');
-            }
+            // Pagination
+            const totalPages = Math.ceil(allTasks.length / HISTORY_PAGE_SIZE);
+            if (currentHistoryPage > totalPages) currentHistoryPage = totalPages;
+            if (currentHistoryPage < 1) currentHistoryPage = 1;
+            const start = (currentHistoryPage - 1) * HISTORY_PAGE_SIZE;
+            const pageTasks = allTasks.slice(start, start + HISTORY_PAGE_SIZE);
+            renderHistoryPagination(allTasks.length);
 
-            const offer = await callPc.createOffer();
-            await callPc.setLocalDescription(offer);
-            await sendCallSignal(peerEmail, {
-                kind: 'offer', callId: currentCallId, from: activeEmail, fromName: activeUser,
-                callType, sdp: callPc.localDescription
+            pageTasks.forEach(t => {
+                const delivery = buildMediaOutputMarkup(t.assetLink, t.topic);
+                const managerCol = canManage ? `
+                    <td class="py-3 px-4 text-center whitespace-nowrap">
+                        <button onclick="historyReworkTask(${t.id})" class="text-orange-400 hover:text-orange-300 text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded border border-orange-500/30 hover:bg-orange-500/10 transition">↩ Rework</button>
+                    </td>` : '';
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-[#1a1e36]/40 transition">
+                        <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
+                        <td class="py-3 px-4 text-gray-400">${t.type}</td>
+                        <td class="py-3 px-4 text-gray-300">${t.assignedTo}</td>
+                        <td class="py-3 px-4 font-mono text-gray-400">${t.assignedDate || '—'}</td>
+                        <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Completed</span></td>
+                        <td class="py-3 px-4">${delivery}</td>
+                        ${managerCol}
+                        <td class="py-3 px-4 text-center">
+                            <div class="flex items-center justify-center gap-1">
+                                <button onclick="shareToChatOnly(${t.id})" title="Share to Team Chat" class="text-gray-400 hover:text-orange-400 transition p-1.5 rounded-xl hover:bg-orange-500/10">
+                                    <i data-lucide="message-circle" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="shareToWhatsAppOnly(${t.id})" title="Share via WhatsApp" class="text-gray-400 hover:text-emerald-400 transition p-1.5 rounded-xl hover:bg-emerald-500/10">
+                                    <svg viewBox="0 0 24 24" class="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+
+                const mobileActions = canManage ? `
+                    <button onclick="historyReworkTask(${t.id})" class="mt-2 w-full text-orange-400 text-[11px] font-bold uppercase tracking-wide px-2 py-1.5 rounded border border-orange-500/30 hover:bg-orange-500/10 transition">↩ Send Back for Rework</button>` : '';
+
+                mobileC.innerHTML += `
+                    <div class="card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238]">
+                        <div class="flex justify-between items-start gap-2">
+                            <h4 class="text-white font-bold text-sm">${t.topic}</h4>
+                            <span class="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 shrink-0">✓ Done</span>
+                        </div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
+                            <span>${t.type}</span>
+                            <span>👤 ${t.assignedTo}</span>
+                            <span class="font-mono">${t.assignedDate || ''}</span>
+                        </div>
+                        <div class="pt-1">${delivery}</div>
+                        ${mobileActions}
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="shareToChatOnly(${t.id})" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-orange-400 border border-orange-500/30 rounded-xl py-2 hover:bg-orange-500/10 transition">
+                                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> Team Chat
+                            </button>
+                            <button onclick="shareToWhatsAppOnly(${t.id})" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-400 border border-emerald-500/30 rounded-xl py-2 hover:bg-emerald-500/10 transition">
+                                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> WhatsApp
+                            </button>
+                        </div>
+                    </div>
+                `;
             });
 
-            clearTimeout(callNoAnswerTimer);
-            callNoAnswerTimer = setTimeout(() => {
-                if (currentCallId && currentCallRole === 'caller') {
-                    sendCallSignal(peerEmail, { kind: 'end', callId: currentCallId });
-                    showCallToast('No answer');
-                    cleanupCallState();
-                }
-            }, 35000);
+            lucide.createIcons();
         }
 
-        function cancelOutgoingCall() {
-            if (currentCallPeerEmail && currentCallId) {
-                sendCallSignal(currentCallPeerEmail, { kind: 'end', callId: currentCallId });
+        function renderHistoryPagination(totalItems) {
+            const pagEl = document.getElementById('history-pagination');
+            if (!pagEl) return;
+            const totalPages = Math.ceil(totalItems / HISTORY_PAGE_SIZE);
+            if (totalPages <= 1) { pagEl.classList.add('hidden'); pagEl.innerHTML = ''; return; }
+            pagEl.classList.remove('hidden');
+
+            let html = `<button onclick="goToHistoryPage(${currentHistoryPage - 1})" ${currentHistoryPage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentHistoryPage === 1 ? 'text-gray-600 bg-[#0b0d19]' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">‹ Prev</button>`;
+            const pages = [];
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentHistoryPage - 1 && i <= currentHistoryPage + 1)) pages.push(i);
+                else if (pages[pages.length - 1] !== '...') pages.push('...');
             }
-            cleanupCallState();
+            pages.forEach(p => {
+                if (p === '...') html += `<span class="px-2 text-gray-600 text-xs">…</span>`;
+                else html += `<button onclick="goToHistoryPage(${p})" class="min-w-[32px] px-2.5 py-1.5 rounded-lg text-xs font-bold ${p === currentHistoryPage ? 'brand-gradient text-white' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">${p}</button>`;
+            });
+            html += `<button onclick="goToHistoryPage(${currentHistoryPage + 1})" ${currentHistoryPage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentHistoryPage === totalPages ? 'text-gray-600 bg-[#0b0d19]' : 'text-gray-300 bg-[#121424] hover:bg-[#1a1e36] border border-[#1e2238]'}">Next ›</button>`;
+            pagEl.innerHTML = html;
         }
 
-        async function acceptCall() {
-            if (!pendingIncomingOffer) return;
-            const offer = pendingIncomingOffer;
-            pendingIncomingOffer = null;
-            stopRingTone();
+        // ── SOCIAL MEDIA ASSIGNMENT APPROVAL + REASSIGN ──
+        // Admin/manager approves a social-media task so social media can re-assign it
+        async function approveSocialAssignment(id) {
+            if (activeRole !== 'manager' && activeRole !== 'admin') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
 
-            currentCallId = offer.callId;
-            currentCallPeerEmail = offer.from;
-            currentCallPeerName = offer.fromName;
-            currentCallType = offer.callType;
-            currentCallRole = 'callee';
+            await dbInstance.from('assignments').update({ assign_approved: true }).eq('id', id);
+            await pushLogEntry(`Assignment approved for social media: "${task.topic}" — social media can now re-assign.`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Assignment approved. Social media can now re-assign this to a creator.');
+        }
 
-            try {
-                callLocalStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                    video: offer.callType === 'video'
+        // Open a simple prompt-based re-assign for social media
+        async function openReassignModal(id) {
+            if (activeRole !== 'social_media') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            // Build a numbered list of editors/designers to pick from
+            const creators = userRoster.filter(u => u.role === 'employee');
+            if (creators.length === 0) { alert('No editors/designers available to assign.'); return; }
+
+            let listText = `Re-assign "${task.topic}" to which creator?\n\n`;
+            creators.forEach((c, i) => { listText += `${i + 1}. ${c.name} (${c.email})\n`; });
+            listText += `\nEnter the number:`;
+
+            const choice = await bePrompt(listText);
+            if (!choice) return;
+            const idx = parseInt(choice) - 1;
+            if (isNaN(idx) || idx < 0 || idx >= creators.length) { alert('Invalid selection.'); return; }
+
+            const creator = creators[idx];
+
+            // Pass the SAME task down to the chosen creator, reset to Pending
+            await dbInstance.from('assignments').update({
+                assigned_to: creator.name,
+                employee_email: creator.email,
+                status: 'Pending',
+                explanation: 'None'
+            }).eq('id', id);
+
+            await pushLogEntry(`Social media re-assigned "${task.topic}" to ${creator.name}.`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert(`Task re-assigned to ${creator.name}.`);
+        }
+
+        // ── APPROVAL ACTIONS (manager + social media) ──
+        // Confirmation wrappers to prevent accidental mis-taps
+        async function confirmApprove(id) {
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+            if (await beConfirm(`Approve "${task.topic}"?\n\nThis sends it to Social Media for posting.`)) {
+                managerApproveTask(id);
+            }
+        }
+
+        async function confirmSocialPost(id) {
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+            if (await beConfirm(`Approve & Post "${task.topic}"?\n\nThis marks it as published and moves it to your History.`)) {
+                socialApproveTask(id);
+            }
+        }
+
+        async function managerApproveTask(id) {
+            if (activeRole !== 'manager' && activeRole !== 'admin') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const { error } = await dbInstance.from('assignments').update({ manager_approved: true }).eq('id', id);
+            if (error) {
+                console.error('Manager approve error:', error);
+                alert('Could not approve: ' + error.message + '\n\nIf this mentions a missing column, run in Supabase SQL editor:\nALTER TABLE assignments ADD COLUMN IF NOT EXISTS manager_approved boolean DEFAULT false;');
+                return;
+            }
+            await pushLogEntry(`Manager approved completed work: "${task.topic}" — sent to Social Media for posting.`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Approved. Sent to Social Media pipeline for posting.');
+        }
+
+        async function socialApproveTask(id) {
+            if (activeRole !== 'social_media' && activeRole !== 'admin') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const { error } = await dbInstance.from('assignments').update({ social_approved: true }).eq('id', id);
+            if (error) {
+                console.error('Social approve error:', error);
+                alert('Could not approve: ' + error.message + '\n\nIf this mentions a missing column, run in Supabase SQL editor:\nALTER TABLE assignments ADD COLUMN IF NOT EXISTS social_approved boolean DEFAULT false;');
+                return;
+            }
+            await pushLogEntry(`Social Media posted/approved completed work: "${task.topic}"`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Approved &amp; posted. This task now appears in your History.');
+        }
+
+        // Approver sends completed work back to creator for rework
+        async function approvalReworkTask(id) {
+            if (!['manager', 'social_media', 'admin'].includes(activeRole)) return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const note = await bePrompt(`Rework feedback for "${task.topic}":`, 'Describe what needs to be changed...');
+            if (!note) { alert('Rework note is required.'); return; }
+
+            // Reset to Rework Required and clear approvals so it re-enters creator's pipeline
+            await dbInstance.from('assignments').update({
+                status: 'Rework Required',
+                explanation: note,
+                manager_approved: false,
+                social_approved: false
+            }).eq('id', id);
+
+            await pushLogEntry(`${activeRole} sent "${task.topic}" back for rework. Note: ${note}`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Sent back to the creator for rework.');
+        }
+
+        // Approver rejects completed work
+        async function approvalRejectTask(id) {
+            if (!['manager', 'social_media', 'admin'].includes(activeRole)) return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const note = await bePrompt(`Rejection reason for "${task.topic}":`, 'Reason for rejection...');
+            if (!note) { alert('Rejection reason is required.'); return; }
+
+            await dbInstance.from('assignments').update({
+                status: 'Rejected',
+                explanation: note,
+                manager_approved: false,
+                social_approved: false
+            }).eq('id', id);
+
+            await pushLogEntry(`${activeRole} rejected "${task.topic}". Reason: ${note}`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            alert('Task rejected.');
+        }
+
+        // Send a completed task back to the pipeline for rework
+        // Share completed task to Team Chat and optionally WhatsApp
+        // Build the clean share message — editor, completion time, file only
+        function _buildShareMessage(t) {
+            const fileUrl = (t.assetLink || '').split(',').map(s => s.trim()).filter(Boolean)[0] || '';
+            const completedAt = t.date || t.assignedDate || '';
+
+            // Designation = the exact Work Classification assigned (Video Editing, Thumbnail Design, etc.)
+            const designation = t.type || 'Creator';
+
+            // File type label based on work type
+            const typeLC = (t.type || '').toLowerCase();
+            let fileLabel = 'File';
+            if (typeLC.includes('video') || typeLC.includes('reel') || typeLC.includes('edit')) fileLabel = 'Video';
+            else if (typeLC.includes('thumb')) fileLabel = 'Thumbnail';
+            else if (typeLC.includes('poster')) fileLabel = 'Poster';
+            else if (typeLC.includes('photo') || typeLC.includes('image')) fileLabel = 'Photo';
+            else if (typeLC.includes('audio') || typeLC.includes('sound')) fileLabel = 'Audio';
+            else if (typeLC.includes('design') || typeLC.includes('graphic')) fileLabel = 'Design';
+
+            let msg = `✅ Work Completed
+`;
+            msg += `👤 ${designation}: ${t.assignedTo}
+`;
+            if (completedAt) msg += `🕐 Completed: ${completedAt}
+`;
+            msg += `📂 Type: ${t.type || 'General'}
+`;
+            if (fileUrl) msg += `📁 ${fileLabel}: ${fileUrl}`;
+            else msg += `📁 ${fileLabel}: (no link attached)`;
+            return msg;
+        }
+
+        // Build room picker and return selected room option or null
+        async function _pickChatRoom() {
+            const contacts = userRoster.filter(u => (u.email || '').toLowerCase() !== (activeEmail || '').toLowerCase());
+            const roomOptions = [
+                { label: '👥 Studio Group Room', roomKey: CHAT_GROUP_ROOM, peerEmail: null }
+            ].concat(contacts.map(u => ({
+                label: `💬 ${u.name} (${u.role})`,
+                roomKey: buildDmRoomKey(activeEmail, u.email),
+                peerEmail: u.email
+            })));
+
+            return new Promise(resolve => {
+                const overlay = document.getElementById('be-modal-overlay');
+                const msgEl = document.getElementById('be-modal-message');
+                const okBtn = document.getElementById('be-modal-ok-btn');
+                const cancelBtn = document.getElementById('be-modal-cancel-btn');
+                const titleEl = document.getElementById('be-modal-title');
+
+                titleEl.textContent = 'Send to Team Chat';
+                msgEl.innerHTML = `
+                    <p class="text-xs text-gray-400 mb-2">Choose who to send to:</p>
+                    ${roomOptions.map((r, i) => `
+                    <label class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[#1e2238] cursor-pointer transition">
+                        <input type="radio" name="share-room-pick" value="${i}" class="accent-orange-500 shrink-0">
+                        <span class="text-xs text-gray-200">${r.label}</span>
+                    </label>`).join('')}
+                `;
+                okBtn.textContent = 'Send';
+                okBtn.className = 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+                if (window.lucide) lucide.createIcons();
+
+                const cleanup = (ok) => {
+                    const sel = overlay.querySelector('input[name="share-room-pick"]:checked');
+                    if (ok && !sel) {
+                        // Nothing selected — shake the list instead of silently going to group
+                        msgEl.querySelector('p').textContent = '⚠️ Please choose a conversation first:';
+                        msgEl.querySelector('p').className = 'text-xs text-red-400 mb-2';
+                        return; // don't close — let user pick
+                    }
+                    overlay.classList.add('hidden');
+                    okBtn.onclick = null; cancelBtn.onclick = null;
+                    titleEl.textContent = 'Notice';
+                    msgEl.innerHTML = '';
+                    if (!ok) { resolve(null); return; }
+                    resolve(roomOptions[parseInt(sel.value)]);
+                };
+                okBtn.onclick = () => cleanup(true);
+                cancelBtn.onclick = () => cleanup(false);
+            });
+        }
+
+        // Chat button — pick room, send, open chat
+        async function shareToChatOnly(id) {
+            const t = assignmentsList.find(x => x.id == id);
+            if (!t) return;
+            const room = await _pickChatRoom();
+            if (!room) return;
+            const msg = _buildShareMessage(t);
+            const { error } = await dbInstance.from('chat_messages').insert([{
+                room: room.roomKey, sender_email: activeEmail, sender_name: activeUser,
+                message: msg, attachment_url: null, attachment_type: null,
+                attachment_name: null, reply_to_id: null
+            }]);
+            if (error) { alert('Failed to send to chat: ' + error.message); console.error('[share] chat insert error:', error); return; }
+            logActivity(`${activeUser} shared task "${t.topic}" to chat.`);
+
+            // Switch to chat tab first, then open the room and force scroll to bottom
+            // so the shared message is immediately visible
+            switchTab('chat');
+            const roomKind = room.roomKey === CHAT_GROUP_ROOM ? 'group' : 'dm';
+            await openChatRoom(roomKind, room.peerEmail);
+            // Force scroll to bottom so shared message is visible (not buried above)
+            _forceScrollToBottomNext = true;
+            renderChatMessages();
+        }
+
+        // WhatsApp button — open wa.me with clean message
+        function shareToWhatsAppOnly(id) {
+            const t = assignmentsList.find(x => x.id == id);
+            if (!t) return;
+            const msg = _buildShareMessage(t);
+            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        async function historyReworkTask(id) {
+            if (activeRole !== 'admin' && activeRole !== 'manager') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+
+            const note = await bePrompt(`Enter rework feedback for "${task.topic}":`, 'Describe what needs to be changed...');
+            if (!note) { alert('Rework note is required.'); return; }
+
+            await dbInstance
+                .from('assignments')
+                .update({ status: 'Rework Required', explanation: note })
+                .eq('id', id);
+
+            await pushLogEntry(`Task "${task.topic}" sent back for rework from history. Note: ${note}`);
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
+            alert('Task sent back to the pipeline for rework.');
+        }
+
+        function showFullExplanation(el) {
+            const full = el.getAttribute('data-full') || el.textContent;
+            const body = document.getElementById('note-modal-body');
+            body.textContent = full;
+            document.getElementById('note-modal').classList.remove('hidden');
+            document.getElementById('note-modal').classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function copyNoteText() {
+            const txt = document.getElementById('note-modal-body').textContent;
+            const btn = document.getElementById('note-copy-btn');
+            navigator.clipboard.writeText(txt).then(() => {
+                btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Copied!';
+                lucide.createIcons();
+                setTimeout(() => {
+                    btn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i> Copy Text';
+                    lucide.createIcons();
+                }, 2000);
+            }).catch(() => {
+                // fallback select
+                const range = document.createRange();
+                range.selectNodeContents(document.getElementById('note-modal-body'));
+                const sel = window.getSelection();
+                sel.removeAllRanges(); sel.addRange(range);
+                document.execCommand('copy');
+            });
+        }
+
+        async function editTopicInline(td, id) {
+            if (activeRole !== 'admin' && activeRole !== 'manager') return;
+            const task = assignmentsList.find(t => t.id == id);
+            if (!task) return;
+            if (td.querySelector('input')) return; // already editing
+
+            const oldTopic = task.topic;
+            td.innerHTML = `<input type="text" value="${(oldTopic||'').replace(/"/g,'&quot;')}" class="w-full bg-[#0b0d19] border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">`;
+            const input = td.querySelector('input');
+            input.focus();
+            input.select();
+
+            const save = async () => {
+                const val = input.value.trim();
+                if (!val || val === oldTopic) { renderTableRows(); return; }
+                const { error } = await dbInstance.from('assignments').update({ topic: val }).eq('id', id);
+                if (error) { alert('Could not save: ' + error.message); renderTableRows(); return; }
+                await pushLogEntry(`Topic edited: "${oldTopic}" → "${val}"`);
+                await syncLedgerEngine(false);
+                syncTasksToSheet();
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { input.blur(); }
+                if (e.key === 'Escape') { renderTableRows(); }
+            });
+        }
+
+        function renderTableRows() {
+            const tbody = document.getElementById('production-matrix-rows');
+            const mobileContainer = document.getElementById('production-matrix-mobile-cards');
+            
+            if(!tbody || !mobileContainer) return;
+            
+            tbody.innerHTML = '';
+            mobileContainer.innerHTML = '';
+
+            let targetTasks;
+
+            // Helper: is this task assigned to a social-media-role user?
+            const socialEmails = new Set(userRoster.filter(u => u.role === 'social_media').map(u => u.email));
+            const isSocialTask = (t) => socialEmails.has(t.employeeEmail);
+
+            if (activeRole === 'employee') {
+                // Editors/designers see only their own non-completed tasks
+                targetTasks = assignmentsList.filter(t =>
+                    t.employeeEmail === activeEmail && t.status !== 'Completed'
+                );
+            } else if (activeRole === 'social_media') {
+                // Social media sees:
+                //  1. Their own assigned tasks (the social-assignment re-assign flow)
+                //  2. Completed work the MANAGER has approved, ready for them to post/approve
+                targetTasks = assignmentsList.filter(t =>
+                    (t.employeeEmail === activeEmail && t.status !== 'Completed') ||
+                    (t.status === 'Completed' && t.managerApproved && !t.socialApproved)
+                );
+            } else if (activeRole === 'manager') {
+                // Manager: non-completed tasks + completed awaiting manager approval
+                targetTasks = assignmentsList.filter(t =>
+                    t.status !== 'Completed' || (t.status === 'Completed' && !t.managerApproved)
+                );
+            } else {
+                // Admin
+                targetTasks = assignmentsList.filter(t =>
+                    t.status !== 'Completed' || (t.status === 'Completed' && (!t.managerApproved || !t.socialApproved))
+                );
+            }
+
+            // Tasks that need action should NOT be hidden by date filters.
+            // (social-media assignment tasks, and completed tasks awaiting approval)
+            const needsActionAlways = (t) => {
+                if (t.status === 'Completed') return true; // awaiting approval
+                if (isSocialTask(t)) return true; // social assignment flow
+                return false;
+            };
+
+            if (globalYearFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => needsActionAlways(t) || (t.assignedDate && t.assignedDate.startsWith(globalYearFilter)));
+            }
+
+            if (globalMonthFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => {
+                    if (needsActionAlways(t)) return true;
+                    if (!t.assignedDate) return false;
+                    const trackingSegments = t.assignedDate.split('-');
+                    return trackingSegments[1] === globalMonthFilter;
                 });
-            } catch (e) {
-                showCallToast(e && e.name === 'NotFoundError' ? 'No microphone/camera found on this device' : 'Camera/microphone access denied');
-                sendCallSignal(offer.from, { kind: 'reject', callId: offer.callId });
-                cleanupCallState();
+            }
+
+            if (globalCategoryFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => t.type && t.type.includes(globalCategoryFilter));
+            }
+
+            if (globalStatusFilter !== 'all') {
+                targetTasks = targetTasks.filter(t => t.status === globalStatusFilter);
+            }
+
+            const [sortingField, sortingDirection] = globalSortConfig.split('-');
+            targetTasks.sort((firstItem, secondItem) => {
+                let variableA = firstItem[sortingField] || '';
+                let variableB = secondItem[sortingField] || '';
+                if (sortingDirection === 'asc') {
+                    return variableA.localeCompare(variableB);
+                } else {
+                    return variableB.localeCompare(variableA);
+                }
+            });
+
+            if(targetTasks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-500 italic">Workbook tracking register dashboard logs empty for this filtered parameter mix.</td></tr>`;
+                mobileContainer.innerHTML = `<p class="text-center text-gray-500 text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
+                renderPipelinePagination(0);
                 return;
             }
 
-            createCallPeerConnection();
-            callLocalStream.getTracks().forEach(t => callPc.addTrack(t, callLocalStream));
-            if (offer.callType === 'video') {
-                const lv = document.getElementById('call-local-video');
-                lv.srcObject = callLocalStream;
-                lv.classList.remove('hidden');
-            }
+            // ── Pagination: clamp page and slice to current page ──
+            const totalPages = Math.ceil(targetTasks.length / PIPELINE_PAGE_SIZE);
+            if (currentPipelinePage > totalPages) currentPipelinePage = totalPages;
+            if (currentPipelinePage < 1) currentPipelinePage = 1;
+            const startIdx = (currentPipelinePage - 1) * PIPELINE_PAGE_SIZE;
+            const pagedTasks = targetTasks.slice(startIdx, startIdx + PIPELINE_PAGE_SIZE);
 
-            await callPc.setRemoteDescription(new RTCSessionDescription(offer.sdp));
-            await flushPendingIce();
-            const answer = await callPc.createAnswer();
-            await callPc.setLocalDescription(answer);
-            await sendCallSignal(offer.from, { kind: 'answer', callId: offer.callId, sdp: callPc.localDescription });
+            renderPipelinePagination(targetTasks.length);
 
-            renderConnectedUI();
-        }
-
-        function declineCall() {
-            if (pendingIncomingOffer) {
-                sendCallSignal(pendingIncomingOffer.from, { kind: 'reject', callId: pendingIncomingOffer.callId });
-            }
-            pendingIncomingOffer = null;
-            cleanupCallState();
-        }
-
-        function endCall() {
-            if (currentCallPeerEmail && currentCallId) {
-                sendCallSignal(currentCallPeerEmail, { kind: 'end', callId: currentCallId });
-            }
-            cleanupCallState();
-        }
-
-        function toggleCallMic() {
-            if (!callLocalStream) return;
-            isCallMicMuted = !isCallMicMuted;
-            callLocalStream.getAudioTracks().forEach(t => t.enabled = !isCallMicMuted);
-            updateCallCtrlIcons();
-        }
-        function toggleCallCam() {
-            if (!callLocalStream || currentCallType !== 'video') return;
-            isCallCamOff = !isCallCamOff;
-            callLocalStream.getVideoTracks().forEach(t => t.enabled = !isCallCamOff);
-            updateCallCtrlIcons();
-        }
-
-        function cleanupCallState() {
-            stopRingTone();
-            clearTimeout(callNoAnswerTimer); callNoAnswerTimer = null;
-            clearInterval(callDurationInterval); callDurationInterval = null;
-
-            if (callLocalStream) { callLocalStream.getTracks().forEach(t => t.stop()); callLocalStream = null; }
-            if (callPc) { try { callPc.close(); } catch (e) {} callPc = null; }
-            pendingRemoteIce = [];
-            if (peerCallChannel) { dbInstance.removeChannel(peerCallChannel); peerCallChannel = null; peerCallChannelEmail = null; }
-
-            const rv = document.getElementById('call-remote-video'); if (rv) { rv.srcObject = null; rv.classList.add('hidden'); }
-            const ra = document.getElementById('call-remote-audio'); if (ra) ra.srcObject = null;
-            const lv = document.getElementById('call-local-video'); if (lv) { lv.srcObject = null; lv.classList.add('hidden'); }
-            const centerpiece = document.getElementById('call-audio-centerpiece'); if (centerpiece) centerpiece.classList.remove('hidden');
-            const tapBanner = document.getElementById('call-tap-to-enable'); if (tapBanner) { tapBanner.classList.add('hidden'); tapBanner.classList.remove('flex'); }
-
-            currentCallId = null;
-            currentCallPeerEmail = null;
-            currentCallPeerName = null;
-            currentCallType = null;
-            currentCallRole = null;
-            isCallMicMuted = false;
-            isCallCamOff = false;
-
-            hideCallOverlay();
-        }
-
-        // Fully tear down any call resources (used on logout / account switch)
-        function hangUpAllCallResources() {
-            if (currentCallId && currentCallPeerEmail) {
-                sendCallSignal(currentCallPeerEmail, { kind: 'end', callId: currentCallId });
-            }
-            cleanupCallState();
-            teardownCallSignalChannel();
-        }
-
-        function handleCallSignal(payload) {
-            if (!payload || !payload.kind) return;
-            switch (payload.kind) {
-                case 'offer': {
-                    if (currentCallId) {
-                        // Already busy — tell caller straight away
-                        sendCallSignal(payload.from, { kind: 'busy', callId: payload.callId });
-                        return;
-                    }
-                    pendingIncomingOffer = payload;
-                    renderRingUI('incoming', payload.from, payload.fromName, payload.callType);
-                    break;
+            pagedTasks.forEach(t => {
+                let badgeColor = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20";
+                let statusDropdownStyles = "text-yellow-400 bg-yellow-400/10 border border-yellow-500/30";
+                
+                if (t.status === 'In Progress') {
+                    badgeColor = "text-blue-400 bg-blue-400/10 border border-blue-400/20";
+                    statusDropdownStyles = "text-blue-400 bg-blue-400/10 border border-blue-500/30";
                 }
-                case 'answer': {
-                    if (payload.callId === currentCallId && currentCallRole === 'caller' && callPc) {
-                        clearTimeout(callNoAnswerTimer);
-                        callPc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
-                            .then(flushPendingIce)
-                            .then(renderConnectedUI);
-                    }
-                    break;
+                if (t.status === 'Completed') {
+                    badgeColor = "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20";
+                    statusDropdownStyles = "text-emerald-400 bg-emerald-400/10 border border-emerald-500/30";
                 }
-                case 'ice': {
-                    if (payload.callId === currentCallId && callPc && payload.candidate) {
-                        if (callPc.remoteDescription && callPc.remoteDescription.type) {
-                            callPc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
+                if (t.status === 'Rework Required') {
+                    badgeColor = "text-orange-400 bg-orange-400/10 border border-orange-400/20";
+                    statusDropdownStyles = "text-orange-400 bg-orange-400/10 border border-orange-500/30";
+                }
+                if (t.status === 'Rejected') {
+                    badgeColor = "text-red-500 bg-red-500/10 border border-red-500/20";
+                    statusDropdownStyles = "text-red-400 bg-red-400/10 border border-red-500/30";
+                }
+
+                let isRejected = (t.status === 'Rejected');
+                let isNewRealtimeItem = !loadedTaskIdsSnapshot.includes(t.id);
+
+                let inputActionSelectorMarkup = '';
+
+                const taskIsSocial = isSocialTask(t);
+
+                // ── SOCIAL MEDIA ASSIGNMENT FLOW (task assigned to a social-media user, not yet completed) ──
+                if (taskIsSocial && t.status !== 'Completed') {
+                    if (!t.assignApproved) {
+                        // Awaiting admin/manager approval before social media can re-assign
+                        if (activeRole === 'manager' || activeRole === 'admin') {
+                            inputActionSelectorMarkup = `
+                                <div class="flex flex-wrap gap-1">
+                                    <button onclick="approveSocialAssignment(${t.id})" class="px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/40 text-[10px] font-bold uppercase tracking-wide transition">✓ Approve Assignment</button>
+                                    <button onclick="approvalRejectTask(${t.id})" class="px-2 py-1 rounded bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 text-[10px] font-bold uppercase tracking-wide transition">❌ Reject</button>
+                                </div>`;
+                        } else if (activeRole === 'social_media') {
+                            inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-yellow-500/10 text-yellow-400 font-bold border border-yellow-500/20 text-[10px] uppercase tracking-wide">⏳ Awaiting Approval</span>`;
                         } else {
-                            // Remote description not set yet — queue and flush once it is
-                            pendingRemoteIce.push(payload.candidate);
+                            inputActionSelectorMarkup = `<span class="text-gray-500 text-[10px] italic">Pending approval</span>`;
+                        }
+                    } else {
+                        // Approved — social media can now re-assign to a creator
+                        if (activeRole === 'social_media') {
+                            inputActionSelectorMarkup = `<button onclick="openReassignModal(${t.id})" class="px-2 py-1 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/40 text-[10px] font-bold uppercase tracking-wide transition">→ Re-assign to Creator</button>`;
+                        } else {
+                            inputActionSelectorMarkup = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Approved · with Social</span>`;
                         }
                     }
-                    break;
                 }
-                case 'reject': {
-                    if (payload.callId === currentCallId) {
-                        showCallToast(`${currentCallPeerName || 'They'} declined the call`);
-                        cleanupCallState();
+                // ── COMPLETED tasks awaiting approval ──
+                else if (t.status === 'Completed' && (activeRole === 'manager' || activeRole === 'social_media' || activeRole === 'admin')) {
+                    const alreadyApproved = activeRole === 'social_media' ? t.socialApproved : (activeRole === 'manager' ? t.managerApproved : (t.managerApproved && t.socialApproved));
+
+                    if (alreadyApproved) {
+                        inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20 text-[10px] uppercase tracking-wide">✓ Approved</span>`;
+                    } else if (activeRole === 'social_media') {
+                        // Manager already approved — social media can ONLY approve & post (no rework/reject)
+                        inputActionSelectorMarkup = `
+                            <button onclick="confirmSocialPost(${t.id})" class="w-full px-3 py-2 rounded-lg bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/40 text-[11px] font-bold uppercase tracking-wide transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Approve &amp; Post
+                            </button>
+                        `;
+                    } else {
+                        // Manager / admin — spaced-out stacked buttons to prevent mis-taps
+                        inputActionSelectorMarkup = `
+                            <div class="flex flex-col gap-2 min-w-[130px]">
+                                <button onclick="confirmApprove(${t.id})" class="px-3 py-2 rounded-lg bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-600/40 text-[11px] font-bold uppercase tracking-wide transition flex items-center justify-center gap-1.5">
+                                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Approve
+                                </button>
+                                <div class="flex gap-2">
+                                    <button onclick="approvalReworkTask(${t.id})" class="flex-1 px-2 py-1.5 rounded-lg bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20 text-[10px] font-bold uppercase tracking-wide transition">🔄 Rework</button>
+                                    <button onclick="approvalRejectTask(${t.id})" class="flex-1 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 text-[10px] font-bold uppercase tracking-wide transition">❌ Reject</button>
+                                </div>
+                            </div>
+                        `;
                     }
-                    break;
-                }
-                case 'busy': {
-                    if (payload.callId === currentCallId) {
-                        showCallToast(`${currentCallPeerName || 'User'} is on another call`);
-                        cleanupCallState();
+                } else if (activeRole === 'employee' || activeRole === 'social_media') {
+                    if (isRejected) {
+                        inputActionSelectorMarkup = `<span class="px-2 py-1 rounded bg-red-500/10 text-red-400 font-bold border border-red-500/20 text-[10px] uppercase tracking-wide">🔒 Locked</span>`;
+                    } else {
+                        inputActionSelectorMarkup = `
+                            <select onchange="employeeHandleStatusChange(${t.id}, this.value)" class="bg-[#0b0d19] border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none ${statusDropdownStyles}">
+                                <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                            </select>
+                        `;
                     }
-                    break;
+                } else if (activeRole === 'manager') {
+                    inputActionSelectorMarkup = `
+                        <select onchange="managerHandleWorkflowEvaluation(${t.id}, this.value)" class="bg-[#0b0d19] border rounded-lg px-2 py-1 text-xs font-bold focus:outline-none ${statusDropdownStyles}">
+                            <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="Rework Required" ${t.status === 'Rework Required' ? 'selected' : ''}>🔄 Rework</option>
+                            <option value="Rejected" ${t.status === 'Rejected' ? 'selected' : ''}>❌ Reject</option>
+                            <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    `;
+                } else {
+                    inputActionSelectorMarkup = `
+                        <select onchange="adminUpdateStatusDirectly(${t.id}, this.value)" class="bg-[#0b0d19] border rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none ${statusDropdownStyles}">
+                            <option value="Pending" ${t.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="Rework Required" ${t.status === 'Rework Required' ? 'selected' : ''}>Rework Required</option>
+                            <option value="Rejected" ${t.status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                            <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    `;
                 }
-                case 'end': {
-                    if (payload.callId === currentCallId || (pendingIncomingOffer && pendingIncomingOffer.callId === payload.callId)) {
-                        showCallToast('Call ended');
-                        pendingIncomingOffer = null;
-                        cleanupCallState();
-                    }
-                    break;
-                }
-            }
+
+                const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
+                const refFileBtnDesktop = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
+
+                // Employees see who assigned the work
+                const assignedByLine = (activeRole === 'employee' && t.assignedBy)
+                    ? `<br><span class="text-orange-400/70 text-[10px]">Assigned by: ${t.assignedBy}</span>`
+                    : '';
+
+                let desktopRow = document.createElement('tr');
+                desktopRow.className = `hover:bg-[#1a1e36]/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
+                desktopRow.innerHTML = `
+                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-[#0b0d19] z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
+                    <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
+                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-gray-500 text-[10px]">${t.employeeEmail}</span></td>
+                    <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
+                    <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
+                    <td class="py-3 px-4 text-orange-400 font-mono font-semibold">${t.date}</td>
+                    <td class="py-3 px-4">${inputActionSelectorMarkup}</td>
+                    <td class="py-3 px-4 italic max-w-xs ${t.status === 'Completed' && t.explanation !== 'None' ? 'text-emerald-400' : 'text-yellow-500'}">
+                        ${t.explanation && t.explanation !== 'None'
+                            ? `<span class="line-clamp-2 cursor-pointer hover:underline" onclick="showFullExplanation(this)" data-full="${(t.explanation||'').replace(/"/g,'&quot;')}" title="Click to read full note">${t.explanation}</span>`
+                            : `<span class="text-gray-500">${t.explanation}</span>`}
+                    </td>
+                    <td class="py-3 px-4">${outputLinkBtn}</td>
+                    <td class="py-3 px-4">${refFileBtnDesktop}</td>
+                    ${activeRole === 'admin' ? `
+                        <td class="py-3 px-4 text-center">
+                            <button onclick="deleteAssignment(${t.id})" class="text-gray-500 hover:text-red-500 transition">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+                    ` : ''}
+                `;
+                tbody.appendChild(desktopRow);
+
+                let mobileCard = document.createElement('div');
+                mobileCard.className = `card p-4 rounded-xl space-y-2 text-xs border border-[#1e2238] ${isNewRealtimeItem ? 'flash-update' : ''}`;
+                mobileCard.innerHTML = `
+                    <div class="flex justify-between items-start border-b border-[#1e2238]/60 pb-2">
+                        <div>
+                            <h4 class="text-white font-bold text-sm">${t.topic}</h4>
+                            <span class="text-[10px] uppercase text-gray-400 font-medium tracking-wider bg-[#1d2038] px-2 py-0.5 rounded mt-1 inline-block">${t.type}</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold ${badgeColor}">${t.status}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-y-2 gap-x-1 pt-1 text-gray-300">
+                        <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Creator</p><p class="font-medium">${t.assignedTo}</p></div>
+                        <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Assigned On</p><p class="font-mono">${t.assignedDate}</p></div>
+                        <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Target Deadline</p><p class="font-mono text-orange-400 font-semibold">${t.date}</p></div>
+                        <div><p class="text-gray-500 text-[10px] uppercase font-semibold">Delivery Link</p><div class="mt-1">${outputLinkBtn}</div></div>
+                        ${(activeRole === 'employee' && t.assignedBy) ? `<div class="col-span-2"><p class="text-gray-500 text-[10px] uppercase font-semibold">Assigned By</p><p class="font-medium text-orange-400/80">${t.assignedBy}</p></div>` : ''}
+                    </div>
+                    ${t.referenceFile ? `
+                    <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-blue-500/20">
+                        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-wide mb-1.5">Reference File from Manager:</p>
+                        ${buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic)}
+                    </div>` : ''}
+                    <div class="bg-[#0b0d19] p-2.5 rounded-lg border border-[#1e2238]/40 space-y-1">
+                        <p class="text-gray-400 font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
+                        <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
+                    </div>
+                    <div class="${t.status === 'Completed' && t.explanation !== 'None' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-[#121424] border-yellow-500/10'} p-2.5 rounded-lg border space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
+                        <p class="${t.status === 'Completed' ? 'text-emerald-400' : 'text-yellow-500'} font-bold text-[10px] uppercase tracking-wide">Evaluation Review Notes:</p>
+                        <p class="${t.status === 'Completed' ? 'text-emerald-300/90' : 'text-yellow-400/90'} text-[11px] italic leading-relaxed">${t.explanation}</p>
+                    </div>
+                    <div class="flex items-center justify-between pt-2 border-t border-[#1e2238]/40">
+                        <div class="flex items-center gap-1.5 w-full">
+                            <span class="text-gray-400 text-[10px] uppercase font-bold">Action Control:</span>
+                            ${inputActionSelectorMarkup}
+                        </div>
+                        ${activeRole === 'admin' ? `
+                            <button onclick="deleteAssignment(${t.id})" class="text-red-400 hover:text-red-500 p-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                mobileContainer.appendChild(mobileCard);
+            });
+
+            loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
+            lucide.createIcons();
         }
 
+        // ============================================================
+        // MONTHLY REPORTS ENGINE — charts + PDF download
+        // ============================================================
+
+        let reportChartsAnimated = false; // only animate once per open
+
+        function initReportSelectors() {
+            const now = new Date();
+            const monthSel = document.getElementById('report-month-select');
+            const yearSel = document.getElementById('report-year-select');
+
+            // Populate years
+            if (yearSel.options.length === 0) {
+                for (let y = now.getFullYear(); y >= 2023; y--) {
+                    const opt = document.createElement('option');
+                    opt.value = y; opt.textContent = y;
+                    yearSel.appendChild(opt);
+                }
+            }
+
+            // Default to current month/year
+            monthSel.value = String(now.getMonth() + 1).padStart(2, '0');
+            yearSel.value = now.getFullYear();
+        }
+
+        function getReportData() {
+            const month = document.getElementById('report-month-select').value;
+            const year = document.getElementById('report-year-select').value;
+            const prefix = `${year}-${month}`;
+
+            const tasks = assignmentsList.filter(t => t.assignedDate && t.assignedDate.startsWith(prefix));
+
+            const statusCounts = { Pending: 0, 'In Progress': 0, Completed: 0, 'Rework Required': 0, Rejected: 0 };
+            const typeCounts = {};
+            const creatorMap = {};
+            const dailyCompleted = {};
+
+            tasks.forEach(t => {
+                // Status
+                if (statusCounts.hasOwnProperty(t.status)) statusCounts[t.status]++;
+                else statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
+
+                // Type
+                typeCounts[t.type] = (typeCounts[t.type] || 0) + 1;
+
+                // Creator
+                if (!creatorMap[t.assignedTo]) {
+                    creatorMap[t.assignedTo] = { assigned: 0, completed: 0, reworks: 0, rejected: 0 };
+                }
+                creatorMap[t.assignedTo].assigned++;
+                if (t.status === 'Completed') creatorMap[t.assignedTo].completed++;
+                if (t.status === 'Rework Required') creatorMap[t.assignedTo].reworks++;
+                if (t.status === 'Rejected') creatorMap[t.assignedTo].rejected++;
+
+                // Daily completions (use deadline date as proxy)
+                if (t.status === 'Completed' && t.date) {
+                    const day = parseInt(t.date.split('-')[2]);
+                    dailyCompleted[day] = (dailyCompleted[day] || 0) + 1;
+                }
+            });
+
+            return { tasks, statusCounts, typeCounts, creatorMap, dailyCompleted, month, year };
+        }
+
+        function generateReports(animate = false) {
+            if (!document.getElementById('tab-content-reports') ||
+                document.getElementById('tab-content-reports').classList.contains('hidden')) return;
+
+            const d = getReportData();
+            const doAnimate = animate && !reportChartsAnimated;
+            if (animate) reportChartsAnimated = true;
+
+            renderKPIStrip(d);
+            drawDoughnutChart(d, doAnimate);
+            drawBarChart(d, doAnimate);
+            drawHorizontalBarChart(d, doAnimate);
+            drawLineChart(d, doAnimate);
+            renderPerfTable(d);
+            renderReportAttendance(doAnimate);
+            lucide.createIcons();
+        }
+
+        function renderKPIStrip(d) {
+            const total = d.tasks.length;
+            const completed = d.statusCounts['Completed'] || 0;
+            const reworks = d.statusCounts['Rework Required'] || 0;
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+            const kpis = [
+                { label: 'Total Tasks', value: total, color: 'text-white', bg: 'bg-[#1a1e36]', icon: 'clipboard-list' },
+                { label: 'Completed', value: completed, color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: 'check-circle' },
+                { label: 'Rework Flagged', value: reworks, color: 'text-orange-400', bg: 'bg-orange-500/10', icon: 'alert-triangle' },
+                { label: 'Completion Rate', value: rate + '%', color: 'text-blue-400', bg: 'bg-blue-500/10', icon: 'trending-up' },
+            ];
+
+            document.getElementById('report-kpi-strip').innerHTML = kpis.map(k => `
+                <div class="card p-4 rounded-2xl flex items-center gap-3 ${k.bg} border border-[#1e2238]">
+                    <div class="p-2 rounded-lg bg-[#121424]">
+                        <i data-lucide="${k.icon}" class="w-5 h-5 ${k.color}"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">${k.label}</p>
+                        <p class="text-xl font-bold ${k.color}">${k.value}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ---- DOUGHNUT CHART (Status breakdown) ----
+        function drawDoughnutChart(d, animate) {
+            const canvas = document.getElementById('chart-status');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = 220, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const statusColors = {
+                'Completed':       '#10b981',
+                'In Progress':     '#3b82f6',
+                'Pending':         '#f59e0b',
+                'Rework Required': '#f97316',
+                'Rejected':        '#ef4444',
+            };
+
+            const entries = Object.entries(d.statusCounts).filter(([,v]) => v > 0);
+            const total = entries.reduce((s,[,v]) => s + v, 0);
+            document.getElementById('chart-status-total').textContent = total;
+
+            const legend = document.getElementById('chart-status-legend');
+            legend.innerHTML = entries.map(([k, v]) => `
+                <span class="flex items-center gap-1 text-[10px] text-gray-300">
+                    <span class="w-2.5 h-2.5 rounded-full inline-block shrink-0" style="background:${statusColors[k]||'#6b7280'}"></span>
+                    ${k} <span class="font-bold text-white">(${v})</span>
+                </span>`).join('');
+
+            const cx = W/2, cy = H/2, outerR = 90, innerR = 55;
+            let angles = entries.map(([,v]) => (v / total) * Math.PI * 2);
+            let startAngles = [];
+            let acc = -Math.PI / 2;
+            angles.forEach(a => { startAngles.push(acc); acc += a; });
+
+            const duration = animate ? 700 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                entries.forEach(([k,], i) => {
+                    const sa = startAngles[i];
+                    const ea = sa + angles[i] * ease;
+                    const color = statusColors[k] || '#6b7280';
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.arc(cx, cy, outerR, sa, ea);
+                    ctx.closePath();
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                });
+
+                // punch inner hole
+                ctx.beginPath();
+                ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+                ctx.fillStyle = '#121424';
+                ctx.fill();
+
+                // gap lines
+                entries.forEach((_, i) => {
+                    const angle = startAngles[i];
+                    ctx.beginPath();
+                    ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+                    ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
+                    ctx.strokeStyle = '#121424';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- BAR CHART (Output by type) ----
+        function drawBarChart(d, animate) {
+            const canvas = document.getElementById('chart-types');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 400, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const entries = Object.entries(d.typeCounts);
+            if (entries.length === 0) {
+                ctx.fillStyle = '#4b5563';
+                ctx.font = '12px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data for this period', W/2, H/2);
+                return;
+            }
+
+            const maxVal = Math.max(...entries.map(([,v]) => v));
+            const padL = 10, padR = 10, padT = 20, padB = 40;
+            const barW = Math.max(20, (W - padL - padR) / entries.length - 12);
+            const chartH = H - padT - padB;
+            const colors = ['#FF0000','#FD6D05','#3b82f6','#10b981','#8b5cf6','#f59e0b'];
+
+            const duration = animate ? 600 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                // grid lines
+                for (let i = 0; i <= 4; i++) {
+                    const y = padT + chartH - (chartH * i / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(padL, y); ctx.lineTo(W - padR, y);
+                    ctx.strokeStyle = '#1e2238'; ctx.lineWidth = 1; ctx.stroke();
+                    ctx.fillStyle = '#4b5563'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+                    ctx.fillText(Math.round(maxVal * i / 4), padL - 2, y + 3);
+                }
+
+                const totalW = W - padL - padR;
+                const gap = totalW / entries.length;
+
+                entries.forEach(([label, val], i) => {
+                    const bH = maxVal > 0 ? (val / maxVal) * chartH * ease : 0;
+                    const x = padL + gap * i + (gap - barW) / 2;
+                    const y = padT + chartH - bH;
+
+                    // gradient bar
+                    const grad = ctx.createLinearGradient(0, y, 0, padT + chartH);
+                    grad.addColorStop(0, colors[i % colors.length]);
+                    grad.addColorStop(1, colors[i % colors.length] + '44');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, barW, bH, [4,4,0,0]);
+                    ctx.fill();
+
+                    // value label
+                    if (progress > 0.8) {
+                        ctx.fillStyle = '#f3f4f6'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+                        ctx.fillText(val, x + barW/2, y - 5);
+                    }
+
+                    // x label
+                    ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+                    const shortLabel = label.length > 10 ? label.slice(0,10) + '…' : label;
+                    ctx.fillText(shortLabel, x + barW/2, H - padB + 14);
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- HORIZONTAL BAR CHART (Creator workload) ----
+        function drawHorizontalBarChart(d, animate) {
+            const canvas = document.getElementById('chart-creators');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 400, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const entries = Object.entries(d.creatorMap).sort((a,b) => b[1].assigned - a[1].assigned).slice(0,6);
+            if (entries.length === 0) {
+                ctx.fillStyle = '#4b5563'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+                ctx.fillText('No data for this period', W/2, H/2); return;
+            }
+
+            const maxVal = Math.max(...entries.map(([,v]) => v.assigned));
+            const padL = 90, padR = 30, padT = 10, padB = 10;
+            const rowH = (H - padT - padB) / entries.length;
+            const barH = Math.min(rowH * 0.5, 18);
+            const chartW = W - padL - padR;
+
+            const duration = animate ? 600 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                entries.forEach(([name, stats], i) => {
+                    const y = padT + i * rowH + (rowH - barH) / 2;
+                    const completedW = maxVal > 0 ? (stats.completed / maxVal) * chartW * ease : 0;
+                    const totalW2 = maxVal > 0 ? (stats.assigned / maxVal) * chartW * ease : 0;
+
+                    // background track
+                    ctx.fillStyle = '#1a1e36';
+                    ctx.beginPath(); ctx.roundRect(padL, y, chartW, barH, 4); ctx.fill();
+
+                    // assigned bar
+                    ctx.fillStyle = '#3b82f633';
+                    ctx.beginPath(); ctx.roundRect(padL, y, totalW2, barH, 4); ctx.fill();
+
+                    // completed bar
+                    const grad = ctx.createLinearGradient(padL, 0, padL + completedW, 0);
+                    grad.addColorStop(0, '#FF0000'); grad.addColorStop(1, '#FD6D05');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath(); ctx.roundRect(padL, y, completedW, barH, 4); ctx.fill();
+
+                    // name label
+                    ctx.fillStyle = '#e5e7eb'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+                    const shortName = name.split(' ')[0];
+                    ctx.fillText(shortName, padL - 6, y + barH/2 + 3.5);
+
+                    // stat label
+                    if (progress > 0.7) {
+                        ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+                        ctx.fillText(`${stats.completed}/${stats.assigned}`, padL + totalW2 + 4, y + barH/2 + 3.5);
+                    }
+                });
+
+                // legend
+                ctx.fillStyle = '#FF0000'; ctx.fillRect(padL, H - 8, 10, 4);
+                ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+                ctx.fillText('Completed', padL + 14, H - 4);
+                ctx.fillStyle = '#3b82f666'; ctx.fillRect(padL + 80, H - 8, 10, 4);
+                ctx.fillStyle = '#9ca3af'; ctx.fillText('Assigned', padL + 94, H - 4);
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- LINE CHART (Daily completions) ----
+        function drawLineChart(d, animate) {
+            const canvas = document.getElementById('chart-trend');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 400, H = 220;
+            canvas.width = W; canvas.height = H;
+
+            const year = parseInt(document.getElementById('report-year-select').value);
+            const month = parseInt(document.getElementById('report-month-select').value);
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
+            const values = labels.map(d2 => d.dailyCompleted[d2] || 0);
+
+            const maxVal = Math.max(...values, 1);
+            const padL = 30, padR = 15, padT = 20, padB = 30;
+            const chartW = W - padL - padR, chartH = H - padT - padB;
+            const step = chartW / (labels.length - 1 || 1);
+
+            const pts = labels.map((_, i) => ({
+                x: padL + i * step,
+                y: padT + chartH - (values[i] / maxVal) * chartH
+            }));
+
+            const duration = animate ? 800 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                // grid
+                for (let i = 0; i <= 4; i++) {
+                    const y = padT + chartH - (chartH * i / 4);
+                    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y);
+                    ctx.strokeStyle = '#1e2238'; ctx.lineWidth = 1; ctx.stroke();
+                    ctx.fillStyle = '#4b5563'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+                    ctx.fillText(Math.round(maxVal * i / 4), padL - 3, y + 3);
+                }
+
+                // x labels (every 5 days)
+                labels.forEach((l, i) => {
+                    if (l === 1 || l % 5 === 0) {
+                        ctx.fillStyle = '#6b7280'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+                        ctx.fillText(l, pts[i].x, H - padB + 14);
+                    }
+                });
+
+                const drawCount = Math.floor(pts.length * ease);
+                if (drawCount < 2) { if (progress < 1) requestAnimationFrame(drawFrame); return; }
+
+                const visiblePts = pts.slice(0, drawCount);
+
+                // area fill
+                const grad = ctx.createLinearGradient(0, padT, 0, padT + chartH);
+                grad.addColorStop(0, '#FF000033');
+                grad.addColorStop(1, '#FF000000');
+                ctx.beginPath();
+                ctx.moveTo(visiblePts[0].x, padT + chartH);
+                visiblePts.forEach(p => ctx.lineTo(p.x, p.y));
+                ctx.lineTo(visiblePts[visiblePts.length-1].x, padT + chartH);
+                ctx.closePath();
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // line
+                ctx.beginPath();
+                visiblePts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.strokeStyle = '#FF0000'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+                ctx.stroke();
+
+                // dots
+                visiblePts.forEach((p, i) => {
+                    if (values[i] > 0) {
+                        ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                        ctx.fillStyle = '#FD6D05'; ctx.fill();
+                    }
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // ---- PERFORMANCE TABLE ----
+        function renderPerfTable(d) {
+            const tbody = document.getElementById('report-perf-table');
+            if (!tbody) return;
+            const entries = Object.entries(d.creatorMap).sort((a,b) => b[1].assigned - a[1].assigned);
+
+            if (entries.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-gray-500 italic">No task data for this period.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = entries.map(([name, stats]) => {
+                const rate = stats.assigned > 0 ? Math.round((stats.completed / stats.assigned) * 100) : 0;
+                const rateColor = rate >= 80 ? 'text-emerald-400' : rate >= 50 ? 'text-yellow-400' : 'text-red-400';
+                return `
+                    <tr class="hover:bg-[#1a1e36]/40 transition text-xs">
+                        <td class="py-3 px-4 font-bold text-white">${name}</td>
+                        <td class="py-3 px-4 text-center text-gray-300">${stats.assigned}</td>
+                        <td class="py-3 px-4 text-center text-emerald-400 font-semibold">${stats.completed}</td>
+                        <td class="py-3 px-4 text-center text-orange-400">${stats.reworks}</td>
+                        <td class="py-3 px-4 text-center text-red-400">${stats.rejected}</td>
+                        <td class="py-3 px-4 text-center font-bold ${rateColor}">${rate}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ---- PDF / IMAGE DOWNLOAD ----
+        // ---- REPORT ATTENDANCE SECTION ----
+        function getReportAttendanceRows() {
+            const month = document.getElementById('report-month-select').value;
+            const year = document.getElementById('report-year-select').value;
+            const prefix = `${year}-${month}`;
+            return attendanceLogs.filter(r => r.log_date && r.log_date.startsWith(prefix));
+        }
+
+        function renderReportAttendance(animate) {
+            const rows = getReportAttendanceRows();
+            const tbody = document.getElementById('report-attendance-table');
+            const kpiDiv = document.getElementById('report-attendance-kpis');
+            if (!tbody || !kpiDiv) return;
+
+            // KPIs
+            const totalDays = rows.length;
+            const totalHours = rows.reduce((sum, r) => {
+                if (!r.log_in_time || !r.log_out_time) return sum;
+                return sum + (new Date(r.log_out_time) - new Date(r.log_in_time)) / 3600000;
+            }, 0);
+            const avgHours = totalDays > 0 ? (totalHours / totalDays).toFixed(1) : '0';
+            const uniqueEmployees = [...new Set(rows.map(r => r.employee_email))].length;
+            const stillIn = rows.filter(r => r.log_in_time && !r.log_out_time).length;
+
+            kpiDiv.innerHTML = [
+                { label: 'Total Check-ins', val: totalDays, color: 'text-white' },
+                { label: 'Unique Employees', val: uniqueEmployees, color: 'text-blue-400' },
+                { label: 'Total Hours', val: totalHours.toFixed(1) + 'h', color: 'text-emerald-400' },
+                { label: 'Avg hrs/session', val: avgHours + 'h', color: 'text-orange-400' },
+            ].map(k => `
+                <div class="bg-[#0b0d19] p-3 rounded-xl border border-[#1e2238] flex flex-col gap-0.5">
+                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">${k.label}</p>
+                    <p class="text-lg font-bold ${k.color}">${k.val}</p>
+                </div>
+            `).join('');
+
+            // Table
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-gray-500 italic">No attendance records for this period.</td></tr>`;
+            } else {
+                tbody.innerHTML = rows.map(r => {
+                    const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const hoursLabel = calcHoursLabel(r);
+                    const active = r.log_in_time && !r.log_out_time;
+                    return `<tr class="hover:bg-[#1a1e36]/40 transition text-xs">
+                        <td class="py-2.5 px-4 font-bold text-white">${r.employee_name}</td>
+                        <td class="py-2.5 px-4 font-mono text-gray-400">${r.log_date}</td>
+                        <td class="py-2.5 px-4 text-emerald-400 font-mono">${inLabel}</td>
+                        <td class="py-2.5 px-4 font-mono ${active ? 'text-orange-400' : 'text-red-400'}">${active ? 'Still clocked in' : outLabel}</td>
+                        <td class="py-2.5 px-4 text-gray-300 font-mono">${hoursLabel}</td>
+                    </tr>`;
+                }).join('');
+            }
+
+            // Chart
+            drawAttendanceHoursChart(rows, animate);
+        }
+
+        function drawAttendanceHoursChart(rows, animate) {
+            const canvas = document.getElementById('chart-attendance-hours');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.offsetWidth || 500, H = 180;
+            canvas.width = W; canvas.height = H;
+
+            // Aggregate hours per employee
+            const empHours = {};
+            rows.forEach(r => {
+                if (!r.log_in_time || !r.log_out_time) return;
+                const hrs = (new Date(r.log_out_time) - new Date(r.log_in_time)) / 3600000;
+                empHours[r.employee_name] = (empHours[r.employee_name] || 0) + hrs;
+            });
+
+            const entries = Object.entries(empHours).sort((a,b) => b[1]-a[1]);
+            if (entries.length === 0) {
+                ctx.fillStyle = '#4b5563'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+                ctx.fillText('No completed sessions this period', W/2, H/2); return;
+            }
+
+            const maxVal = Math.max(...entries.map(([,v]) => v));
+            const padL = 10, padR = 10, padT = 16, padB = 30;
+            const barW = Math.max(20, (W - padL - padR) / entries.length - 10);
+            const chartH = H - padT - padB;
+            const gap = (W - padL - padR) / entries.length;
+            const colors = ['#FF0000','#FD6D05','#3b82f6','#10b981','#8b5cf6','#f59e0b'];
+
+            const duration = animate ? 600 : 0;
+            const start = performance.now();
+
+            function drawFrame(now) {
+                const progress = duration > 0 ? Math.min((now - start) / duration, 1) : 1;
+                const ease = 1 - Math.pow(1 - progress, 3);
+                ctx.clearRect(0, 0, W, H);
+
+                entries.forEach(([name, hrs], i) => {
+                    const bH = maxVal > 0 ? (hrs / maxVal) * chartH * ease : 0;
+                    const x = padL + gap * i + (gap - barW) / 2;
+                    const y = padT + chartH - bH;
+
+                    const grad = ctx.createLinearGradient(0, y, 0, padT + chartH);
+                    grad.addColorStop(0, colors[i % colors.length]);
+                    grad.addColorStop(1, colors[i % colors.length] + '44');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath(); ctx.roundRect(x, y, barW, bH, [4,4,0,0]); ctx.fill();
+
+                    if (progress > 0.8) {
+                        ctx.fillStyle = '#f3f4f6'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+                        ctx.fillText(hrs.toFixed(1) + 'h', x + barW/2, y - 4);
+                    }
+
+                    ctx.fillStyle = '#9ca3af'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+                    const short = name.split(' ')[0];
+                    ctx.fillText(short, x + barW/2, H - padB + 14);
+                });
+
+                if (progress < 1) requestAnimationFrame(drawFrame);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        function downloadReportAttendanceCSV() {
+            const rows = getReportAttendanceRows();
+            if (rows.length === 0) { alert('No attendance records for this period.'); return; }
+
+            const monthSel = document.getElementById('report-month-select');
+            const yearSel = document.getElementById('report-year-select');
+            const monthName = monthSel.options[monthSel.selectedIndex].text;
+            const yearVal = yearSel.value;
+
+            const headers = ["Employee Name", "Employee Email", "Date", "Clock In", "Clock Out", "Hours Worked"];
+            const csvRows = [headers.join(",")];
+
+            rows.forEach(r => {
+                const inLabel = r.log_in_time ? new Date(r.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                const outLabel = r.log_out_time ? new Date(r.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Still clocked in';
+                csvRows.push([r.employee_name, r.employee_email, r.log_date, inLabel, outLabel, calcHoursLabel(r)].join(","));
+            });
+
+            const blob = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `BE_Attendance_${monthName}_${yearVal}.csv`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        async function downloadReportPDF() {
+            const month = document.getElementById('report-month-select');
+            const year = document.getElementById('report-year-select');
+            const monthName = month.options[month.selectedIndex].text;
+            const yearVal = year.value;
+
+            // Build a composite canvas from all 4 charts + KPI strip
+            const offscreen = document.createElement('canvas');
+            offscreen.width = 900;
+            offscreen.height = 680;
+            const ctx = offscreen.getContext('2d');
+
+            // Background
+            ctx.fillStyle = '#0b0d19';
+            ctx.fillRect(0, 0, 900, 680);
+
+            // Header
+            ctx.fillStyle = '#f3f4f6';
+            ctx.font = 'bold 22px system-ui';
+            ctx.textAlign = 'left';
+            ctx.fillText('Broken English Studio — Monthly Report', 30, 42);
+            ctx.fillStyle = '#FD6D05';
+            ctx.font = 'bold 13px system-ui';
+            ctx.fillText(`${monthName} ${yearVal}`, 30, 62);
+
+            // Divider
+            const grad = ctx.createLinearGradient(30, 0, 870, 0);
+            grad.addColorStop(0, '#FF0000'); grad.addColorStop(1, '#FD6D05');
+            ctx.fillStyle = grad;
+            ctx.fillRect(30, 72, 840, 2);
+
+            // KPI row
+            const d = getReportData();
+            const total = d.tasks.length;
+            const completed = d.statusCounts['Completed'] || 0;
+            const reworks = d.statusCounts['Rework Required'] || 0;
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+            const kpis = [
+                {label:'Total Tasks', val: total, color:'#f3f4f6'},
+                {label:'Completed', val: completed, color:'#10b981'},
+                {label:'Rework Flagged', val: reworks, color:'#f97316'},
+                {label:'Completion Rate', val: rate+'%', color:'#3b82f6'},
+            ];
+            kpis.forEach((k, i) => {
+                const kx = 30 + i * 215;
+                ctx.fillStyle = '#121424';
+                roundRectFill(ctx, kx, 84, 200, 54, 8);
+                ctx.fillStyle = '#1e2238';
+                ctx.strokeStyle = '#1e2238'; ctx.lineWidth = 1;
+                ctx.strokeRect(kx, 84, 200, 54);
+                ctx.fillStyle = k.color;
+                ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'left';
+                ctx.fillText(k.val, kx + 14, 116);
+                ctx.fillStyle = '#6b7280'; ctx.font = '10px system-ui';
+                ctx.fillText(k.label.toUpperCase(), kx + 14, 130);
+            });
+
+            // Grab the 4 chart canvases and draw them onto offscreen
+            const chartIds = ['chart-status','chart-types','chart-creators','chart-trend'];
+            const positions = [
+                {x:30, y:152, w:200, h:200},
+                {x:250, y:152, w:300, h:200},
+                {x:30, y:370, w:300, h:200},
+                {x:350, y:370, w:300, h:200},
+            ];
+
+            chartIds.forEach((id, i) => {
+                const c = document.getElementById(id);
+                if (c) {
+                    try { ctx.drawImage(c, positions[i].x, positions[i].y, positions[i].w, positions[i].h); }
+                    catch(e) {}
+                }
+            });
+
+            // Chart titles
+            const chartTitles = ['Status Breakdown','Output by Type','Creator Workload','Daily Completions'];
+            positions.forEach((pos, i) => {
+                ctx.fillStyle = '#FD6D05'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'left';
+                ctx.fillText(chartTitles[i].toUpperCase(), pos.x, pos.y - 5);
+            });
+
+            // Footer
+            ctx.fillStyle = '#374151'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+            ctx.fillText(`Generated ${new Date().toLocaleString()}  ·  Broken English Production Studio`, 870, 668);
+
+            // Download
+            const link = document.createElement('a');
+            link.download = `BE_Report_${monthName}_${yearVal}.png`;
+            link.href = offscreen.toDataURL('image/png');
+            link.click();
+        }
+
+        function roundRectFill(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // ============================================================
+        // NOTIFICATION ENGINE
+        // ============================================================
         let notifications = [];  // { id, type:'new'|'rework', topic, assignedTo, time }
         let _readNotifIds = new Set();
 
