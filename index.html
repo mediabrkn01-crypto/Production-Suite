@@ -4307,7 +4307,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 }
             });
 
-            return { tasks, statusCounts, typeCounts, creatorMap, dailyCompleted, month, year };
+            // Build per-status task lists for drill-down
+            const statusTasks = {};
+            tasks.forEach(t => {
+                if (!statusTasks[t.status]) statusTasks[t.status] = [];
+                statusTasks[t.status].push(t);
+            });
+            return { tasks, statusCounts, typeCounts, creatorMap, dailyCompleted, month, year, statusTasks };
         }
 
         function generateReports(animate = false) {
@@ -4354,6 +4360,55 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             `).join('');
         }
 
+        // ---- STATUS DRILL-DOWN POPUP ----
+        function showStatusDrillDown(status, tasksJson) {
+            let tasks = [];
+            try { tasks = JSON.parse(tasksJson || '[]'); } catch(e) {}
+            const statusColors = {
+                'Completed': '#10b981', 'In Progress': '#3b82f6', 'Pending': '#f59e0b',
+                'Rework Required': '#f97316', 'Rejected': '#ef4444'
+            };
+            const color = statusColors[status] || '#6b7280';
+            const rows = tasks.length === 0
+                ? '<p class="text-gray-500 text-xs italic text-center py-4">No tasks in this category.</p>'
+                : tasks.map(t => `
+                    <div class="flex items-start gap-3 px-3 py-2.5 border-b border-[#1e2238] last:border-0">
+                        <div class="w-2 h-2 rounded-full shrink-0 mt-1.5" style="background:${color}"></div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-xs font-bold text-white truncate">${t.topic || 'Untitled'}</p>
+                            <p class="text-[10px] text-gray-400 mt-0.5">${t.type || ''} · ${t.assignedTo || ''}</p>
+                            ${t.explanation && t.explanation !== 'None' ? '<p class="text-[10px] text-orange-400 mt-0.5">Note: ' + t.explanation + '</p>' : ''}
+                        </div>
+                        <span class="text-[9px] text-gray-500 shrink-0 mt-0.5">${t.assignedDate || ''}</span>
+                    </div>`).join('');
+
+            const overlay = document.getElementById('be-modal-overlay');
+            const msgEl = document.getElementById('be-modal-message');
+            const okBtn = document.getElementById('be-modal-ok-btn');
+            const cancelBtn = document.getElementById('be-modal-cancel-btn');
+            const titleEl = document.getElementById('be-modal-title');
+            const iconWrap = document.getElementById('be-modal-icon-wrap');
+
+            titleEl.textContent = status + ' — ' + tasks.length + ' task' + (tasks.length !== 1 ? 's' : '');
+            msgEl.innerHTML = '<div class="overflow-y-auto max-h-60 -mx-1 rounded-xl border border-[#1e2238] bg-[#0b0d19] mt-1">' + rows + '</div>';
+            okBtn.textContent = 'Close';
+            okBtn.className = 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95';
+            cancelBtn.classList.add('hidden');
+            if (iconWrap) iconWrap.style.background = color + '22';
+
+            overlay.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+
+            okBtn.onclick = () => {
+                overlay.classList.add('hidden');
+                okBtn.onclick = null;
+                if (iconWrap) iconWrap.style.background = '';
+                titleEl.textContent = 'Notice';
+                msgEl.innerHTML = '';
+                cancelBtn.classList.remove('hidden');
+            };
+        }
+
         // ---- DOUGHNUT CHART (Status breakdown) ----
         function drawDoughnutChart(d, animate) {
             const canvas = document.getElementById('chart-status');
@@ -4375,11 +4430,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('chart-status-total').textContent = total;
 
             const legend = document.getElementById('chart-status-legend');
-            legend.innerHTML = entries.map(([k, v]) => `
-                <span class="flex items-center gap-1 text-[10px] text-gray-300">
+            legend.innerHTML = entries.map(([k, v]) => {
+                const tasksForStatus = JSON.stringify(d.statusTasks && d.statusTasks[k] ? d.statusTasks[k] : []);
+                const encodedTasks = encodeURIComponent(tasksForStatus);
+                return `<button onclick="showStatusDrillDown('${k.replace(/'/g,"\\'")}', decodeURIComponent('${encodedTasks}'))"
+                    class="flex items-center gap-1 text-[10px] text-gray-300 hover:text-white transition cursor-pointer px-2 py-1 rounded-lg hover:bg-[#1e2238]">
                     <span class="w-2.5 h-2.5 rounded-full inline-block shrink-0" style="background:${statusColors[k]||'#6b7280'}"></span>
-                    ${k} <span class="font-bold text-white">(${v})</span>
-                </span>`).join('');
+                    ${k} <span class="font-bold text-white ml-0.5">(${v})</span>
+                </button>`;
+            }).join('');
 
             const cx = W/2, cy = H/2, outerR = 90, innerR = 55;
             let angles = entries.map(([,v]) => (v / total) * Math.PI * 2);
