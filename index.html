@@ -267,6 +267,40 @@
             background-color: #1a1e36;
             border: 1px solid #2e3554;
         }
+        /* ── Subtle Liquid Glass / iOS-style glassmorphism ── */
+        .card {
+            backdrop-filter: blur(12px) saturate(1.4);
+            -webkit-backdrop-filter: blur(12px) saturate(1.4);
+            background-color: rgba(18, 20, 36, 0.82) !important;
+        }
+        aside {
+            backdrop-filter: blur(16px) saturate(1.3);
+            -webkit-backdrop-filter: blur(16px) saturate(1.3);
+            background-color: rgba(9, 11, 20, 0.88) !important;
+        }
+        #asset-delivery-modal > div,
+        #notif-panel > div,
+        #be-modal-box,
+        #chat-settings-overlay > div,
+        #note-modal > div {
+            backdrop-filter: blur(20px) saturate(1.5);
+            -webkit-backdrop-filter: blur(20px) saturate(1.5);
+            background-color: rgba(18, 20, 36, 0.88) !important;
+            border-color: rgba(46, 53, 84, 0.7) !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+        #employee-notification-banner {
+            backdrop-filter: blur(12px) saturate(1.3);
+            -webkit-backdrop-filter: blur(12px) saturate(1.3);
+            background-color: rgba(23, 37, 84, 0.55) !important;
+        }
+        #account-switcher-panel,
+        #account-switcher-panel-mobile {
+            backdrop-filter: blur(16px) saturate(1.4);
+            -webkit-backdrop-filter: blur(16px) saturate(1.4);
+            background-color: rgba(18, 20, 36, 0.9) !important;
+        }
+
         @media (hover: none) {
             .chat-msg-delete-btn { opacity: 0.6 !important; }
         }
@@ -442,7 +476,7 @@
         <span id="call-toast-text">Call ended</span>
     </div>
 
-    <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-all duration-300">
+    <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm transition-all duration-300">
         <div class="card w-full max-w-lg rounded-2xl p-6 space-y-4 relative animate-item">
             <button onclick="closeAssetModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200">
                 <i data-lucide="x" class="w-5 h-5"></i>
@@ -571,10 +605,13 @@
                 <div class="bg-blue-500/20 text-blue-400 p-2 rounded-lg shrink-0">
                     <i data-lucide="bell" class="w-5 h-5"></i>
                 </div>
-                <div>
+                <div class="flex-1">
                     <h4 class="text-white font-bold text-sm">Employee Briefing Alert</h4>
                     <p id="employee-notification-text" class="text-xs text-gray-300 mt-0.5">Scanning live tracking data...</p>
                 </div>
+                <button onclick="dismissEmployeeBriefBanner()" title="Hide this brief" class="text-blue-400 hover:text-white transition-colors shrink-0 p-1 rounded-lg hover:bg-blue-500/20">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
             </div>
 
             <div class="flex md:hidden items-center justify-between bg-[#121424] border border-[#1e2238] p-3 rounded-xl text-xs relative">
@@ -1891,10 +1928,26 @@
             autoDeleteOldChatMessages();
         }
 
+        function _getBriefBannerKey() {
+            // Key encodes user + current task fingerprint so banner re-shows when tasks change
+            const myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
+            const active = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
+            const rework = myTasks.filter(t => t.status === 'Rework Required').length;
+            return `be_brief_dismissed_${activeEmail}_${active}_${rework}`;
+        }
+        function dismissEmployeeBriefBanner() {
+            const key = _getBriefBannerKey();
+            localStorage.setItem(key, '1');
+            document.getElementById('employee-notification-banner').classList.add('hidden');
+        }
         function renderEmployeeNotificationBar() {
             let myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             let totalActive = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
             let totalRework = myTasks.filter(t => t.status === 'Rework Required').length;
+
+            // If user already dismissed this exact state, don't show again until tasks change
+            const dismissKey = _getBriefBannerKey();
+            if (localStorage.getItem(dismissKey)) return;
 
             let banner = document.getElementById('employee-notification-banner');
             let txt = document.getElementById('employee-notification-text');
@@ -2572,7 +2625,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         function closeAssetModal() {
-            document.getElementById('asset-delivery-modal').classList.add('hidden');
+            const _adm2 = document.getElementById('asset-delivery-modal');
+            _adm2.classList.add('hidden');
+            _adm2.style.display = '';
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
@@ -2682,7 +2737,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (newStatus === "Completed") {
                 currentTargetTaskId = id;
                 setDeliveryMethod('file');
-                document.getElementById('asset-delivery-modal').classList.remove('hidden');
+                const _adm = document.getElementById('asset-delivery-modal');
+                _adm.classList.remove('hidden');
+                _adm.style.display = 'flex';
                 lucide.createIcons();
             } else {
                 await dbInstance
