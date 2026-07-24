@@ -36,20 +36,14 @@
             color: #f3f4f6;
             font-family: system-ui, -apple-system, sans-serif;
         }
-        /* ── Subtle iOS Liquid Glass Effect ──
-           Gentle backdrop-blur + semi-transparent bg + soft inner highlight.
-           Applied carefully — readable, premium, not overdone. */
         .card {
-            background: linear-gradient(145deg, rgba(20,23,42,0.92) 0%, rgba(14,16,32,0.88) 100%);
-            border: 1px solid rgba(255,255,255,0.06);
-            backdrop-filter: blur(12px) saturate(1.4);
-            -webkit-backdrop-filter: blur(12px) saturate(1.4);
-            box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 24px -4px rgba(0,0,0,0.4);
+            background-color: #121424;
+            border: 1px solid #1e2238;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .card:hover {
-            border-color: rgba(255,255,255,0.1);
-            box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 12px 32px -6px rgba(0,0,0,0.5), 0 0 0 1px rgba(253,109,5,0.06);
+            border-color: #2e3554;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
         }
         .brand-gradient {
             background: linear-gradient(135deg, #FF0000, #FD6D05);
@@ -60,9 +54,7 @@
             transition: all 0.2s ease;
         }
         .sidebar-link:hover, .sidebar-link.active {
-            background: rgba(30,35,69,0.7);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            background-color: #1e2345;
             color: #FD6D05;
             border-left-color: #FF0000;
         }
@@ -275,6 +267,40 @@
             background-color: #1a1e36;
             border: 1px solid #2e3554;
         }
+        /* ── Subtle Liquid Glass / iOS-style glassmorphism ── */
+        .card {
+            backdrop-filter: blur(12px) saturate(1.4);
+            -webkit-backdrop-filter: blur(12px) saturate(1.4);
+            background-color: rgba(18, 20, 36, 0.82) !important;
+        }
+        aside {
+            backdrop-filter: blur(16px) saturate(1.3);
+            -webkit-backdrop-filter: blur(16px) saturate(1.3);
+            background-color: rgba(9, 11, 20, 0.88) !important;
+        }
+        #asset-delivery-modal > div,
+        #notif-panel > div,
+        #be-modal-box,
+        #chat-settings-overlay > div,
+        #note-modal > div {
+            backdrop-filter: blur(20px) saturate(1.5);
+            -webkit-backdrop-filter: blur(20px) saturate(1.5);
+            background-color: rgba(18, 20, 36, 0.88) !important;
+            border-color: rgba(46, 53, 84, 0.7) !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+        #employee-notification-banner {
+            backdrop-filter: blur(12px) saturate(1.3);
+            -webkit-backdrop-filter: blur(12px) saturate(1.3);
+            background-color: rgba(23, 37, 84, 0.55) !important;
+        }
+        #account-switcher-panel,
+        #account-switcher-panel-mobile {
+            backdrop-filter: blur(16px) saturate(1.4);
+            -webkit-backdrop-filter: blur(16px) saturate(1.4);
+            background-color: rgba(18, 20, 36, 0.9) !important;
+        }
+
         @media (hover: none) {
             .chat-msg-delete-btn { opacity: 0.6 !important; }
         }
@@ -450,11 +476,12 @@
         <span id="call-toast-text">Call ended</span>
     </div>
 
-    <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-all duration-300">
+    <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm transition-all duration-300">
         <div class="card w-full max-w-lg rounded-2xl p-6 space-y-4 relative animate-item">
+            <!-- Header buttons: minimize + close -->
             <div class="absolute top-4 right-4 flex items-center gap-2">
                 <button id="btn-minimize-delivery" onclick="minimizeDeliveryModal()" title="Minimize — upload continues in background"
-                    class="text-gray-400 hover:text-orange-400 transition-colors duration-200" style="display:none">
+                    class="hidden text-gray-400 hover:text-orange-400 transition-colors duration-200">
                     <i data-lucide="minus" class="w-5 h-5"></i>
                 </button>
                 <button onclick="closeAssetModal()" class="text-gray-400 hover:text-white transition-colors duration-200">
@@ -464,6 +491,12 @@
             <h3 class="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2 text-orange-400">
                 <i data-lucide="clapperboard" class="w-5 h-5"></i> Submit Delivery Package
             </h3>
+            <!-- Task hint (Change 5): shows which task this upload is for -->
+            <div id="delivery-task-hint" class="hidden bg-orange-500/10 border border-orange-500/30 rounded-xl px-3 py-2.5">
+                <p class="text-[10px] text-orange-400 font-bold uppercase tracking-wider mb-0.5">Uploading for:</p>
+                <p id="delivery-task-hint-topic" class="text-xs text-white font-semibold truncate"></p>
+                <p class="text-[10px] text-gray-400 mt-0.5">Please upload the final files for this assignment only.</p>
+            </div>
             <div class="space-y-4 pt-2">
                 <div>
                     <label class="text-gray-400 text-[11px] font-bold uppercase block mb-1">Select Delivery Method</label>
@@ -481,8 +514,8 @@
                     <textarea id="delivery-url-input" placeholder="Paste links here. (Separate multiple links with commas)" rows="2" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500 resize-none transition-all duration-200"></textarea>
                 </div>
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
-                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Files — Video, Image, PDF, Docs & More (Up to 1GB each)</label>
-                    <!-- Hidden real file input -->
+                    <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Files — Video, Image, PDF, Docs &amp; More (Up to 1GB each)</label>
+                    <!-- Hidden real file input, triggered by drag-drop zone click -->
                     <input type="file" id="delivery-file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv" class="hidden" multiple onchange="handleDeliveryFilesSelect()">
                     <!-- Drag & Drop Zone -->
                     <div id="delivery-dropzone"
@@ -490,9 +523,9 @@
                         ondragleave="this.classList.remove('border-orange-500','bg-orange-500/5')"
                         ondrop="handleDeliveryDrop(event)"
                         onclick="document.getElementById('delivery-file-input').click()"
-                        class="border-2 border-dashed border-[#2e3554] rounded-xl p-6 text-center cursor-pointer transition-all duration-200 hover:border-orange-500/50 hover:bg-orange-500/5 select-none">
-                        <i data-lucide="upload-cloud" class="w-8 h-8 text-gray-500 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-300 font-semibold">Drag & drop files here</p>
+                        class="border-2 border-dashed border-[#2e3554] rounded-xl p-5 text-center cursor-pointer transition-all duration-200 hover:border-orange-500/60 hover:bg-orange-500/5 select-none">
+                        <i data-lucide="upload-cloud" class="w-7 h-7 text-gray-500 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-300 font-semibold">Drag &amp; drop files here</p>
                         <p class="text-[10px] text-gray-500 mt-1">or <span class="text-orange-400 font-bold">click to browse</span> — multiple files allowed</p>
                     </div>
                     <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1.5 max-h-32 overflow-y-auto"></div>
@@ -600,8 +633,7 @@
                     <h4 class="text-white font-bold text-sm">Employee Briefing Alert</h4>
                     <p id="employee-notification-text" class="text-xs text-gray-300 mt-0.5">Scanning live tracking data...</p>
                 </div>
-                <button onclick="dismissEmployeeBrief()" title="Hide this section"
-                    class="text-blue-400/50 hover:text-blue-300 transition p-1 rounded-lg hover:bg-blue-500/10 shrink-0 self-start">
+                <button onclick="dismissEmployeeBriefBanner()" title="Hide this brief" class="text-blue-400 hover:text-white transition-colors shrink-0 p-1 rounded-lg hover:bg-blue-500/20">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
             </div>
@@ -668,7 +700,7 @@
                 <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 </div>
 
-                <div id="admin-assignment-panel" class="hidden"><div class="card p-4 md:p-6 rounded-2xl space-y-4 w-full max-w-5xl mx-auto">
+                <div id="admin-assignment-panel" class="card p-4 md:p-6 rounded-2xl space-y-4 hidden">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
                         <i data-lucide="file-plus" class="w-4 h-4"></i> Create & Assign Work Task
                     </h3>
@@ -716,7 +748,7 @@
                             Assign Work Project
                         </button>
                     </div>
-                </div></div>
+                </div>
 
                 <div class="grid grid-cols-1 gap-6">
                     
@@ -1920,25 +1952,32 @@
             autoDeleteOldChatMessages();
         }
 
-        function dismissEmployeeBrief() {
-            document.getElementById('employee-notification-banner')?.classList.add('hidden');
-            // Persist dismissal for this session — will show again on next login if there's new info
-            sessionStorage.setItem('be_brief_dismissed', '1');
+        function _getBriefBannerKey() {
+            // Key encodes user + current task fingerprint so banner re-shows when tasks change
+            const myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
+            const active = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
+            const rework = myTasks.filter(t => t.status === 'Rework Required').length;
+            return `be_brief_dismissed_${activeEmail}_${active}_${rework}`;
         }
-
+        function dismissEmployeeBriefBanner() {
+            const key = _getBriefBannerKey();
+            localStorage.setItem(key, '1');
+            document.getElementById('employee-notification-banner').classList.add('hidden');
+        }
         function renderEmployeeNotificationBar() {
             let myTasks = assignmentsList.filter(t => t.employeeEmail === activeEmail);
             let totalActive = myTasks.filter(t => t.status === 'Pending' || t.status === 'In Progress').length;
             let totalRework = myTasks.filter(t => t.status === 'Rework Required').length;
 
+            // If user already dismissed this exact state, don't show again until tasks change
+            const dismissKey = _getBriefBannerKey();
+            if (localStorage.getItem(dismissKey)) return;
+
             let banner = document.getElementById('employee-notification-banner');
             let txt = document.getElementById('employee-notification-text');
             
             if (totalActive > 0 || totalRework > 0) {
-                // Only show if user hasn't dismissed it this session
-            if (sessionStorage.getItem('be_brief_dismissed') !== '1') {
                 banner.classList.remove('hidden');
-            }
                 txt.innerHTML = `Welcome back <span class="text-white font-bold">${activeUser}</span>! You have been assigned <span class="text-orange-400 font-bold">${totalActive} active tasks</span> waiting in your queue line, and <span class="text-yellow-400 font-bold">${totalRework} items require rework modifications</span>. Please update status metrics immediately upon file delivery.`;
             } else {
                 banner.classList.remove('hidden');
@@ -2548,11 +2587,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             syncMonthlyReportToSheet();
         }
 
-        // Drag & drop handler
+        // ── MINIMIZE STATE ──
+        let _deliveryMinimized = false;
+        let _deliveryUploadTaskId = null;
+
+        // ── DRAG & DROP HANDLER ──
         function handleDeliveryDrop(event) {
             event.preventDefault();
             const zone = document.getElementById('delivery-dropzone');
-            zone.classList.remove('border-orange-500', 'bg-orange-500/5');
+            if (zone) zone.classList.remove('border-orange-500', 'bg-orange-500/5');
             const files = event.dataTransfer?.files;
             if (files && files.length > 0) {
                 Array.from(files).forEach(f => {
@@ -2565,53 +2608,45 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
-        // Minimize state tracking
-        let _deliveryMinimized = false;
-        let _deliveryUploadTaskId = null;
-
-        // Rebuild a simple status display for after upload completes (before next full re-render)
-        function _buildStatusCell(t) {
-            const styles = { 'Completed':'text-green-400 border-green-500/40 bg-green-500/10','In Progress':'text-blue-400 border-blue-500/40 bg-blue-500/10','Pending':'text-yellow-400 border-yellow-500/40 bg-yellow-500/10','Rework Required':'text-orange-400 border-orange-500/40 bg-orange-500/10','Rejected':'text-red-400 border-red-500/40 bg-red-500/10' };
-            const s = t.status || 'Pending';
-            const cls = styles[s] || styles['Pending'];
-            return `<span class="px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wide ${cls}">${s}</span>`;
-        }
-
+        // ── MINIMIZE: hide modal, upload keeps running ──
         function minimizeDeliveryModal() {
             _deliveryMinimized = true;
-            document.getElementById('asset-delivery-modal').classList.add('hidden');
-            // Progress continues via setUploadProgress which now also updates status column
+            const modal = document.getElementById('asset-delivery-modal');
+            modal.classList.add('hidden');
         }
 
-        // Override setUploadProgress to also update the status engine column when minimized
+        // ── STATUS CELL HELPER ──
+        function _buildStatusCellHtml(t) {
+            const s = t.status || 'Pending';
+            const map = { 'Completed':'text-green-400 border-green-500/40 bg-green-500/10', 'In Progress':'text-blue-400 border-blue-500/40 bg-blue-500/10', 'Pending':'text-yellow-400 border-yellow-500/40 bg-yellow-500/10', 'Rework Required':'text-orange-400 border-orange-500/40 bg-orange-500/10', 'Rejected':'text-red-400 border-red-500/40 bg-red-500/10' };
+            return `<span class="px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wide ${map[s]||map['Pending']}">${s}</span>`;
+        }
+
+        // ── PROGRESS: mirror to status column when minimized ──
         const _origSetUploadProgress = setUploadProgress;
         function setUploadProgress(pct) {
             _origSetUploadProgress(pct);
-            // Update status engine column for the active task when minimized
-            if (_deliveryMinimized && _deliveryUploadTaskId) {
-                const cell = document.getElementById(`status-engine-cell-${_deliveryUploadTaskId}`);
-                if (cell) {
-                    if (pct === null || pct === undefined) {
-                        // Upload done — restore normal status cell
-                        const task = assignmentsList.find(t => t.id == _deliveryUploadTaskId);
-                        if (task) cell.innerHTML = _buildStatusCell(task);
-                        _deliveryMinimized = false;
-                        _deliveryUploadTaskId = null;
-                        if (window.lucide) lucide.createIcons();
-                    } else {
-                        const p = Math.min(100, Math.round(pct));
-                        cell.innerHTML = `
-                            <div class="space-y-1 px-1">
-                                <div class="flex justify-between text-[9px] font-bold">
-                                    <span class="text-orange-400 uppercase tracking-wide">Uploading</span>
-                                    <span class="text-orange-300">${p}%</span>
-                                </div>
-                                <div class="w-full h-1.5 bg-[#0b0d19] rounded-full overflow-hidden">
-                                    <div class="h-full brand-gradient rounded-full transition-all duration-200" style="width:${p}%"></div>
-                                </div>
-                            </div>`;
-                    }
-                }
+            if (!_deliveryMinimized || !_deliveryUploadTaskId) return;
+            const cell = document.getElementById('status-engine-cell-' + _deliveryUploadTaskId);
+            if (!cell) return;
+            if (pct === null || pct === undefined) {
+                // Upload done — restore status badge
+                const task = assignmentsList.find(t => t.id == _deliveryUploadTaskId);
+                if (task) cell.innerHTML = _buildStatusCellHtml(task);
+                _deliveryMinimized = false;
+                _deliveryUploadTaskId = null;
+            } else {
+                const p = Math.min(100, Math.round(pct));
+                cell.innerHTML = `
+                    <div class="space-y-1 min-w-[90px]">
+                        <div class="flex justify-between text-[9px] font-bold">
+                            <span class="text-orange-400 uppercase tracking-wide">Uploading</span>
+                            <span class="text-orange-300">${p}%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-[#0b0d19] rounded-full overflow-hidden">
+                            <div class="h-full brand-gradient rounded-full transition-all duration-200" style="width:${p}%"></div>
+                        </div>
+                    </div>`;
             }
         }
 
@@ -2677,7 +2712,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         function closeAssetModal() {
-            document.getElementById('asset-delivery-modal').classList.add('hidden');
+            const _adm2 = document.getElementById('asset-delivery-modal');
+            _adm2.classList.add('hidden');
+            _adm2.style.display = '';
+            document.getElementById('delivery-task-hint')?.classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
@@ -2707,11 +2745,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 if(deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
 
                 submitBtn.disabled = true;
-                // Show minimize button now that upload is starting
+                // Track which task + show minimize button
                 _deliveryUploadTaskId = currentTargetTaskId;
                 _deliveryMinimized = false;
-                const minBtn = document.getElementById('btn-minimize-delivery');
-                if (minBtn) minBtn.style.display = 'inline-flex';
+                const _minBtn = document.getElementById('btn-minimize-delivery');
+                if (_minBtn) _minBtn.classList.remove('hidden');
 
                 // Check all file sizes first
                 for (const f of deliveryFilesQueue) {
@@ -2768,16 +2806,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             submitBtn.disabled = false;
             submitBtn.innerText = "Deploy Work Package";
             
-            // Auto-close modal (if not minimized it was already visible, close it)
-            if (!_deliveryMinimized) {
-                document.getElementById('asset-delivery-modal').classList.add('hidden');
-            }
+            // Auto-close: hide modal whether minimized or not (already hidden if minimized)
+            document.getElementById('asset-delivery-modal').classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
             deliveryFilesQueue = [];
-            const minBtn2 = document.getElementById('btn-minimize-delivery');
-            if (minBtn2) minBtn2.style.display = 'none';
+            const _minBtn2 = document.getElementById('btn-minimize-delivery');
+            if (_minBtn2) _minBtn2.classList.add('hidden');
             currentTargetTaskId = null;
             _deliveryUploadTaskId = null;
             _deliveryMinimized = false;
@@ -2799,7 +2835,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (newStatus === "Completed") {
                 currentTargetTaskId = id;
                 setDeliveryMethod('file');
-                document.getElementById('asset-delivery-modal').classList.remove('hidden');
+                const _adm = document.getElementById('asset-delivery-modal');
+                _adm.classList.remove('hidden');
+                _adm.style.display = 'flex';
+                // Show task hint so user knows which task they're uploading for
+                const _ht = document.getElementById('delivery-task-hint');
+                const _htopic = document.getElementById('delivery-task-hint-topic');
+                const _htask = assignmentsList.find(t => t.id == id);
+                if (_ht && _htopic && _htask) {
+                    _htopic.textContent = _htask.topic || 'Unknown Task';
+                    _ht.classList.remove('hidden');
+                }
                 lucide.createIcons();
             } else {
                 await dbInstance
@@ -5298,10 +5344,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             myTasks.forEach(t => {
                 const idStr = String(t.id);
                 if (!_lastKnownTaskIds.has(idStr)) {
-                    // Only notify truly new tasks — skip on first-ever device load or
-                    // after a site update wipes localStorage (would re-notify everything)
-                    if (_lastKnownTaskIds.size > 0 && !doneStatuses.includes(t.status)
-                        && !_readNotifIds.has(`new_${idStr}`)) {
+                    // New task — only notify if we already had known tasks (not first-ever load
+                    // on this device, and not right after a site update wiped localStorage —
+                    // both cases would otherwise re-notify EVERY existing task at once)
+                    if (_lastKnownTaskIds.size > 0 && !doneStatuses.includes(t.status)) {
                         addNotif('new', t.topic, t.assignedBy || 'Admin', idStr);
                         sendBrowserNotif(`New task assigned: ${t.topic}`, `Assigned by ${t.assignedBy || 'Admin'}`);
                     }
@@ -5310,25 +5356,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     changed = true;
                 } else {
                     const prev = _lastKnownStatuses[idStr];
-                    // Only notify rework if:
-                    // 1. Status genuinely changed TO Rework Required this session
-                    // 2. We haven't already notified and been dismissed for this same rework
-                    if (prev && prev !== 'Rework Required' && t.status === 'Rework Required'
-                        && !_readNotifIds.has(`rework_${idStr}`)) {
+                    if (prev && prev !== 'Rework Required' && t.status === 'Rework Required') {
                         addNotif('rework', t.topic, t.assignedBy || 'Manager', idStr);
                         sendBrowserNotif(`Rework required: ${t.topic}`, 'Please review the feedback.');
                     }
                     if (prev !== t.status) {
                         _lastKnownStatuses[idStr] = t.status;
-                        // If status changed away from Rework, clear the rework dismissal
-                        // so a FUTURE rework on the same task can notify again
-                        if (prev === 'Rework Required' && t.status !== 'Rework Required') {
-                            _readNotifIds.delete(`rework_${idStr}`);
-                        }
                         changed = true;
                     }
                 }
-                // Work finished → clear its notification everywhere automatically
+                // Work finished → its notification disappears everywhere automatically
                 if (doneStatuses.includes(t.status)) {
                     clearNotifsForTask(idStr);
                 }
