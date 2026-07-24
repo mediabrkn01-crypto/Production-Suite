@@ -1767,7 +1767,8 @@
 
                 if (activeUser) {
                     renderCountersGrid();
-                    renderTableRows();
+                    // Skip table re-render during active upload to prevent status-cell flicker
+                    if (!_deliveryUploadTaskId) renderTableRows();
                     renderHistoryTable();
                     if (editingRosterIndex === null) renderSettingsRoster(); // skip if user is mid-edit
                     renderLogFeed();
@@ -2612,8 +2613,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // ── MINIMIZE: hide modal, upload keeps running ──
         function minimizeDeliveryModal() {
             _deliveryMinimized = true;
+            // Hide the modal overlay
             const modal = document.getElementById('asset-delivery-modal');
             modal.classList.add('hidden');
+            // Show a small toast so user knows upload is still running in background
+            // Brief toast using the call-toast element
+            const _ct = document.getElementById('call-toast');
+            const _ctt = document.getElementById('call-toast-text');
+            if (_ct && _ctt) {
+                _ctt.textContent = 'Upload running in background — watch Status Engine column';
+                _ct.classList.remove('hidden');
+                setTimeout(() => _ct.classList.add('hidden'), 3500);
+            }
         }
 
         // ── STATUS CELL HELPER ──
@@ -4120,6 +4131,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         function renderTableRows() {
+            // Don't rebuild status cells while an upload is actively in progress — would flicker
+            if (_deliveryUploadTaskId && _deliveryMinimized) return;
             const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
             
