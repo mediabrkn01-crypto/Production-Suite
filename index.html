@@ -1945,9 +1945,6 @@
             renderNotifBadges();
             renderDashboardNotifFeed();
 
-            // Load chat settings (WhatsApp/Telegram-style) and apply appearance
-            loadChatSettings();
-            applyGlobalChatSettingsToUI();
             requestBrowserNotifPermission();
 
             // Auto-delete chat messages older than 7 days (runs for everyone)
@@ -2723,6 +2720,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         function closeAssetModal() {
+            // If upload is actively running, closing means abandoning it — warn user
+            // but if they minimized, X closes the modal overlay without stopping anything
+            if (_deliveryUploadTaskId && !_deliveryMinimized) {
+                // Upload is in progress and NOT minimized — X was pressed
+                // Just minimize instead of stopping the upload
+                minimizeDeliveryModal();
+                return;
+            }
             const _adm2 = document.getElementById('asset-delivery-modal');
             _adm2.classList.add('hidden');
             _adm2.style.display = '';
@@ -2730,7 +2735,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
-            deliveryFilesQueue = []; 
+            deliveryFilesQueue = [];
             
             const submitBtn = document.getElementById('btn-submit-delivery');
             submitBtn.disabled = false;
@@ -2772,27 +2777,31 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     }
                 }
 
-                if (deliveryFilesQueue.length === 1) {
+                // Snapshot the queue immediately — prevents crash if queue is cleared
+                // while async upload is running (e.g. if close is accidentally triggered)
+                const _uploadFiles = [...deliveryFilesQueue];
+
+                if (_uploadFiles.length === 1) {
                     // Single file → direct file link, named after the file
                     submitBtn.innerText = `Uploading file...`;
                     try {
-                        const fileUrl = await uploadToGoogleDrive(deliveryFilesQueue[0]);
-                        const cleanName = deliveryFilesQueue[0].name.replace(/\|/g, '-');
+                        const fileUrl = await uploadToGoogleDrive(_uploadFiles[0]);
+                        const cleanName = _uploadFiles[0].name.replace(/\|/g, '-');
                         finalLinksArray.push(`${cleanName}|${fileUrl}`);
                     } catch (uploadError) {
                         console.error("Drive Upload Error: ", uploadError);
                         setUploadProgress(null);
-                        alert(`Storage Error: Failed to push file "${deliveryFilesQueue[0].name}" into Google Drive.\n\nReason: ${uploadError.message || 'Unknown error — check console for details.'}`);
+                        alert(`Storage Error: Failed to push file "${_uploadFiles[0].name}" into Google Drive.\n\nReason: ${uploadError.message || 'Unknown error — check console for details.'}`);
                         submitBtn.disabled = false;
                         submitBtn.innerText = "Deploy Work Package";
                         return;
                     }
                 } else {
                     // Multiple files → upload all into ONE folder, single folder link
-                    submitBtn.innerText = `Uploading ${deliveryFilesQueue.length} files into one folder...`;
+                    submitBtn.innerText = `Uploading ${_uploadFiles.length} files into one folder...`;
                     try {
-                        const folderUrl = await uploadFolderToDrive(deliveryFilesQueue, targetTask.topic);
-                        const label = `${targetTask.topic} (${deliveryFilesQueue.length} files)`;
+                        const folderUrl = await uploadFolderToDrive(_uploadFiles, targetTask.topic);
+                        const label = `${targetTask.topic} (${_uploadFiles.length} files)`;
                         finalLinksArray.push(`${label.replace(/\|/g, '-')}|${folderUrl}`);
                     } catch (uploadError) {
                         console.error("Drive Folder Upload Error: ", uploadError);
