@@ -452,9 +452,15 @@
 
     <div id="asset-delivery-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-all duration-300">
         <div class="card w-full max-w-lg rounded-2xl p-6 space-y-4 relative animate-item">
-            <button onclick="closeAssetModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
+            <div class="absolute top-4 right-4 flex items-center gap-2">
+                <button id="btn-minimize-delivery" onclick="minimizeDeliveryModal()" title="Minimize — upload continues in background"
+                    class="text-gray-400 hover:text-orange-400 transition-colors duration-200" style="display:none">
+                    <i data-lucide="minus" class="w-5 h-5"></i>
+                </button>
+                <button onclick="closeAssetModal()" class="text-gray-400 hover:text-white transition-colors duration-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
             <h3 class="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2 text-orange-400">
                 <i data-lucide="clapperboard" class="w-5 h-5"></i> Submit Delivery Package
             </h3>
@@ -476,9 +482,20 @@
                 </div>
                 <div id="wrapper-delivery-file" class="space-y-1 hidden">
                     <label class="text-gray-400 text-[11px] font-bold uppercase tracking-wide block">Upload Files — Video, Image, PDF, Docs & More (Up to 1GB each)</label>
-                    <input type="file" id="delivery-file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv" class="w-full bg-[#0b0d19] border border-[#1e2238] rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none file:mr-4 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-orange-500/20 file:text-orange-400 hover:file:bg-orange-500/30" multiple onchange="handleDeliveryFilesSelect()">
+                    <!-- Hidden real file input -->
+                    <input type="file" id="delivery-file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv" class="hidden" multiple onchange="handleDeliveryFilesSelect()">
+                    <!-- Drag & Drop Zone -->
+                    <div id="delivery-dropzone"
+                        ondragover="event.preventDefault();this.classList.add('border-orange-500','bg-orange-500/5')"
+                        ondragleave="this.classList.remove('border-orange-500','bg-orange-500/5')"
+                        ondrop="handleDeliveryDrop(event)"
+                        onclick="document.getElementById('delivery-file-input').click()"
+                        class="border-2 border-dashed border-[#2e3554] rounded-xl p-6 text-center cursor-pointer transition-all duration-200 hover:border-orange-500/50 hover:bg-orange-500/5 select-none">
+                        <i data-lucide="upload-cloud" class="w-8 h-8 text-gray-500 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-300 font-semibold">Drag & drop files here</p>
+                        <p class="text-[10px] text-gray-500 mt-1">or <span class="text-orange-400 font-bold">click to browse</span> — multiple files allowed</p>
+                    </div>
                     <div id="delivery-files-preview-list" class="text-[11px] text-gray-400 mt-2 space-y-1.5 max-h-32 overflow-y-auto"></div>
-                    <p class="text-[10px] text-gray-500 italic mt-1">Click choose files multiple times to accumulate items. Assets route straight to Google Drive.</p>
                 </div>
                 <div id="upload-progress-wrap" class="hidden space-y-1">
                     <div class="flex justify-between text-[11px] font-bold">
@@ -2531,6 +2548,73 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             syncMonthlyReportToSheet();
         }
 
+        // Drag & drop handler
+        function handleDeliveryDrop(event) {
+            event.preventDefault();
+            const zone = document.getElementById('delivery-dropzone');
+            zone.classList.remove('border-orange-500', 'bg-orange-500/5');
+            const files = event.dataTransfer?.files;
+            if (files && files.length > 0) {
+                Array.from(files).forEach(f => {
+                    if (!deliveryFilesQueue.some(e => e.name === f.name && e.size === f.size)) {
+                        deliveryFilesQueue.push(f);
+                    }
+                });
+                renderDeliveryFilesQueue();
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        // Minimize state tracking
+        let _deliveryMinimized = false;
+        let _deliveryUploadTaskId = null;
+
+        // Rebuild a simple status display for after upload completes (before next full re-render)
+        function _buildStatusCell(t) {
+            const styles = { 'Completed':'text-green-400 border-green-500/40 bg-green-500/10','In Progress':'text-blue-400 border-blue-500/40 bg-blue-500/10','Pending':'text-yellow-400 border-yellow-500/40 bg-yellow-500/10','Rework Required':'text-orange-400 border-orange-500/40 bg-orange-500/10','Rejected':'text-red-400 border-red-500/40 bg-red-500/10' };
+            const s = t.status || 'Pending';
+            const cls = styles[s] || styles['Pending'];
+            return `<span class="px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wide ${cls}">${s}</span>`;
+        }
+
+        function minimizeDeliveryModal() {
+            _deliveryMinimized = true;
+            document.getElementById('asset-delivery-modal').classList.add('hidden');
+            // Progress continues via setUploadProgress which now also updates status column
+        }
+
+        // Override setUploadProgress to also update the status engine column when minimized
+        const _origSetUploadProgress = setUploadProgress;
+        function setUploadProgress(pct) {
+            _origSetUploadProgress(pct);
+            // Update status engine column for the active task when minimized
+            if (_deliveryMinimized && _deliveryUploadTaskId) {
+                const cell = document.getElementById(`status-engine-cell-${_deliveryUploadTaskId}`);
+                if (cell) {
+                    if (pct === null || pct === undefined) {
+                        // Upload done — restore normal status cell
+                        const task = assignmentsList.find(t => t.id == _deliveryUploadTaskId);
+                        if (task) cell.innerHTML = _buildStatusCell(task);
+                        _deliveryMinimized = false;
+                        _deliveryUploadTaskId = null;
+                        if (window.lucide) lucide.createIcons();
+                    } else {
+                        const p = Math.min(100, Math.round(pct));
+                        cell.innerHTML = `
+                            <div class="space-y-1 px-1">
+                                <div class="flex justify-between text-[9px] font-bold">
+                                    <span class="text-orange-400 uppercase tracking-wide">Uploading</span>
+                                    <span class="text-orange-300">${p}%</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-[#0b0d19] rounded-full overflow-hidden">
+                                    <div class="h-full brand-gradient rounded-full transition-all duration-200" style="width:${p}%"></div>
+                                </div>
+                            </div>`;
+                    }
+                }
+            }
+        }
+
         function handleDeliveryFilesSelect() {
             const fileInput = document.getElementById('delivery-file-input');
             if(!fileInput) return;
@@ -2623,6 +2707,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 if(deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
 
                 submitBtn.disabled = true;
+                // Show minimize button now that upload is starting
+                _deliveryUploadTaskId = currentTargetTaskId;
+                _deliveryMinimized = false;
+                const minBtn = document.getElementById('btn-minimize-delivery');
+                if (minBtn) minBtn.style.display = 'inline-flex';
 
                 // Check all file sizes first
                 for (const f of deliveryFilesQueue) {
@@ -2679,12 +2768,19 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             submitBtn.disabled = false;
             submitBtn.innerText = "Deploy Work Package";
             
-            document.getElementById('asset-delivery-modal').classList.add('hidden');
+            // Auto-close modal (if not minimized it was already visible, close it)
+            if (!_deliveryMinimized) {
+                document.getElementById('asset-delivery-modal').classList.add('hidden');
+            }
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
             deliveryFilesQueue = [];
+            const minBtn2 = document.getElementById('btn-minimize-delivery');
+            if (minBtn2) minBtn2.style.display = 'none';
             currentTargetTaskId = null;
+            _deliveryUploadTaskId = null;
+            _deliveryMinimized = false;
             
             await syncLedgerEngine(false);
             syncTasksToSheet();
@@ -4203,7 +4299,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-3 px-4 text-gray-400 max-w-xs truncate" title="${t.description}">${t.description}</td>
                     <td class="py-3 px-4 text-gray-400 font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-orange-400 font-mono font-semibold">${t.date}</td>
-                    <td class="py-3 px-4">${inputActionSelectorMarkup}</td>
+                    <td class="py-3 px-4" id="status-engine-cell-${t.id}">${inputActionSelectorMarkup}</td>
                     <td class="py-3 px-4 italic max-w-xs ${t.status === 'Completed' && t.explanation !== 'None' ? 'text-emerald-400' : 'text-yellow-500'}">
                         ${t.explanation && t.explanation !== 'None'
                             ? `<span class="line-clamp-2 cursor-pointer hover:underline" onclick="showFullExplanation(this)" data-full="${(t.explanation||'').replace(/"/g,'&quot;')}" title="Click to read full note">${t.explanation}</span>`
