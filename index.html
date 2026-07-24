@@ -1603,11 +1603,12 @@
             const bar = document.getElementById('upload-progress-bar');
             const lbl = document.getElementById('upload-progress-pct');
             if (!wrap) return;
-            if (pct === null) { wrap.classList.add('hidden'); return; }
+            if (pct === null) { wrap.classList.add('hidden'); _mirrorProgressToStatusCell(null); return; }
             wrap.classList.remove('hidden');
             const p = Math.min(100, Math.round(pct));
             bar.style.width = p + '%';
             lbl.innerText = p + '%';
+            _mirrorProgressToStatusCell(p);
         }
 
         let _fakeTimer = null;
@@ -2623,14 +2624,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         // ── PROGRESS: mirror to status column when minimized ──
-        const _origSetUploadProgress = setUploadProgress;
-        function setUploadProgress(pct) {
-            _origSetUploadProgress(pct);
+        // Uses a separate mirror function called from every setUploadProgress invocation
+        // (avoids JS hoisting issues with trying to wrap a function declaration)
+        function _mirrorProgressToStatusCell(pct) {
             if (!_deliveryMinimized || !_deliveryUploadTaskId) return;
             const cell = document.getElementById('status-engine-cell-' + _deliveryUploadTaskId);
             if (!cell) return;
             if (pct === null || pct === undefined) {
-                // Upload done — restore status badge
                 const task = assignmentsList.find(t => t.id == _deliveryUploadTaskId);
                 if (task) cell.innerHTML = _buildStatusCellHtml(task);
                 _deliveryMinimized = false;
