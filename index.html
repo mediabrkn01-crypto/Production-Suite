@@ -606,6 +606,33 @@
 
             <!-- Notification Panel -->
             <!-- Floating corner bell — replaces the sidebar Notifications tab -->
+            <!-- Global Search floating button -->
+            <button id="corner-search-btn" onclick="toggleGlobalSearch()" title="Search"
+                class="fixed top-4 right-16 z-[69] w-10 h-10 rounded-full bg-[#121424] border border-[#1e2238] hover:border-orange-500/50 flex items-center justify-center text-gray-300 hover:text-orange-400 shadow-xl transition">
+                <i data-lucide="search" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Global Search overlay -->
+            <div id="global-search-overlay" class="hidden fixed inset-0 z-[80] flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalSearch()">
+                <div class="w-full max-w-xl bg-[#121424] border border-[#1e2238] rounded-2xl shadow-2xl overflow-hidden">
+                    <!-- Search input -->
+                    <div class="flex items-center gap-3 px-4 py-3 border-b border-[#1e2238]">
+                        <i data-lucide="search" class="w-5 h-5 text-orange-400 shrink-0"></i>
+                        <input id="global-search-input" type="text" placeholder="Search tasks, videos, thumbnails, creators…"
+                            oninput="runGlobalSearch(this.value)"
+                            onkeydown="if(event.key==='Escape')closeGlobalSearch()"
+                            class="flex-1 bg-transparent border-none text-sm text-white placeholder-gray-500 focus:outline-none">
+                        <button onclick="closeGlobalSearch()" class="text-gray-500 hover:text-white transition shrink-0">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <!-- Results -->
+                    <div id="global-search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-[#1e2238]">
+                        <p class="text-center text-gray-500 text-xs italic py-6">Start typing to search…</p>
+                    </div>
+                </div>
+            </div>
+
             <button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications"
                 class="fixed top-4 right-4 z-[69] w-10 h-10 rounded-full bg-[#121424] border border-[#1e2238] hover:border-orange-500/50 flex items-center justify-center text-gray-300 hover:text-orange-400 shadow-xl transition">
                 <i data-lucide="bell" class="w-5 h-5"></i>
@@ -5326,6 +5353,98 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
         function markNotifRead(id) { dismissNotif(id); }
         function markAllNotifsRead() { dismissAllNotifs(); }
+        // ── GLOBAL SEARCH ─────────────────────────────────────────
+        function toggleGlobalSearch() {
+            const overlay = document.getElementById('global-search-overlay');
+            const isHidden = overlay.classList.contains('hidden');
+            overlay.classList.toggle('hidden');
+            if (isHidden) {
+                document.getElementById('global-search-results').innerHTML =
+                    '<p class="text-center text-gray-500 text-xs italic py-6">Start typing to search…</p>';
+                document.getElementById('global-search-input').value = '';
+                setTimeout(() => document.getElementById('global-search-input')?.focus(), 80);
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+        function closeGlobalSearch() {
+            document.getElementById('global-search-overlay')?.classList.add('hidden');
+        }
+        function runGlobalSearch(query) {
+            const results = document.getElementById('global-search-results');
+            if (!results) return;
+            const q = (query || '').trim().toLowerCase();
+            if (!q) {
+                results.innerHTML = '<p class="text-center text-gray-500 text-xs italic py-6">Start typing to search…</p>';
+                return;
+            }
+            // Search across assignmentsList (all tasks — active + history)
+            const allTasks = typeof assignmentsList !== 'undefined' ? assignmentsList : [];
+            const matches = allTasks.filter(t =>
+                (t.topic || '').toLowerCase().includes(q) ||
+                (t.type || '').toLowerCase().includes(q) ||
+                (t.assignedTo || '').toLowerCase().includes(q) ||
+                (t.description || '').toLowerCase().includes(q) ||
+                (t.assetLink || '').toLowerCase().includes(q) ||
+                (t.status || '').toLowerCase().includes(q)
+            );
+            if (matches.length === 0) {
+                results.innerHTML = '<p class="text-center text-gray-500 text-xs italic py-6">No results found.</p>';
+                return;
+            }
+            const statusColors = {
+                'Completed':'text-green-400','In Progress':'text-blue-400',
+                'Pending':'text-yellow-400','Rework Required':'text-orange-400','Rejected':'text-red-400'
+            };
+            results.innerHTML = matches.slice(0, 30).map(t => {
+                const statusCls = statusColors[t.status] || 'text-gray-400';
+                const hasAsset = t.assetLink && t.assetLink !== 'null' && t.assetLink.trim() !== '';
+                const assetLinks = hasAsset
+                    ? t.assetLink.split(',').map(u => u.trim()).filter(Boolean)
+                    : [];
+                const typeIcon = (t.type || '').toLowerCase().includes('video') ? 'video'
+                    : (t.type || '').toLowerCase().includes('thumb') ? 'image'
+                    : (t.type || '').toLowerCase().includes('poster') ? 'image'
+                    : (t.type || '').toLowerCase().includes('audio') ? 'headphones'
+                    : 'file';
+                return `<div class="flex items-start gap-3 px-4 py-3 hover:bg-[#1a1e36] transition cursor-pointer"
+                        onclick="openSearchResult(${t.id})">
+                    <div class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <i data-lucide="${typeIcon}" class="w-4 h-4 text-orange-400"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-white leading-snug break-words">${t.topic || '—'}</p>
+                        <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span class="text-[10px] text-gray-400">${t.type || ''}</span>
+                            <span class="text-[10px] text-gray-600">·</span>
+                            <span class="text-[10px] text-gray-400">${t.assignedTo || ''}</span>
+                            <span class="text-[10px] text-gray-600">·</span>
+                            <span class="text-[10px] font-bold ${statusCls}">${t.status || ''}</span>
+                        </div>
+                        ${assetLinks.length > 0 ? `<div class="flex flex-wrap gap-1 mt-1.5">${assetLinks.map(u => `<a href="${u}" target="_blank" onclick="event.stopPropagation()" class="text-[10px] text-orange-400 hover:text-orange-300 underline break-all">${u.length > 40 ? u.slice(0,40)+'…' : u}</a>`).join('')}</div>` : ''}
+                    </div>
+                    <i data-lucide="external-link" class="w-3.5 h-3.5 text-gray-600 shrink-0 mt-1"></i>
+                </div>`;
+            }).join('');
+            if (window.lucide) lucide.createIcons();
+        }
+        function openSearchResult(taskId) {
+            closeGlobalSearch();
+            // Navigate to the correct tab based on task status
+            const task = (typeof assignmentsList !== 'undefined' ? assignmentsList : []).find(t => t.id == taskId);
+            if (!task) return;
+            const doneStatuses = ['Completed', 'Approved', 'Posted', 'Published'];
+            if (doneStatuses.includes(task.status)) {
+                switchTab('history');
+            } else {
+                switchTab('pipeline');
+                // Highlight the row briefly
+                setTimeout(() => {
+                    const row = document.querySelector(`[data-task-id="${taskId}"]`);
+                    if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('ring-2','ring-orange-500'); setTimeout(() => row.classList.remove('ring-2','ring-orange-500'), 2000); }
+                }, 300);
+            }
+        }
+
         function toggleNotifPanel() {
             const panel = document.getElementById('notif-panel');
             const isHidden = panel.classList.contains('hidden');
