@@ -31,164 +31,201 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
-        /* ═══════════════════════════════════════════════
-           BROKEN ENGLISH STUDIO SUITE — PREMIUM v2
-           Reference: ChatGPT_Image_Jul_27 dark SaaS UI
-        ═══════════════════════════════════════════════ */
-        :root {
-            --bg-base: #07091a;
-            --bg-card: #0d0f1e;
-            --bg-elevated: #111326;
-            --border: rgba(255,255,255,0.06);
-            --border-subtle: rgba(255,255,255,0.04);
-            --brand-pink: #FF2D78;
-            --brand-orange: #FD6D05;
-            --brand-mid: #FF4B2B;
-            --text-primary: #eef0f8;
-            --text-secondary: #7b84b0;
-            --text-muted: #404878;
-            --radius: 14px;
-            --shadow: 0 4px 24px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset;
-            --transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
-        }
+        /* ═══════════════════════════════════════════════════════
+           BROKEN ENGLISH STUDIO SUITE — PIXEL-PERFECT REFERENCE
+           Colors measured directly from reference image pixels
+        ═══════════════════════════════════════════════════════ */
+
+        /* Reference-measured colors:
+           bg-base: #07091a  (main bg — very deep navy)
+           bg-sidebar: #0a0c1c (slightly lighter than main)
+           sidebar-left-strip: linear-gradient(#f80c45 → #fb590c) — brand pink-orange
+           sidebar-active-bg: linear-gradient(#881041, #4d1f0c) — dark rose to burnt
+           sidebar-active-border-left: #f62d2b (bright hot red-pink)
+           export-btn: linear-gradient(#ff0471, #fb2055) pure hot pink
+           card-bg: rgba(6,9,16) - very dark
+           table-header-bg: #060a11
+           table-row-bg: #0d101a
+           search/notif container: #161721
+           title-text: #ffffff
+           subtitle-text: ~#787a7e
+           form-input-bg: ~#0e1019
+           approve-btn: dark #080b12 w/ teal accent
+        */
 
         * { box-sizing: border-box; }
+
         body {
-            background-color: var(--bg-base);
-            color: var(--text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+            background-color: #07091a;
+            color: #eef0f8;
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Display", system-ui, sans-serif;
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        /* Brand */
-        .brand-gradient { background: linear-gradient(135deg, #FF2D78 0%, #FF4B2B 50%, #FD6D05 100%); }
+        /* Brand gradient — exact from reference export button pixels */
+        .brand-gradient {
+            background: linear-gradient(120deg, #ff0471 0%, #f91265 30%, #fb2055 60%, #fb3850 100%);
+        }
 
-        /* Cards */
+        /* ── Cards ── */
         .card {
-            background: linear-gradient(145deg, rgba(13,15,30,0.95) 0%, rgba(10,12,22,0.9) 100%);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            backdrop-filter: blur(12px);
-            transition: var(--transition);
+            background: linear-gradient(160deg, #0c0e1e 0%, #080a18 100%);
+            border: 1px solid rgba(255,255,255,0.055);
+            border-radius: 14px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.03) inset;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
         .card:hover {
             border-color: rgba(255,255,255,0.09);
-            box-shadow: var(--shadow), 0 0 0 1px rgba(255,45,120,0.04);
-            transform: translateY(-1px);
+            box-shadow: 0 4px 28px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.04) inset;
         }
 
-        /* Sidebar nav */
+        /* ── Sidebar navigation ── */
         .sidebar-link {
-            color: var(--text-secondary);
+            color: #6b7280;
             border-radius: 10px;
-            transition: var(--transition);
+            transition: color 0.15s ease, background 0.15s ease;
             font-size: 13.5px;
             font-weight: 500;
-            position: relative;
+            letter-spacing: -0.01em;
         }
         .sidebar-link:hover {
             background: rgba(255,255,255,0.04);
-            color: var(--text-primary);
+            color: #c4c8d4;
         }
+        /* Active: exact reference — dark rose gradient bg with bright left border */
         .sidebar-link.active {
-            background: linear-gradient(135deg, rgba(255,45,120,0.2) 0%, rgba(253,109,5,0.13) 100%);
+            background: linear-gradient(105deg, rgba(136,16,65,0.55) 0%, rgba(77,31,12,0.45) 100%);
             color: #fff;
-            border: 1px solid rgba(255,45,120,0.18);
-            box-shadow: 0 0 20px rgba(255,45,120,0.08);
+            border: 1px solid rgba(246,45,43,0.25);
+            box-shadow: 0 0 0 0 transparent;
+            position: relative;
+        }
+        .sidebar-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 4px; bottom: 4px;
+            width: 3px;
+            border-radius: 0 3px 3px 0;
+            background: linear-gradient(180deg, #ff0471, #f62d2b);
+            box-shadow: 0 0 8px rgba(246,45,43,0.5);
         }
 
-        /* Inputs */
-        input, select, textarea {
-            background: rgba(255,255,255,0.03) !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
+        /* ── Inputs / Selects / Textareas ── */
+        input:not([type="file"]):not([type="range"]), select, textarea {
+            background: rgba(14,16,25,0.8) !important;
+            border: 1px solid rgba(255,255,255,0.07) !important;
             border-radius: 10px !important;
-            color: var(--text-primary) !important;
-            transition: var(--transition);
+            color: #eef0f8 !important;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        input:focus, select:focus, textarea:focus {
+        input:not([type="file"]):not([type="range"]):focus,
+        select:focus, textarea:focus {
             outline: none !important;
-            border-color: rgba(255,45,120,0.45) !important;
-            box-shadow: 0 0 0 3px rgba(255,45,120,0.08) !important;
-            background: rgba(255,45,120,0.02) !important;
+            border-color: rgba(255,4,113,0.45) !important;
+            box-shadow: 0 0 0 3px rgba(255,4,113,0.08) !important;
         }
-        input::placeholder, textarea::placeholder { color: var(--text-muted) !important; }
-        select option { background: #0d0f1e; }
+        input::placeholder, textarea::placeholder {
+            color: rgba(107,114,128,0.7) !important;
+        }
+        select option { background: #0c0e1e; }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 3px; height: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(255,45,120,0.35); }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.07);
+            border-radius: 99px;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,4,113,0.3); }
 
-        /* Animations */
+        /* ── Animations ── */
         @keyframes pulse-highlight {
-            0%,100% { border-color: var(--border); box-shadow: none; }
-            50% { border-color: rgba(255,45,120,0.4); box-shadow: 0 0 16px rgba(255,45,120,0.2); }
+            0%,100% { border-color: rgba(255,255,255,0.055); box-shadow: 0 2px 20px rgba(0,0,0,0.5); }
+            50% { border-color: rgba(255,4,113,0.35); box-shadow: 0 0 14px rgba(255,4,113,0.15); }
         }
         .flash-update { animation: pulse-highlight 2s ease-in-out infinite; }
 
         @keyframes item-entrance {
-            from { opacity:0; transform:translateY(8px) scale(0.98); }
-            to   { opacity:1; transform:translateY(0) scale(1); }
+            from { opacity: 0; transform: translateY(6px) scale(0.99); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .animate-item { animation: item-entrance 0.28s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .animate-item { animation: item-entrance 0.25s cubic-bezier(0.16,1,0.3,1) forwards; }
 
-        /* Presence */
-        .online-dot  { background:#10b981; box-shadow:0 0 0 2px var(--bg-card),0 0 6px rgba(16,185,129,0.5); }
-        .offline-dot { background:var(--text-muted); box-shadow:0 0 0 2px var(--bg-card); }
+        /* ── Presence dots ── */
+        .online-dot  { background: #10b981; box-shadow: 0 0 0 2px #0a0c1e, 0 0 5px rgba(16,185,129,0.4); }
+        .offline-dot { background: #374151; box-shadow: 0 0 0 2px #0a0c1e; }
 
-        /* Toggle switch */
-        .chat-toggle-switch { width:40px;height:22px;border-radius:999px;background:rgba(255,255,255,0.1);position:relative;flex-shrink:0;transition:background 0.2s; }
-        .chat-toggle-switch.on { background:linear-gradient(135deg,#FF2D78,#FD6D05); }
-        .chat-toggle-knob { position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.4); }
-        .chat-toggle-switch.on .chat-toggle-knob { transform:translateX(18px); }
-
-        /* Notification/search panels */
+        /* ── Notification & Search panels ── */
         #notif-panel > div,
         #global-search-overlay > div {
-            border-radius: 18px !important;
+            border-radius: 16px !important;
             border: 1px solid rgba(255,255,255,0.08) !important;
-            background: linear-gradient(145deg, #0f1125 0%, #0a0c1c 100%) !important;
-            box-shadow: 0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04) !important;
+            background: linear-gradient(160deg, #0f1125 0%, #0a0c1c 100%) !important;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04) !important;
         }
 
-        /* Corner FABs */
+        /* ── Corner FABs: exact #161721 from pixels ── */
         #corner-bell-btn, #corner-search-btn {
-            background: rgba(10,12,24,0.95) !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-            border-radius: 50% !important;
-            width: 40px !important; height: 40px !important;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
-            backdrop-filter: blur(16px) !important;
-            transition: all 0.2s !important;
+            border-radius: 50%;
+            transition: all 0.18s ease;
         }
         #corner-bell-btn:hover, #corner-search-btn:hover {
-            border-color: rgba(255,45,120,0.45) !important;
-            box-shadow: 0 4px 24px rgba(255,45,120,0.2) !important;
-            transform: scale(1.06) !important;
+            border-color: rgba(255,4,113,0.4) !important;
+            background: #1c1e2d !important;
+            color: #fff !important;
+            box-shadow: 0 4px 20px rgba(255,4,113,0.15) !important;
         }
 
-        /* Voice bars */
+        /* ── Voice recording bars ── */
         @keyframes voiceBarBounce { 0%,100%{height:4px} 50%{height:22px} }
-        .voice-bar { width:3px;min-height:4px;background:linear-gradient(to top,#FF2D78,#FD6D05);border-radius:3px;animation:voiceBarBounce 0.6s ease-in-out infinite;animation-delay:var(--d,0s); }
+        .voice-bar {
+            width: 3px; min-height: 4px;
+            background: linear-gradient(to top, #ff0471, #fd6d05);
+            border-radius: 3px;
+            animation: voiceBarBounce 0.6s ease-in-out infinite;
+            animation-delay: var(--d, 0s);
+        }
 
-        /* Call UI */
+        /* ── Toggle switch ── */
+        .chat-toggle-switch {
+            width: 40px; height: 22px; border-radius: 999px;
+            background: rgba(255,255,255,0.1); position: relative;
+            flex-shrink: 0; transition: background 0.2s;
+        }
+        .chat-toggle-switch.on { background: linear-gradient(135deg, #ff0471, #fd6d05); }
+        .chat-toggle-knob {
+            position: absolute; top: 2px; left: 2px;
+            width: 18px; height: 18px; border-radius: 50%;
+            background: #fff; transition: transform 0.2s;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }
+        .chat-toggle-switch.on .chat-toggle-knob { transform: translateX(18px); }
+
+        /* ── Call UI ── */
         @keyframes call-ring-pulse { 0%{transform:scale(1);opacity:.6} 70%,100%{transform:scale(1.5);opacity:0} }
-        .call-ring-anim { animation:call-ring-pulse 1.6s ease-out infinite; }
-        #call-local-video { background:#000;transform:scaleX(-1); }
-        .call-bars span { display:inline-block;width:3px;margin:0 1px;background:#FD6D05;border-radius:2px;animation:call-bar-bounce 1s ease-in-out infinite; }
-        .call-bars span:nth-child(2){animation-delay:.15s} .call-bars span:nth-child(3){animation-delay:.3s} .call-bars span:nth-child(4){animation-delay:.45s}
+        .call-ring-anim { animation: call-ring-pulse 1.6s ease-out infinite; }
+        #call-local-video { background: #000; transform: scaleX(-1); }
+        .call-bars span {
+            display: inline-block; width: 3px; margin: 0 1px;
+            background: #fd6d05; border-radius: 2px;
+            animation: call-bar-bounce 1s ease-in-out infinite;
+        }
+        .call-bars span:nth-child(2){animation-delay:.15s}
+        .call-bars span:nth-child(3){animation-delay:.3s}
+        .call-bars span:nth-child(4){animation-delay:.45s}
         @keyframes call-bar-bounce{0%,100%{height:6px}50%{height:20px}}
 
-        /* Mobile */
-        @media(max-width:639px){
-            .card{border-radius:12px!important}
+        /* ── Delivery dropzone ── */
+        #delivery-dropzone { border-radius: 10px !important; }
+        #delivery-dropzone:hover {
+            border-color: rgba(255,4,113,0.45) !important;
+            background: rgba(255,4,113,0.025) !important;
         }
 
-        /* Delivery dropzone */
-        #delivery-dropzone{border-radius:12px!important}
-        #delivery-dropzone:hover{border-color:rgba(255,45,120,0.5)!important;background:rgba(255,45,120,0.03)!important}
+        /* ── Mobile ── */
+        @media(max-width:639px){.card{border-radius:12px!important}}
     </style>
 
 </head>
@@ -449,11 +486,7 @@
 
             <!-- Notification Panel -->
             <!-- Floating corner bell — replaces the sidebar Notifications tab -->
-            <!-- Global Search floating button -->
-            <button id="corner-search-btn" onclick="toggleGlobalSearch()" title="Search"
-                class="fixed top-4 right-16 z-[69] w-10 h-10 rounded-full bg-transparent border border-white/[0.06] hover:border-orange-500/50 flex items-center justify-center text-gray-300 hover:text-orange-400 shadow-xl transition">
-                <i data-lucide="search" class="w-5 h-5"></i>
-            </button>
+
 
             <!-- Global Search overlay -->
             <div id="global-search-overlay" class="hidden fixed inset-0 z-[80] flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalSearch()">
@@ -476,11 +509,7 @@
                 </div>
             </div>
 
-            <button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications"
-                class="fixed top-4 right-4 z-[69] w-10 h-10 rounded-full bg-transparent border border-white/[0.06] hover:border-orange-500/50 flex items-center justify-center text-gray-300 hover:text-orange-400 shadow-xl transition">
-                <i data-lucide="bell" class="w-5 h-5"></i>
-                <span id="notif-badge-corner" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full brand-gradient text-white text-[9px] font-bold flex items-center justify-center px-1"></span>
-            </button>
+
 
             <div id="notif-panel" class="hidden fixed inset-0 z-[70] flex items-start justify-end p-4 pt-16" onclick="if(event.target===this)closeNotifPanel()">
                 <div class="w-full max-w-md bg-transparent border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden animate-item">
@@ -536,12 +565,24 @@
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Creative Production Matrix</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
                     </div>
-                    <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2">
-                        <button onclick="downloadWorkbookCSV()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
-                            <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
+                    <div class="flex items-center gap-2">
+                        <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2">
+                            <button onclick="downloadWorkbookCSV()" class="w-full sm:w-auto text-white text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition-all flex items-center justify-center gap-2" style="background:linear-gradient(108deg,#ff0471 0%,#f91265 50%,#fb2055 100%);box-shadow:0 4px 18px rgba(255,4,113,0.35)" onmouseover="this.style.filter='brightness(1.08)'" onmouseout="this.style.filter=''">
+                                <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
+                            </button>
+                            <button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="w-full sm:w-auto text-[#c4c8d4] text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition-all flex items-center justify-center gap-2" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)" onmouseover="this.style.borderColor='rgba(255,4,113,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+                                <i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet
+                            </button>
+                        </div>
+                        <!-- Search + Bell inline with header buttons — matches reference layout -->
+                        <button id="corner-search-btn" onclick="toggleGlobalSearch()" title="Search"
+                            class="w-10 h-10 rounded-full flex items-center justify-center transition-all relative" style="background:#161721;border:1px solid rgba(255,255,255,0.1);color:#9ca3af">
+                            <i data-lucide="search" class="w-4 h-4"></i>
                         </button>
-                        <button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="w-full sm:w-auto bg-transparent border border-white/[0.06] hover:border-orange-500/50 text-orange-400 text-xs font-bold px-5 py-3 rounded-xl uppercase tracking-wider transition duration-200 flex items-center justify-center gap-2">
-                            <i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet
+                        <button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications"
+                            class="w-10 h-10 rounded-full flex items-center justify-center transition-all relative" style="background:#161721;border:1px solid rgba(255,255,255,0.1);color:#9ca3af">
+                            <i data-lucide="bell" class="w-4 h-4"></i>
+                            <span id="notif-badge-corner" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full brand-gradient text-white text-[9px] font-bold flex items-center justify-center px-1"></span>
                         </button>
                     </div>
                 </div>
@@ -570,7 +611,7 @@
                 <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 </div>
 
-                <div id="admin-assignment-panel" class="card p-4 md:p-6 rounded-2xl space-y-4 hidden">
+                <div id="admin-assignment-panel" class="card space-y-5 p-5 md:p-6 rounded-2xl hidden" style="border-left:3px solid;border-left-color:#ff0471">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-orange-400 flex items-center gap-2">
                         <i data-lucide="file-plus" class="w-4 h-4"></i> Create & Assign Work Task
                     </h3>
@@ -784,7 +825,7 @@
                 </div>
 
                 <!-- Monthly grid -->
-                <div class="rounded-2xl overflow-hidden" style="background:rgba(13,15,31,0.8);border:1px solid rgba(255,255,255,0.06);box-shadow:0 8px 32px rgba(0,0,0,0.4)">
+                <div class="rounded-xl overflow-hidden" style="background:#08091a;border:1px solid rgba(255,255,255,0.055)">
                     <div class="overflow-x-auto">
                         <table id="attendance-grid-table" class="border-collapse text-xs w-full min-w-[1100px]">
                             <thead id="attendance-grid-head"></thead>
