@@ -291,8 +291,32 @@
         select.text-orange-400 { color: #fb923c !important; }
         select.text-red-400    { color: #f87171 !important; }
         select.text-red-500    { color: #ef4444 !important; }
-        /* ── Mobile ── */
-        @media(max-width:639px){ .card { border-radius: 12px !important; } }
+        /* ── Mobile compact ── */
+        @media(max-width:639px){
+            .card { border-radius: 12px !important; }
+            /* Sidebar hidden on mobile unless toggled */
+            aside { padding: 12px !important; }
+            /* Main content tighter padding */
+            main { padding: 12px !important; }
+            /* Stats cards smaller */
+            #metrics-counter-container .card { padding: 10px !important; }
+            #metrics-counter-container h3 { font-size: 1.1rem !important; }
+            #metrics-counter-container p { font-size: 9px !important; }
+            /* Pipeline table scroll */
+            #tab-content-pipeline { overflow-x: auto; }
+            /* Header row stack on mobile */
+            .flex.flex-col.sm\:flex-row { flex-direction: column !important; gap: 8px !important; }
+            /* Buttons smaller on mobile */
+            .glass-button { padding: 8px 14px !important; font-size: 10px !important; }
+            /* Search overlay full width */
+            #global-search-overlay > div { border-radius: 12px !important; margin: 0 4px; }
+            #global-search-input { font-size: 14px !important; }
+            /* Notification panel full width on mobile */
+            #notif-panel { padding: 8px !important; }
+            #notif-panel > div { border-radius: 14px !important; width: 100% !important; max-width: 100% !important; }
+            /* Modal fits mobile */
+            #be-modal-overlay > div { margin: 12px !important; width: calc(100% - 24px) !important; }
+        }
     </style>
 
 </head>
@@ -556,7 +580,7 @@
 
 
             <!-- Global Search overlay -->
-            <div id="global-search-overlay" class="hidden fixed inset-0 z-[80] flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalSearch()">
+            <div id="global-search-overlay" class="hidden fixed inset-0 z-[80] flex items-start justify-center pt-4 sm:pt-20 px-2 sm:px-4 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalSearch()">
                 <div class="w-full max-w-xl bg-transparent border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden">
                     <!-- Search input -->
                     <div class="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
@@ -5380,20 +5404,69 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
         function openSearchResult(taskId) {
             closeGlobalSearch();
-            // Navigate to the correct tab based on task status
             const task = (typeof assignmentsList !== 'undefined' ? assignmentsList : []).find(t => t.id == taskId);
             if (!task) return;
+
+            // Show a detail popup with full task info + any links
             const doneStatuses = ['Completed', 'Approved', 'Posted', 'Published'];
-            if (doneStatuses.includes(task.status)) {
-                switchTab('history');
-            } else {
-                switchTab('pipeline');
-                // Highlight the row briefly
-                setTimeout(() => {
-                    const row = document.querySelector(`[data-task-id="${taskId}"]`);
-                    if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('ring-2','ring-orange-500'); setTimeout(() => row.classList.remove('ring-2','ring-orange-500'), 2000); }
-                }, 300);
-            }
+            const isDone = doneStatuses.includes(task.status);
+            const statusColors = {'Completed':'#34d399','In Progress':'#60a5fa','Pending':'#facc15','Rework Required':'#fb923c','Rejected':'#f87171'};
+            const sc = statusColors[task.status] || '#9ca3af';
+            const assetLinks = (task.assetLink||'').split(',').map(s=>s.trim()).filter(Boolean);
+            const linksHtml = assetLinks.length
+                ? assetLinks.map(u=>`<a href="${u}" target="_blank" class="block text-[11px] underline break-all mt-1" style="color:#ff6b06">${u.length>50?u.slice(0,50)+'…':u}</a>`).join('')
+                : '<span class="text-[11px] text-gray-500 italic">No delivery link</span>';
+
+            const overlay = document.getElementById('be-modal-overlay');
+            const msgEl = document.getElementById('be-modal-message');
+            const okBtn = document.getElementById('be-modal-ok-btn');
+            const cancelBtn = document.getElementById('be-modal-cancel-btn');
+            const titleEl = document.getElementById('be-modal-title');
+
+            titleEl.textContent = task.topic || 'Task Detail';
+            msgEl.innerHTML = `
+                <div class="space-y-2 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold" style="color:${sc}">${task.status}</span>
+                        <span class="text-gray-500">·</span>
+                        <span class="text-gray-400">${task.type||''}</span>
+                    </div>
+                    <div><span class="text-gray-500">Assigned to:</span> <span class="text-white font-semibold">${task.assignedTo||'—'}</span></div>
+                    <div><span class="text-gray-500">Assigned date:</span> <span class="text-gray-300">${task.assignedDate||'—'}</span></div>
+                    ${task.date ? `<div><span class="text-gray-500">Target date:</span> <span class="text-gray-300">${task.date}</span></div>` : ''}
+                    ${task.description ? `<div class="pt-1"><span class="text-gray-500">Description:</span><p class="text-gray-300 mt-0.5">${task.description}</p></div>` : ''}
+                    ${task.explanation && task.explanation !== 'None' ? `<div class="pt-1"><span class="text-gray-500">Explanation:</span><p class="text-orange-400 mt-0.5">${task.explanation}</p></div>` : ''}
+                    <div class="pt-2 border-t border-white/10">
+                        <span class="text-gray-500">Delivery:</span>
+                        ${linksHtml}
+                    </div>
+                </div>`;
+            okBtn.textContent = isDone ? 'View in History' : 'View in Pipeline';
+            okBtn.className = 'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide text-white transition active:scale-95';
+            okBtn.style.background = 'linear-gradient(135deg,#ff6b06,#f9182f,#ff0552)';
+            cancelBtn.textContent = 'Close';
+            cancelBtn.classList.remove('hidden');
+            overlay.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+
+            okBtn.onclick = () => {
+                overlay.classList.add('hidden');
+                okBtn.onclick = null;
+                titleEl.textContent = 'Notice';
+                msgEl.innerHTML = '';
+                cancelBtn.classList.add('hidden');
+                okBtn.style.background = '';
+                if (isDone) switchTab('history');
+                else switchTab('pipeline');
+            };
+            cancelBtn.onclick = () => {
+                overlay.classList.add('hidden');
+                cancelBtn.onclick = null;
+                titleEl.textContent = 'Notice';
+                msgEl.innerHTML = '';
+                cancelBtn.classList.add('hidden');
+                okBtn.style.background = '';
+            };
         }
 
         function toggleNotifPanel() {
