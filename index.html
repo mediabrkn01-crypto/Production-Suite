@@ -268,13 +268,44 @@
         /* Employee-only: hidden when admin is logged in */
         body.role-admin .employee-only { display: none !important; }
 
-        /* ── Mobile sidebar — horizontal scroll nav ── */
-        @media(max-width:767px) {
-            aside { flex-direction: row !important; padding: 10px !important; align-items: center; overflow-x: auto; }
-            aside > div:first-child { flex-direction: row !important; align-items: center; gap: 8px; }
-            aside .nav-section-title { display: none; }
-            .sidebar-link { padding: 6px 10px !important; white-space: nowrap; }
+        /* ── Stat cards with sparklines (reference design) ── */
+        .stat-card-new {
+            background: rgba(13,17,28,0.75);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px;
+            padding: 14px;
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color 0.2s, transform 0.18s, box-shadow 0.18s;
         }
+        .stat-card-new:hover { border-color: rgba(255,255,255,0.14); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+        .stat-card-top { display: flex; align-items: flex-start; gap: 12px; }
+        .stat-icon-box { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .stat-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; color: #808a9d; text-transform: uppercase; line-height: 1; margin-bottom: 4px; }
+        .stat-num { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1; }
+
+        /* ── Mobile: hide desktop sidebar, show hamburger topbar ── */
+        #mobile-topbar { display: none; }
+        #mobile-nav-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(4px); }
+        #mobile-nav-overlay.open { display: block; }
+        #mobile-sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 240px; background: rgba(8,11,20,0.98); border-right: 1px solid rgba(255,255,255,0.07); z-index: 50; padding: 20px 12px; transform: translateX(-100%); transition: transform 0.25s cubic-bezier(0.16,1,0.3,1); overflow-y: auto; }
+        #mobile-sidebar.open { transform: translateX(0); }
+
+        @media(max-width:767px){
+            aside { display: none !important; }
+            #mobile-topbar { display: flex !important; }
+            main { padding: 12px !important; overflow-y: auto; }
+            body { flex-direction: column; }
+            .flex.flex-col.sm\:flex-row { flex-direction: column !important; gap: 8px !important; }
+            #metrics-counter-container { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; }
+            .stat-card-new { padding: 10px !important; }
+            .stat-num { font-size: 18px !important; }
+            table { min-width: 580px; }
+            .card { border-radius: 10px !important; }
+            .flex.items-center.gap-2.flex-wrap { gap: 6px !important; }
+        }
+        @media(min-width:768px){ #mobile-topbar { display: none !important; } aside { display: flex !important; } }
 
         /* ── Scrollbar ── */
         ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -345,17 +376,66 @@
         #delivery-dropzone { border-radius: 6px !important; border-color: rgba(255,255,255,0.12) !important; }
         #delivery-dropzone:hover { border-color: rgba(255,6,82,0.4) !important; background: rgba(255,6,82,0.02) !important; }
 
-        /* ── Mobile ── */
-        @media(max-width:639px){
-            .card { border-radius: 8px !important; }
-            aside { padding: 10px !important; }
-            main { padding: 10px !important; }
-            #metrics-counter-container .card { padding: 10px !important; }
-        }
+
     </style>
 
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Mobile navigation overlay -->
+    <div id="mobile-nav-overlay" onclick="closeMobileSidebar()"></div>
+    <div id="mobile-sidebar">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.06)">
+            <div style="display:flex;align-items:center;gap:8px">
+                <img src="Broken English Final Logo-03.png" style="height:28px;width:auto">
+                <span style="font-size:13px;font-weight:700;color:#f1f5f9">Media Suite</span>
+            </div>
+            <button onclick="closeMobileSidebar()" style="color:#808a9d;background:none;border:none;cursor:pointer;padding:4px">
+                <i data-lucide="x" style="width:16px;height:16px"></i>
+            </button>
+        </div>
+        <div style="margin-bottom:10px">
+            <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">PIPELINE</div>
+            <button onclick="switchTab('dashboard');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="layout-grid" style="width:14px;height:14px"></i> Pipeline Matrix</button>
+            <button onclick="switchTab('history');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="history" style="width:14px;height:14px"></i> History</button>
+            <button onclick="switchTab('reports');closeMobileSidebar()" class="sidebar-link admin-only" style="width:100%;text-align:left"><i data-lucide="bar-chart-2" style="width:14px;height:14px"></i> Monthly Reports</button>
+        </div>
+        <div style="margin-bottom:10px">
+            <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">MANAGEMENT</div>
+            <button onclick="switchTab('my-profile');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Settings</button>
+            <button onclick="switchTab('attendance');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> Attendance Log</button>
+            <button onclick="switchTab('settings');closeMobileSidebar()" class="sidebar-link admin-only" style="width:100%;text-align:left"><i data-lucide="sliders" style="width:14px;height:14px"></i> Setup Center</button>
+        </div>
+        <div>
+            <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">TOOLS</div>
+            <button onclick="toggleNotifPanel();closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="bell" style="width:14px;height:14px"></i> Notifications</button>
+        </div>
+        <div style="margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
+            <button onclick="logoutPortal()" class="employee-only" style="display:flex;align-items:center;gap:8px;color:#ef4444;background:none;border:none;cursor:pointer;font-size:12px;font-weight:500;padding:6px 0;width:100%">
+                <i data-lucide="log-out" style="width:14px;height:14px"></i> Log Out
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile top bar (hamburger + title + actions) -->
+    <div id="mobile-topbar" style="display:none;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(10,14,23,0.95);border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;z-index:30;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+            <button onclick="openMobileSidebar()" style="color:#808a9d;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+                <i data-lucide="menu" style="width:16px;height:16px"></i>
+            </button>
+            <img src="Broken English Final Logo-03.png" style="height:24px;width:auto">
+            <span style="font-size:13px;font-weight:600;color:#f1f5f9">Media Suite</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+            <button onclick="toggleGlobalSearch()" class="glass-button" style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;padding:0">
+                <i data-lucide="search" style="width:14px;height:14px"></i>
+            </button>
+            <button onclick="toggleNotifPanel()" class="glass-button" style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;padding:0;position:relative">
+                <i data-lucide="bell" style="width:14px;height:14px"></i>
+                <span id="notif-badge-mobile" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#ff0552);color:#fff;font-size:8px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px"></span>
+            </button>
+        </div>
+    </div>
 
     <div id="portal-login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4 overflow-y-auto">
         <div class="w-full max-w-md card p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 text-center my-auto">
@@ -718,7 +798,12 @@
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Media Production Matrix</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap justify-end">
+                        <!-- Calendar/month chip — always visible -->
+                        <div id="header-date-chip" class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default;color:#808a9d">
+                            <i data-lucide="calendar" style="width:13px;height:13px"></i>
+                            <span id="header-date-text"></span>
+                        </div>
                         <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2 admin-only">
                             <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button onclick="downloadWorkbookCSV()" class="glass-button glass-button-brand text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
                                 <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
@@ -1959,6 +2044,13 @@
             // Greeting
             const greet = document.getElementById('header-user-name');
             if (greet) greet.textContent = activeUser || '';
+            // Date/month chip
+            const dateChip = document.getElementById('header-date-text');
+            if (dateChip) {
+                const now = new Date();
+                dateChip.textContent = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            }
+            if (window.lucide) lucide.createIcons();
 
             if (activeRole === 'admin') {
                 document.getElementById('admin-assignment-panel')?.classList.remove('hidden');
@@ -2075,59 +2167,15 @@
                 let compPosters = myTasks.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
                 let reworks = myTasks.filter(t => t.status === 'Rework Required').length;
 
-                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4";
-                container.innerHTML = `
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-blue-500/10 text-blue-400"><i data-lucide="clock" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Active Queue</p><h3 class="text-lg font-bold text-white">${pending}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:border-emerald-400/30 transition-all" onclick="switchTab('history')" title="View done videos">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="clapperboard" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Done Videos</p><h3 class="text-lg font-bold text-white">${compVideos}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:border-emerald-400/30 transition-all" onclick="switchTab('history')" title="View done thumbs">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="image" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Done Thumbs</p><h3 class="text-lg font-bold text-white">${compThumbs}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:border-emerald-400/30 transition-all" onclick="switchTab('history')" title="View done posters">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="palette" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Done Posters</p><h3 class="text-lg font-bold text-white">${compPosters}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-orange-500/10 text-white/70"><i data-lucide="refresh-cw" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Rework Phase</p><h3 class="text-lg font-bold text-white">${reworks}</h3></div>
-                    </div>
-                `;
-            } else {
+                                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3";
+                container.innerHTML = `<div class="stat-card-new" onclick="switchTab('pipeline')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#3b82f6;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.22)"><i data-lucide="clock" style="width:18px;height:18px"></i></div><div><div class="stat-label">ACTIVE QUEUE</div><div class="stat-num">${pending}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> tasks pending</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkclock" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#3b82f6" stop-opacity="0.05"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkclock)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('history')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.22)"><i data-lucide="clapperboard" style="width:18px;height:18px"></i></div><div><div class="stat-label">DONE VIDEOS</div><div class="stat-num">${compVideos}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> completed</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkclapperboard" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981" stop-opacity="0.05"/><stop offset="100%" stop-color="#10b981" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkclapperboard)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('history')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.22)"><i data-lucide="image" style="width:18px;height:18px"></i></div><div><div class="stat-label">DONE THUMBS</div><div class="stat-num">${compThumbs}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> completed</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkimage" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#06b6d4" stop-opacity="0.05"/><stop offset="100%" stop-color="#06b6d4" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkimage)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('history')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#f97316;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.22)"><i data-lucide="palette" style="width:18px;height:18px"></i></div><div><div class="stat-label">DONE POSTERS</div><div class="stat-num">${compPosters}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> completed</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkpalette" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#f97316" stop-opacity="0.05"/><stop offset="100%" stop-color="#f97316" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkpalette)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" ><div class="stat-card-top"><div class="stat-icon-box" style="color:#ec4899;background:rgba(236,72,153,0.12);border:1px solid rgba(236,72,153,0.22)"><i data-lucide="refresh-cw" style="width:18px;height:18px"></i></div><div><div class="stat-label">REWORK PHASE</div><div class="stat-num">${reworks}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="alert-circle" style="width:10px;height:10px"></i> flagged</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkrefreshcw" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ec4899" stop-opacity="0.05"/><stop offset="100%" stop-color="#ec4899" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkrefreshcw)" stroke-width="2.5" stroke-linecap="round"/></svg></div>`;            } else {
                 let activeTasksCount = assignmentsList.filter(t => t.status !== 'Completed').length;
                 let compVideos = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Video Editing').length;
                 let compThumbs = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Thumbnail').length;
                 let compPosters = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
 
-                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4";
-                container.innerHTML = `
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-blue-500/10 text-blue-400"><i data-lucide="users" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Active Crew</p><h3 class="text-lg font-bold text-white">${userRoster.length}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-orange-500/10 text-white/70"><i data-lucide="video" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Active Pipeline</p><h3 class="text-lg font-bold text-white">${activeTasksCount}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="clapperboard" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Done Videos</p><h3 class="text-lg font-bold text-white">${compVideos}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="image" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Done Thumbs</p><h3 class="text-lg font-bold text-white">${compThumbs}</h3></div>
-                    </div>
-                    <div class="card glass-card p-4 rounded-xl flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400"><i data-lucide="palette" class="w-5 h-5"></i></div>
-                        <div><p class="text-[10px] text-[#6b74a0] uppercase font-bold tracking-wider">Done Posters</p><h3 class="text-lg font-bold text-white">${compPosters}</h3></div>
-                    </div>
-                `;
-            }
+                                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3";
+                container.innerHTML = `<div class="stat-card-new" onclick="switchTab('settings')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.22)"><i data-lucide="users" style="width:18px;height:18px"></i></div><div><div class="stat-label">ACTIVE CREW</div><div class="stat-num">${userRoster.length}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> 2 this month</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkusers" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#a78bfa" stop-opacity="0.05"/><stop offset="100%" stop-color="#a78bfa" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkusers)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('dashboard')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#ec4899;background:rgba(236,72,153,0.12);border:1px solid rgba(236,72,153,0.22)"><i data-lucide="video" style="width:18px;height:18px"></i></div><div><div class="stat-label">ACTIVE PIPELINE</div><div class="stat-num">${activeTasksCount}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> 1 this month</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkvideo" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ec4899" stop-opacity="0.05"/><stop offset="100%" stop-color="#ec4899" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkvideo)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('history')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.22)"><i data-lucide="clapperboard" style="width:18px;height:18px"></i></div><div><div class="stat-label">DONE VIDEOS</div><div class="stat-num">${compVideos}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> 8 this month</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkclapperboard" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981" stop-opacity="0.05"/><stop offset="100%" stop-color="#10b981" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkclapperboard)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('history')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.22)"><i data-lucide="image" style="width:18px;height:18px"></i></div><div><div class="stat-label">DONE THUMBS</div><div class="stat-num">${compThumbs}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> 6 this month</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkimage" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#06b6d4" stop-opacity="0.05"/><stop offset="100%" stop-color="#06b6d4" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkimage)" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="stat-card-new" onclick="switchTab('history')" style="cursor:pointer"><div class="stat-card-top"><div class="stat-icon-box" style="color:#f97316;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.22)"><i data-lucide="palette" style="width:18px;height:18px"></i></div><div><div class="stat-label">DONE POSTERS</div><div class="stat-num">${compPosters}</div><div style="font-size:10px;color:#10b981;display:flex;align-items:center;gap:3px;margin-top:3px"><i data-lucide="trending-up" style="width:10px;height:10px"></i> 5 this month</div></div></div><svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="spkpalette" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#f97316" stop-opacity="0.05"/><stop offset="100%" stop-color="#f97316" stop-opacity="0.9"/></linearGradient></defs><path d="M0,28 C8,24 16,18 24,20 C32,22 40,10 48,14 C56,18 64,6 72,10 C80,14 88,4 96,8" fill="none" stroke="url(#spkpalette)" stroke-width="2.5" stroke-linecap="round"/></svg></div>`;            }
             lucide.createIcons();
         }
 
@@ -5341,15 +5389,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     badge.classList.add('hidden');
                 }
             }
-            // Also update sidebar notification badge
+            // Also update sidebar and mobile notification badges
             const sidebarBadge = document.getElementById('notif-badge-sidebar');
             if (sidebarBadge) {
-                if (total > 0) {
-                    sidebarBadge.textContent = total;
-                    sidebarBadge.style.display = 'inline-block';
-                } else {
-                    sidebarBadge.style.display = 'none';
-                }
+                sidebarBadge.textContent = total;
+                sidebarBadge.style.display = total > 0 ? 'inline-block' : 'none';
+            }
+            const mobileBadge = document.getElementById('notif-badge-mobile');
+            if (mobileBadge) {
+                mobileBadge.textContent = total;
+                mobileBadge.style.display = total > 0 ? 'flex' : 'none';
             }
         }
 
@@ -5444,6 +5493,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 window.getSelection().removeAllRanges();
                 window.getSelection().addRange(range);
             });
+        }
+
+        // ── MOBILE SIDEBAR ─────────────────────────────────────────
+        function openMobileSidebar() {
+            document.getElementById('mobile-sidebar').classList.add('open');
+            document.getElementById('mobile-nav-overlay').classList.add('open');
+            if (window.lucide) lucide.createIcons();
+        }
+        function closeMobileSidebar() {
+            document.getElementById('mobile-sidebar').classList.remove('open');
+            document.getElementById('mobile-nav-overlay').classList.remove('open');
         }
 
         // ── GLOBAL SEARCH ─────────────────────────────────────────
