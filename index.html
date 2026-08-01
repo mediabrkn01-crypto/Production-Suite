@@ -694,7 +694,13 @@
                         <i data-lucide="bell" style="width:14px;height:14px"></i> Notifications
                         <span id="notif-badge-sidebar" class="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded" style="background:rgba(255,107,6,0.2);color:#ff6b06;display:none"></span>
                     </button>
+                    <button class="sidebar-link" style="width:100%;text-align:left;opacity:0.45;cursor:default" title="Coming soon">
+                        <i data-lucide="trending-up" style="width:14px;height:14px"></i> Metrics
+                    </button>
                 </div>
+                <button class="sidebar-link" style="width:100%;text-align:left;margin-top:4px" title="Collapse menu">
+                    <i data-lucide="chevrons-left" style="width:14px;height:14px"></i> Collapse Menu
+                </button>
             </div>
 
             <!-- Bottom: User card + logout -->
@@ -813,11 +819,17 @@
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
                     </div>
                     <div class="flex items-center gap-2 flex-wrap justify-end">
-                        <!-- Calendar/month chip — always visible -->
-                        <div id="header-date-chip" class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default;color:#808a9d">
-                            <i data-lucide="calendar" style="width:13px;height:13px"></i>
-                            <span id="header-date-text"></span>
+                        <!-- Date/time chip with online status -->
+                        <div class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default">
+                            <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;flex-shrink:0"></span>
+                            <span style="color:#22c55e;font-size:10px;font-weight:700;letter-spacing:0.5px">LIVE</span>
+                            <i data-lucide="calendar" style="width:12px;height:12px;color:#808a9d"></i>
+                            <span id="header-date-text" style="color:#f1f5f9"></span>
                         </div>
+                        <!-- Dark mode toggle -->
+                        <button id="darkmode-toggle" onclick="toggleDarkMode()" class="glass-button px-2 py-2 rounded-lg" title="Toggle Dark/Light Mode" style="color:#808a9d">
+                            <i data-lucide="moon" style="width:14px;height:14px"></i>
+                        </button>
                         <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2 admin-only">
                             <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button onclick="downloadWorkbookCSV()" class="glass-button glass-button-brand text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
                                 <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
@@ -914,14 +926,27 @@
                 <div class="grid grid-cols-1 gap-6">
                     
                     <div class="space-y-4">
+                        <!-- Create & Assign collapsed banner (admin/manager only) -->
+                        <div id="assign-banner" class="admin-manager-only" style="display:none;align-items:center;justify-content:space-between;padding:14px 18px;background:#121826;border:1px solid #1f293d;border-radius:12px;margin-bottom:14px">
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <div style="width:38px;height:38px;border-radius:10px;background:rgba(255,107,6,0.12);border:1px solid rgba(255,107,6,0.25);display:flex;align-items:center;justify-content:center">
+                                    <i data-lucide="plus-square" style="width:18px;height:18px;color:#ff6b06"></i>
+                                </div>
+                                <div>
+                                    <div style="font-size:13px;font-weight:600;color:#f1f5f9">Create &amp; Assign Work Task</div>
+                                    <div style="font-size:11px;color:#808a9d;margin-top:2px">Click + to create and assign new work task</div>
+                                </div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px">
+                                <div style="font-size:10px;color:#808a9d;text-align:right">Click +<br>to open<br>the panel</div>
+                                <button id="btn-open-assign-panel" onclick="toggleAssignPanel()" style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(255,107,6,0.35);color:#fff;font-size:24px;font-weight:300;flex-shrink:0">+</button>
+                            </div>
+                        </div>
+
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
                                 <i data-lucide="list-todo" class="text-orange-500"></i> Active Pipeline Sheet
                             </h3>
-                            <!-- + button — only visible to admin/manager via JS role class -->
-                            <button id="btn-open-assign-panel" onclick="toggleAssignPanel()" class="admin-manager-only hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:rgba(255,107,6,0.12);border:1px solid rgba(255,107,6,0.25);color:#ff6b06" title="Create & Assign Work Task">
-                                <i data-lucide="plus" style="width:14px;height:14px"></i> Assign Work
-                            </button>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3 bg-transparent p-3 rounded-xl border border-white/[0.06] text-xs shadow-inner">
@@ -1023,7 +1048,20 @@
                         <div id="production-matrix-mobile-cards" class="block md:hidden space-y-3">
                         </div>
 
-                        <div id="pipeline-pagination" class="hidden items-center justify-center gap-1 flex-wrap pt-4 mt-2 border-t border-white/[0.06]/60" style="display:none">
+                        <!-- Reference-style pagination footer -->
+                        <div id="pipeline-pagination-footer" style="display:none;align-items:center;justify-content:space-between;padding:14px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:10px">
+                            <span id="pipeline-entries-text" style="font-size:12px;color:#808a9d"></span>
+                            <div id="pipeline-pagination" class="hidden items-center gap-1" style="display:flex">
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-size:12px;color:#808a9d">Rows per page:</span>
+                                <select id="pipeline-rows-per-page" onchange="changePipelineRowsPerPage(this.value)" style="background:#1a2133;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#f1f5f9;font-size:12px;padding:4px 8px;cursor:pointer;outline:none">
+                                    <option value="5" selected>5</option>
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -1702,7 +1740,7 @@
         let globalStatusFilter = 'all';
         let globalSortConfig = 'assignedDate-desc';
         let currentPipelinePage = 1;
-        const PIPELINE_PAGE_SIZE = 10;
+        let PIPELINE_PAGE_SIZE = 5;
 
         function triggerPipelineMatrixUpdate() {
             globalYearFilter = document.getElementById('filter-year').value;
@@ -1722,23 +1760,47 @@
             if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
+        function changePipelineRowsPerPage(val) {
+            PIPELINE_PAGE_SIZE = parseInt(val);
+            currentPipelinePage = 1;
+            triggerPipelineMatrixUpdate();
+        }
+
         function renderPipelinePagination(totalItems) {
             const pagEl = document.getElementById('pipeline-pagination');
+            const footer = document.getElementById('pipeline-pagination-footer');
+            const entriesText = document.getElementById('pipeline-entries-text');
             if (!pagEl) return;
 
             const totalPages = Math.ceil(totalItems / PIPELINE_PAGE_SIZE);
+
+            // Always show footer if there are items
+            if (footer) footer.style.display = totalItems > 0 ? 'flex' : 'none';
+
+            // "Showing X to Y of Z entries"
+            if (entriesText && totalItems > 0) {
+                const from = (currentPipelinePage - 1) * PIPELINE_PAGE_SIZE + 1;
+                const to = Math.min(currentPipelinePage * PIPELINE_PAGE_SIZE, totalItems);
+                entriesText.textContent = `Showing ${from} to ${to} of ${totalItems} entries`;
+            }
+
             if (totalPages <= 1) {
-                pagEl.classList.add('hidden'); pagEl.style.display = 'none';
+                pagEl.style.display = 'none';
                 pagEl.innerHTML = '';
                 return;
             }
-            pagEl.classList.remove('hidden'); pagEl.style.display = 'flex'; pagEl.style.display = 'flex';
+            pagEl.style.display = 'flex';
 
+            // Build page buttons — reference style
             let html = '';
-            // Prev button
-            html += `<button onclick="goToPipelinePage(${currentPipelinePage - 1})" ${currentPipelinePage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === 1 ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-300 border border-white/10 active:scale-95'}">‹</button>`;
 
-            // Page number buttons (show window around current)
+            // Prev ‹
+            const prevStyle = currentPipelinePage === 1
+                ? 'opacity:0.35;cursor:not-allowed;pointer-events:none;'
+                : 'cursor:pointer;';
+            html += `<button onclick="goToPipelinePage(${currentPipelinePage - 1})" ${currentPipelinePage === 1 ? 'disabled' : ''} style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#94a3b8;font-size:14px;display:flex;align-items:center;justify-content:center;${prevStyle}">‹</button>`;
+
+            // Page numbers
             const pages = [];
             for (let i = 1; i <= totalPages; i++) {
                 if (i === 1 || i === totalPages || (i >= currentPipelinePage - 1 && i <= currentPipelinePage + 1)) {
@@ -1749,15 +1811,18 @@
             }
             pages.forEach(p => {
                 if (p === '...') {
-                    html += `<span class="px-2 text-gray-600 text-xs">…</span>`;
+                    html += `<span style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#64748b">…</span>`;
                 } else {
-                    const isActive = p === currentPipelinePage;
-                    html += `<button onclick="goToPipelinePage(${p})" class="min-w-[36px] h-9 px-2 rounded-lg text-xs font-bold active:scale-95 ${isActive ? 'brand-gradient text-white' : 'text-gray-300 border border-white/10'}">${p}</button>`;
+                    const active = p === currentPipelinePage;
+                    html += `<button onclick="goToPipelinePage(${p})" style="width:32px;height:32px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.15s;${active ? 'background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;border:none;' : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#94a3b8;'}">${p}</button>`;
                 }
             });
 
-            // Next button
-            html += `<button onclick="goToPipelinePage(${currentPipelinePage + 1})" ${currentPipelinePage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === totalPages ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-300 border border-white/10 active:scale-95'}">›</button>`;
+            // Next ›
+            const nextStyle = currentPipelinePage === totalPages
+                ? 'opacity:0.35;cursor:not-allowed;pointer-events:none;'
+                : 'cursor:pointer;';
+            html += `<button onclick="goToPipelinePage(${currentPipelinePage + 1})" ${currentPipelinePage === totalPages ? 'disabled' : ''} style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#94a3b8;font-size:14px;display:flex;align-items:center;justify-content:center;${nextStyle}">›</button>`;
 
             pagEl.innerHTML = html;
         }
@@ -2049,16 +2114,10 @@
             // Set role class on body for CSS-based role visibility
             document.body.classList.remove('role-admin', 'role-manager', 'role-employee', 'role-social-media');
             document.body.classList.add('role-' + (activeRole || 'employee'));
-            // Show + button only for admin/manager
-            const assignBtn = document.getElementById('btn-open-assign-panel');
-            if (assignBtn) {
-                if (activeRole === 'admin' || activeRole === 'manager') {
-                    assignBtn.classList.remove('hidden');
-                    assignBtn.style.display = 'flex';
-                } else {
-                    assignBtn.classList.add('hidden');
-                    assignBtn.style.display = 'none';
-                }
+            // Show assign banner for admin/manager
+            const assignBanner = document.getElementById('assign-banner');
+            if (assignBanner) {
+                assignBanner.style.display = (activeRole === 'admin' || activeRole === 'manager') ? 'flex' : 'none';
             }
 
             // Update sidebar user display
@@ -2204,15 +2263,95 @@
                 let reworks = myTasks.filter(t => t.status === 'Rework Required').length;
 
                                 container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3";
-                container.innerHTML = `<div class=\"stat-card-new\" onclick=\"switchTab('pipeline')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#3b82f6;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.22)\"><i data-lucide=\"clock\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">ACTIVE QUEUE</div><div class=\"stat-num\">${pending}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ tasks pending</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s0\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#3b82f6\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#3b82f6\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C6,24 12,20 18,22 C24,24 30,16 36,14 C42,12 48,18 54,16 C60,14 66,6 72,8 C78,10 84,4 90,6\" fill=\"none\" stroke=\"url(#s0)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.22)\"><i data-lucide=\"clapperboard\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE VIDEOS</div><div class=\"stat-num\">${compVideos}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ completed</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s1\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#10b981\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#10b981\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,24 C4,20 8,28 14,22 C20,16 26,26 32,20 C38,14 44,22 50,16 C56,10 62,18 68,12 C74,6 80,14 86,8\" fill=\"none\" stroke=\"url(#s1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.15s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.22)\"><i data-lucide=\"image\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE THUMBS</div><div class=\"stat-num\">${compThumbs}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ completed</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s2\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#06b6d4\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#06b6d4\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,28 C8,26 16,24 24,22 C32,20 40,16 48,14 C56,12 64,8 72,6 C80,4 88,3 96,2\" fill=\"none\" stroke=\"url(#s2)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.3s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#f97316;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.22)\"><i data-lucide=\"palette\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE POSTERS</div><div class=\"stat-num\">${compPosters}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ completed</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s3\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#f97316\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#f97316\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,22 C6,24 12,18 18,20 C24,22 30,14 36,16 C42,18 48,10 54,12 C60,14 66,8 72,10 C78,12 84,6 90,8\" fill=\"none\" stroke=\"url(#s3)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.45s\"/></svg></div><div class=\"stat-card-new\" ><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#ec4899;background:rgba(236,72,153,0.12);border:1px solid rgba(236,72,153,0.22)\"><i data-lucide=\"refresh-cw\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">REWORK PHASE</div><div class=\"stat-num\">${reworks}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">! flagged</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s4\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#ec4899\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#ec4899\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C5,22 10,28 16,20 C22,12 28,24 34,18 C40,12 46,20 52,14 C58,8 64,16 70,10 C76,4 82,12 88,6\" fill=\"none\" stroke=\"url(#s4)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.6s\"/></svg></div>`;            } else {
+                container.innerHTML = `<div class="ref-card card-1" onclick="switchTab('pipeline')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="card-title-ref">ACTIVE QUEUE</div><div class="card-value-ref">${pending}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ tasks pending</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#a855f7" stop-opacity="0.25"/><stop offset="100%" stop-color="#a855f7" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,55 Q 25,20 50,45 T 100,45 T 150,25 T 200,40 L 200,80 L 0,80 Z" fill="url(#dg1)"/>
+<path class="animated-path-ref" d="M 0,55 Q 25,20 50,45 T 100,45 T 150,25 T 200,40" fill="none" stroke="#a855f7" stroke-width="3" stroke-linecap="round"/>
+<circle cx="25" cy="35" r="3" fill="#a855f7"/>
+<circle cx="150" cy="25" r="4" fill="#a855f7"/>
+<circle cx="200" cy="40" r="4" fill="#a855f7" class="glow-dot-ref" style="color:#a855f7"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">${Math.round((pending/10)*100)}% Progress</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="40%"></div></div></div></div><div class="ref-card card-2" onclick="switchTab('history')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div><div><div class="card-title-ref">DONE VIDEOS</div><div class="card-value-ref">${compVideos}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ completed</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f43f5e" stop-opacity="0.3"/><stop offset="100%" stop-color="#f43f5e" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,50 L 30,45 L 60,60 L 90,40 L 120,55 L 140,35 L 160,45 L 180,30 L 200,38 L 200,80 L 0,80 Z" fill="url(#dg2)"/>
+<path class="animated-path-ref" d="M 0,50 L 30,45 L 60,60 L 90,40 L 120,55 L 140,35 L 160,45 L 180,30 L 200,38" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="90" cy="40" r="3" fill="#f43f5e"/>
+<circle cx="140" cy="35" r="3" fill="#f43f5e"/>
+<circle cx="200" cy="38" r="4" fill="#f43f5e" class="glow-dot-ref" style="color:#f43f5e"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">82% Completed</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="82%"></div></div></div></div><div class="ref-card card-3" onclick="switchTab('history')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div><div class="card-title-ref">DONE THUMBS</div><div class="card-value-ref">${compThumbs}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ completed</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.4"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,65 C 40,63 70,55 100,38 C 130,25 160,28 200,10 L 200,80 L 0,80 Z" fill="url(#dg3)"/>
+<path class="animated-path-ref" d="M 0,65 C 40,63 70,55 100,38 C 130,25 160,28 200,10" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"/>
+<path d="M 0,65 Q 30,62 60,50" fill="none" stroke="#22c55e" stroke-width="2" stroke-dasharray="3,3" opacity="0.6"/>
+<circle cx="200" cy="10" r="4" fill="#22c55e" class="glow-dot-ref" style="color:#22c55e"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">70% Completed</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="70%"></div></div></div></div><div class="ref-card card-4" onclick="switchTab('history')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.72 1.7-1.61 0-.43-.17-.83-.44-1.13-.27-.3-.44-.7-.44-1.13 0-.89.72-1.61 1.61-1.61h1.9c3.09 0 5.67-2.58 5.67-5.67C22 6.13 17.5 2 12 2z"/></svg></div><div><div class="card-title-ref">DONE POSTERS</div><div class="card-value-ref">${compPosters}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ completed</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.3"/><stop offset="100%" stop-color="#0ea5e9" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,60 L 20,55 L 40,48 L 60,50 L 80,40 L 100,45 L 120,38 L 140,45 L 160,35 L 180,28 L 200,20 L 200,80 L 0,80 Z" fill="url(#dg4)"/>
+<path class="animated-path-ref" d="M 0,60 L 20,55 L 40,48 L 60,50 L 80,40 L 100,45 L 120,38 L 140,45 L 160,35 L 180,28 L 200,20" fill="none" stroke="#0ea5e9" stroke-width="2.5" stroke-dasharray="4,4"/>
+<circle cx="20" cy="55" r="2.5" fill="#0ea5e9"/>
+<circle cx="60" cy="50" r="2.5" fill="#0ea5e9"/>
+<circle cx="100" cy="45" r="2.5" fill="#0ea5e9"/>
+<circle cx="140" cy="45" r="2.5" fill="#0ea5e9"/>
+<circle cx="180" cy="28" r="2.5" fill="#0ea5e9"/>
+<circle cx="200" cy="20" r="4" fill="#0ea5e9" class="glow-dot-ref" style="color:#0ea5e9"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">63% Completed</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="63%"></div></div></div></div><div class="ref-card card-5"  style="cursor:default"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20"/><path d="M6 4v4"/><path d="M10 4v4"/><path d="M14 4v4"/><path d="M18 4v4"/></svg></div><div><div class="card-title-ref">REWORK PHASE</div><div class="card-value-ref">${reworks}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">! flagged items</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><style>.bar-ref{transform-origin:bottom;animation:growBarRef 1.2s ease-out forwards}@keyframes growBarRef{from{transform:scaleY(0)}to{transform:scaleY(1)}}</style>
+<rect class="bar-ref" x="5" y="45" width="7" height="35" rx="3" fill="#f97316" style="animation-delay:.1s"/>
+<rect class="bar-ref" x="18" y="40" width="7" height="40" rx="3" fill="#f97316" style="animation-delay:.15s"/>
+<rect class="bar-ref" x="31" y="35" width="7" height="45" rx="3" fill="#f97316" style="animation-delay:.2s"/>
+<rect class="bar-ref" x="44" y="28" width="7" height="52" rx="3" fill="#f97316" style="animation-delay:.25s"/>
+<rect class="bar-ref" x="57" y="22" width="7" height="58" rx="3" fill="#f97316" style="animation-delay:.3s"/>
+<rect class="bar-ref" x="70" y="15" width="7" height="65" rx="3" fill="#f97316" style="animation-delay:.35s"/>
+<rect class="bar-ref" x="83" y="25" width="7" height="55" rx="3" fill="#f97316" style="animation-delay:.4s"/>
+<rect class="bar-ref" x="96" y="32" width="7" height="48" rx="3" fill="#f97316" style="animation-delay:.45s"/>
+<rect class="bar-ref" x="109" y="28" width="7" height="52" rx="3" fill="#f97316" style="animation-delay:.5s"/>
+<rect class="bar-ref" x="122" y="20" width="7" height="60" rx="3" fill="#f97316" style="animation-delay:.55s"/>
+<rect class="bar-ref" x="135" y="18" width="7" height="62" rx="3" fill="#f97316" style="animation-delay:.6s"/>
+<rect class="bar-ref" x="148" y="12" width="7" height="68" rx="3" fill="#f97316" style="animation-delay:.65s"/>
+<rect class="bar-ref" x="161" y="10" width="7" height="70" rx="3" fill="#f97316" style="animation-delay:.7s"/>
+<rect class="bar-ref" x="174" y="15" width="7" height="65" rx="3" fill="#f97316" style="animation-delay:.75s"/>
+<rect class="bar-ref" x="187" y="20" width="7" height="60" rx="3" fill="#f97316" style="animation-delay:.8s"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">${Math.round((reworks/5)*100)}% Rate</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="40%"></div></div></div></div>`;            } else {
                 let activeTasksCount = assignmentsList.filter(t => t.status !== 'Completed').length;
                 let compVideos = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Video Editing').length;
                 let compThumbs = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Thumbnail').length;
                 let compPosters = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
 
                                 container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3";
-                container.innerHTML = `<div class=\"stat-card-new\" onclick=\"switchTab('settings')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.22)\"><i data-lucide=\"users\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">ACTIVE CREW</div><div class=\"stat-num\">${userRoster.length}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 2 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s0\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#a78bfa\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#a78bfa\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C6,24 12,20 18,22 C24,24 30,16 36,14 C42,12 48,18 54,16 C60,14 66,6 72,8 C78,10 84,4 90,6\" fill=\"none\" stroke=\"url(#s0)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('dashboard')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#ec4899;background:rgba(236,72,153,0.12);border:1px solid rgba(236,72,153,0.22)\"><i data-lucide=\"video\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">ACTIVE PIPELINE</div><div class=\"stat-num\">${activeTasksCount}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 1 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s1\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#ec4899\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#ec4899\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,24 C4,20 8,28 14,22 C20,16 26,26 32,20 C38,14 44,22 50,16 C56,10 62,18 68,12 C74,6 80,14 86,8\" fill=\"none\" stroke=\"url(#s1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.15s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.22)\"><i data-lucide=\"clapperboard\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE VIDEOS</div><div class=\"stat-num\">${compVideos}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 8 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s2\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#10b981\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#10b981\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,28 C8,26 16,24 24,22 C32,20 40,16 48,14 C56,12 64,8 72,6 C80,4 88,3 96,2\" fill=\"none\" stroke=\"url(#s2)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.3s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.22)\"><i data-lucide=\"image\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE THUMBS</div><div class=\"stat-num\">${compThumbs}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 6 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s3\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#06b6d4\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#06b6d4\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,22 C6,24 12,18 18,20 C24,22 30,14 36,16 C42,18 48,10 54,12 C60,14 66,8 72,10 C78,12 84,6 90,8\" fill=\"none\" stroke=\"url(#s3)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.45s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#f97316;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.22)\"><i data-lucide=\"palette\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE POSTERS</div><div class=\"stat-num\">${compPosters}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 5 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s4\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#f97316\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#f97316\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C5,22 10,28 16,20 C22,12 28,24 34,18 C40,12 46,20 52,14 C58,8 64,16 70,10 C76,4 82,12 88,6\" fill=\"none\" stroke=\"url(#s4)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.6s\"/></svg></div>`;            }
+                container.innerHTML = `<div class="ref-card card-1" onclick="switchTab('settings')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="card-title-ref">ACTIVE CREW</div><div class="card-value-ref">${userRoster.length}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ 2 this month</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#a855f7" stop-opacity="0.25"/><stop offset="100%" stop-color="#a855f7" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,55 Q 25,20 50,45 T 100,45 T 150,25 T 200,40 L 200,80 L 0,80 Z" fill="url(#dg1)"/>
+<path class="animated-path-ref" d="M 0,55 Q 25,20 50,45 T 100,45 T 150,25 T 200,40" fill="none" stroke="#a855f7" stroke-width="3" stroke-linecap="round"/>
+<circle cx="25" cy="35" r="3" fill="#a855f7"/>
+<circle cx="150" cy="25" r="4" fill="#a855f7"/>
+<circle cx="200" cy="40" r="4" fill="#a855f7" class="glow-dot-ref" style="color:#a855f7"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">${Math.round((userRoster.length/8)*100)}% Capacity</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="66%"></div></div></div></div><div class="ref-card card-2" onclick="switchTab('dashboard')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div><div><div class="card-title-ref">ACTIVE PIPELINE</div><div class="card-value-ref">${activeTasksCount}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ 1 this month</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f43f5e" stop-opacity="0.3"/><stop offset="100%" stop-color="#f43f5e" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,50 L 30,45 L 60,60 L 90,40 L 120,55 L 140,35 L 160,45 L 180,30 L 200,38 L 200,80 L 0,80 Z" fill="url(#dg2)"/>
+<path class="animated-path-ref" d="M 0,50 L 30,45 L 60,60 L 90,40 L 120,55 L 140,35 L 160,45 L 180,30 L 200,38" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="90" cy="40" r="3" fill="#f43f5e"/>
+<circle cx="140" cy="35" r="3" fill="#f43f5e"/>
+<circle cx="200" cy="38" r="4" fill="#f43f5e" class="glow-dot-ref" style="color:#f43f5e"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">${Math.round((activeTasksCount/(assignmentsList.length||1))*100)}% Progress</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="40%"></div></div></div></div><div class="ref-card card-3" onclick="switchTab('history')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20"/><path d="M6 4v4"/><path d="M10 4v4"/><path d="M14 4v4"/><path d="M18 4v4"/></svg></div><div><div class="card-title-ref">DONE VIDEOS</div><div class="card-value-ref">${compVideos}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ 8 this month</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.4"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,65 C 40,63 70,55 100,38 C 130,25 160,28 200,10 L 200,80 L 0,80 Z" fill="url(#dg3)"/>
+<path class="animated-path-ref" d="M 0,65 C 40,63 70,55 100,38 C 130,25 160,28 200,10" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"/>
+<path d="M 0,65 Q 30,62 60,50" fill="none" stroke="#22c55e" stroke-width="2" stroke-dasharray="3,3" opacity="0.6"/>
+<circle cx="200" cy="10" r="4" fill="#22c55e" class="glow-dot-ref" style="color:#22c55e"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">82% Completed</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="82%"></div></div></div></div><div class="ref-card card-4" onclick="switchTab('history')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div><div class="card-title-ref">DONE THUMBS</div><div class="card-value-ref">${compThumbs}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ 6 this month</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><defs><linearGradient id="dg4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.3"/><stop offset="100%" stop-color="#0ea5e9" stop-opacity="0"/></linearGradient></defs>
+<path d="M 0,60 L 20,55 L 40,48 L 60,50 L 80,40 L 100,45 L 120,38 L 140,45 L 160,35 L 180,28 L 200,20 L 200,80 L 0,80 Z" fill="url(#dg4)"/>
+<path class="animated-path-ref" d="M 0,60 L 20,55 L 40,48 L 60,50 L 80,40 L 100,45 L 120,38 L 140,45 L 160,35 L 180,28 L 200,20" fill="none" stroke="#0ea5e9" stroke-width="2.5" stroke-dasharray="4,4"/>
+<circle cx="20" cy="55" r="2.5" fill="#0ea5e9"/>
+<circle cx="60" cy="50" r="2.5" fill="#0ea5e9"/>
+<circle cx="100" cy="45" r="2.5" fill="#0ea5e9"/>
+<circle cx="140" cy="45" r="2.5" fill="#0ea5e9"/>
+<circle cx="180" cy="28" r="2.5" fill="#0ea5e9"/>
+<circle cx="200" cy="20" r="4" fill="#0ea5e9" class="glow-dot-ref" style="color:#0ea5e9"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">70% Completed</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="70%"></div></div></div></div><div class="ref-card card-5" onclick="switchTab('history')" style="cursor:pointer"><div class="card-header-ref"><div class="header-left-ref"><div class="icon-box-ref"><svg style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.72 1.7-1.61 0-.43-.17-.83-.44-1.13-.27-.3-.44-.7-.44-1.13 0-.89.72-1.61 1.61-1.61h1.9c3.09 0 5.67-2.58 5.67-5.67C22 6.13 17.5 2 12 2z"/></svg></div><div><div class="card-title-ref">DONE POSTERS</div><div class="card-value-ref">${compPosters}</div></div></div><button class="more-btn-ref">⋮</button></div><div class="sub-text-ref">↑ 5 this month</div><div class="svg-container-ref"><svg width="100%" height="100%" viewBox="0 0 200 80" preserveAspectRatio="none"><style>.bar-ref{transform-origin:bottom;animation:growBarRef 1.2s ease-out forwards}@keyframes growBarRef{from{transform:scaleY(0)}to{transform:scaleY(1)}}</style>
+<rect class="bar-ref" x="5" y="45" width="7" height="35" rx="3" fill="#f97316" style="animation-delay:.1s"/>
+<rect class="bar-ref" x="18" y="40" width="7" height="40" rx="3" fill="#f97316" style="animation-delay:.15s"/>
+<rect class="bar-ref" x="31" y="35" width="7" height="45" rx="3" fill="#f97316" style="animation-delay:.2s"/>
+<rect class="bar-ref" x="44" y="28" width="7" height="52" rx="3" fill="#f97316" style="animation-delay:.25s"/>
+<rect class="bar-ref" x="57" y="22" width="7" height="58" rx="3" fill="#f97316" style="animation-delay:.3s"/>
+<rect class="bar-ref" x="70" y="15" width="7" height="65" rx="3" fill="#f97316" style="animation-delay:.35s"/>
+<rect class="bar-ref" x="83" y="25" width="7" height="55" rx="3" fill="#f97316" style="animation-delay:.4s"/>
+<rect class="bar-ref" x="96" y="32" width="7" height="48" rx="3" fill="#f97316" style="animation-delay:.45s"/>
+<rect class="bar-ref" x="109" y="28" width="7" height="52" rx="3" fill="#f97316" style="animation-delay:.5s"/>
+<rect class="bar-ref" x="122" y="20" width="7" height="60" rx="3" fill="#f97316" style="animation-delay:.55s"/>
+<rect class="bar-ref" x="135" y="18" width="7" height="62" rx="3" fill="#f97316" style="animation-delay:.6s"/>
+<rect class="bar-ref" x="148" y="12" width="7" height="68" rx="3" fill="#f97316" style="animation-delay:.65s"/>
+<rect class="bar-ref" x="161" y="10" width="7" height="70" rx="3" fill="#f97316" style="animation-delay:.7s"/>
+<rect class="bar-ref" x="174" y="15" width="7" height="65" rx="3" fill="#f97316" style="animation-delay:.75s"/>
+<rect class="bar-ref" x="187" y="20" width="7" height="60" rx="3" fill="#f97316" style="animation-delay:.8s"/></svg></div><div class="card-footer-ref"><div class="footer-text-ref">63% Completed</div><div class="progress-bg-ref"><div class="progress-bar-ref" data-progress="63%"></div></div></div></div>`;            }
             lucide.createIcons();
+            // Animate reference card progress bars
+            setTimeout(() => {
+                document.querySelectorAll('.progress-bar-ref').forEach(bar => {
+                    bar.style.width = bar.getAttribute('data-progress') || '0%';
+                });
+            }, 200);
         }
 
         function switchTab(targetTab) {
@@ -5539,10 +5678,27 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (isHidden) {
                 panel.classList.remove('hidden');
                 panel.style.animation = 'item-entrance 0.25s cubic-bezier(0.16,1,0.3,1) forwards';
-                if (btn) { btn.style.background = 'rgba(255,107,6,0.22)'; btn.innerHTML = '<i data-lucide="x" style="width:14px;height:14px"></i> Close'; }
+                if (btn) { btn.textContent = '×'; btn.style.background = 'rgba(100,116,139,0.4)'; }
             } else {
                 panel.classList.add('hidden');
-                if (btn) { btn.style.background = 'rgba(255,107,6,0.12)'; btn.innerHTML = '<i data-lucide="plus" style="width:14px;height:14px"></i> Assign Work'; }
+                if (btn) { btn.textContent = '+'; btn.style.background = 'linear-gradient(135deg,#ff6b06,#f9182f)'; }
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        // ── DARK / LIGHT MODE TOGGLE ─────────────────────────────────────────
+        let _darkMode = true;
+        function toggleDarkMode() {
+            _darkMode = !_darkMode;
+            const btn = document.getElementById('darkmode-toggle');
+            if (_darkMode) {
+                document.body.style.background = '';
+                document.body.style.color = '';
+                if (btn) btn.innerHTML = '<i data-lucide="moon" style="width:14px;height:14px"></i>';
+            } else {
+                document.body.style.background = '#f0f4f8';
+                document.body.style.color = '#1e293b';
+                if (btn) btn.innerHTML = '<i data-lucide="sun" style="width:14px;height:14px"></i>';
             }
             if (window.lucide) lucide.createIcons();
         }
