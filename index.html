@@ -638,9 +638,8 @@
         table.data-table td, table.data-table th { padding: 10px 14px !important; font-size: 10.5px !important; }
         table.data-table td, table.data-table td * { line-height: 1.35 !important; }
 
-        /* Search bar — rectangular input look matching reference, not a circle icon */
-        #corner-search-btn { width: auto !important; height: 36px !important; border-radius: 8px !important; padding: 0 14px 0 12px !important; justify-content: flex-start !important; gap: 8px !important; min-width: 220px; color: #8c93a8 !important; font-weight: 400 !important; font-size: 12px !important; }
-        #corner-search-btn::after { content: "Search projects, tasks..."; }
+        /* Search bar — real inline input like reference, no popup/tab */
+        #corner-search-input::placeholder { color: #8c93a8; }
     </style>
 
 </head>
@@ -985,20 +984,9 @@
             <!-- Floating corner bell — replaces the sidebar Notifications tab -->
 
 
-            <!-- Global Search overlay -->
-            <div id="global-search-overlay" class="hidden fixed inset-0 z-[80] flex items-start justify-center pt-4 sm:pt-20 px-2 sm:px-4 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalSearch()">
-                <div class="w-full max-w-xl bg-transparent border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden">
-                    <!-- Search input -->
-                    <div class="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
-                        <i data-lucide="search" class="w-5 h-5 text-white/70 shrink-0"></i>
-                        <input id="global-search-input" type="text" placeholder="Search tasks, videos, thumbnails, creators…"
-                            oninput="runGlobalSearch(this.value)"
-                            onkeydown="if(event.key==='Escape')closeGlobalSearch()"
-                            class="flex-1 bg-transparent border-none text-sm text-white placeholder-gray-500 focus:outline-none">
-                        <button onclick="closeGlobalSearch()" class="text-[#4a5182] hover:text-white transition shrink-0">
-                            <i data-lucide="x" class="w-4 h-4"></i>
-                        </button>
-                    </div>
+            <!-- Global Search dropdown (anchored under header, no full-screen modal) -->
+            <div id="global-search-overlay" class="hidden fixed right-4 sm:right-8 top-16 z-[80] w-[calc(100%-2rem)] sm:w-96 px-0">
+                <div class="w-full bg-[#0d0e15] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
                     <!-- Results -->
                     <div id="global-search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-white/[0.05]">
                         <p class="text-center text-[#4a5182] text-xs italic py-6">Start typing to search…</p>
@@ -1078,9 +1066,14 @@
                             </button></span>
                         </div>
                         <!-- Search + Bell inline with header buttons — matches reference layout -->
-                        <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="corner-search-btn" onclick="toggleGlobalSearch()" title="Search" class="icon-btn glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
-                            <i data-lucide="search" class="w-4 h-4"></i>
-                        </button></span>
+                        <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><span class="icon-btn glass-button flex items-center text-white" style="width:auto;height:36px;border-radius:8px;padding:0 14px 0 12px;min-width:220px;gap:8px">
+                            <i data-lucide="search" class="w-4 h-4" style="color:#8c93a8"></i>
+                            <input id="corner-search-input" type="text" placeholder="Search projects, tasks..." autocomplete="off"
+                                oninput="handleHeaderSearchInput(this.value)"
+                                onfocus="if(this.value)document.getElementById('global-search-overlay').classList.remove('hidden')"
+                                onkeydown="if(event.key==='Escape'){this.value='';closeGlobalSearch();}"
+                                style="background:transparent;border:none;outline:none;color:#fff;font-size:12px;width:100%">
+                        </span></span>
                         <span class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="icon-btn glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
                             <i data-lucide="bell" class="w-4 h-4"></i>
                         </button>
@@ -5875,14 +5868,30 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (isHidden) {
                 document.getElementById('global-search-results').innerHTML =
                     '<p class="text-center text-[#4a5182] text-xs italic py-6">Start typing to search…</p>';
-                document.getElementById('global-search-input').value = '';
-                setTimeout(() => document.getElementById('global-search-input')?.focus(), 80);
+                const inp = document.getElementById('corner-search-input');
+                if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 80); }
                 if (window.lucide) lucide.createIcons();
             }
         }
         function closeGlobalSearch() {
             document.getElementById('global-search-overlay')?.classList.add('hidden');
         }
+        function handleHeaderSearchInput(val) {
+            const overlay = document.getElementById('global-search-overlay');
+            if (val && val.trim()) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+            runGlobalSearch(val);
+        }
+        document.addEventListener('click', function(e) {
+            const overlay = document.getElementById('global-search-overlay');
+            const input = document.getElementById('corner-search-input');
+            if (!overlay || overlay.classList.contains('hidden')) return;
+            if (overlay.contains(e.target) || (input && input.contains(e.target))) return;
+            overlay.classList.add('hidden');
+        });
         function runGlobalSearch(query) {
             const results = document.getElementById('global-search-results');
             if (!results) return;
