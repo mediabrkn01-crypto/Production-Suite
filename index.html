@@ -615,6 +615,15 @@
         }
         .rows-per-page-chip { display: flex; align-items: center; gap: 6px; color: #8c93a8; font-size: 11px; }
         .rows-per-page-chip select { background: #090a0f; border: 1px solid #202436; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; }
+
+        /* ── Sticky Campaign Topic column: force it to actually freeze ── */
+        .table-scroll-wrap { overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch; }
+        .sticky-col, .sticky-col-head { position: sticky !important; left: 0 !important; }
+        .sticky-col { z-index: 15 !important; }
+        .sticky-col-head { z-index: 25 !important; }
+
+        /* Only keep the long Create & Assign card — hide the small duplicate pill button */
+        #btn-open-assign-panel { display: none !important; }
     </style>
 
 </head>
@@ -1234,7 +1243,7 @@
                             })();
                         </script>
                         
-                        <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
+                        <div class="hidden md:block card rounded-2xl overflow-hidden table-scroll-wrap">
                             <table class="data-table w-full text-left border-collapse text-xs">
                                 <thead>
                                     <tr class="border-b border-white/[0.06] text-[#6b74a0] uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
@@ -1264,7 +1273,19 @@
                             <div id="pipeline-pagination" class="page-numbers hidden items-center justify-center gap-1 flex-wrap" style="display:none">
                             </div>
                             <div class="rows-per-page-chip">
-                                Rows per page: <span id="pipeline-page-size-display">10</span>
+                                Rows per page:
+                                <select id="pipeline-page-size-display" onchange="changePipelinePageSize(this.value)" class="filter-select">
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                    <option value="9">9</option>
+                                    <option value="10">10</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -1944,7 +1965,13 @@
         let globalStatusFilter = 'all';
         let globalSortConfig = 'assignedDate-desc';
         let currentPipelinePage = 1;
-        const PIPELINE_PAGE_SIZE = 10;
+        let PIPELINE_PAGE_SIZE = 10;
+
+        function changePipelinePageSize(val) {
+            PIPELINE_PAGE_SIZE = parseInt(val, 10) || 10;
+            currentPipelinePage = 1;
+            renderTableRows();
+        }
 
         function triggerPipelineMatrixUpdate() {
             globalYearFilter = document.getElementById('filter-year').value;
@@ -1970,7 +1997,7 @@
 
             const showingEl = document.getElementById('pipeline-showing-text');
             const sizeEl = document.getElementById('pipeline-page-size-display');
-            if (sizeEl) sizeEl.innerText = PIPELINE_PAGE_SIZE;
+            if (sizeEl) sizeEl.value = PIPELINE_PAGE_SIZE;
             if (showingEl) {
                 if (totalItems === 0) {
                     showingEl.innerText = 'No entries';
