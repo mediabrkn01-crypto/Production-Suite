@@ -617,7 +617,7 @@
         .rows-per-page-chip select { background: #090a0f; border: 1px solid #202436; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; }
 
         /* ── Sticky Campaign Topic column: force it to actually freeze ── */
-        .table-scroll-wrap { overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch; }
+        .table-scroll-wrap { overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
         .sticky-col, .sticky-col-head { position: sticky !important; left: 0 !important; }
         .sticky-col { z-index: 15 !important; }
         .sticky-col-head { z-index: 25 !important; }
@@ -1013,7 +1013,7 @@
 
 
             <!-- Global Search dropdown (anchored under header, no full-screen modal) -->
-            <div id="global-search-overlay" class="hidden fixed right-4 sm:right-8 top-16 z-[80] w-[calc(100%-2rem)] sm:w-96 px-0">
+            <div id="global-search-overlay" class="hidden fixed z-[80] w-[calc(100%-2rem)] sm:w-96">
                 <div class="w-full bg-[#0d0e15] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
                     <!-- Results -->
                     <div id="global-search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-white/[0.05]">
@@ -1094,7 +1094,7 @@
                             </button></span>
                         </div>
                         <!-- Search + Bell inline with header buttons — matches reference layout -->
-                        <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><span class="icon-btn glass-button flex items-center text-white" style="width:auto;height:36px;border-radius:8px;padding:0 14px 0 12px;min-width:220px;gap:8px">
+                        <span class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><span class="icon-btn glass-button flex items-center text-white" style="width:auto;height:36px;border-radius:8px;padding:0 14px 0 12px;min-width:220px;gap:8px">
                             <i data-lucide="search" class="w-4 h-4" style="color:#8c93a8"></i>
                             <input id="corner-search-input" type="text" placeholder="Search projects, tasks..." autocomplete="off"
                                 oninput="handleHeaderSearchInput(this.value)"
@@ -5898,17 +5898,31 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 document.getElementById('global-search-results').innerHTML =
                     '<p class="text-center text-[#4a5182] text-xs italic py-6">Start typing to search…</p>';
                 const inp = document.getElementById('corner-search-input');
-                if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 80); }
+                if (inp) { inp.value = ''; setTimeout(() => { inp.focus(); positionSearchDropdown(); }, 80); }
                 if (window.lucide) lucide.createIcons();
             }
         }
         function closeGlobalSearch() {
             document.getElementById('global-search-overlay')?.classList.add('hidden');
         }
+        function positionSearchDropdown() {
+            const overlay = document.getElementById('global-search-overlay');
+            const input = document.getElementById('corner-search-input');
+            if (!overlay || !input) return;
+            const wrap = input.closest('.icon-btn') || input;
+            const rect = wrap.getBoundingClientRect();
+            const width = overlay.offsetWidth || 320;
+            let left = rect.right - width;
+            if (left < 8) left = 8;
+            overlay.style.top = (rect.bottom + 8) + 'px';
+            overlay.style.left = left + 'px';
+            overlay.style.right = 'auto';
+        }
         function handleHeaderSearchInput(val) {
             const overlay = document.getElementById('global-search-overlay');
             if (val && val.trim()) {
                 overlay.classList.remove('hidden');
+                positionSearchDropdown();
             } else {
                 overlay.classList.add('hidden');
             }
@@ -5921,6 +5935,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (overlay.contains(e.target) || (input && input.contains(e.target))) return;
             overlay.classList.add('hidden');
         });
+        window.addEventListener('resize', positionSearchDropdown);
         function runGlobalSearch(query) {
             const results = document.getElementById('global-search-results');
             if (!results) return;
