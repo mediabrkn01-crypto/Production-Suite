@@ -668,6 +668,13 @@
             .filters-bar { padding: 10px !important; }
             .btn { padding: 8px 12px !important; font-size: 10.5px !important; }
         }
+        @media (max-width: 767px) {
+            #header-search-wrap, #header-bell-wrap { display: none !important; }
+        }
+
+        /* ── Campaign Topic column: JS-driven pin (robust fallback,
+             works even where CSS position:sticky is unreliable) ── */
+        .sticky-col, .sticky-col-head { position: relative !important; left: 0 !important; will-change: transform; }
     </style>
 
 </head>
@@ -1094,7 +1101,7 @@
                             </button></span>
                         </div>
                         <!-- Search + Bell inline with header buttons — matches reference layout -->
-                        <span class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><span class="icon-btn glass-button flex items-center text-white" style="width:auto;height:36px;border-radius:8px;padding:0 14px 0 12px;min-width:220px;gap:8px">
+                        <span id="header-search-wrap" class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><span class="icon-btn glass-button flex items-center text-white" style="width:auto;height:36px;border-radius:8px;padding:0 14px 0 12px;min-width:220px;gap:8px">
                             <i data-lucide="search" class="w-4 h-4" style="color:#8c93a8"></i>
                             <input id="corner-search-input" type="text" placeholder="Search projects, tasks..." autocomplete="off"
                                 oninput="handleHeaderSearchInput(this.value)"
@@ -1102,7 +1109,7 @@
                                 onkeydown="if(event.key==='Escape'){this.value='';closeGlobalSearch();}"
                                 style="background:transparent;border:none;outline:none;color:#fff;font-size:12px;width:100%">
                         </span></span>
-                        <span class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="icon-btn glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
+                        <span id="header-bell-wrap" class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="icon-btn glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
                             <i data-lucide="bell" class="w-4 h-4"></i>
                         </button>
                         <span id="notif-badge-corner" class="notification-badge hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
@@ -1281,7 +1288,7 @@
                             })();
                         </script>
                         
-                        <div class="hidden md:block card rounded-2xl overflow-hidden table-scroll-wrap">
+                        <div class="hidden md:block card rounded-2xl overflow-hidden table-scroll-wrap sticky-scroll-container">
                             <table class="data-table w-full text-left border-collapse text-xs">
                                 <thead>
                                     <tr class="border-b border-white/[0.06] text-[#6b74a0] uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
@@ -1381,7 +1388,7 @@
 
                 <!-- Monthly grid -->
                 <div class="rounded-xl overflow-hidden" style="background:#08091a;border:1px solid rgba(255,255,255,0.055)">
-                    <div class="overflow-x-auto attendance-fit-scroll">
+                    <div class="overflow-x-auto attendance-fit-scroll sticky-scroll-container">
                         <table id="attendance-grid-table" class="border-collapse text-xs w-full attendance-fit-table">
                             <thead id="attendance-grid-head"></thead>
                             <tbody id="attendance-grid-body" class="text-gray-300"></tbody>
@@ -5936,6 +5943,25 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             overlay.classList.add('hidden');
         });
         window.addEventListener('resize', positionSearchDropdown);
+
+        // ── Pin sticky-col cells via transform (robust against browsers
+        //    where native position:sticky inside filtered/table ancestors fails) ──
+        function pinStickyColumns(container) {
+            const x = container.scrollLeft;
+            container.querySelectorAll('.sticky-col, .sticky-col-head').forEach(el => {
+                el.style.transform = x ? `translateX(${x}px)` : '';
+            });
+        }
+        function initStickyScrollPinning() {
+            document.querySelectorAll('.sticky-scroll-container').forEach(container => {
+                if (container._stickyPinBound) return;
+                container._stickyPinBound = true;
+                container.addEventListener('scroll', () => pinStickyColumns(container), { passive: true });
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initStickyScrollPinning);
+        // Re-bind after dynamic re-renders (tables get replaced/regenerated)
+        setInterval(initStickyScrollPinning, 1500);
         function runGlobalSearch(query) {
             const results = document.getElementById('global-search-results');
             if (!results) return;
