@@ -640,6 +640,34 @@
 
         /* Search bar — real inline input like reference, no popup/tab */
         #corner-search-input::placeholder { color: #8c93a8; }
+        #corner-search-input {
+            background: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        #corner-search-input:focus { border: none !important; box-shadow: none !important; }
+
+        /* Attendance monthly grid — compact so full month fits without scrolling on desktop */
+        .attendance-fit-table { table-layout: auto; }
+        .attendance-fit-table th, .attendance-fit-table td { padding-left: 2px !important; padding-right: 2px !important; }
+        @media (min-width: 1280px) { .attendance-fit-scroll { overflow-x: visible !important; } }
+
+        /* ── General responsive polish ── */
+        @media (max-width: 1024px) {
+            .metrics-grid, #metrics-counter-container { grid-template-columns: repeat(2, 1fr) !important; }
+            .create-task-card { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .top-header .header-actions { justify-content: flex-start !important; }
+        }
+        @media (max-width: 640px) {
+            #corner-search-input { min-width: 0 !important; width: 100% !important; }
+            .icon-btn[style*="min-width:220px"] { min-width: 0 !important; width: 100% !important; }
+            .time-badge, #header-date-chip { flex-wrap: wrap; }
+            .filters-bar { padding: 10px !important; }
+            .btn { padding: 8px 12px !important; font-size: 10.5px !important; }
+        }
     </style>
 
 </head>
@@ -1353,8 +1381,8 @@
 
                 <!-- Monthly grid -->
                 <div class="rounded-xl overflow-hidden" style="background:#08091a;border:1px solid rgba(255,255,255,0.055)">
-                    <div class="overflow-x-auto">
-                        <table id="attendance-grid-table" class="border-collapse text-xs w-full min-w-[1100px]">
+                    <div class="overflow-x-auto attendance-fit-scroll">
+                        <table id="attendance-grid-table" class="border-collapse text-xs w-full attendance-fit-table">
                             <thead id="attendance-grid-head"></thead>
                             <tbody id="attendance-grid-body" class="text-gray-300"></tbody>
                         </table>
@@ -3712,9 +3740,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const dt = new Date(year, month - 1, d);
                 const dow = dt.getDay();
                 const isWeekend = (dow === 0); // Sunday red
-                headHtml += `<th class="py-1 px-1 text-center min-w-[26px] ${isWeekend ? 'text-red-400' : ''}">
+                headHtml += `<th class="py-1 px-0.5 text-center min-w-[20px] ${isWeekend ? 'text-red-400' : ''}">
                     <div class="font-bold">${d}</div>
-                    <div class="text-[8px] font-normal opacity-70">${dowShort[dow]}</div>
+                    <div class="text-[7px] font-normal opacity-70">${dowShort[dow]}</div>
                 </th>`;
             }
             headHtml += `<th class="py-2 px-2 text-center min-w-[60px]">In</th>
@@ -3757,6 +3785,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         monthStatus = 'Present';
                     }
                     else if (isFuture) { mark = '·'; cls = 'text-gray-700'; }
+                    else if (dow === 0) { mark = 'HD'; cls = 'bg-blue-500/20 text-blue-400 text-[7px]'; totalHD++; }
                     else { mark = 'A'; cls = 'bg-red-500/15 text-red-400'; totalAbsent++; }
 
                     const clickable = activeRole === 'admin' && !isFuture;
