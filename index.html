@@ -674,7 +674,7 @@
 
         /* ── Campaign Topic column: JS-driven pin (robust fallback,
              works even where CSS position:sticky is unreliable) ── */
-        .sticky-col, .sticky-col-head { position: relative !important; left: 0 !important; will-change: transform; }
+        .sticky-col, .sticky-col-head { position: sticky !important; left: 0 !important; }
     </style>
 
 </head>
@@ -5944,24 +5944,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         });
         window.addEventListener('resize', positionSearchDropdown);
 
-        // ── Pin sticky-col cells via transform (robust against browsers
-        //    where native position:sticky inside filtered/table ancestors fails) ──
-        function pinStickyColumns(container) {
-            const x = container.scrollLeft;
-            container.querySelectorAll('.sticky-col, .sticky-col-head').forEach(el => {
-                el.style.transform = x ? `translateX(${x}px)` : '';
-            });
-        }
-        function initStickyScrollPinning() {
-            document.querySelectorAll('.sticky-scroll-container').forEach(container => {
-                if (container._stickyPinBound) return;
-                container._stickyPinBound = true;
-                container.addEventListener('scroll', () => pinStickyColumns(container), { passive: true });
-            });
-        }
-        document.addEventListener('DOMContentLoaded', initStickyScrollPinning);
-        // Re-bind after dynamic re-renders (tables get replaced/regenerated)
-        setInterval(initStickyScrollPinning, 1500);
         function runGlobalSearch(query) {
             const results = document.getElementById('global-search-results');
             if (!results) return;
