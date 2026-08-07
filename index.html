@@ -4081,6 +4081,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }).filter(Boolean).join(' | ');
         }
 
+        function findYouTubeUrl(text) {
+            if (!text) return null;
+            const m = text.match(/(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[^\s,;)]+)/i);
+            return m ? m[0] : null;
+        }
+        function ytDownloadPillHtml(url) {
+            return `<a href="https://mediabrkn01-crypto.github.io/video-downloder/?url=${encodeURIComponent(url)}" target="_blank" onclick="event.stopPropagation()" title="Download YouTube video" class="bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/40 border px-2 py-1 rounded font-bold transition-all duration-200 inline-flex items-center gap-1 text-[10px] whitespace-nowrap active:scale-95 mt-1">
+                <i data-lucide="download" class="w-3 h-3"></i> Download Video
+            </a>`;
+        }
+
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-[#4a5182] italic text-[11px]">No deliverable</span>`;
 
@@ -4107,6 +4118,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const lowercaseAsset = url.toLowerCase();
                 const isFolder = lowercaseAsset.includes('/folders/');
                 const isDrive = lowercaseAsset.includes('drive.google.com') || lowercaseAsset.includes('docs.google.com');
+                const isYouTube = lowercaseAsset.includes('youtube.com/watch') || lowercaseAsset.includes('youtu.be/') || lowercaseAsset.includes('youtube.com/shorts');
 
                 // Determine display name
                 let displayName = label;
@@ -4129,6 +4141,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         ${icon} <span class="truncate">${shownName}</span>
                     </a>
                 `;
+                if (isYouTube) {
+                    html += `
+                        <a href="https://mediabrkn01-crypto.github.io/video-downloder/?url=${encodeURIComponent(url)}" target="_blank" title="Download YouTube video" class="bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/40 border px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[220px]">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> <span class="truncate">Download Video</span>
+                        </a>
+                    `;
+                }
             });
             html += '</div>';
             return html;
@@ -4865,7 +4884,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-3 px-4 font-bold text-white sticky left-0 sticky-col z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
                     <td class="py-3 px-4 font-medium max-w-[160px]"><span class="truncate block">${t.assignedTo}</span><span class="text-[#4a5182] text-[10px] truncate block" title="${t.employeeEmail||''}">${t.employeeEmail||''}</span></td>
-                    <td class="py-3 px-4 text-[#6b74a0] max-w-xs truncate cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</td>
+                    <td class="py-3 px-4 text-[#6b74a0] max-w-xs cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">
+                        <span class="truncate block">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</span>
+                        ${findYouTubeUrl(t.description) ? ytDownloadPillHtml(findYouTubeUrl(t.description)) : ''}
+                    </td>
                     <td class="py-3 px-4 text-[#6b74a0] font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-white/70 font-mono font-semibold">${t.date}</td>
                     <td class="py-3 px-4" id="status-engine-cell-${t.id}">${inputActionSelectorMarkup}</td>
@@ -4911,6 +4933,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <div class="bg-transparent p-2.5 rounded-lg border border-white/[0.06]/40 space-y-1">
                         <p class="text-[#6b74a0] font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
                         <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
+                        ${findYouTubeUrl(t.description) ? ytDownloadPillHtml(findYouTubeUrl(t.description)) : ''}
                     </div>
                     <div class="${t.status === 'Completed' && t.explanation !== 'None' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-transparent border-yellow-500/10'} p-2.5 rounded-lg border space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
                         <p class="${t.status === 'Completed' ? 'text-emerald-400' : 'text-yellow-500'} font-bold text-[10px] uppercase tracking-wide">Evaluation Review Notes:</p>
