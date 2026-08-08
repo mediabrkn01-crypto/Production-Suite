@@ -271,8 +271,8 @@
         /* Admin-manager-only: hidden unless admin or manager */
         body:not(.role-admin):not(.role-manager) .admin-manager-only { display: none !important; }
         body:not(.role-manager) .manager-only { display: none !important; }
-        body.hr-mode .non-hr-nav-group { display: none !important; }
-        body:not(.hr-mode) .hr-mode-only { display: none !important; }
+        body.role-admin .non-hr-nav-group { display: none !important; }
+        body:not(.role-admin) .hr-mode-only { display: none !important; }
 
         /* ── Sparkline draw animation ── */
         @keyframes sparkDraw {
@@ -777,9 +777,9 @@
 
     <div id="main-application-frame" class="w-full h-full flex flex-col md:flex-row opacity-0 pointer-events-none transition-opacity duration-300 overflow-hidden">
         
-        <aside class="w-full md:w-56 flex flex-col justify-between z-20" style="background:rgba(10,14,23,0.95);border-right:1px solid rgba(255,255,255,0.07);padding:16px 12px;flex-shrink:0">
-            <!-- Brand -->
-            <div>
+        <aside class="w-full md:w-56 flex flex-col z-20" style="background:rgba(10,14,23,0.95);border-right:1px solid rgba(255,255,255,0.07);padding:16px 12px;flex-shrink:0;height:100%;overflow:hidden">
+            <!-- Brand (fixed) -->
+            <div style="flex-shrink:0">
                 <div style="display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:14px">
                     <img src="Broken English Final Logo-03.png" alt="Broken English Logo" style="height:32px;width:auto;object-fit:contain">
                     <div>
@@ -787,7 +787,10 @@
                         <div id="user-role-badge" style="font-size:9px;letter-spacing:0.5px;font-weight:600;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"></div>
                     </div>
                 </div>
+            </div>
 
+            <!-- Nav (independently scrollable) -->
+            <div class="sidebar-nav-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden">
                 <!-- PIPELINE -->
                 <div id="nav-group-pipeline" style="margin-bottom:14px" class="non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">PIPELINE</div>
@@ -827,20 +830,8 @@
                     </button>
                 </div>
 
-                <!-- HR entry point (visible outside HR workspace) -->
-                <div id="nav-group-hr-entry" style="margin-bottom:14px" class="admin-only non-hr-nav-group">
-                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">HR</div>
-                    <button id="nav-hr" onclick="enterHRWorkspace()" class="sidebar-link admin-only" style="width:100%;text-align:left">
-                        <i data-lucide="users" style="width:14px;height:14px"></i> HR
-                    </button>
-                </div>
-
-                <!-- HR WORKSPACE TREE (replaces the sidebar entirely while active) -->
+                <!-- HR TREE — Master Admin IS HR, this is the only nav shown for that role -->
                 <div id="nav-group-hr-tree" class="hr-mode-only">
-                    <button onclick="exitHRWorkspace()" class="sidebar-link" style="width:100%;text-align:left;color:#ff6b06;margin-bottom:10px">
-                        <i data-lucide="arrow-left" style="width:14px;height:14px"></i> Exit HR Workspace
-                    </button>
-
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">HR MANAGEMENT</div>
                     <button id="hrtree-dashboard" onclick="switchHRSubtab('dashboard')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="layout-dashboard" style="width:14px;height:14px"></i> Dashboard
@@ -931,8 +922,8 @@
                 </div>
             </div>
 
-            <!-- Bottom: User card + logout -->
-            <div>
+            <!-- Bottom: User card + logout (fixed) -->
+            <div style="flex-shrink:0">
                 <!-- Account switcher -->
                 <div style="position:relative">
                     <div id="account-switcher-panel" class="hidden" style="position:absolute;bottom:100%;left:0;width:100%;margin-bottom:8px;background:rgba(10,14,23,0.98);border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 20px 40px rgba(0,0,0,0.8);overflow:hidden;z-index:30">
@@ -2643,7 +2634,6 @@
             // Set role class on body for CSS-based role visibility
             document.body.classList.remove('role-admin', 'role-manager', 'role-employee', 'role-social-media');
             document.body.classList.add('role-' + (activeRole || 'employee'));
-            if (activeRole !== 'admin') document.body.classList.remove('hr-mode');
             // Show + button only for admin/manager
             const assignBtn = document.getElementById('btn-open-assign-panel');
             if (assignBtn) {
@@ -2748,7 +2738,7 @@
             // HR (admin) -> HR Dashboard | Manager -> Manager (Team) Dashboard | Employee -> Pipeline (My Work)
             if (!window._hrLandingDone) {
                 window._hrLandingDone = true;
-                if (activeRole === 'admin') enterHRWorkspace();
+                if (activeRole === 'admin') switchTab('hr');
                 else if (activeRole === 'manager') switchTab('team');
                 else switchTab('dashboard');
             }
@@ -2812,7 +2802,7 @@
         }
 
         function switchTab(targetTab) {
-            if (targetTab !== 'hr') document.body.classList.remove('hr-mode');
+            
             document.querySelectorAll('.sidebar-link').forEach(btn => btn.classList.remove('active'));
 
             // Reset report animation flag when leaving reports
@@ -3063,7 +3053,7 @@
             closeAccountSwitcher();
             pushLogEntry(`${activeUser} (${activeRole}) switched into session on this device.`);
             launchSession();
-            if (activeRole === 'admin') enterHRWorkspace();
+            if (activeRole === 'admin') switchTab('hr');
             else if (activeRole === 'manager') switchTab('team');
             else switchTab('dashboard');
         }
@@ -6461,32 +6451,53 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             switchHRSubtab(hrCurrentSubtab);
         }
 
-        function enterHRWorkspace() {
-            document.body.classList.add('hr-mode');
-            switchTab('hr');
-        }
-        function exitHRWorkspace() {
-            document.body.classList.remove('hr-mode');
-            switchTab('dashboard');
-        }
-
         async function loadHRData() {
             try {
-                const [emp, leaveReq, leaveBal, att, pay] = await Promise.all([
+                const [emp, leaveReq, leaveBal, att, pay, attLogs] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }),
                     dbInstance.from('hr_leave_balances').select('*'),
                     dbInstance.from('hr_attendance').select('*'),
-                    dbInstance.from('hr_payroll').select('*').order('month', { ascending: false })
+                    dbInstance.from('hr_payroll').select('*').order('month', { ascending: false }),
+                    dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false })
                 ]);
                 hrEmployees = emp.data || [];
                 hrLeaveRequests = leaveReq.data || [];
                 hrLeaveBalances = leaveBal.data || [];
                 hrAttendance = att.data || [];
                 hrPayroll = pay.data || [];
+                // Existing portal check-in/out history (from the Attendance Log feature) —
+                // used to show real check-in times and infer "present" for HR employees linked by portal email.
+                window._hrAttendanceLogsCache = attLogs.data || [];
+
+                // Bridge existing accounts: if no HR employee records exist yet, auto-create one
+                // per existing portal account (user_roster) so HR isn't starting from an empty system.
+                if (hrEmployees.length === 0 && userRoster.length > 0) {
+                    const seedPayload = userRoster.map(u => ({
+                        full_name: u.name,
+                        division: 'other',
+                        department: '',
+                        designation: u.role === 'admin' ? 'HR / Admin' : u.role === 'manager' ? 'Manager' : u.role === 'social_media' ? 'Social Media' : 'Employee',
+                        employment_status: 'active',
+                        portal_email: (u.email || '').toLowerCase()
+                    }));
+                    const { data: seeded, error: seedErr } = await dbInstance.from('hr_employees').insert(seedPayload).select('*');
+                    if (!seedErr && seeded) {
+                        hrEmployees = seeded;
+                        console.log(`HR: auto-imported ${seeded.length} existing portal account(s) as HR employees.`);
+                    } else if (seedErr) {
+                        console.warn('HR auto-import of existing accounts failed:', seedErr.message);
+                    }
+                }
             } catch (e) {
                 console.warn('HR data load failed — have the HR tables been created in Supabase? See hr_schema.sql', e.message);
             }
+        }
+
+        // Was there portal check-in/out activity for this HR employee on a given date?
+        function hrPortalLogFor(employee, dateStr) {
+            if (!employee || !employee.portal_email) return null;
+            return (window._hrAttendanceLogsCache || []).find(l => (l.email || '').toLowerCase() === employee.portal_email && l.log_date === dateStr);
         }
 
         const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','documents','hr-reports','notifications','accounts'];
@@ -6532,7 +6543,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const thisMonth = now.getMonth(), thisYear = now.getFullYear();
             const newThisMonth = hrEmployees.filter(e => e.joining_date && new Date(e.joining_date).getMonth() === thisMonth && new Date(e.joining_date).getFullYear() === thisYear).length;
             const todayStr = now.toISOString().slice(0,10);
-            const todayPresent = hrAttendance.filter(a => a.att_date === todayStr && ['present','late','half_day','wfh'].includes(a.status)).length;
+            const manuallyMarkedPresentIds = new Set(hrAttendance.filter(a => a.att_date === todayStr && ['present','late','half_day','wfh'].includes(a.status)).map(a => a.employee_id));
+            const portalPresentIds = new Set(hrEmployees.filter(e => hrPortalLogFor(e, todayStr)).map(e => e.id));
+            const todayPresent = new Set([...manuallyMarkedPresentIds, ...portalPresentIds]).size;
             const onLeaveToday = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr).length;
             const pendingLeave = hrLeaveRequests.filter(r => r.status === 'pending').length;
 
@@ -6577,14 +6590,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const activeEmps = hrEmployees.filter(e => e.employment_status === 'active');
             document.getElementById('hr-dash-workforce-rows').innerHTML = activeEmps.length ? activeEmps.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
+                const portalLog = hrPortalLogFor(e, todayStr);
                 const onLeave = hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr);
-                const status = onLeave ? 'On Leave' : rec ? rec.status.replace('_',' ') : 'Not marked';
-                const badgeClass = onLeave ? 'hr-badge-pending' : rec ? 'hr-badge-' + rec.status : '';
+                const effectiveStatus = rec ? rec.status : (portalLog ? 'present' : null);
+                const status = onLeave ? 'On Leave' : effectiveStatus ? effectiveStatus.replace('_',' ') : 'Not marked';
+                const badgeClass = onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
+                const checkIn = portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
                 return `<tr class="hover:bg-white/[0.02]">
                     <td class="py-2.5 px-4 text-white font-semibold">${e.full_name}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
                     <td class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">—</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${checkIn}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
                 </tr>`;
             }).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
