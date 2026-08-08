@@ -270,6 +270,7 @@
         body.role-admin .employee-only { display: none !important; }
         /* Admin-manager-only: hidden unless admin or manager */
         body:not(.role-admin):not(.role-manager) .admin-manager-only { display: none !important; }
+        body:not(.role-manager) .manager-only { display: none !important; }
 
         /* ── Sparkline draw animation ── */
         @keyframes sparkDraw {
@@ -537,6 +538,7 @@
                 <div><label class="hr-field-label">Date of Birth</label><input id="hr-emp-dob" type="date" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Linked Portal Email</label><input id="hr-emp-email" placeholder="optional — links to portal login" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Manager (portal email)</label><input id="hr-emp-manager-email" placeholder="manager's portal login email" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Emergency Contact Name</label><input id="hr-emp-ec-name" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Emergency Contact Phone</label><input id="hr-emp-ec-phone" class="hr-input w-full"></div>
                 <div class="sm:col-span-2"><label class="hr-field-label">Document Links (offer letter, ID proof, etc — comma separated URLs)</label><input id="hr-emp-docs" class="hr-input w-full"></div>
@@ -778,22 +780,33 @@
                     <button id="nav-history" onclick="switchTab('history')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="history" style="width:14px;height:14px"></i> History
                     </button>
-                    <button id="nav-reports" onclick="switchTab('reports')" class="sidebar-link admin-only" style="width:100%;text-align:left">
-                        <i data-lucide="bar-chart-2" style="width:14px;height:14px"></i> Monthly Reports
+                </div>
+
+                <!-- MY WORKSPACE (every role) -->
+                <div style="margin-bottom:14px">
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MY WORKSPACE</div>
+                    <button id="nav-my-profile" onclick="switchTab('my-profile')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile
+                    </button>
+                    <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance
+                    </button>
+                    <button id="nav-my-leave" onclick="switchTab('my-leave')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="calendar-days" style="width:14px;height:14px"></i> My Leave
+                    </button>
+                    <button id="nav-my-docs" onclick="switchTab('my-docs')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="folder" style="width:14px;height:14px"></i> My Documents
+                    </button>
+                    <button id="nav-my-payslips" onclick="switchTab('my-payslips')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips
                     </button>
                 </div>
 
-                <!-- MANAGEMENT -->
-                <div style="margin-bottom:14px">
-                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MANAGEMENT</div>
-                    <button id="nav-my-profile" onclick="switchTab('my-profile')" class="sidebar-link" style="width:100%;text-align:left">
-                        <i data-lucide="user-check" style="width:14px;height:14px"></i> My Settings
-                    </button>
-                    <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
-                        <i data-lucide="clock" style="width:14px;height:14px"></i> Attendance Log
-                    </button>
-                    <button id="nav-settings" onclick="switchTab('settings')" class="sidebar-link admin-only" style="width:100%;text-align:left">
-                        <i data-lucide="sliders" style="width:14px;height:14px"></i> Setup Center
+                <!-- MANAGER -->
+                <div id="nav-group-manager" style="margin-bottom:14px" class="manager-only">
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MANAGER</div>
+                    <button id="nav-team" onclick="switchTab('team')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="users-round" style="width:14px;height:14px"></i> My Team
                     </button>
                 </div>
 
@@ -801,7 +814,7 @@
                 <div style="margin-bottom:14px" class="admin-only">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">HR</div>
                     <button id="nav-hr" onclick="switchTab('hr')" class="sidebar-link admin-only" style="width:100%;text-align:left">
-                        <i data-lucide="users" style="width:14px;height:14px"></i> HR Panel
+                        <i data-lucide="users" style="width:14px;height:14px"></i> HR
                     </button>
                 </div>
 
@@ -832,7 +845,7 @@
                             <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">MA</div>
                             <div>
                                 <div id="active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9">Master Admin</div>
-                                <div id="sidebar-user-role" style="font-size:9px;color:#808a9d">Administrator</div>
+                                <div id="sidebar-user-role" style="font-size:9px;color:#808a9d">HR</div>
                             </div>
                         </div>
                         <i data-lucide="chevrons-up-down" style="width:13px;height:13px;color:#808a9d"></i>
@@ -1249,6 +1262,82 @@
                 </div>
             </div>
 
+            <!-- ====== MY LEAVE ====== -->
+            <div id="tab-content-my-leave" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">My Leave</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Request leave and track your balance.</p>
+                </div>
+                <div class="card glass-card p-4 md:p-6 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+                    <div><label class="hr-field-label">Leave Type</label>
+                        <select id="my-leave-type" class="hr-select w-full">
+                            <option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option>
+                            <option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option>
+                        </select>
+                    </div>
+                    <div></div>
+                    <div><label class="hr-field-label">Start Date</label><input id="my-leave-start" type="date" class="hr-input w-full"></div>
+                    <div><label class="hr-field-label">End Date</label><input id="my-leave-end" type="date" class="hr-input w-full"></div>
+                    <div class="sm:col-span-2"><label class="hr-field-label">Reason</label><textarea id="my-leave-reason" rows="2" class="hr-input w-full"></textarea></div>
+                    <div class="sm:col-span-2"><button onclick="submitMyLeave()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">Submit Request</button></div>
+                </div>
+                <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">My Balances</h3>
+                    <div id="my-leave-balances" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5"></div>
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">My Requests</h3>
+                    <div id="my-leave-history" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- ====== MY DOCUMENTS ====== -->
+            <div id="tab-content-my-docs" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">My Documents</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Documents HR has on file for you.</p>
+                </div>
+                <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                    <div id="my-docs-list" class="space-y-2 text-sm"></div>
+                </div>
+            </div>
+
+            <!-- ====== MY PAYSLIPS ====== -->
+            <div id="tab-content-my-payslips" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">My Payslips</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Download your monthly payslips.</p>
+                </div>
+                <div class="card glass-card rounded-2xl overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                            <th class="py-3 px-4">Month</th><th class="py-3 px-4">Net Salary</th><th class="py-3 px-4">Status</th><th class="py-3 px-4 text-center">Action</th>
+                        </tr></thead>
+                        <tbody id="my-payslips-rows" class="divide-y divide-white/[0.05]"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ====== MANAGER: MY TEAM ====== -->
+            <div id="tab-content-team" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">My Team</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Team members, schedule, attendance and leave.</p>
+                </div>
+                <div id="team-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                <div class="card glass-card rounded-2xl overflow-x-auto">
+                    <div class="p-4 md:p-6 pb-0"><h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Team Members</h3></div>
+                    <table class="w-full text-sm text-left mt-2">
+                        <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                            <th class="py-3 px-4">Name</th><th class="py-3 px-4">Department</th><th class="py-3 px-4">Designation</th><th class="py-3 px-4">Today's Status</th>
+                        </tr></thead>
+                        <tbody id="team-members-rows" class="divide-y divide-white/[0.05]"></tbody>
+                    </table>
+                </div>
+                <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Team Leave Requests</h3>
+                    <div id="team-leave-rows" class="space-y-2"></div>
+                </div>
+            </div>
+
             <div id="tab-content-settings" class="space-y-6 hidden">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -1327,6 +1416,8 @@
                     <button id="hr-subnav-attendance" onclick="switchHRSubtab('attendance')" class="hr-subnav-btn">Attendance</button>
                     <button id="hr-subnav-leave" onclick="switchHRSubtab('leave')" class="hr-subnav-btn">Leave</button>
                     <button id="hr-subnav-payroll" onclick="switchHRSubtab('payroll')" class="hr-subnav-btn">Payroll</button>
+                    <button id="hr-subnav-accounts" onclick="switchHRSubtab('accounts')" class="hr-subnav-btn">Accounts & Permissions</button>
+                    <button id="hr-subnav-reports" onclick="switchHRSubtab('reports')" class="hr-subnav-btn">Reports</button>
                 </div>
 
                 <!-- HR: DASHBOARD -->
@@ -2345,7 +2436,7 @@
             const avatarEl = document.getElementById('sidebar-user-avatar');
             if (avatarEl) avatarEl.textContent = initials;
             const userRoleEl = document.getElementById('sidebar-user-role');
-            if (userRoleEl) userRoleEl.textContent = activeRole === 'admin' ? 'Administrator' : activeRole === 'manager' ? 'Manager' : activeRole === 'social_media' ? 'Social Media' : 'Employee';
+            if (userRoleEl) userRoleEl.textContent = activeRole === 'admin' ? 'HR' : activeRole === 'manager' ? 'Manager' : activeRole === 'social_media' ? 'Employee' : 'Employee';
             // Update active-user-display for the new sidebar
             const audEl = document.getElementById('active-user-display');
             if (audEl) audEl.textContent = activeUser || '';
@@ -2509,6 +2600,10 @@
             document.getElementById('tab-content-history').classList.add('hidden');
             document.getElementById('tab-content-my-profile').classList.add('hidden');
             document.getElementById('tab-content-hr').classList.add('hidden');
+            document.getElementById('tab-content-my-leave').classList.add('hidden');
+            document.getElementById('tab-content-my-docs').classList.add('hidden');
+            document.getElementById('tab-content-my-payslips').classList.add('hidden');
+            document.getElementById('tab-content-team').classList.add('hidden');
 
             // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
             // force it hidden by default on every tab switch, then re-show it (if applicable)
@@ -2549,6 +2644,22 @@
                 document.getElementById('nav-hr').classList.add('active');
                 document.getElementById('tab-content-hr').classList.remove('hidden');
                 initHRPanel();
+            } else if (targetTab === 'my-leave') {
+                document.getElementById('nav-my-leave').classList.add('active');
+                document.getElementById('tab-content-my-leave').classList.remove('hidden');
+                initMyLeave();
+            } else if (targetTab === 'my-docs') {
+                document.getElementById('nav-my-docs').classList.add('active');
+                document.getElementById('tab-content-my-docs').classList.remove('hidden');
+                initMyDocs();
+            } else if (targetTab === 'my-payslips') {
+                document.getElementById('nav-my-payslips').classList.add('active');
+                document.getElementById('tab-content-my-payslips').classList.remove('hidden');
+                initMyPayslips();
+            } else if (targetTab === 'team' && activeRole === 'manager') {
+                document.getElementById('nav-team').classList.add('active');
+                document.getElementById('tab-content-team').classList.remove('hidden');
+                initMyTeam();
             }
         }
 
@@ -6140,15 +6251,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
         function switchHRSubtab(tab) {
             hrCurrentSubtab = tab;
-            ['dashboard','employees','attendance','leave','payroll'].forEach(t => {
+            ['dashboard','employees','attendance','leave','payroll','accounts','reports'].forEach(t => {
                 document.getElementById('hr-subnav-' + t).classList.toggle('active', t === tab);
+            });
+            ['dashboard','employees','attendance','leave','payroll'].forEach(t => {
                 document.getElementById('hr-sub-' + t).classList.toggle('hidden', t !== tab);
             });
+            // Accounts & Reports reuse the original Setup Center / Monthly Reports tab markup
+            document.getElementById('tab-content-settings').classList.toggle('hidden', tab !== 'accounts');
+            document.getElementById('tab-content-reports').classList.toggle('hidden', tab !== 'reports');
             if (tab === 'dashboard') renderHRDashboard();
             else if (tab === 'employees') renderHREmployees();
             else if (tab === 'attendance') { renderHRAttendance(); renderHRMonthlyAttendance(); }
             else if (tab === 'leave') { renderHRLeaveRequests(); renderHRLeaveBalances(); }
             else if (tab === 'payroll') renderHRPayroll();
+            else if (tab === 'accounts') { editingRosterIndex = null; renderSettingsRoster(); }
+            else if (tab === 'reports') { initReportSelectors(); generateReports(true); }
         }
 
         function hrEmpName(id) {
@@ -6236,6 +6354,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-emp-dob').value = e?.dob || '';
             document.getElementById('hr-emp-phone').value = e?.phone || '';
             document.getElementById('hr-emp-email').value = e?.portal_email || '';
+            document.getElementById('hr-emp-manager-email').value = e?.manager_email || '';
             document.getElementById('hr-emp-ec-name').value = e?.emergency_contact_name || '';
             document.getElementById('hr-emp-ec-phone').value = e?.emergency_contact_phone || '';
             document.getElementById('hr-emp-docs').value = e?.document_links || '';
@@ -6262,6 +6381,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 dob: document.getElementById('hr-emp-dob').value || null,
                 phone: document.getElementById('hr-emp-phone').value.trim(),
                 portal_email: document.getElementById('hr-emp-email').value.trim().toLowerCase(),
+                manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
                 emergency_contact_name: document.getElementById('hr-emp-ec-name').value.trim(),
                 emergency_contact_phone: document.getElementById('hr-emp-ec-phone').value.trim(),
                 document_links: document.getElementById('hr-emp-docs').value.trim(),
@@ -6577,6 +6697,135 @@ ${e.notes || '—'}`;
             doc.setFont(undefined, 'normal'); y += 10;
             doc.setFontSize(9); doc.setTextColor(120); doc.text(`Payment Status: ${p.payment_status}`, 14, y);
             doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
+        }
+        // ══════════════════════════════════════════════════════════════
+        // ═══════════════ EMPLOYEE SELF-SERVICE (My Leave/Docs/Payslips) ═══
+        // ══════════════════════════════════════════════════════════════
+        function myHREmployeeRecord() {
+            return hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
+        }
+        async function ensureHRDataLoaded() {
+            if (!hrLoaded) { await loadHRData(); hrLoaded = true; }
+        }
+
+        async function initMyLeave() {
+            await ensureHRDataLoaded();
+            const me = myHREmployeeRecord();
+            if (!me) {
+                document.getElementById('my-leave-balances').innerHTML = '<p class="text-[#4a5182] text-xs col-span-3">No HR employee record is linked to your login yet — ask HR to link your portal email.</p>';
+                document.getElementById('my-leave-history').innerHTML = '';
+                return;
+            }
+            const balances = hrLeaveBalances.filter(b => b.employee_id === me.id);
+            document.getElementById('my-leave-balances').innerHTML = balances.length ? balances.map(b => `
+                <div class="hr-stat-card"><div class="num">${(b.allotted||0)-(b.used||0)}</div><div class="label">${b.leave_type}</div></div>
+            `).join('') : '<p class="text-[#4a5182] text-xs col-span-3">No balances set yet.</p>';
+            const mine = hrLeaveRequests.filter(r => r.employee_id === me.id);
+            document.getElementById('my-leave-history').innerHTML = mine.length ? mine.map(r => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
+                    <span class="text-sm text-[#a5adcf]">${r.leave_type} — ${r.start_date} → ${r.end_date}</span>
+                    <span class="hr-badge hr-badge-${r.status}">${r.status}</span>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs">No requests yet.</p>';
+        }
+
+        async function submitMyLeave() {
+            const me = myHREmployeeRecord();
+            if (!me) { alert('No HR employee record is linked to your login. Ask HR to link your portal email first.'); return; }
+            const leave_type = document.getElementById('my-leave-type').value;
+            const start_date = document.getElementById('my-leave-start').value;
+            const end_date = document.getElementById('my-leave-end').value;
+            const reason = document.getElementById('my-leave-reason').value.trim();
+            if (!start_date || !end_date) { alert('Pick start and end dates.'); return; }
+            const days = Math.round((new Date(end_date) - new Date(start_date)) / 86400000) + 1;
+            if (days < 1) { alert('End date must be on or after start date.'); return; }
+            try {
+                await dbInstance.from('hr_leave_requests').insert([{ employee_id: me.id, leave_type, start_date, end_date, days, reason, status: 'pending' }]);
+                document.getElementById('my-leave-start').value = '';
+                document.getElementById('my-leave-end').value = '';
+                document.getElementById('my-leave-reason').value = '';
+                await loadHRData();
+                initMyLeave();
+            } catch (e) { alert('Could not submit request: ' + e.message); }
+        }
+
+        async function initMyDocs() {
+            await ensureHRDataLoaded();
+            const me = myHREmployeeRecord();
+            const el = document.getElementById('my-docs-list');
+            if (!me) { el.innerHTML = '<p class="text-[#4a5182] text-xs">No HR employee record is linked to your login yet.</p>'; return; }
+            const docs = (me.document_links || '').split(',').map(s => s.trim()).filter(Boolean);
+            el.innerHTML = docs.length ? docs.map(d => `
+                <a href="${d}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;color:#a5adcf;text-decoration:none">
+                    <i data-lucide="file-text" class="w-4 h-4"></i> ${d}
+                </a>
+            `).join('') : '<p class="text-[#4a5182] text-xs">No documents on file yet.</p>';
+            if (window.lucide) lucide.createIcons();
+        }
+
+        async function initMyPayslips() {
+            await ensureHRDataLoaded();
+            const me = myHREmployeeRecord();
+            const el = document.getElementById('my-payslips-rows');
+            if (!me) { el.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No HR employee record is linked to your login yet.</td></tr>`; return; }
+            const mine = hrPayroll.filter(p => p.employee_id === me.id);
+            el.innerHTML = mine.length ? mine.map(p => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${p.month}</td>
+                    <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button></td>
+                </tr>
+            `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // ═══════════════════════ MANAGER: MY TEAM ═══════════════════════
+        // ══════════════════════════════════════════════════════════════
+        function myTeamMembers() {
+            return hrEmployees.filter(e => (e.manager_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
+        }
+
+        async function initMyTeam() {
+            await ensureHRDataLoaded();
+            const team = myTeamMembers();
+            const todayStr = new Date().toISOString().slice(0,10);
+            const present = team.filter(e => hrAttendance.some(a => a.employee_id === e.id && a.att_date === todayStr && ['present','late','half_day','wfh'].includes(a.status))).length;
+            const onLeave = team.filter(e => hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr)).length;
+            const pendingLeave = hrLeaveRequests.filter(r => team.some(e => e.id === r.employee_id) && r.status === 'pending').length;
+            document.getElementById('team-stats').innerHTML = [
+                { label: 'Team Size', num: team.length },
+                { label: "Present Today", num: present },
+                { label: 'On Leave Today', num: onLeave },
+                { label: 'Pending Leave Requests', num: pendingLeave }
+            ].map(s => `<div class="hr-stat-card"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>`).join('');
+
+            document.getElementById('team-members-rows').innerHTML = team.length ? team.map(e => {
+                const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
+                return `<tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${e.full_name}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                    <td class="py-2.5 px-4">${rec ? `<span class="hr-badge hr-badge-${rec.status}">${rec.status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
+                </tr>`;
+            }).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No team members linked to you yet — ask HR to set your team's "Manager (portal email)" field.</td></tr>`;
+
+            const teamLeave = hrLeaveRequests.filter(r => team.some(e => e.id === r.employee_id)).slice(0, 20);
+            document.getElementById('team-leave-rows').innerHTML = teamLeave.length ? teamLeave.map(r => `
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
+                    <div>
+                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}</div>
+                        <div class="text-[#6b74a0] text-xs">${r.start_date} → ${r.end_date} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span class="hr-badge hr-badge-${r.status}">${r.status}</span>
+                        ${r.status === 'pending' ? `
+                            <button onclick="decideHRLeave('${r.id}','approved').then(initMyTeam)" class="hr-icon-btn" style="color:#4ade80">Approve</button>
+                            <button onclick="decideHRLeave('${r.id}','rejected').then(initMyTeam)" class="hr-icon-btn" style="color:#f87171">Reject</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs">No leave requests from your team yet.</p>';
         }
     </script>    <!-- Chat incoming-message toast -->
     <div id="chat-toast" class="hidden fixed bottom-5 right-5 z-[9999] bg-transparent border border-orange-500/40 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 cursor-pointer" onclick="switchTab('chat'); document.getElementById('chat-toast').classList.add('hidden');">
