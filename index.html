@@ -29,6 +29,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -391,290 +392,32 @@
         #delivery-dropzone:hover { border-color: rgba(255,6,82,0.4) !important; background: rgba(255,6,82,0.02) !important; }
 
 
-    <style>
-        /* ═══════════════════════════════════════════════════════
-           PREMIUM VISUAL POLISH PASS — matches reference mock
-           (styling only — no markup/logic touched)
-        ═══════════════════════════════════════════════════════ */
-
-        /* Rounder, calmer cards */
-        .card { border-radius: 16px !important; border-color: rgba(255,255,255,0.06) !important; box-shadow: 0 4px 24px rgba(0,0,0,0.35) !important; }
-
-        /* Stat cards — bigger radius, tighter icon box, bigger number */
-        .stat-card-new { border-radius: 16px !important; padding: 16px !important; }
-        .stat-icon-box { width: 38px !important; height: 38px !important; border-radius: 10px !important; }
-        .stat-label { font-size: 10px !important; letter-spacing: 0.06em !important; color: #8b93b8 !important; }
-        .stat-num { font-size: 26px !important; letter-spacing: -0.02em !important; }
-        #metrics-counter-container .card:nth-child(n) { box-shadow: none !important; } /* remove old glow-inset variants */
-        .stat-card-new:hover { transform: translateY(-2px) !important; }
-
-        /* Progress bar under each stat (targets the thin bar already in markup, if present) */
-        .stat-card-new .h-1\.5, .stat-card-new [class*="progress"] { border-radius: 999px !important; }
-
-        /* Top header pill chips (date / time / live) */
-        #header-date-chip, .glass-button.rounded-lg { border-radius: 999px !important; padding: 8px 16px !important; background: rgba(15,19,32,0.8) !important; border-color: rgba(255,255,255,0.08) !important; }
-
-        /* Primary gradient buttons — pink → orange like reference */
-        .glass-button-brand { background: linear-gradient(90deg, #ff2d78 0%, #ff5b3d 100%) !important; border: none !important; box-shadow: 0 4px 18px rgba(255,45,120,0.35) !important; }
-        .glass-button { border-radius: 999px !important; }
-        .glass-button:not(.glass-button-brand) { background: rgba(15,19,32,0.85) !important; border: 1px solid rgba(255,255,255,0.1) !important; }
-
-        /* Section card containing the table */
-        .card.rounded-2xl { border-radius: 18px !important; }
-
-        /* Table polish */
-        thead th, table thead tr th { background: rgba(255,255,255,0.02) !important; font-size: 10px !important; padding: 14px 16px !important; color: #7b83a8 !important; }
-        tbody td { padding: 14px 16px !important; font-size: 12px !important; }
-        tbody tr:hover { background: rgba(255,255,255,0.025) !important; }
-        table thead th.sticky, table tbody td:first-child { background-color: rgba(9,12,20,0.6) !important; }
-
-        /* Status badges → pill with dot, matches reference chips */
-        select.text-yellow-400, select.text-blue-400, select.text-emerald-400, select.text-orange-400,
-        select.text-red-400, select.text-purple-400, select[class*="text-"] {
-            border-radius: 999px !important;
-            padding: 4px 12px !important;
-            font-size: 10px !important;
-            font-weight: 700 !important;
-            -webkit-appearance: none !important;
-            appearance: none !important;
-        }
-
-        /* Filter bar container */
-        .flex.flex-wrap.items-center.gap-3.bg-transparent.p-3.rounded-xl {
-            border-radius: 14px !important;
-            background: rgba(255,255,255,0.015) !important;
-        }
-        .flex.flex-wrap.items-center.gap-3.bg-transparent.p-3.rounded-xl select {
-            border-radius: 999px !important;
-            padding: 6px 12px !important;
-        }
-
-        /* Pagination — pink circular active state */
-        #pipeline-pagination button, #history-pagination button {
-            border-radius: 999px !important;
-            min-width: 30px !important;
-            height: 30px !important;
-        }
-        #pipeline-pagination button.active, #history-pagination button.active,
-        #pipeline-pagination button[style*="background"], #history-pagination button[style*="background"] {
-            background: linear-gradient(135deg,#ff2d78,#ff5b3d) !important;
-            border-color: transparent !important;
-            box-shadow: 0 4px 14px rgba(255,45,120,0.4) !important;
-        }
-
-        /* Create & Assign banner — softer accent border like reference outline card */
-        #admin-assignment-panel { border-radius: 18px !important; border-left: 3px solid rgba(255,45,120,0.5) !important; }
-
-        /* ═══════════════════════════════════════════════════════
-           STICKY COLUMN FIX — solid bg + correct stacking so
-           content never shows through while scrolling horizontally
-        ═══════════════════════════════════════════════════════ */
-        .sticky-col {
-            background-color: #0c0f1a !important;
-            box-shadow: 4px 0 10px -4px rgba(0,0,0,0.6);
-        }
-        .sticky-col-head {
-            background-color: #141828 !important;
-            box-shadow: 4px 0 10px -4px rgba(0,0,0,0.6);
-        }
-        tbody tr:hover .sticky-col { background-color: #171b2e !important; }
-        .sticky-col, .sticky-col-head { background-color: #0c0f1a; }
-        table td, table th { overflow: hidden; }
-        table { position: relative; border-collapse: separate !important; border-spacing: 0; }
-        thead { position: relative; z-index: 25; }
-        tbody td { background-color: #0b0e18; }
-        tbody tr:hover td { background-color: rgba(255,255,255,0.03); }
-        tbody tr:hover .sticky-col { background-color: #171b2e !important; }
-
-        /* ═══════════════════════════════════════════════════════
-           EXTRA PREMIUM PASS — closer match to reference mock
-        ═══════════════════════════════════════════════════════ */
-        body { letter-spacing: -0.01em; }
-        h1, .text-2xl, .text-3xl { letter-spacing: -0.02em !important; font-weight: 800 !important; }
-
-        /* Sidebar nav icon alignment + active pill */
-        .sidebar-link { padding: 9px 12px !important; border-radius: 10px !important; font-size: 12.5px !important; }
-        .sidebar-link.active { box-shadow: 0 0 0 1px rgba(255,45,120,0.25), 0 4px 14px rgba(255,45,120,0.15) !important; }
-
-        /* Stat card icon boxes: soft gradient tint instead of flat */
-        .stat-icon-box { box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
-        .stat-card-new { background: linear-gradient(160deg, rgba(18,22,36,0.85) 0%, rgba(11,14,24,0.85) 100%) !important; }
-
-        /* Sparkline area breathing room */
-        .stat-card-new svg { margin-top: 10px !important; }
-
-        /* Buttons — export / sync exact reference gradient + weight */
-        #admin-download-wrapper .glass-button { font-size: 11.5px !important; letter-spacing: 0.04em !important; padding: 11px 20px !important; }
-
-        /* Table card outer wrapper spacing */
-        .card.rounded-2xl.overflow-hidden { border: 1px solid rgba(255,255,255,0.06) !important; }
-        thead th:first-child { border-top-left-radius: 16px; }
-
-        /* Row divider softer + more breathing room */
-        tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04) !important; }
-
-        /* Status pill badges get a leading dot for scan-ability, matches reference chips */
-        select.text-emerald-400::before, select.text-blue-400::before { content: ""; }
-
-        /* Download PDF / outline buttons */
-        button:has(> i[data-lucide="download"]) { border-radius: 10px !important; }
-
-        /* Rows-per-page + pagination row spacing */
-        #pipeline-pagination, #history-pagination { gap: 6px !important; }
-
-        /* Filter dropdown labels tighter tracking like reference */
-        .flex.flex-wrap.items-center.gap-3 > div > span.text-\[10px\] { letter-spacing: 0.08em !important; }
-
-        /* ═══════════════════════════════════════════════════════
-           USER-SUPPLIED PALETTE/SPEC — mapped onto existing markup
-           (same tokens: bg/sidebar/card colors, radii, sizes)
-        ═══════════════════════════════════════════════════════ */
-        :root {
-            --bg: #0d0e15 !important;
-            --panel-bg: #13151f !important;
-            --panel-border: #202436 !important;
-        }
-        body { background-color: #0d0e15 !important; font-size: 13px !important; }
-        aside { background-color: #090a0f !important; border-right-color: #202436 !important; }
-        .card, .stat-card-new { background: #13151f !important; border-color: #202436 !important; border-radius: 12px !important; }
-        .sidebar-link { border-radius: 8px !important; }
-        .sidebar-link.active { background: linear-gradient(90deg, rgba(190,18,60,0.35), rgba(190,18,60,0.03)) !important; border-left: 3px solid #f43f5e !important; border-color: transparent !important; box-shadow: none !important; border-radius: 10px !important; }
-        .stat-icon-box { border-radius: 8px !important; }
-        .stat-num { font-size: 22px !important; }
-        .stat-label { color: #8c93a8 !important; }
-        #header-date-chip, .glass-button:not(.glass-button-brand) { background: #13151f !important; border-color: #202436 !important; border-radius: 8px !important; }
-        .glass-button-brand { background: #e11d48 !important; box-shadow: none !important; }
-        thead th { background: transparent !important; border-bottom: 1px solid #202436 !important; color: #8c93a8 !important; }
-        tbody td, .sticky-col, .sticky-col-head { border-bottom: 1px solid #202436 !important; }
-        .sticky-col, .sticky-col-head { background-color: #13151f !important; }
-        tbody tr:hover td, tbody tr:hover .sticky-col { background: rgba(255,255,255,0.04) !important; }
-        select.text-emerald-400 { background: rgba(16,185,129,0.15) !important; color: #10b981 !important; border-color: #10b981 !important; }
-        select.text-blue-400 { background: rgba(6,182,212,0.15) !important; color: #06b6d4 !important; border-color: #06b6d4 !important; }
-        select.text-yellow-400 { background: rgba(249,115,22,0.15) !important; color: #f97316 !important; border-color: #f97316 !important; }
-        select.text-orange-400 { background: rgba(139,92,246,0.15) !important; color: #8b5cf6 !important; border-color: #8b5cf6 !important; }
-        select.text-red-400 { background: rgba(244,63,94,0.15) !important; color: #f43f5e !important; border-color: #f43f5e !important; }
-        #pipeline-pagination button.active, #history-pagination button.active,
-        #pipeline-pagination button[style*="background"], #history-pagination button[style*="background"] {
-            background: #f43f5e !important; box-shadow: none !important;
-        }
-        .file-pill, [class*="glass-button"][class*="rounded"] i[data-lucide="file"] { color: #8c93a8; }
-
-        /* ═══════════════════════════════════════════════════════
-           REFERENCE HTML CLASSES (gemini-code) — Top Header,
-           Create Task card, Table, Filters, Pagination
-        ═══════════════════════════════════════════════════════ */
-        .top-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-        .header-title h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-        .header-title p { color: var(--text-muted, #8c93a8); font-size: 12px; }
-        .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .time-badge { background: #13151f; border: 1px solid #202436; padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 12px; color: #8c93a8; font-size: 11px; }
-        .live-dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; display: inline-block; margin-right: 4px; }
-        .btn { padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; letter-spacing: 0.03em; }
-        .btn-primary { background: #e11d48; color: #fff; }
-        .btn-secondary { background: #13151f; border: 1px solid #202436; color: #fff; }
-        .icon-btn { background: #13151f; border: 1px solid #202436; color: #fff; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; }
-        .notification-badge { position: absolute; top: -4px; right: -4px; background: #f43f5e; color: #fff; font-size: 9px; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-
-        .create-task-card { background: #13151f; border: 1px solid #202436; border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: border-color .15s; }
-        .create-task-card:hover { border-color: #f43f5e; }
-        .task-left { display: flex; align-items: center; gap: 15px; }
-        .task-icon { width: 40px; height: 40px; border-radius: 8px; border: 1px dashed #8c93a8; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .task-btn { width: 40px; height: 40px; border-radius: 50%; background: #f43f5e; color: #fff; border: none; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; flex-shrink: 0; }
-
-        .section-header { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; }
-        .filters-bar { display: flex; gap: 15px; align-items: center; background: #13151f; padding: 12px; border-radius: 10px; border: 1px solid #202436; flex-wrap: wrap; }
-        .filter-group { display: flex; align-items: center; gap: 8px; color: #8c93a8; font-size: 11px; }
-        .filter-select { background: #090a0f !important; border: 1px solid #202436 !important; color: #fff !important; padding: 6px 10px !important; border-radius: 6px !important; font-size: 11px !important; }
-
-        table.data-table { width: 100%; border-collapse: separate !important; border-spacing: 0; background: #13151f; border-radius: 10px; overflow: hidden; border: 1px solid #202436; }
-        table.data-table th { text-align: left; padding: 12px 15px !important; color: #8c93a8 !important; font-size: 10px !important; text-transform: uppercase; border-bottom: 1px solid #202436 !important; background: transparent !important; }
-        table.data-table td { padding: 12px 15px !important; border-bottom: 1px solid #202436 !important; font-size: 11px !important; background: #13151f; }
-        table.data-table tbody tr:hover td, table.data-table tbody tr:hover .sticky-col { background: rgba(255,255,255,0.04) !important; }
-        table.data-table .sticky-col, table.data-table .sticky-col-head { background-color: #13151f !important; }
-
-        .status-pill { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-block; }
-        .status-approved, select.text-emerald-400 { background: rgba(16,185,129,0.15) !important; color: #10b981 !important; border: 1px solid #10b981 !important; }
-        .status-progress, select.text-blue-400 { background: rgba(6,182,212,0.15) !important; color: #06b6d4 !important; border: 1px solid #06b6d4 !important; }
-        .status-pending, select.text-yellow-400 { background: rgba(249,115,22,0.15) !important; color: #f97316 !important; border: 1px solid #f97316 !important; }
-        .status-review, select.text-orange-400 { background: rgba(139,92,246,0.15) !important; color: #8b5cf6 !important; border: 1px solid #8b5cf6 !important; }
-        .status-rejected, select.text-red-400 { background: rgba(244,63,94,0.15) !important; color: #f43f5e !important; border: 1px solid #f43f5e !important; }
-
-        .file-pill { background: #090a0f; border: 1px solid #202436; padding: 4px 8px; border-radius: 4px; color: #8c93a8; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-size: 10px; }
-
-        .pagination-wrap { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; color: #8c93a8; font-size: 11px; flex-wrap: wrap; gap: 10px; }
-        .page-numbers { display: flex; gap: 5px; align-items: center; }
-        #pipeline-pagination.page-numbers button, #history-pagination.page-numbers button {
-            width: 26px !important; height: 26px !important; min-width: 26px !important;
-            display: flex !important; align-items: center; justify-content: center;
-            border-radius: 6px !important; cursor: pointer; border: 1px solid #202436 !important;
-            background: transparent !important; color: #8c93a8 !important; padding: 0 !important;
-        }
-        #pipeline-pagination.page-numbers button.active, #history-pagination.page-numbers button.active,
-        #pipeline-pagination.page-numbers button[class*="brand-gradient"], #history-pagination.page-numbers button[class*="brand-gradient"] {
-            background: #f43f5e !important; color: #fff !important; border-color: #f43f5e !important;
-        }
-        .rows-per-page-chip { display: flex; align-items: center; gap: 6px; color: #8c93a8; font-size: 11px; }
-        .rows-per-page-chip select { background: #090a0f; border: 1px solid #202436; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; }
-
-        /* ── Sticky Campaign Topic column: force it to actually freeze ── */
-        .table-scroll-wrap { overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-        .sticky-col, .sticky-col-head { position: sticky !important; left: 0 !important; }
-        .sticky-col { z-index: 15 !important; }
-        .sticky-col-head { z-index: 25 !important; }
-
-        /* Only keep the long Create & Assign card — hide the small duplicate pill button */
-        #btn-open-assign-panel { display: none !important; }
-
-        /* ── Fine calibration pass to match latest reference screenshots exactly ── */
-        table.data-table { border: none !important; background: transparent !important; }
-        table.data-table th { border-bottom: 1px solid #1c2030 !important; }
-        table.data-table td { background: transparent !important; border-bottom: 1px solid #1a1e2c !important; }
-        .sticky-col, .sticky-col-head { background-color: #0d0e15 !important; }
-        .filters-bar { background: #11131c !important; border-color: #1c2030 !important; }
-        .time-badge, #header-date-chip { background: #11131c !important; border-color: #1c2030 !important; }
-        .icon-btn { background: #11131c !important; border-color: #1c2030 !important; }
-
-        /* Compact table rows — fit reference density without scrolling */
-        table.data-table td, table.data-table th { padding: 10px 14px !important; font-size: 10.5px !important; }
-        table.data-table td, table.data-table td * { line-height: 1.35 !important; }
-
-        /* Search bar — real inline input like reference, no popup/tab */
-        #corner-search-input::placeholder { color: #8c93a8; }
-        #corner-search-input {
-            background: transparent !important;
-            border: none !important;
-            border-radius: 0 !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-            outline: none !important;
-        }
-        #corner-search-input:focus { border: none !important; box-shadow: none !important; }
-
-        /* Attendance monthly grid — compact so full month fits without scrolling on desktop */
-        .attendance-fit-table { table-layout: auto; }
-        .attendance-fit-table th, .attendance-fit-table td { padding-left: 2px !important; padding-right: 2px !important; }
-        @media (min-width: 1280px) { .attendance-fit-scroll { overflow-x: visible !important; } }
-
-        /* ── General responsive polish ── */
-        @media (max-width: 1024px) {
-            .metrics-grid, #metrics-counter-container { grid-template-columns: repeat(2, 1fr) !important; }
-            .create-task-card { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .top-header .header-actions { justify-content: flex-start !important; }
-        }
-        @media (max-width: 640px) {
-            #corner-search-input { min-width: 0 !important; width: 100% !important; }
-            .icon-btn[style*="min-width:220px"] { min-width: 0 !important; width: 100% !important; }
-            .time-badge, #header-date-chip { flex-wrap: wrap; }
-            .filters-bar { padding: 10px !important; }
-            .btn { padding: 8px 12px !important; font-size: 10.5px !important; }
-        }
-        @media (max-width: 767px) {
-            #header-search-wrap, #header-bell-wrap { display: none !important; }
-        }
-
-        /* ── Campaign Topic column: JS-driven pin (robust fallback,
-             works even where CSS position:sticky is unreliable) ── */
-        .sticky-col, .sticky-col-head { position: sticky !important; left: 0 !important; }
+        .hr-subnav-btn { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:8px 14px; border-radius:999px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); color:#8890b5; cursor:pointer; transition:all .15s; }
+        .hr-subnav-btn:hover { color:#fff; border-color:rgba(255,107,6,0.3); }
+        .hr-subnav-btn.active { background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552); color:#fff; border-color:transparent; }
+        .hr-select, .hr-input { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#e6e9f5; font-size:12px; padding:8px 10px; border-radius:10px; outline:none; }
+        .hr-select:focus, .hr-input:focus { border-color:#ff6b06; }
+        .hr-badge { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:3px 8px; border-radius:999px; display:inline-block; }
+        .hr-badge-active { background:rgba(34,197,94,0.15); color:#4ade80; }
+        .hr-badge-inactive { background:rgba(148,163,184,0.15); color:#94a3b8; }
+        .hr-badge-exited { background:rgba(239,68,68,0.15); color:#f87171; }
+        .hr-badge-present { background:rgba(34,197,94,0.15); color:#4ade80; }
+        .hr-badge-absent { background:rgba(239,68,68,0.15); color:#f87171; }
+        .hr-badge-late { background:rgba(250,204,21,0.15); color:#facc15; }
+        .hr-badge-half_day { background:rgba(96,165,250,0.15); color:#60a5fa; }
+        .hr-badge-wfh { background:rgba(168,85,247,0.15); color:#c084fc; }
+        .hr-badge-pending { background:rgba(250,204,21,0.15); color:#facc15; }
+        .hr-badge-approved { background:rgba(34,197,94,0.15); color:#4ade80; }
+        .hr-badge-rejected { background:rgba(239,68,68,0.15); color:#f87171; }
+        .hr-badge-paid { background:rgba(34,197,94,0.15); color:#4ade80; }
+        .hr-stat-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:16px; }
+        .hr-stat-card .num { font-size:22px; font-weight:800; color:#fff; }
+        .hr-stat-card .label { font-size:10px; color:#8890b5; text-transform:uppercase; letter-spacing:0.5px; margin-top:4px; }
+        .hr-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:70; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px); }
+        .hr-modal { background:#0d1120; border:1px solid rgba(255,255,255,0.08); border-radius:20px; width:100%; max-width:560px; max-height:90vh; overflow-y:auto; padding:22px; }
+        .hr-field-label { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:#8890b5; font-weight:700; margin-bottom:5px; display:block; }
+        .hr-icon-btn { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:#a5adcf; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:11px; }
+        .hr-icon-btn:hover { color:#fff; border-color:rgba(255,107,6,0.4); }
     </style>
 
 </head>
@@ -761,6 +504,89 @@
                     Cancel
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- ══════════ HR MODALS ══════════ -->
+    <div id="hr-employee-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="hr-employee-modal-title" class="text-lg font-bold text-white">Add Employee</h3>
+                <button onclick="closeHREmployeeModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label class="hr-field-label">Employee ID</label><input id="hr-emp-id" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Full Name *</label><input id="hr-emp-name" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Division *</label>
+                    <select id="hr-emp-division" class="hr-select w-full" onchange="populateHRDeptOptions()">
+                        <option value="education">Education</option>
+                        <option value="production">Production House</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div><label class="hr-field-label">Department *</label><select id="hr-emp-department" class="hr-select w-full"></select></div>
+                <div><label class="hr-field-label">Designation</label><input id="hr-emp-designation" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Employment Status</label>
+                    <select id="hr-emp-status" class="hr-select w-full">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="exited">Exited</option>
+                    </select>
+                </div>
+                <div><label class="hr-field-label">Date of Birth</label><input id="hr-emp-dob" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Linked Portal Email</label><input id="hr-emp-email" placeholder="optional — links to portal login" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Emergency Contact Name</label><input id="hr-emp-ec-name" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Emergency Contact Phone</label><input id="hr-emp-ec-phone" class="hr-input w-full"></div>
+                <div class="sm:col-span-2"><label class="hr-field-label">Document Links (offer letter, ID proof, etc — comma separated URLs)</label><input id="hr-emp-docs" class="hr-input w-full"></div>
+                <div class="sm:col-span-2"><label class="hr-field-label">Notes / History</label><textarea id="hr-emp-notes" rows="2" class="hr-input w-full"></textarea></div>
+            </div>
+            <button onclick="saveHREmployee()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Employee</button>
+        </div>
+    </div>
+
+    <div id="hr-leave-balance-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:420px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Set Leave Balance</h3>
+                <button onclick="closeHRLeaveBalanceModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="space-y-3">
+                <div><label class="hr-field-label">Employee</label><select id="hr-lb-employee" class="hr-select w-full"></select></div>
+                <div><label class="hr-field-label">Leave Type</label>
+                    <select id="hr-lb-type" class="hr-select w-full">
+                        <option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option>
+                        <option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option>
+                    </select>
+                </div>
+                <div><label class="hr-field-label">Allotted Days</label><input id="hr-lb-allotted" type="number" min="0" class="hr-input w-full"></div>
+            </div>
+            <button onclick="saveHRLeaveBalance()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Balance</button>
+        </div>
+    </div>
+
+    <div id="hr-payroll-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Add Payroll Entry</h3>
+                <button onclick="closeHRPayrollModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2"><label class="hr-field-label">Employee</label><select id="hr-pr-employee" class="hr-select w-full"></select></div>
+                <div class="sm:col-span-2"><label class="hr-field-label">Month</label><input id="hr-pr-month" type="month" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Basic Salary</label><input id="hr-pr-basic" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Allowances</label><input id="hr-pr-allowances" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Overtime</label><input id="hr-pr-overtime" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Bonuses</label><input id="hr-pr-bonuses" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Deductions</label><input id="hr-pr-deductions" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Advances</label><input id="hr-pr-advances" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Payment Status</label>
+                    <select id="hr-pr-status" class="hr-select w-full"><option value="pending">Pending</option><option value="paid">Paid</option></select>
+                </div>
+                <div><label class="hr-field-label">Net Salary</label><div id="hr-pr-net-preview" class="hr-input w-full" style="color:#4ade80;font-weight:700">₹0</div></div>
+            </div>
+            <button onclick="saveHRPayroll()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Entry</button>
         </div>
     </div>
 
@@ -971,6 +797,14 @@
                     </button>
                 </div>
 
+                <!-- HR -->
+                <div style="margin-bottom:14px" class="admin-only">
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">HR</div>
+                    <button id="nav-hr" onclick="switchTab('hr')" class="sidebar-link admin-only" style="width:100%;text-align:left">
+                        <i data-lucide="users" style="width:14px;height:14px"></i> HR Panel
+                    </button>
+                </div>
+
                 <!-- NOTIFICATIONS (for employees) -->
                 <div id="nav-group-notifications" style="margin-bottom:14px">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">TOOLS</div>
@@ -1019,9 +853,20 @@
             <!-- Floating corner bell — replaces the sidebar Notifications tab -->
 
 
-            <!-- Global Search dropdown (anchored under header, no full-screen modal) -->
-            <div id="global-search-overlay" class="hidden fixed z-[80] w-[calc(100%-2rem)] sm:w-96">
-                <div class="w-full bg-[#0d0e15] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
+            <!-- Global Search overlay -->
+            <div id="global-search-overlay" class="hidden fixed inset-0 z-[80] flex items-start justify-center pt-4 sm:pt-20 px-2 sm:px-4 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalSearch()">
+                <div class="w-full max-w-xl bg-transparent border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden">
+                    <!-- Search input -->
+                    <div class="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
+                        <i data-lucide="search" class="w-5 h-5 text-white/70 shrink-0"></i>
+                        <input id="global-search-input" type="text" placeholder="Search tasks, videos, thumbnails, creators…"
+                            oninput="runGlobalSearch(this.value)"
+                            onkeydown="if(event.key==='Escape')closeGlobalSearch()"
+                            class="flex-1 bg-transparent border-none text-sm text-white placeholder-gray-500 focus:outline-none">
+                        <button onclick="closeGlobalSearch()" class="text-[#4a5182] hover:text-white transition shrink-0">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
                     <!-- Results -->
                     <div id="global-search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-white/[0.05]">
                         <p class="text-center text-[#4a5182] text-xs italic py-6">Start typing to search…</p>
@@ -1080,39 +925,33 @@
             </div>
 
             <div id="tab-content-dashboard" class="space-y-6">
-                <div class="top-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div class="header-title">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Media Production Matrix</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
                     </div>
-                    <div class="header-actions flex items-center gap-2 flex-wrap justify-end">
+                    <div class="flex items-center gap-2 flex-wrap justify-end">
                         <!-- Calendar/month chip — always visible -->
-                        <div id="header-date-chip" class="time-badge glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default">
+                        <div id="header-date-chip" class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default;color:#808a9d">
                             <i data-lucide="calendar" style="width:13px;height:13px"></i>
                             <span id="header-date-text"></span>
-                            <span style="display:inline-flex;align-items:center;gap:4px"><span class="live-dot"></span>LIVE</span>
                         </div>
                         <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2 admin-only">
-                            <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button onclick="downloadWorkbookCSV()" class="btn btn-primary glass-button glass-button-brand text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
+                            <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button onclick="downloadWorkbookCSV()" class="glass-button glass-button-brand text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
                                 <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
                             </button></span>
-                            <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="btn btn-secondary glass-button text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
+                            <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="glass-button text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
                                 <i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet
                             </button></span>
                         </div>
                         <!-- Search + Bell inline with header buttons — matches reference layout -->
-                        <span id="header-search-wrap" class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><span class="icon-btn glass-button flex items-center text-white" style="width:auto;height:36px;border-radius:8px;padding:0 14px 0 12px;min-width:220px;gap:8px">
-                            <i data-lucide="search" class="w-4 h-4" style="color:#8c93a8"></i>
-                            <input id="corner-search-input" type="text" placeholder="Search projects, tasks..." autocomplete="off"
-                                oninput="handleHeaderSearchInput(this.value)"
-                                onfocus="if(this.value)document.getElementById('global-search-overlay').classList.remove('hidden')"
-                                onkeydown="if(event.key==='Escape'){this.value='';closeGlobalSearch();}"
-                                style="background:transparent;border:none;outline:none;color:#fff;font-size:12px;width:100%">
-                        </span></span>
-                        <span id="header-bell-wrap" class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="icon-btn glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
+                        <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="corner-search-btn" onclick="toggleGlobalSearch()" title="Search" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
+                            <i data-lucide="search" class="w-4 h-4"></i>
+                        </button></span>
+                        <span class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
                             <i data-lucide="bell" class="w-4 h-4"></i>
                         </button>
-                        <span id="notif-badge-corner" class="notification-badge hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
+                        <span id="notif-badge-corner" class="hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
                     </div>
                 </div>
 
@@ -1138,17 +977,6 @@
                 </div>
 
                 <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                </div>
-
-                <div id="create-task-summary-card" class="create-task-card admin-manager-only hidden" onclick="toggleAssignPanel()">
-                    <div class="task-left">
-                        <div class="task-icon"><i data-lucide="plus" style="width:16px;height:16px"></i></div>
-                        <div>
-                            <div style="font-weight:600;color:#fff">Create &amp; Assign Work Task</div>
-                            <div style="color:#8c93a8;font-size:11px">Click + to create and assign new work task</div>
-                        </div>
-                    </div>
-                    <button class="task-btn" onclick="event.stopPropagation();toggleAssignPanel()" title="Create & Assign Work Task"><i data-lucide="plus" style="width:16px;height:16px"></i></button>
                 </div>
 
                 <div id="admin-assignment-panel" class="card glass-card space-y-5 p-5 md:p-6 rounded-2xl hidden" style="border-left:3px solid rgba(255,107,6,0.4);animation-duration:0.25s">
@@ -1204,7 +1032,7 @@
                 <div class="grid grid-cols-1 gap-6">
                     
                     <div class="space-y-4">
-                        <div class="section-header flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
                                 <i data-lucide="list-todo" class="text-orange-500"></i> Active Pipeline Sheet
                             </h3>
@@ -1214,19 +1042,19 @@
                             </button>
                         </div>
 
-                        <div class="filters-bar flex flex-wrap items-center gap-3 text-xs">
-                            <div class="filter-group flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-3 bg-transparent p-3 rounded-xl border border-white/[0.06] text-xs shadow-inner">
+                            <div class="flex items-center gap-2">
                                 <span class="text-[#6b74a0] font-bold uppercase tracking-wider text-[10px]">Year:</span>
-                                <select id="filter-year" onchange="triggerPipelineMatrixUpdate()" class="filter-select bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
+                                <select id="filter-year" onchange="triggerPipelineMatrixUpdate()" class="bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
                                     <option value="all">All Years</option>
                                     <option value="2026">2026</option>
                                     <option value="2025">2025</option>
                                     <option value="2024">2024</option>
                                 </select>
                             </div>
-                            <div class="filter-group flex items-center gap-2">
+                            <div class="flex items-center gap-2">
                                 <span class="text-[#6b74a0] font-bold uppercase tracking-wider text-[10px]">Month:</span>
-                                <select id="filter-month" onchange="triggerPipelineMatrixUpdate()" class="filter-select bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
+                                <select id="filter-month" onchange="triggerPipelineMatrixUpdate()" class="bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
                                     <option value="all">All Months</option>
                                     <option value="01">January</option>
                                     <option value="02">February</option>
@@ -1242,9 +1070,9 @@
                                     <option value="12">December</option>
                                 </select>
                             </div>
-                            <div class="filter-group flex items-center gap-2">
+                            <div class="flex items-center gap-2">
                                 <span class="text-[#6b74a0] font-bold uppercase tracking-wider text-[10px]">Type:</span>
-                                <select id="filter-category" onchange="triggerPipelineMatrixUpdate()" class="filter-select bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
+                                <select id="filter-category" onchange="triggerPipelineMatrixUpdate()" class="bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
                                     <option value="all">All Types</option>
                                     <option value="Video Editing">🎬 Video Editing</option>
                                     <option value="Thumbnail">🖼️ Thumbnail Design</option>
@@ -1252,9 +1080,9 @@
                                     <option value="Social Media">📱 Social Media</option>
                                 </select>
                             </div>
-                            <div class="filter-group flex items-center gap-2">
+                            <div class="flex items-center gap-2">
                                 <span class="text-[#6b74a0] font-bold uppercase tracking-wider text-[10px]">Status:</span>
-                                <select id="filter-status" onchange="triggerPipelineMatrixUpdate()" class="filter-select bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
+                                <select id="filter-status" onchange="triggerPipelineMatrixUpdate()" class="bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
                                     <option value="all">All States</option>
                                     <option value="Pending">Pending</option>
                                     <option value="In Progress">In Progress</option>
@@ -1263,9 +1091,9 @@
                                     <option value="Rejected">Rejected</option>
                                 </select>
                             </div>
-                            <div class="filter-group flex items-center gap-2 sm:ml-auto">
+                            <div class="flex items-center gap-2 sm:ml-auto">
                                 <span class="text-[#6b74a0] font-bold uppercase tracking-wider text-[10px]">Sort Order:</span>
-                                <select id="sort-config" onchange="triggerPipelineMatrixUpdate()" class="filter-select bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
+                                <select id="sort-config" onchange="triggerPipelineMatrixUpdate()" class="bg-transparent border border-white/[0.06] glass-input rounded-lg px-2 py-1 text-white focus:outline-none focus:border-orange-500 font-medium transition duration-150">
                                     <option value="assignedDate-desc">Assigned Date (Newest First)</option>
                                     <option value="assignedDate-asc">Assigned Date (Oldest First)</option>
                                     <option value="date-desc">Deadline Target (Newest First)</option>
@@ -1288,11 +1116,11 @@
                             })();
                         </script>
                         
-                        <div class="hidden md:block card rounded-2xl overflow-hidden table-scroll-wrap sticky-scroll-container">
-                            <table class="data-table w-full text-left border-collapse text-xs">
+                        <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
                                 <thead>
-                                    <tr class="border-b border-white/[0.06] text-[#6b74a0] uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
-                                        <th class="py-3.5 px-4 sticky left-0 sticky-col-head z-20 min-w-[160px]">Campaign Topic</th>
+                                    <tr class="bg-[#181b30] border-b border-white/[0.06] text-[#6b74a0] uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
+                                        <th class="py-3.5 px-4 sticky left-0 bg-[#181b30] z-20 min-w-[160px]">Campaign Topic</th>
                                         <th class="py-3.5 px-4">Category</th>
                                         <th class="py-3.5 px-4">Assigned Creator</th>
                                         <th class="py-3.5 px-4">Description Info</th>
@@ -1313,25 +1141,7 @@
                         <div id="production-matrix-mobile-cards" class="block md:hidden space-y-3">
                         </div>
 
-                        <div class="pagination-wrap">
-                            <span id="pipeline-showing-text"></span>
-                            <div id="pipeline-pagination" class="page-numbers hidden items-center justify-center gap-1 flex-wrap" style="display:none">
-                            </div>
-                            <div class="rows-per-page-chip">
-                                Rows per page:
-                                <select id="pipeline-page-size-display" onchange="changePipelinePageSize(this.value)" class="filter-select">
-                                    <option value="1">1</option>
-                                    <option value="2">2</option>
-                                    <option value="3">3</option>
-                                    <option value="4">4</option>
-                                    <option value="5">5</option>
-                                    <option value="6">6</option>
-                                    <option value="7">7</option>
-                                    <option value="8">8</option>
-                                    <option value="9">9</option>
-                                    <option value="10">10</option>
-                                </select>
-                            </div>
+                        <div id="pipeline-pagination" class="hidden items-center justify-center gap-1 flex-wrap pt-4 mt-2 border-t border-white/[0.06]/60" style="display:none">
                         </div>
                     </div>
 
@@ -1388,8 +1198,8 @@
 
                 <!-- Monthly grid -->
                 <div class="rounded-xl overflow-hidden" style="background:#08091a;border:1px solid rgba(255,255,255,0.055)">
-                    <div class="overflow-x-auto attendance-fit-scroll sticky-scroll-container">
-                        <table id="attendance-grid-table" class="border-collapse text-xs w-full attendance-fit-table">
+                    <div class="overflow-x-auto">
+                        <table id="attendance-grid-table" class="border-collapse text-xs w-full min-w-[1100px]">
                             <thead id="attendance-grid-head"></thead>
                             <tbody id="attendance-grid-body" class="text-gray-300"></tbody>
                         </table>
@@ -1496,6 +1306,167 @@
                             </thead>
                             <tbody id="roster-settings-rows" class="divide-y divide-white/[0.05]/40">
                             </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ====== HR PANEL TAB ====== -->
+            <div id="tab-content-hr" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Panel</h1>
+                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employees, attendance, leave & payroll across Education and Production.</p>
+                    </div>
+                </div>
+
+                <!-- HR sub-nav -->
+                <div style="display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.07);padding-bottom:10px">
+                    <button id="hr-subnav-dashboard" onclick="switchHRSubtab('dashboard')" class="hr-subnav-btn active">Dashboard</button>
+                    <button id="hr-subnav-employees" onclick="switchHRSubtab('employees')" class="hr-subnav-btn">Employees</button>
+                    <button id="hr-subnav-attendance" onclick="switchHRSubtab('attendance')" class="hr-subnav-btn">Attendance</button>
+                    <button id="hr-subnav-leave" onclick="switchHRSubtab('leave')" class="hr-subnav-btn">Leave</button>
+                    <button id="hr-subnav-payroll" onclick="switchHRSubtab('payroll')" class="hr-subnav-btn">Payroll</button>
+                </div>
+
+                <!-- HR: DASHBOARD -->
+                <div id="hr-sub-dashboard" class="space-y-6">
+                    <div id="hr-dash-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                            <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Pending Leave Requests</h3>
+                            <div id="hr-dash-pending-leave" class="space-y-2 text-sm text-[#a5adcf]"></div>
+                        </div>
+                        <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                            <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Upcoming Birthdays & Anniversaries</h3>
+                            <div id="hr-dash-events" class="space-y-2 text-sm text-[#a5adcf]"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HR: EMPLOYEES -->
+                <div id="hr-sub-employees" class="space-y-4 hidden">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <select id="hr-emp-filter-division" onchange="renderHREmployees()" class="hr-select">
+                                <option value="">All Divisions</option>
+                                <option value="education">Education</option>
+                                <option value="production">Production House</option>
+                                <option value="other">Other</option>
+                            </select>
+                            <select id="hr-emp-filter-status" onchange="renderHREmployees()" class="hr-select">
+                                <option value="">All Statuses</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="exited">Exited</option>
+                            </select>
+                            <input id="hr-emp-search" oninput="renderHREmployees()" placeholder="Search name / ID / dept" class="hr-input" style="min-width:180px">
+                        </div>
+                        <button onclick="openHREmployeeModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Employee</button>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead>
+                                <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                    <th class="py-3 px-4">Emp ID</th>
+                                    <th class="py-3 px-4">Name</th>
+                                    <th class="py-3 px-4">Division</th>
+                                    <th class="py-3 px-4">Department</th>
+                                    <th class="py-3 px-4">Designation</th>
+                                    <th class="py-3 px-4">Joined</th>
+                                    <th class="py-3 px-4">Status</th>
+                                    <th class="py-3 px-4 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hr-employees-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- HR: ATTENDANCE -->
+                <div id="hr-sub-attendance" class="space-y-4 hidden">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <input id="hr-att-date" type="date" class="hr-input" onchange="renderHRAttendance()">
+                        <button onclick="setHRAttDateToday()" class="hr-select" style="cursor:pointer">Today</button>
+                        <span class="text-[11px] text-[#6b74a0]">Mark daily status per employee. Portal check-in/out data is used automatically for employees who log in.</span>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead>
+                                <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                    <th class="py-3 px-4">Employee</th>
+                                    <th class="py-3 px-4">Division</th>
+                                    <th class="py-3 px-4">Status</th>
+                                    <th class="py-3 px-4">Check-in</th>
+                                    <th class="py-3 px-4">Check-out</th>
+                                    <th class="py-3 px-4 text-center">Set</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hr-attendance-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
+                    <div class="card glass-card p-4 rounded-2xl">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-2">Monthly Attendance Report</h3>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <input id="hr-att-month" type="month" class="hr-input" onchange="renderHRMonthlyAttendance()">
+                            <span class="text-[11px] text-[#6b74a0]">Present / Absent / Late / Half-day / WFH totals per employee</span>
+                        </div>
+                        <div id="hr-att-monthly-report" class="mt-3 overflow-x-auto"></div>
+                    </div>
+                </div>
+
+                <!-- HR: LEAVE -->
+                <div id="hr-sub-leave" class="space-y-4 hidden">
+                    <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Leave Requests</h3>
+                        <div id="hr-leave-requests-rows" class="space-y-2"></div>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <div class="p-4 md:p-6 pb-0 flex items-center justify-between">
+                            <h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Leave Balances</h3>
+                            <button onclick="openHRLeaveBalanceModal()" class="text-xs font-bold text-orange-400 uppercase tracking-wider">+ Set Balance</button>
+                        </div>
+                        <table class="w-full text-sm text-left mt-2">
+                            <thead>
+                                <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                    <th class="py-3 px-4">Employee</th>
+                                    <th class="py-3 px-4">Leave Type</th>
+                                    <th class="py-3 px-4">Allotted</th>
+                                    <th class="py-3 px-4">Used</th>
+                                    <th class="py-3 px-4">Balance</th>
+                                    <th class="py-3 px-4 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hr-leave-balance-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- HR: PAYROLL -->
+                <div id="hr-sub-payroll" class="space-y-4 hidden">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <input id="hr-payroll-month" type="month" class="hr-input" onchange="renderHRPayroll()">
+                        </div>
+                        <button onclick="openHRPayrollModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Payroll Entry</button>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead>
+                                <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                    <th class="py-3 px-4">Employee</th>
+                                    <th class="py-3 px-4">Basic</th>
+                                    <th class="py-3 px-4">Allowances</th>
+                                    <th class="py-3 px-4">Overtime</th>
+                                    <th class="py-3 px-4">Bonuses</th>
+                                    <th class="py-3 px-4">Deductions</th>
+                                    <th class="py-3 px-4">Advances</th>
+                                    <th class="py-3 px-4">Net</th>
+                                    <th class="py-3 px-4">Status</th>
+                                    <th class="py-3 px-4 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hr-payroll-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
                 </div>
@@ -2010,13 +1981,7 @@
         let globalStatusFilter = 'all';
         let globalSortConfig = 'assignedDate-desc';
         let currentPipelinePage = 1;
-        let PIPELINE_PAGE_SIZE = 10;
-
-        function changePipelinePageSize(val) {
-            PIPELINE_PAGE_SIZE = parseInt(val, 10) || 10;
-            currentPipelinePage = 1;
-            renderTableRows();
-        }
+        const PIPELINE_PAGE_SIZE = 10;
 
         function triggerPipelineMatrixUpdate() {
             globalYearFilter = document.getElementById('filter-year').value;
@@ -2040,19 +2005,6 @@
             const pagEl = document.getElementById('pipeline-pagination');
             if (!pagEl) return;
 
-            const showingEl = document.getElementById('pipeline-showing-text');
-            const sizeEl = document.getElementById('pipeline-page-size-display');
-            if (sizeEl) sizeEl.value = PIPELINE_PAGE_SIZE;
-            if (showingEl) {
-                if (totalItems === 0) {
-                    showingEl.innerText = 'No entries';
-                } else {
-                    const startIdx = (currentPipelinePage - 1) * PIPELINE_PAGE_SIZE + 1;
-                    const endIdx = Math.min(currentPipelinePage * PIPELINE_PAGE_SIZE, totalItems);
-                    showingEl.innerText = `Showing ${startIdx} to ${endIdx} of ${totalItems} entries`;
-                }
-            }
-
             const totalPages = Math.ceil(totalItems / PIPELINE_PAGE_SIZE);
             if (totalPages <= 1) {
                 pagEl.classList.add('hidden'); pagEl.style.display = 'none';
@@ -2063,7 +2015,7 @@
 
             let html = '';
             // Prev button
-            html += `<button onclick="goToPipelinePage(${currentPipelinePage - 1})" ${currentPipelinePage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === 1 ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-300 active:scale-95'}">‹</button>`;
+            html += `<button onclick="goToPipelinePage(${currentPipelinePage - 1})" ${currentPipelinePage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === 1 ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-300 border border-white/10 active:scale-95'}">‹</button>`;
 
             // Page number buttons (show window around current)
             const pages = [];
@@ -2079,12 +2031,12 @@
                     html += `<span class="px-2 text-gray-600 text-xs">…</span>`;
                 } else {
                     const isActive = p === currentPipelinePage;
-                    html += `<button onclick="goToPipelinePage(${p})" class="min-w-[36px] h-9 px-2 rounded-lg text-xs font-bold active:scale-95 ${isActive ? 'active brand-gradient text-white' : 'text-gray-300'}">${p}</button>`;
+                    html += `<button onclick="goToPipelinePage(${p})" class="min-w-[36px] h-9 px-2 rounded-lg text-xs font-bold active:scale-95 ${isActive ? 'brand-gradient text-white' : 'text-gray-300 border border-white/10'}">${p}</button>`;
                 }
             });
 
             // Next button
-            html += `<button onclick="goToPipelinePage(${currentPipelinePage + 1})" ${currentPipelinePage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === totalPages ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-300 active:scale-95'}">›</button>`;
+            html += `<button onclick="goToPipelinePage(${currentPipelinePage + 1})" ${currentPipelinePage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold ${currentPipelinePage === totalPages ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-300 border border-white/10 active:scale-95'}">›</button>`;
 
             pagEl.innerHTML = html;
         }
@@ -2378,7 +2330,6 @@
             document.body.classList.add('role-' + (activeRole || 'employee'));
             // Show + button only for admin/manager
             const assignBtn = document.getElementById('btn-open-assign-panel');
-            const createTaskCard = document.getElementById('create-task-summary-card');
             if (assignBtn) {
                 if (activeRole === 'admin' || activeRole === 'manager') {
                     assignBtn.classList.remove('hidden');
@@ -2386,15 +2337,6 @@
                 } else {
                     assignBtn.classList.add('hidden');
                     assignBtn.style.display = 'none';
-                }
-            }
-            if (createTaskCard) {
-                if (activeRole === 'admin' || activeRole === 'manager') {
-                    createTaskCard.classList.remove('hidden');
-                    createTaskCard.style.display = 'flex';
-                } else {
-                    createTaskCard.classList.add('hidden');
-                    createTaskCard.style.display = 'none';
                 }
             }
 
@@ -2566,6 +2508,7 @@
             document.getElementById('tab-content-reports').classList.add('hidden');
             document.getElementById('tab-content-history').classList.add('hidden');
             document.getElementById('tab-content-my-profile').classList.add('hidden');
+            document.getElementById('tab-content-hr').classList.add('hidden');
 
             // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
             // force it hidden by default on every tab switch, then re-show it (if applicable)
@@ -2602,6 +2545,10 @@
             } else if (targetTab === 'my-profile') {
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
+            } else if (targetTab === 'hr' && activeRole === 'admin') {
+                document.getElementById('nav-hr').classList.add('active');
+                document.getElementById('tab-content-hr').classList.remove('hidden');
+                initHRPanel();
             }
         }
 
@@ -3741,15 +3688,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // ── Header row ──
             const dowShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
             let headHtml = `<tr class="bg-[#181b30] text-[#6b74a0] uppercase tracking-wider text-[9px]">
-                <th class="py-2 px-2 sticky left-0 sticky-col-head z-10 text-left min-w-[40px]">#</th>
-                <th class="py-2 px-2 sticky left-[40px] sticky-col-head z-10 text-left min-w-[150px]">Employee</th>`;
+                <th class="py-2 px-2 sticky left-0 bg-[#181b30] z-10 text-left min-w-[40px]">#</th>
+                <th class="py-2 px-2 sticky left-[40px] bg-[#181b30] z-10 text-left min-w-[150px]">Employee</th>`;
             for (let d = 1; d <= daysInMonth; d++) {
                 const dt = new Date(year, month - 1, d);
                 const dow = dt.getDay();
                 const isWeekend = (dow === 0); // Sunday red
-                headHtml += `<th class="py-1 px-0.5 text-center min-w-[20px] ${isWeekend ? 'text-red-400' : ''}">
+                headHtml += `<th class="py-1 px-1 text-center min-w-[26px] ${isWeekend ? 'text-red-400' : ''}">
                     <div class="font-bold">${d}</div>
-                    <div class="text-[7px] font-normal opacity-70">${dowShort[dow]}</div>
+                    <div class="text-[8px] font-normal opacity-70">${dowShort[dow]}</div>
                 </th>`;
             }
             headHtml += `<th class="py-2 px-2 text-center min-w-[60px]">In</th>
@@ -3792,7 +3739,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         monthStatus = 'Present';
                     }
                     else if (isFuture) { mark = '·'; cls = 'text-gray-700'; }
-                    else if (dow === 0) { mark = 'HD'; cls = 'bg-blue-500/20 text-blue-400 text-[7px]'; totalHD++; }
                     else { mark = 'A'; cls = 'bg-red-500/15 text-red-400'; totalAbsent++; }
 
                     const clickable = activeRole === 'admin' && !isFuture;
@@ -3807,8 +3753,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     : `<span class="px-2 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-400 border border-red-500/25">Absent</span>`;
 
                 return `<tr class="border-b border-white/[0.06]/50 hover:bg-transparent/30">
-                    <td class="py-2 px-2 sticky left-0 sticky-col z-10 text-[#4a5182]">${idx + 1}</td>
-                    <td class="py-2 px-2 sticky left-[40px] sticky-col z-10 max-w-[150px] truncate">
+                    <td class="py-2 px-2 sticky left-0 bg-transparent z-10 text-[#4a5182]">${idx + 1}</td>
+                    <td class="py-2 px-2 sticky left-[40px] bg-transparent z-10">
                         <div class="font-bold text-white whitespace-nowrap">${u.name}</div>
                         <div class="text-[9px] text-[#4a5182]">${u.role}</div>
                     </td>
@@ -4081,17 +4027,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }).filter(Boolean).join(' | ');
         }
 
-        function findYouTubeUrl(text) {
-            if (!text) return null;
-            const m = text.match(/(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[^\s,;)]+)/i);
-            return m ? m[0] : null;
-        }
-        function ytDownloadPillHtml(url) {
-            return `<a href="https://mediabrkn01-crypto.github.io/video-downloder/?url=${encodeURIComponent(url)}" target="_blank" onclick="event.stopPropagation()" title="Download YouTube video" class="bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/40 border px-2 py-1 rounded font-bold transition-all duration-200 inline-flex items-center gap-1 text-[10px] whitespace-nowrap active:scale-95 mt-1">
-                <i data-lucide="download" class="w-3 h-3"></i> Download Video
-            </a>`;
-        }
-
         function buildMediaOutputMarkup(assetString, topicName) {
             if (!assetString) return `<span class="text-[#4a5182] italic text-[11px]">No deliverable</span>`;
 
@@ -4118,7 +4053,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const lowercaseAsset = url.toLowerCase();
                 const isFolder = lowercaseAsset.includes('/folders/');
                 const isDrive = lowercaseAsset.includes('drive.google.com') || lowercaseAsset.includes('docs.google.com');
-                const isYouTube = lowercaseAsset.includes('youtube.com/watch') || lowercaseAsset.includes('youtu.be/') || lowercaseAsset.includes('youtube.com/shorts');
 
                 // Determine display name
                 let displayName = label;
@@ -4141,13 +4075,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         ${icon} <span class="truncate">${shownName}</span>
                     </a>
                 `;
-                if (isYouTube) {
-                    html += `
-                        <a href="https://mediabrkn01-crypto.github.io/video-downloder/?url=${encodeURIComponent(url)}" target="_blank" title="Download YouTube video" class="bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/40 border px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[220px]">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> <span class="truncate">Download Video</span>
-                        </a>
-                    `;
-                }
             });
             html += '</div>';
             return html;
@@ -4881,13 +4808,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-transparent/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-white sticky left-0 sticky-col z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
+                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-transparent z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
-                    <td class="py-3 px-4 font-medium max-w-[160px]"><span class="truncate block">${t.assignedTo}</span><span class="text-[#4a5182] text-[10px] truncate block" title="${t.employeeEmail||''}">${t.employeeEmail||''}</span></td>
-                    <td class="py-3 px-4 text-[#6b74a0] max-w-xs cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">
-                        <span class="truncate block">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</span>
-                        ${findYouTubeUrl(t.description) ? ytDownloadPillHtml(findYouTubeUrl(t.description)) : ''}
-                    </td>
+                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-[#4a5182] text-[10px]">${t.employeeEmail}</span></td>
+                    <td class="py-3 px-4 text-[#6b74a0] max-w-xs truncate cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</td>
                     <td class="py-3 px-4 text-[#6b74a0] font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-white/70 font-mono font-semibold">${t.date}</td>
                     <td class="py-3 px-4" id="status-engine-cell-${t.id}">${inputActionSelectorMarkup}</td>
@@ -4933,7 +4857,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <div class="bg-transparent p-2.5 rounded-lg border border-white/[0.06]/40 space-y-1">
                         <p class="text-[#6b74a0] font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
                         <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
-                        ${findYouTubeUrl(t.description) ? ytDownloadPillHtml(findYouTubeUrl(t.description)) : ''}
                     </div>
                     <div class="${t.status === 'Completed' && t.explanation !== 'None' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-transparent border-yellow-500/10'} p-2.5 rounded-lg border space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
                         <p class="${t.status === 'Completed' ? 'text-emerald-400' : 'text-yellow-500'} font-bold text-[10px] uppercase tracking-wide">Evaluation Review Notes:</p>
@@ -5927,46 +5850,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (isHidden) {
                 document.getElementById('global-search-results').innerHTML =
                     '<p class="text-center text-[#4a5182] text-xs italic py-6">Start typing to search…</p>';
-                const inp = document.getElementById('corner-search-input');
-                if (inp) { inp.value = ''; setTimeout(() => { inp.focus(); positionSearchDropdown(); }, 80); }
+                document.getElementById('global-search-input').value = '';
+                setTimeout(() => document.getElementById('global-search-input')?.focus(), 80);
                 if (window.lucide) lucide.createIcons();
             }
         }
         function closeGlobalSearch() {
             document.getElementById('global-search-overlay')?.classList.add('hidden');
         }
-        function positionSearchDropdown() {
-            const overlay = document.getElementById('global-search-overlay');
-            const input = document.getElementById('corner-search-input');
-            if (!overlay || !input) return;
-            const wrap = input.closest('.icon-btn') || input;
-            const rect = wrap.getBoundingClientRect();
-            const width = overlay.offsetWidth || 320;
-            let left = rect.right - width;
-            if (left < 8) left = 8;
-            overlay.style.top = (rect.bottom + 8) + 'px';
-            overlay.style.left = left + 'px';
-            overlay.style.right = 'auto';
-        }
-        function handleHeaderSearchInput(val) {
-            const overlay = document.getElementById('global-search-overlay');
-            if (val && val.trim()) {
-                overlay.classList.remove('hidden');
-                positionSearchDropdown();
-            } else {
-                overlay.classList.add('hidden');
-            }
-            runGlobalSearch(val);
-        }
-        document.addEventListener('click', function(e) {
-            const overlay = document.getElementById('global-search-overlay');
-            const input = document.getElementById('corner-search-input');
-            if (!overlay || overlay.classList.contains('hidden')) return;
-            if (overlay.contains(e.target) || (input && input.contains(e.target))) return;
-            overlay.classList.add('hidden');
-        });
-        window.addEventListener('resize', positionSearchDropdown);
-
         function runGlobalSearch(query) {
             const results = document.getElementById('global-search-results');
             if (!results) return;
@@ -6197,9 +6088,496 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (activeUser) launchSession();
-        });
+        // ══════════════════════════════════════════════════════════════
+        // ══════════════════════════ HR PANEL ════════════════════════════
+        // ══════════════════════════════════════════════════════════════
+        const HR_DEPARTMENTS = {
+            education: ['English Pronunciation Trainers', 'Academic Team', 'Student Support', 'Online Trainers', 'Offline Trainers'],
+            production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators'],
+            other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
+        };
+        const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Unpaid Leave', 'Work From Home'];
+        const HR_ATT_STATUSES = ['present', 'absent', 'late', 'half_day', 'wfh'];
+
+        let hrEmployees = [];
+        let hrLeaveRequests = [];
+        let hrLeaveBalances = [];
+        let hrAttendance = [];
+        let hrPayroll = [];
+        let hrLoaded = false;
+        let hrEditingEmployeeId = null;
+        let hrCurrentSubtab = 'dashboard';
+
+        async function initHRPanel() {
+            if (!hrLoaded) {
+                await loadHRData();
+                hrLoaded = true;
+            }
+            document.getElementById('hr-att-date').value = document.getElementById('hr-att-date').value || new Date().toISOString().slice(0,10);
+            document.getElementById('hr-att-month').value = document.getElementById('hr-att-month').value || new Date().toISOString().slice(0,7);
+            document.getElementById('hr-payroll-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
+            switchHRSubtab(hrCurrentSubtab);
+        }
+
+        async function loadHRData() {
+            try {
+                const [emp, leaveReq, leaveBal, att, pay] = await Promise.all([
+                    dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
+                    dbInstance.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }),
+                    dbInstance.from('hr_leave_balances').select('*'),
+                    dbInstance.from('hr_attendance').select('*'),
+                    dbInstance.from('hr_payroll').select('*').order('month', { ascending: false })
+                ]);
+                hrEmployees = emp.data || [];
+                hrLeaveRequests = leaveReq.data || [];
+                hrLeaveBalances = leaveBal.data || [];
+                hrAttendance = att.data || [];
+                hrPayroll = pay.data || [];
+            } catch (e) {
+                console.warn('HR data load failed — have the HR tables been created in Supabase? See hr_schema.sql', e.message);
+            }
+        }
+
+        function switchHRSubtab(tab) {
+            hrCurrentSubtab = tab;
+            ['dashboard','employees','attendance','leave','payroll'].forEach(t => {
+                document.getElementById('hr-subnav-' + t).classList.toggle('active', t === tab);
+                document.getElementById('hr-sub-' + t).classList.toggle('hidden', t !== tab);
+            });
+            if (tab === 'dashboard') renderHRDashboard();
+            else if (tab === 'employees') renderHREmployees();
+            else if (tab === 'attendance') { renderHRAttendance(); renderHRMonthlyAttendance(); }
+            else if (tab === 'leave') { renderHRLeaveRequests(); renderHRLeaveBalances(); }
+            else if (tab === 'payroll') renderHRPayroll();
+        }
+
+        function hrEmpName(id) {
+            const e = hrEmployees.find(x => x.id === id);
+            return e ? e.full_name : '—';
+        }
+
+        // ---------- DASHBOARD ----------
+        function renderHRDashboard() {
+            const total = hrEmployees.length;
+            const active = hrEmployees.filter(e => e.employment_status === 'active').length;
+            const now = new Date();
+            const thisMonth = now.getMonth(), thisYear = now.getFullYear();
+            const newThisMonth = hrEmployees.filter(e => e.joining_date && new Date(e.joining_date).getMonth() === thisMonth && new Date(e.joining_date).getFullYear() === thisYear).length;
+            const todayStr = now.toISOString().slice(0,10);
+            const todayPresent = hrAttendance.filter(a => a.att_date === todayStr && ['present','late','half_day','wfh'].includes(a.status)).length;
+            const onLeaveToday = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr).length;
+            const pendingLeave = hrLeaveRequests.filter(r => r.status === 'pending').length;
+
+            const stats = [
+                { label: 'Total Employees', num: total },
+                { label: 'Active Employees', num: active },
+                { label: 'New This Month', num: newThisMonth },
+                { label: "Today's Attendance", num: todayPresent },
+                { label: 'On Leave Today', num: onLeaveToday },
+                { label: 'Pending Leave Requests', num: pendingLeave },
+                { label: 'Pending HR Tasks', num: pendingLeave },
+                { label: 'Departments Active', num: new Set(hrEmployees.map(e=>e.department)).size }
+            ];
+            document.getElementById('hr-dash-stats').innerHTML = stats.map(s => `
+                <div class="hr-stat-card"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>
+            `).join('');
+
+            const pendingRows = hrLeaveRequests.filter(r => r.status === 'pending').slice(0, 8);
+            document.getElementById('hr-dash-pending-leave').innerHTML = pendingRows.length ? pendingRows.map(r => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                    <span>${hrEmpName(r.employee_id)} — ${r.leave_type} (${r.start_date} → ${r.end_date})</span>
+                    <span class="hr-badge hr-badge-pending">Pending</span>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs">No pending requests.</p>';
+
+            // birthdays & anniversaries in next 30 days
+            const events = [];
+            hrEmployees.forEach(e => {
+                if (e.dob) events.push(hrNextOccurrence(e.dob, e.full_name, 'Birthday'));
+                if (e.joining_date) events.push(hrNextOccurrence(e.joining_date, e.full_name, 'Work Anniversary'));
+            });
+            const upcoming = events.filter(ev => ev && ev.daysAway <= 30).sort((a,b) => a.daysAway - b.daysAway).slice(0, 8);
+            document.getElementById('hr-dash-events').innerHTML = upcoming.length ? upcoming.map(ev => `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                    <span>${ev.name} — ${ev.label}</span><span class="text-[#6b74a0]">${ev.daysAway === 0 ? 'Today' : ev.daysAway + 'd'}</span>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs">None in the next 30 days.</p>';
+        }
+
+        function hrNextOccurrence(dateStr, name, label) {
+            const d = new Date(dateStr);
+            if (isNaN(d)) return null;
+            const now = new Date(); now.setHours(0,0,0,0);
+            let next = new Date(now.getFullYear(), d.getMonth(), d.getDate());
+            if (next < now) next = new Date(now.getFullYear()+1, d.getMonth(), d.getDate());
+            const daysAway = Math.round((next - now) / 86400000);
+            return { name, label, daysAway };
+        }
+
+        // ---------- EMPLOYEES ----------
+        function populateHRDeptOptions() {
+            const div = document.getElementById('hr-emp-division').value;
+            const sel = document.getElementById('hr-emp-department');
+            sel.innerHTML = HR_DEPARTMENTS[div].map(d => `<option value="${d}">${d}</option>`).join('');
+        }
+
+        function openHREmployeeModal(id = null) {
+            hrEditingEmployeeId = id;
+            document.getElementById('hr-employee-modal-title').textContent = id ? 'Edit Employee' : 'Add Employee';
+            const e = id ? hrEmployees.find(x => x.id === id) : null;
+            document.getElementById('hr-emp-id').value = e?.employee_id || '';
+            document.getElementById('hr-emp-name').value = e?.full_name || '';
+            document.getElementById('hr-emp-division').value = e?.division || 'education';
+            populateHRDeptOptions();
+            if (e?.department) document.getElementById('hr-emp-department').value = e.department;
+            document.getElementById('hr-emp-designation').value = e?.designation || '';
+            document.getElementById('hr-emp-joining').value = e?.joining_date || '';
+            document.getElementById('hr-emp-status').value = e?.employment_status || 'active';
+            document.getElementById('hr-emp-dob').value = e?.dob || '';
+            document.getElementById('hr-emp-phone').value = e?.phone || '';
+            document.getElementById('hr-emp-email').value = e?.portal_email || '';
+            document.getElementById('hr-emp-ec-name').value = e?.emergency_contact_name || '';
+            document.getElementById('hr-emp-ec-phone').value = e?.emergency_contact_phone || '';
+            document.getElementById('hr-emp-docs').value = e?.document_links || '';
+            document.getElementById('hr-emp-notes').value = e?.notes || '';
+            document.getElementById('hr-employee-modal').classList.remove('hidden');
+            document.getElementById('hr-employee-modal').classList.add('flex');
+        }
+        function closeHREmployeeModal() {
+            document.getElementById('hr-employee-modal').classList.add('hidden');
+            document.getElementById('hr-employee-modal').classList.remove('flex');
+        }
+
+        async function saveHREmployee() {
+            const name = document.getElementById('hr-emp-name').value.trim();
+            if (!name) { alert('Full name is required.'); return; }
+            const payload = {
+                employee_id: document.getElementById('hr-emp-id').value.trim(),
+                full_name: name,
+                division: document.getElementById('hr-emp-division').value,
+                department: document.getElementById('hr-emp-department').value,
+                designation: document.getElementById('hr-emp-designation').value.trim(),
+                joining_date: document.getElementById('hr-emp-joining').value || null,
+                employment_status: document.getElementById('hr-emp-status').value,
+                dob: document.getElementById('hr-emp-dob').value || null,
+                phone: document.getElementById('hr-emp-phone').value.trim(),
+                portal_email: document.getElementById('hr-emp-email').value.trim().toLowerCase(),
+                emergency_contact_name: document.getElementById('hr-emp-ec-name').value.trim(),
+                emergency_contact_phone: document.getElementById('hr-emp-ec-phone').value.trim(),
+                document_links: document.getElementById('hr-emp-docs').value.trim(),
+                notes: document.getElementById('hr-emp-notes').value.trim()
+            };
+            try {
+                if (hrEditingEmployeeId) {
+                    await dbInstance.from('hr_employees').update(payload).eq('id', hrEditingEmployeeId);
+                } else {
+                    await dbInstance.from('hr_employees').insert([payload]);
+                }
+                closeHREmployeeModal();
+                await loadHRData();
+                renderHREmployees();
+                renderHRDashboard();
+            } catch (e) {
+                alert('Could not save employee: ' + e.message);
+            }
+        }
+
+        async function deleteHREmployee(id) {
+            if (!confirm('Remove this employee record? This does not delete related payroll/leave history.')) return;
+            await dbInstance.from('hr_employees').delete().eq('id', id);
+            await loadHRData();
+            renderHREmployees();
+        }
+
+        function renderHREmployees() {
+            const div = document.getElementById('hr-emp-filter-division').value;
+            const status = document.getElementById('hr-emp-filter-status').value;
+            const q = document.getElementById('hr-emp-search').value.toLowerCase();
+            let rows = hrEmployees.filter(e =>
+                (!div || e.division === div) &&
+                (!status || e.employment_status === status) &&
+                (!q || [e.full_name, e.employee_id, e.department].join(' ').toLowerCase().includes(q))
+            );
+            document.getElementById('hr-employees-rows').innerHTML = rows.length ? rows.map(e => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.employee_id || '—'}</td>
+                    <td class="py-2.5 px-4 text-white font-semibold cursor-pointer" onclick="viewHREmployee('${e.id}')">${e.full_name}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.joining_date || '—'}</td>
+                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span></td>
+                    <td class="py-2.5 px-4 text-center">
+                        <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
+                        <button onclick="deleteHREmployee('${e.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
+                    </td>
+                </tr>
+            `).join('') : `<tr><td colspan="8" class="py-8 text-center text-[#4a5182] text-xs">No employees found.</td></tr>`;
+        }
+
+        function viewHREmployee(id) {
+            const e = hrEmployees.find(x => x.id === id);
+            if (!e) return;
+            const docs = (e.document_links || '').split(',').map(s => s.trim()).filter(Boolean);
+            const body = `Employee ID: ${e.employee_id || '—'}
+Division: ${e.division}
+Department: ${e.department || '—'}
+Designation: ${e.designation || '—'}
+Joined: ${e.joining_date || '—'}
+Status: ${e.employment_status}
+DOB: ${e.dob || '—'}
+Phone: ${e.phone || '—'}
+Portal Email: ${e.portal_email || '—'}
+Emergency Contact: ${e.emergency_contact_name || '—'} (${e.emergency_contact_phone || '—'})
+
+Documents:
+${docs.length ? docs.join('\\n') : 'None on file'}
+
+Notes / History:
+${e.notes || '—'}`;
+            document.getElementById('note-modal-body').textContent = body;
+            document.getElementById('note-modal').classList.remove('hidden');
+            document.getElementById('note-modal').classList.add('flex');
+        }
+
+        // ---------- ATTENDANCE ----------
+        function setHRAttDateToday() {
+            document.getElementById('hr-att-date').value = new Date().toISOString().slice(0,10);
+            renderHRAttendance();
+        }
+
+        async function setHRAttendanceStatus(employeeId, status) {
+            const date = document.getElementById('hr-att-date').value;
+            const existing = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === date);
+            try {
+                if (existing) {
+                    await dbInstance.from('hr_attendance').update({ status }).eq('id', existing.id);
+                } else {
+                    await dbInstance.from('hr_attendance').insert([{ employee_id: employeeId, att_date: date, status }]);
+                }
+                await loadHRData();
+                renderHRAttendance();
+            } catch (e) { alert('Could not update attendance: ' + e.message); }
+        }
+
+        function renderHRAttendance() {
+            const date = document.getElementById('hr-att-date').value;
+            const active = hrEmployees.filter(e => e.employment_status === 'active');
+            document.getElementById('hr-attendance-rows').innerHTML = active.length ? active.map(e => {
+                const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === date);
+                const portalLog = e.portal_email ? (window._hrAttendanceLogsCache || []).find(l => (l.email||'').toLowerCase() === e.portal_email && l.log_date === date) : null;
+                const status = rec?.status || (portalLog ? 'present' : '');
+                return `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${e.full_name}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
+                    <td class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}">${status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
+                    <td class="py-2.5 px-4 text-center">
+                        <select class="hr-select" onchange="setHRAttendanceStatus('${e.id}', this.value)">
+                            <option value="">Set…</option>
+                            ${HR_ATT_STATUSES.map(s => `<option value="${s}" ${status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+                        </select>
+                    </td>
+                </tr>`;
+            }).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet — add employees first.</td></tr>`;
+        }
+
+        function renderHRMonthlyAttendance() {
+            const month = document.getElementById('hr-att-month').value;
+            if (!month) return;
+            const active = hrEmployees.filter(e => e.employment_status === 'active');
+            const rows = active.map(e => {
+                const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month));
+                const counts = { present:0, absent:0, late:0, half_day:0, wfh:0 };
+                recs.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
+                return { name: e.full_name, counts };
+            });
+            document.getElementById('hr-att-monthly-report').innerHTML = `
+                <table class="w-full text-sm text-left">
+                    <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                        <th class="py-2 pr-4">Employee</th><th class="py-2 pr-4">Present</th><th class="py-2 pr-4">Absent</th><th class="py-2 pr-4">Late</th><th class="py-2 pr-4">Half Day</th><th class="py-2 pr-4">WFH</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-white/[0.05]">
+                        ${rows.map(r => `<tr><td class="py-2 pr-4 text-white">${r.name}</td><td class="py-2 pr-4">${r.counts.present}</td><td class="py-2 pr-4">${r.counts.absent}</td><td class="py-2 pr-4">${r.counts.late}</td><td class="py-2 pr-4">${r.counts.half_day}</td><td class="py-2 pr-4">${r.counts.wfh}</td></tr>`).join('') || `<tr><td colspan="6" class="py-4 text-center text-[#4a5182] text-xs">No data.</td></tr>`}
+                    </tbody>
+                </table>`;
+        }
+
+        // ---------- LEAVE ----------
+        function renderHRLeaveRequests() {
+            const rows = hrLeaveRequests.slice(0, 30);
+            document.getElementById('hr-leave-requests-rows').innerHTML = rows.length ? rows.map(r => `
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
+                    <div>
+                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}</div>
+                        <div class="text-[#6b74a0] text-xs">${r.start_date} → ${r.end_date} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span class="hr-badge hr-badge-${r.status}">${r.status}</span>
+                        ${r.status === 'pending' ? `
+                            <button onclick="decideHRLeave('${r.id}','approved')" class="hr-icon-btn" style="color:#4ade80">Approve</button>
+                            <button onclick="decideHRLeave('${r.id}','rejected')" class="hr-icon-btn" style="color:#f87171">Reject</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
+        }
+
+        async function decideHRLeave(id, status) {
+            const req = hrLeaveRequests.find(r => r.id === id);
+            try {
+                await dbInstance.from('hr_leave_requests').update({ status, decided_at: new Date().toISOString() }).eq('id', id);
+                if (status === 'approved' && req) {
+                    const bal = hrLeaveBalances.find(b => b.employee_id === req.employee_id && b.leave_type === req.leave_type);
+                    if (bal) {
+                        await dbInstance.from('hr_leave_balances').update({ used: (bal.used || 0) + (req.days || 0) }).eq('id', bal.id);
+                    }
+                }
+                await loadHRData();
+                renderHRLeaveRequests();
+                renderHRLeaveBalances();
+                renderHRDashboard();
+            } catch (e) { alert('Could not update leave request: ' + e.message); }
+        }
+
+        function openHRLeaveBalanceModal() {
+            document.getElementById('hr-lb-employee').innerHTML = hrEmployees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
+            document.getElementById('hr-lb-allotted').value = '';
+            document.getElementById('hr-leave-balance-modal').classList.remove('hidden');
+            document.getElementById('hr-leave-balance-modal').classList.add('flex');
+        }
+        function closeHRLeaveBalanceModal() {
+            document.getElementById('hr-leave-balance-modal').classList.add('hidden');
+            document.getElementById('hr-leave-balance-modal').classList.remove('flex');
+        }
+        async function saveHRLeaveBalance() {
+            const employee_id = document.getElementById('hr-lb-employee').value;
+            const leave_type = document.getElementById('hr-lb-type').value;
+            const allotted = parseFloat(document.getElementById('hr-lb-allotted').value) || 0;
+            if (!employee_id) { alert('Select an employee.'); return; }
+            try {
+                const existing = hrLeaveBalances.find(b => b.employee_id === employee_id && b.leave_type === leave_type);
+                if (existing) {
+                    await dbInstance.from('hr_leave_balances').update({ allotted }).eq('id', existing.id);
+                } else {
+                    await dbInstance.from('hr_leave_balances').insert([{ employee_id, leave_type, allotted, used: 0 }]);
+                }
+                closeHRLeaveBalanceModal();
+                await loadHRData();
+                renderHRLeaveBalances();
+            } catch (e) { alert('Could not save balance: ' + e.message); }
+        }
+
+        function renderHRLeaveBalances() {
+            document.getElementById('hr-leave-balance-rows').innerHTML = hrLeaveBalances.length ? hrLeaveBalances.map(b => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${hrEmpName(b.employee_id)}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${b.leave_type}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${b.allotted}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${b.used || 0}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${(b.allotted || 0) - (b.used || 0)}</td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="openHRLeaveBalanceModal()" class="hr-icon-btn">Edit</button></td>
+                </tr>
+            `).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No leave balances set.</td></tr>`;
+        }
+
+        // ---------- PAYROLL ----------
+        function updateHRPayrollNetPreview() {
+            const g = id => parseFloat(document.getElementById(id).value) || 0;
+            const net = g('hr-pr-basic') + g('hr-pr-allowances') + g('hr-pr-overtime') + g('hr-pr-bonuses') - g('hr-pr-deductions') - g('hr-pr-advances');
+            document.getElementById('hr-pr-net-preview').textContent = '₹' + net.toLocaleString('en-IN');
+        }
+
+        function openHRPayrollModal() {
+            document.getElementById('hr-pr-employee').innerHTML = hrEmployees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
+            document.getElementById('hr-pr-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
+            ['hr-pr-basic','hr-pr-allowances','hr-pr-overtime','hr-pr-bonuses','hr-pr-deductions','hr-pr-advances'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('hr-pr-status').value = 'pending';
+            updateHRPayrollNetPreview();
+            document.getElementById('hr-payroll-modal').classList.remove('hidden');
+            document.getElementById('hr-payroll-modal').classList.add('flex');
+        }
+        function closeHRPayrollModal() {
+            document.getElementById('hr-payroll-modal').classList.add('hidden');
+            document.getElementById('hr-payroll-modal').classList.remove('flex');
+        }
+
+        async function saveHRPayroll() {
+            const g = id => parseFloat(document.getElementById(id).value) || 0;
+            const employee_id = document.getElementById('hr-pr-employee').value;
+            const month = document.getElementById('hr-pr-month').value;
+            if (!employee_id || !month) { alert('Employee and month are required.'); return; }
+            const basic = g('hr-pr-basic'), allowances = g('hr-pr-allowances'), overtime = g('hr-pr-overtime'),
+                  bonuses = g('hr-pr-bonuses'), deductions = g('hr-pr-deductions'), advances = g('hr-pr-advances');
+            const net_salary = basic + allowances + overtime + bonuses - deductions - advances;
+            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, net_salary, payment_status: document.getElementById('hr-pr-status').value };
+            try {
+                await dbInstance.from('hr_payroll').insert([payload]);
+                closeHRPayrollModal();
+                await loadHRData();
+                renderHRPayroll();
+            } catch (e) { alert('Could not save payroll entry: ' + e.message); }
+        }
+
+        function renderHRPayroll() {
+            const month = document.getElementById('hr-payroll-month').value;
+            const rows = hrPayroll.filter(p => !month || p.month === month);
+            document.getElementById('hr-payroll-rows').innerHTML = rows.length ? rows.map(p => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${hrEmpName(p.employee_id)}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.basic||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.allowances||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.overtime||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.bonuses||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.deductions||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.advances||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
+                    <td class="py-2.5 px-4 text-center">
+                        <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button>
+                        ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Mark Paid</button>` : ''}
+                    </td>
+                </tr>
+            `).join('') : `<tr><td colspan="10" class="py-8 text-center text-[#4a5182] text-xs">No payroll entries for this month.</td></tr>`;
+        }
+
+        async function markHRPayrollPaid(id) {
+            await dbInstance.from('hr_payroll').update({ payment_status: 'paid' }).eq('id', id);
+            await loadHRData();
+            renderHRPayroll();
+        }
+
+        function downloadHRPayslip(id) {
+            const p = hrPayroll.find(x => x.id === id);
+            if (!p) return;
+            const e = hrEmployees.find(x => x.id === p.employee_id);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(16); doc.text('Payslip', 14, 18);
+            doc.setFontSize(10); doc.text(`Month: ${p.month}`, 14, 26);
+            doc.text(`Employee: ${e?.full_name || '—'}`, 14, 33);
+            doc.text(`Employee ID: ${e?.employee_id || '—'}`, 14, 39);
+            doc.text(`Department: ${e?.department || '—'}`, 14, 45);
+            doc.text(`Designation: ${e?.designation || '—'}`, 14, 51);
+            let y = 64;
+            const line = (label, val) => { doc.text(label, 14, y); doc.text('Rs. ' + Number(val||0).toLocaleString('en-IN'), 150, y, { align: 'right' }); y += 8; };
+            doc.setFontSize(11); doc.text('Earnings', 14, y); y += 8; doc.setFontSize(10);
+            line('Basic Salary', p.basic);
+            line('Allowances', p.allowances);
+            line('Overtime', p.overtime);
+            line('Bonuses', p.bonuses);
+            y += 2; doc.setFontSize(11); doc.text('Deductions', 14, y); y += 8; doc.setFontSize(10);
+            line('Deductions', p.deductions);
+            line('Advances', p.advances);
+            y += 4;
+            doc.setFontSize(12); doc.setFont(undefined, 'bold');
+            doc.text('Net Salary', 14, y); doc.text('Rs. ' + Number(p.net_salary||0).toLocaleString('en-IN'), 150, y, { align: 'right' });
+            doc.setFont(undefined, 'normal'); y += 10;
+            doc.setFontSize(9); doc.setTextColor(120); doc.text(`Payment Status: ${p.payment_status}`, 14, y);
+            doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
+        }
     </script>    <!-- Chat incoming-message toast -->
     <div id="chat-toast" class="hidden fixed bottom-5 right-5 z-[9999] bg-transparent border border-orange-500/40 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 cursor-pointer" onclick="switchTab('chat'); document.getElementById('chat-toast').classList.add('hidden');">
         <i data-lucide="message-circle" class="w-4 h-4 text-white/70 shrink-0"></i>
