@@ -411,6 +411,17 @@
         .hr-badge-wfh { background:rgba(168,85,247,0.15); color:#c084fc; }
         .hr-badge-on_leave { background:rgba(250,204,21,0.15); color:#facc15; }
         .hr-badge-holiday { background:rgba(59,130,246,0.15); color:#60a5fa; }
+        .hr-att-grid { border-collapse:collapse; font-size:11px; white-space:nowrap; }
+        .hr-att-grid th, .hr-att-grid td { padding:6px 8px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .hr-att-grid th.hr-att-sticky, .hr-att-grid td.hr-att-sticky { position:sticky; left:0; background:#0d1120; z-index:2; text-align:left; box-shadow:2px 0 4px rgba(0,0,0,0.3); }
+        .hr-att-grid th.hr-att-sticky2, .hr-att-grid td.hr-att-sticky2 { position:sticky; left:44px; background:#0d1120; z-index:2; text-align:left; box-shadow:2px 0 4px rgba(0,0,0,0.3); }
+        .hr-att-cell-P { color:#4ade80; font-weight:700; }
+        .hr-att-cell-A { color:#f87171; font-weight:700; }
+        .hr-att-cell-L { color:#facc15; font-weight:700; }
+        .hr-att-cell-PL { color:#60a5fa; font-weight:700; }
+        .hr-att-cell-WO { color:#5b6389; }
+        .hr-att-cell-H { color:#c084fc; font-weight:700; }
+        .hr-att-cell-blank { color:#3a4062; }
         .hr-badge-pending { background:rgba(250,204,21,0.15); color:#facc15; }
         .hr-badge-approved { background:rgba(34,197,94,0.15); color:#4ade80; }
         .hr-badge-rejected { background:rgba(239,68,68,0.15); color:#f87171; }
@@ -1738,14 +1749,33 @@
 
                 <!-- HR: ATTENDANCE REPORTS -->
                 <div id="hr-sub-att-reports" class="space-y-4 hidden">
-                    <h1 class="text-xl font-bold tracking-tight">Attendance Reports</h1>
-                    <div class="card glass-card p-4 rounded-2xl">
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <input id="hr-att-month" type="month" class="hr-input" onchange="renderHRMonthlyAttendance()">
-                            <span class="text-[11px] text-[#6b74a0]">Present / Absent / Late / Half-day / WFH totals per employee</span>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Monthly Attendance Overview</h1>
+                            <p class="text-[#6b74a0] text-xs mt-1">View and track everyone's attendance for the selected month.</p>
                         </div>
-                        <div id="hr-att-monthly-report" class="mt-3 overflow-x-auto"></div>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <button onclick="shiftHRAttReportMonth(-1)" class="hr-select" style="cursor:pointer;padding:8px 12px">‹</button>
+                            <input id="hr-att-month" type="month" class="hr-input" onchange="renderHRMonthlyAttendance()">
+                            <button onclick="shiftHRAttReportMonth(1)" class="hr-select" style="cursor:pointer;padding:8px 12px">›</button>
+                        </div>
                     </div>
+
+                    <div id="hr-att-report-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
+
+                    <div class="card glass-card p-3 rounded-2xl" style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px">
+                        <span><b class="text-green-400">P</b> = Present</span>
+                        <span><b class="text-red-400">A</b> = Absent</span>
+                        <span><b class="text-yellow-400">L</b> = Late</span>
+                        <span><b class="text-blue-400">PL</b> = Paid Leave</span>
+                        <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
+                        <span><b class="text-purple-400">H</b> = Holiday</span>
+                    </div>
+
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <div id="hr-att-monthly-report"></div>
+                    </div>
+                    <p class="text-[10px] text-[#4a5182]">All times are shown in local time. Averages are calculated based on present days only.</p>
                 </div>
 
                 <!-- HR: LEAVE REQUESTS -->
@@ -7186,25 +7216,150 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet — add employees first.</td></tr>`;
         }
 
+        function shiftHRAttReportMonth(delta) {
+            const input = document.getElementById('hr-att-month');
+            const [y, m] = (input.value || new Date().toISOString().slice(0,7)).split('-').map(Number);
+            const d = new Date(y, m - 1 + delta, 1);
+            input.value = d.toISOString().slice(0,7);
+            renderHRMonthlyAttendance();
+        }
+
+        // Classifies a single employee-day into the P/A/L/PL/WO/H grid code.
+        function hrAttDayCode(employee, dateStr, dayOfWeek) {
+            if (employee.joining_date && dateStr < employee.joining_date) return null; // before joining — blank
+            if (hrIsHoliday(dateStr)) return 'H';
+            const rec = hrAttendance.find(a => a.employee_id === employee.id && a.att_date === dateStr);
+            if (rec) {
+                if (rec.status === 'holiday') return 'H';
+                if (rec.status === 'absent') return 'A';
+                if (rec.status === 'late') return 'L';
+                if (rec.status === 'on_leave') {
+                    const leave = hrLeaveRequests.find(r => r.employee_id === employee.id && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
+                    return (leave && leave.leave_type === 'Unpaid Leave') ? 'A' : 'PL';
+                }
+                return 'P'; // present, half_day, wfh
+            }
+            if (dayOfWeek === 0 || dayOfWeek === 6) return 'WO'; // Saturday/Sunday, not otherwise marked
+            const today = new Date().toISOString().slice(0,10);
+            if (dateStr > today) return null; // future, unmarked — blank
+            return null; // past, unmarked — blank rather than assuming Present
+        }
+
         function renderHRMonthlyAttendance() {
             const month = document.getElementById('hr-att-month').value;
             if (!month) return;
+            const [y, m] = month.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const dayNums = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+            const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
             const active = hrEmployees.filter(e => e.employment_status === 'active');
-            const rows = active.map(e => {
-                const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month));
-                const counts = { present:0, absent:0, late:0, half_day:0, wfh:0 };
-                recs.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
-                return { name: e.full_name, counts };
+
+            // Per-employee day codes + summary
+            const empRows = active.map(e => {
+                const codes = dayNums.map(d => {
+                    const dateStr = `${month}-${String(d).padStart(2,'0')}`;
+                    const dow = new Date(y, m - 1, d).getDay();
+                    return { day: d, dow, code: hrAttDayCode(e, dateStr, dow) };
+                });
+                const present = codes.filter(c => c.code === 'P' || c.code === 'PL').length;
+                const absent = codes.filter(c => c.code === 'A').length;
+                const late = codes.filter(c => c.code === 'L').length;
+                const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month) && a.clock_in_time && a.clock_out_time);
+                let avgHours = '—', avgIn = '—', avgOut = '—';
+                if (recs.length) {
+                    const totalHrs = recs.reduce((s, r) => s + (new Date(r.clock_out_time) - new Date(r.clock_in_time)) / 3600000, 0);
+                    avgHours = (totalHrs / recs.length).toFixed(2).replace(/\.00$/,'') + 'h';
+                    const avgSecIn = recs.reduce((s, r) => s + (new Date(r.clock_in_time).getHours()*3600 + new Date(r.clock_in_time).getMinutes()*60), 0) / recs.length;
+                    const avgSecOut = recs.reduce((s, r) => s + (new Date(r.clock_out_time).getHours()*3600 + new Date(r.clock_out_time).getMinutes()*60), 0) / recs.length;
+                    const fmt = secs => { const h = Math.floor(secs/3600), mi = Math.round((secs%3600)/60); const ampm = h>=12?'PM':'AM'; const h12 = ((h+11)%12)+1; return `${String(h12).padStart(2,'0')}:${String(mi).padStart(2,'0')} ${ampm}`; };
+                    avgIn = fmt(avgSecIn); avgOut = fmt(avgSecOut);
+                }
+                return { emp: e, codes, present, absent, late, avgHours, avgIn, avgOut };
             });
+
+            // Daily aggregate rows
+            const dailyPresent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (['P','PL'].includes(r.codes[i].code) ? 1 : 0), 0));
+            const dailyAbsent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (r.codes[i].code === 'A' ? 1 : 0), 0));
+            const dailyLate = dayNums.map((d, i) => empRows.reduce((s, r) => s + (r.codes[i].code === 'L' ? 1 : 0), 0));
+            const dailyPct = dayNums.map((d, i) => {
+                const marked = empRows.filter(r => r.codes[i].code && !['WO','H'].includes(r.codes[i].code));
+                if (!marked.length) return '—';
+                const present = marked.filter(r => ['P','PL','L'].includes(r.codes[i].code)).length;
+                return Math.round((present / marked.length) * 100) + '%';
+            });
+
+            // Top summary stat cards
+            const totalPresentDays = empRows.reduce((s, r) => s + r.present, 0);
+            const totalAbsentDays = empRows.reduce((s, r) => s + r.absent, 0);
+            const totalLateDays = empRows.reduce((s, r) => s + r.late, 0);
+            const totalMarked = totalPresentDays + totalAbsentDays + totalLateDays;
+            const allHourRecs = empRows.filter(r => r.avgHours !== '—');
+            const overallAvgHours = allHourRecs.length ? (allHourRecs.reduce((s,r) => s + parseFloat(r.avgHours), 0) / allHourRecs.length) : 0;
+            const workDays = dayNums.filter(d => { const dow = new Date(y, m-1, d).getDay(); return dow !== 0 && dow !== 6; }).length;
+            document.getElementById('hr-att-report-stats').innerHTML = [
+                { label: 'Total Employees', num: active.length },
+                { label: 'Present Days', num: totalPresentDays + (totalMarked ? ` (${Math.round(totalPresentDays/totalMarked*100)}%)` : '') },
+                { label: 'Absent Days', num: totalAbsentDays + (totalMarked ? ` (${Math.round(totalAbsentDays/totalMarked*100)}%)` : '') },
+                { label: 'Late Days', num: totalLateDays + (totalMarked ? ` (${Math.round(totalLateDays/totalMarked*100)}%)` : '') },
+                { label: 'Avg Work Hours', num: overallAvgHours ? overallAvgHours.toFixed(2).replace(/\.00$/,'') + 'h' : '—' },
+                { label: 'Total Work Days', num: workDays }
+            ].map(s => `<div class="hr-stat-card"><div class="num" style="font-size:16px">${s.num}</div><div class="label">${s.label}</div></div>`).join('');
+
+            // Grid table
+            const codeClass = c => c ? `hr-att-cell-${c}` : 'hr-att-cell-blank';
+            const codeLabel = c => c || '—';
             document.getElementById('hr-att-monthly-report').innerHTML = `
-                <table class="w-full text-sm text-left">
-                    <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                        <th class="py-2 pr-4">Employee</th><th class="py-2 pr-4">Present</th><th class="py-2 pr-4">Absent</th><th class="py-2 pr-4">Late</th><th class="py-2 pr-4">Half Day</th><th class="py-2 pr-4">WFH</th>
-                    </tr></thead>
-                    <tbody class="divide-y divide-white/[0.05]">
-                        ${rows.map(r => `<tr><td class="py-2 pr-4 text-white">${r.name}</td><td class="py-2 pr-4">${r.counts.present}</td><td class="py-2 pr-4">${r.counts.absent}</td><td class="py-2 pr-4">${r.counts.late}</td><td class="py-2 pr-4">${r.counts.half_day}</td><td class="py-2 pr-4">${r.counts.wfh}</td></tr>`).join('') || `<tr><td colspan="6" class="py-4 text-center text-[#4a5182] text-xs">No data.</td></tr>`}
+                <table class="hr-att-grid">
+                    <thead>
+                        <tr>
+                            <th class="hr-att-sticky" rowspan="2" style="width:44px">ID</th>
+                            <th class="hr-att-sticky2" rowspan="2" style="width:140px">Employee Name</th>
+                            <th colspan="${daysInMonth}" style="border-bottom:1px solid rgba(255,255,255,0.08)">${new Date(y, m-1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</th>
+                            <th rowspan="2">Present</th><th rowspan="2">Absent</th><th rowspan="2">Late</th><th rowspan="2">Avg Hours</th><th rowspan="2">Check In<br>(Avg)</th><th rowspan="2">Check Out<br>(Avg)</th>
+                        </tr>
+                        <tr>
+                            ${dayNums.map(d => `<th style="color:#6b74a0">${String(d).padStart(2,'0')}<br><span style="font-size:9px">${dowLabels[new Date(y,m-1,d).getDay()]}</span></th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${empRows.map(r => `
+                            <tr>
+                                <td class="hr-att-sticky" style="color:#8890b5">${r.emp.employee_id || '—'}</td>
+                                <td class="hr-att-sticky2" style="color:#fff;font-weight:600">${r.emp.full_name}</td>
+                                ${r.codes.map(c => `<td class="${codeClass(c.code)}">${codeLabel(c.code)}</td>`).join('')}
+                                <td style="color:#4ade80;font-weight:700">${r.present}</td>
+                                <td style="color:#f87171;font-weight:700">${r.absent}</td>
+                                <td style="color:#facc15;font-weight:700">${r.late}</td>
+                                <td style="color:#a5adcf">${r.avgHours}</td>
+                                <td style="color:#a5adcf">${r.avgIn}</td>
+                                <td style="color:#a5adcf">${r.avgOut}</td>
+                            </tr>
+                        `).join('') || `<tr><td colspan="${daysInMonth+8}" style="padding:24px;color:#4a5182">No active employees yet.</td></tr>`}
                     </tbody>
+                    ${empRows.length ? `<tfoot>
+                        <tr style="border-top:1px solid rgba(255,255,255,0.1)">
+                            <td class="hr-att-sticky" colspan="2" style="color:#8890b5;text-align:left;font-weight:600">Daily Present Count</td>
+                            ${dailyPresent.map(n => `<td style="color:#4ade80">${n}</td>`).join('')}
+                            <td colspan="6"></td>
+                        </tr>
+                        <tr>
+                            <td class="hr-att-sticky" colspan="2" style="color:#8890b5;text-align:left;font-weight:600">Daily Absent Count</td>
+                            ${dailyAbsent.map(n => `<td style="color:#f87171">${n}</td>`).join('')}
+                            <td colspan="6"></td>
+                        </tr>
+                        <tr>
+                            <td class="hr-att-sticky" colspan="2" style="color:#8890b5;text-align:left;font-weight:600">Daily Late Count</td>
+                            ${dailyLate.map(n => `<td style="color:#facc15">${n}</td>`).join('')}
+                            <td colspan="6"></td>
+                        </tr>
+                        <tr>
+                            <td class="hr-att-sticky" colspan="2" style="color:#8890b5;text-align:left;font-weight:600">Attendance %</td>
+                            ${dailyPct.map(p => `<td style="color:#a5adcf">${p}</td>`).join('')}
+                            <td colspan="6"></td>
+                        </tr>
+                    </tfoot>` : ''}
                 </table>`;
+            if (window.lucide) lucide.createIcons();
         }
 
         // ---------- LEAVE ----------
