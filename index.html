@@ -6644,23 +6644,30 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 // used to show real check-in times and infer "present" for HR employees linked by portal email.
                 window._hrAttendanceLogsCache = attLogs.data || [];
 
-                // Bridge existing accounts: if no HR employee records exist yet, auto-create one
-                // per existing portal account (user_roster) so HR isn't starting from an empty system.
-                if (!emp.error && hrEmployees.length === 0 && userRoster.length > 0) {
-                    const seedPayload = userRoster.map(u => ({
-                        full_name: u.name,
-                        division: 'other',
-                        department: '',
-                        designation: u.role === 'admin' ? 'HR / Admin' : u.role === 'manager' ? 'Manager' : u.role === 'social_media' ? 'Social Media' : 'Employee',
-                        employment_status: 'active',
-                        portal_email: (u.email || '').toLowerCase()
-                    }));
-                    const { data: seeded, error: seedErr } = await dbInstance.from('hr_employees').insert(seedPayload).select('*');
-                    if (!seedErr && seeded) {
-                        hrEmployees = seeded;
-                        console.log(`HR: auto-imported ${seeded.length} existing portal account(s) as HR employees.`);
-                    } else if (seedErr) {
-                        console.warn('HR auto-import of existing accounts failed:', seedErr.message);
+                // Sync from Supervisor (user_roster is the single source of truth for accounts):
+                // any portal account without a matching HR employee record (by email) gets one
+                // created automatically — every load, not just when HR is empty — so existing
+                // Supervisor employees (e.g. already-registered accounts) always show up in HR
+                // without ever creating a duplicate row for the same person.
+                if (!emp.error && userRoster.length > 0) {
+                    const existingEmails = new Set(hrEmployees.map(e => (e.portal_email || '').toLowerCase()).filter(Boolean));
+                    const newFromRoster = userRoster.filter(u => u.email && !existingEmails.has(u.email.toLowerCase()));
+                    if (newFromRoster.length) {
+                        const seedPayload = newFromRoster.map(u => ({
+                            full_name: u.name,
+                            division: 'other',
+                            department: '',
+                            designation: u.role === 'admin' ? 'HR / Admin' : u.role === 'manager' ? 'Manager' : u.role === 'social_media' ? 'Social Media' : 'Employee',
+                            employment_status: 'active',
+                            portal_email: (u.email || '').toLowerCase()
+                        }));
+                        const { data: seeded, error: seedErr } = await dbInstance.from('hr_employees').insert(seedPayload).select('*');
+                        if (!seedErr && seeded) {
+                            hrEmployees = hrEmployees.concat(seeded);
+                            console.log(`HR: synced ${seeded.length} account(s) from Supervisor as HR employees.`);
+                        } else if (seedErr) {
+                            console.warn('HR sync from Supervisor accounts failed:', seedErr.message);
+                        }
                     }
                 }
             } catch (e) {
@@ -6877,8 +6884,36 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             };
             try {
                 if (hrEditingEmployeeId) {
+                    // Prevent creating a duplicate Supervisor account link: if this portal_email
+                    // is already used by a *different* HR employee record, block the change.
+                    if (payload.portal_email) {
+                        const clash = hrEmployees.find(e => e.id !== hrEditingEmployeeId && (e.portal_email || '').toLowerCase() === payload.portal_email);
+                        if (clash) { alert(`That portal email is already linked to ${clash.full_name}. Each Supervisor account can only be linked to one HR employee record.`); return; }
+                    }
                     await dbInstance.from('hr_employees').update(payload).eq('id', hrEditingEmployeeId);
+                    // Sync back to Supervisor (user_roster) so the same account shows the updated
+                    // name everywhere it's used — one source of truth, no separate HR-only copy.
+                    if (payload.portal_email) {
+                        const rosterMatch = userRoster.find(u => (u.email || '').toLowerCase() === payload.portal_email);
+                        if (rosterMatch && rosterMatch.name !== name) {
+                            await dbInstance.from('user_roster').update({ name }).eq('email', rosterMatch.email);
+                        }
+                    }
                 } else {
+                    // Reuse an existing record instead of duplicating if this portal_email is
+                    // already linked to an HR employee (e.g. a returning employee already synced
+                    // in from Supervisor).
+                    if (payload.portal_email) {
+                        const existing = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === payload.portal_email);
+                        if (existing) {
+                            await dbInstance.from('hr_employees').update(payload).eq('id', existing.id);
+                            closeHREmployeeModal();
+                            await loadHRData();
+                            renderHREmployees();
+                            renderHRDashboard();
+                            return;
+                        }
+                    }
                     const { data: created, error } = await dbInstance.from('hr_employees').insert([payload]).select('*');
                     if (!error && created && created[0] && monthly_salary > 0) {
                         await dbInstance.from('hr_salary_history').insert([{
