@@ -559,6 +559,10 @@
                 <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Linked Portal Email</label><input id="hr-emp-email" placeholder="optional — links to portal login" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Manager (portal email)</label><input id="hr-emp-manager-email" placeholder="manager's portal login email" class="hr-input w-full"></div>
+                <div class="sm:col-span-2" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px">
+                    <input type="checkbox" id="hr-emp-portal-access" checked style="width:16px;height:16px;accent-color:#ff6b06">
+                    <label for="hr-emp-portal-access" style="font-size:12px;color:#e6e9f5;cursor:pointer">Employee Panel access enabled (only checked employees with a linked portal email can log in)</label>
+                </div>
                 <div><label class="hr-field-label">Emergency Contact Name</label><input id="hr-emp-ec-name" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Emergency Contact Phone</label><input id="hr-emp-ec-phone" class="hr-input w-full"></div>
                 <div class="sm:col-span-2"><label class="hr-field-label">Document Links (offer letter, ID proof, etc — comma separated URLs)</label><input id="hr-emp-docs" class="hr-input w-full"></div>
@@ -2722,6 +2726,15 @@
                     }
                 } else {
                     if (pwdInput === foundUser.pass || !foundUser.pass) {
+                        // Employee Panel access gate — HR can disable a linked employee's portal access
+                        // without deleting their account or HR record.
+                        try {
+                            const { data: linkedEmp } = await dbInstance.from('hr_employees').select('portal_access_enabled').eq('portal_email', foundUser.email.trim().toLowerCase()).limit(1);
+                            if (linkedEmp && linkedEmp[0] && linkedEmp[0].portal_access_enabled === false) {
+                                alert("Access Disabled: HR has disabled your Employee Panel access. Contact HR for assistance.");
+                                return;
+                            }
+                        } catch (e) { /* if the HR table isn't reachable, don't block login over it */ }
                         activeUser = foundUser.name;
                         activeRole = foundUser.role || "employee"; // use actual role (employee or social_media)
                         activeEmail = foundUser.email;
@@ -4024,6 +4037,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             if (error) { alert('Could not record clock in: ' + error.message); return; }
 
+            await hrSyncClockToAttendance(activeEmail, 'in', nowIso);
             await pushLogEntry(`${activeUser} clocked IN at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
             await syncLedgerEngine(false);
             syncAttendanceToSheet();
@@ -4042,10 +4056,40 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             if (error) { alert('Could not record clock out: ' + error.message); return; }
 
+            await hrSyncClockToAttendance(activeEmail, 'out', nowIso);
             await pushLogEntry(`${activeUser} clocked OUT at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
             await syncLedgerEngine(false);
             syncAttendanceToSheet();
             syncMonthlyReportToSheet();
+        }
+
+        // Bridges the existing Clock In/Clock Out (attendance_logs) straight into the HR
+        // Attendance module (hr_attendance) — same employee record, same day, one row.
+        // Self-contained (doesn't depend on the HR panel having been opened this session).
+        async function hrSyncClockToAttendance(email, kind, whenIso) {
+            try {
+                const empRes = await dbInstance.from('hr_employees').select('id').eq('portal_email', (email || '').toLowerCase()).limit(1);
+                const emp = empRes.data && empRes.data[0];
+                if (!emp) return; // no linked HR employee record yet — nothing to sync into
+                const dateStr = todayDateStr();
+                const existingRes = await dbInstance.from('hr_attendance').select('*').eq('employee_id', emp.id).eq('att_date', dateStr).limit(1);
+                const existing = existingRes.data && existingRes.data[0];
+                if (kind === 'in') {
+                    if (existing) {
+                        // Don't flip an explicit Holiday marking to Present just because someone logged in.
+                        const nextStatus = existing.status === 'holiday' ? 'holiday' : 'present';
+                        await dbInstance.from('hr_attendance').update({ status: nextStatus, clock_in_time: whenIso }).eq('id', existing.id);
+                    } else {
+                        await dbInstance.from('hr_attendance').insert([{ employee_id: emp.id, att_date: dateStr, status: 'present', clock_in_time: whenIso }]);
+                    }
+                } else if (kind === 'out' && existing) {
+                    // Update the same day's record only — never create a second attendance entry on clock-out.
+                    await dbInstance.from('hr_attendance').update({ clock_out_time: whenIso }).eq('id', existing.id);
+                }
+                if (typeof hrLoaded !== 'undefined' && hrLoaded) await loadHRData();
+            } catch (e) {
+                console.warn('HR attendance sync from clock action failed:', e.message);
+            }
         }
 
         function populateAttendanceEmployeeFilter() {
@@ -6688,7 +6732,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // Was there portal check-in/out activity for this HR employee on a given date?
         function hrPortalLogFor(employee, dateStr) {
             if (!employee || !employee.portal_email) return null;
-            return (window._hrAttendanceLogsCache || []).find(l => (l.email || '').toLowerCase() === employee.portal_email && l.log_date === dateStr);
+            return (window._hrAttendanceLogsCache || []).find(l => (l.employee_email || '').toLowerCase() === employee.portal_email && l.log_date === dateStr);
         }
 
         const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','notifications','accounts'];
@@ -6788,7 +6832,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const effectiveStatus = rec ? rec.status : (portalLog ? 'present' : null);
                 const status = onLeave ? 'On Leave' : effectiveStatus ? effectiveStatus.replace('_',' ') : 'Not marked';
                 const badgeClass = onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
-                const checkIn = portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+                const checkIn = rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
                 return `<tr class="hover:bg-white/[0.02]">
                     <td class="py-2.5 px-4 text-white font-semibold">${e.full_name}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
@@ -6832,6 +6876,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-emp-phone').value = e?.phone || '';
             document.getElementById('hr-emp-email').value = e?.portal_email || '';
             document.getElementById('hr-emp-manager-email').value = e?.manager_email || '';
+            document.getElementById('hr-emp-portal-access').checked = e ? (e.portal_access_enabled !== false) : true;
             document.getElementById('hr-emp-ec-name').value = e?.emergency_contact_name || '';
             document.getElementById('hr-emp-ec-phone').value = e?.emergency_contact_phone || '';
             document.getElementById('hr-emp-docs').value = e?.document_links || '';
@@ -6873,6 +6918,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 phone: document.getElementById('hr-emp-phone').value.trim(),
                 portal_email: document.getElementById('hr-emp-email').value.trim().toLowerCase(),
                 manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
+                portal_access_enabled: document.getElementById('hr-emp-portal-access').checked,
                 emergency_contact_name: document.getElementById('hr-emp-ec-name').value.trim(),
                 emergency_contact_phone: document.getElementById('hr-emp-ec-phone').value.trim(),
                 document_links: document.getElementById('hr-emp-docs').value.trim(),
@@ -6975,6 +7021,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         <span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span>
                     </div>
                     <p class="text-xs text-[#a5adcf]">${divisionLabel[e.division] || e.division} · ${e.designation || e.department || '—'}</p>
+                    ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Panel Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : `<p class="text-[10px] text-[#4a5182]">No portal login linked</p>`}
                     <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
                         <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
                         <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
@@ -7039,7 +7086,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 `;
             } else if (hrProfileTab === 'attendance') {
                 const recs = hrAttendance.filter(a => a.employee_id === e.id).sort((a,b)=>b.att_date.localeCompare(a.att_date)).slice(0,20);
-                body.innerHTML = recs.length ? `<div class="space-y-1.5">${recs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.att_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status.replace('_',' ')}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No attendance records yet.</p>';
+                body.innerHTML = recs.length ? `<div class="space-y-1.5">${recs.map(r => {
+                    const times = [r.clock_in_time ? 'In ' + new Date(r.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '', r.clock_out_time ? 'Out ' + new Date(r.clock_out_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''].filter(Boolean).join(' · ');
+                    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.att_date}${times ? ` <span class="text-[#6b74a0] text-xs">(${times})</span>` : ''}</span><span class="hr-badge hr-badge-${r.status}">${r.status.replace('_',' ')}</span></div>`;
+                }).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No attendance records yet.</p>';
             } else if (hrProfileTab === 'leave') {
                 const reqs = hrLeaveRequests.filter(r => r.employee_id === e.id);
                 body.innerHTML = reqs.length ? `<div class="space-y-1.5">${reqs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.leave_type} — ${r.start_date} → ${r.end_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
@@ -7117,15 +7167,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const active = hrEmployees.filter(e => e.employment_status === 'active');
             document.getElementById('hr-attendance-rows').innerHTML = active.length ? active.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === date);
-                const portalLog = e.portal_email ? (window._hrAttendanceLogsCache || []).find(l => (l.email||'').toLowerCase() === e.portal_email && l.log_date === date) : null;
+                const portalLog = e.portal_email ? (window._hrAttendanceLogsCache || []).find(l => (l.employee_email||'').toLowerCase() === e.portal_email && l.log_date === date) : null;
                 const status = rec?.status || (portalLog ? 'present' : '');
                 return `
                 <tr class="hover:bg-white/[0.02]">
                     <td class="py-2.5 px-4 text-white font-semibold">${e.full_name}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
                     <td class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}">${status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
                     <td class="py-2.5 px-4 text-center">
                         <select class="hr-select" onchange="setHRAttendanceStatus('${e.id}', this.value)">
                             <option value="">Set…</option>
