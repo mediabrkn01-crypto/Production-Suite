@@ -1507,9 +1507,7 @@
 
                 <div id="hr-tables-missing-banner" class="hidden" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px">
                     <i data-lucide="alert-triangle" class="w-5 h-5 text-red-400 flex-shrink-0"></i>
-                    <div style="font-size:12px;color:#fca5a5">
-                        <strong>HR database tables not found in Supabase.</strong> Employees, Attendance, Leave and Payroll will stay empty until <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:4px">hr_schema.sql</code> is run in your Supabase project's SQL editor. Only Accounts &amp; Settings (which uses the pre-existing account table) works until then.
-                    </div>
+                    <div id="hr-tables-missing-text" style="font-size:12px;color:#fca5a5"></div>
                 </div>
 
                 <!-- HR: DASHBOARD -->
@@ -6462,6 +6460,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
         async function loadHRData() {
             hrTablesMissing = false;
+            const missingTables = [];
             try {
                 const [emp, leaveReq, leaveBal, att, pay, attLogs] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
@@ -6471,9 +6470,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     dbInstance.from('hr_payroll').select('*').order('month', { ascending: false }),
                     dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false })
                 ]);
-                if (emp.error || leaveReq.error || leaveBal.error || att.error || pay.error) {
+                if (emp.error) missingTables.push('Employees (hr_employees)');
+                if (leaveReq.error) missingTables.push('Leave Requests (hr_leave_requests)');
+                if (leaveBal.error) missingTables.push('Leave Balances (hr_leave_balances)');
+                if (att.error) missingTables.push('Attendance (hr_attendance)');
+                if (pay.error) missingTables.push('Payroll (hr_payroll)');
+                if (missingTables.length) {
                     hrTablesMissing = true;
-                    console.warn('HR tables missing/unreachable in Supabase:', emp.error?.message || leaveReq.error?.message || leaveBal.error?.message || att.error?.message || pay.error?.message);
+                    console.warn('HR tables missing/unreachable in Supabase:', missingTables.join(', '), emp.error, leaveReq.error, leaveBal.error, att.error, pay.error);
                 }
                 hrEmployees = emp.data || [];
                 hrLeaveRequests = leaveReq.data || [];
@@ -6486,7 +6490,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
                 // Bridge existing accounts: if no HR employee records exist yet, auto-create one
                 // per existing portal account (user_roster) so HR isn't starting from an empty system.
-                if (!hrTablesMissing && hrEmployees.length === 0 && userRoster.length > 0) {
+                if (!emp.error && hrEmployees.length === 0 && userRoster.length > 0) {
                     const seedPayload = userRoster.map(u => ({
                         full_name: u.name,
                         division: 'other',
@@ -6505,10 +6509,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 }
             } catch (e) {
                 hrTablesMissing = true;
+                missingTables.push('(load failed: ' + e.message + ')');
                 console.warn('HR data load failed — have the HR tables been created in Supabase? See hr_schema.sql', e.message);
             }
             const banner = document.getElementById('hr-tables-missing-banner');
-            if (banner) banner.classList.toggle('hidden', !hrTablesMissing);
+            const bannerText = document.getElementById('hr-tables-missing-text');
+            if (banner) {
+                banner.classList.toggle('hidden', !hrTablesMissing);
+                if (bannerText && hrTablesMissing) {
+                    bannerText.innerHTML = `<strong>Some HR tables are missing or unreachable in Supabase:</strong> ${missingTables.join(', ')}. Those sections will stay empty until <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:4px">hr_schema.sql</code> is (re-)run in your Supabase project's SQL editor. Everything else on this page is live.`;
+                }
+            }
         }
 
         // Was there portal check-in/out activity for this HR employee on a given date?
