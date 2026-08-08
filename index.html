@@ -439,17 +439,19 @@
                 <i data-lucide="x" style="width:16px;height:16px"></i>
             </button>
         </div>
-        <div style="margin-bottom:10px">
+        <div style="margin-bottom:10px" class="non-hr-nav-group">
             <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">PIPELINE</div>
             <button onclick="switchTab('dashboard');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="layout-grid" style="width:14px;height:14px"></i> Pipeline Matrix</button>
             <button onclick="switchTab('history');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="history" style="width:14px;height:14px"></i> History</button>
-            <button onclick="switchTab('reports');closeMobileSidebar()" class="sidebar-link admin-only" style="width:100%;text-align:left"><i data-lucide="bar-chart-2" style="width:14px;height:14px"></i> Monthly Reports</button>
         </div>
-        <div style="margin-bottom:10px">
-            <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">MANAGEMENT</div>
-            <button onclick="switchTab('my-profile');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Settings</button>
-            <button onclick="switchTab('attendance');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> Attendance Log</button>
-            <button onclick="switchTab('settings');closeMobileSidebar()" class="sidebar-link admin-only" style="width:100%;text-align:left"><i data-lucide="sliders" style="width:14px;height:14px"></i> Setup Center</button>
+        <div style="margin-bottom:10px" class="non-hr-nav-group">
+            <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">MY WORKSPACE</div>
+            <button onclick="switchTab('my-profile');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
+            <button onclick="switchTab('attendance');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance</button>
+        </div>
+        <div class="hr-mode-only" style="margin-bottom:10px">
+            <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">HR</div>
+            <button onclick="switchTab('hr');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="users" style="width:14px;height:14px"></i> HR Dashboard</button>
         </div>
         <div>
             <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">TOOLS</div>
@@ -1500,6 +1502,13 @@
                     <div>
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Management</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee management, attendance, leave, payroll and workforce overview.</p>
+                    </div>
+                </div>
+
+                <div id="hr-tables-missing-banner" class="hidden" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-red-400 flex-shrink-0"></i>
+                    <div style="font-size:12px;color:#fca5a5">
+                        <strong>HR database tables not found in Supabase.</strong> Employees, Attendance, Leave and Payroll will stay empty until <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:4px">hr_schema.sql</code> is run in your Supabase project's SQL editor. Only Accounts &amp; Settings (which uses the pre-existing account table) works until then.
                     </div>
                 </div>
 
@@ -2845,12 +2854,12 @@
                 initAttendanceGridSelectors();
                 renderAttendanceGrid();
             } else if (targetTab === 'settings' && activeRole === 'admin') {
-                document.getElementById('nav-settings').classList.add('active');
+                document.getElementById('nav-settings')?.classList.add('active');
                 document.getElementById('tab-content-settings').classList.remove('hidden');
                 editingRosterIndex = null;
                 renderSettingsRoster();
             } else if (targetTab === 'reports' && activeRole === 'admin') {
-                document.getElementById('nav-reports').classList.add('active');
+                document.getElementById('nav-reports')?.classList.add('active');
                 document.getElementById('tab-content-reports').classList.remove('hidden');
                 initReportSelectors();
                 generateReports(true); // true = animate on open
@@ -2858,7 +2867,6 @@
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
             } else if (targetTab === 'hr' && activeRole === 'admin') {
-                document.getElementById('nav-hr').classList.add('active');
                 document.getElementById('tab-content-hr').classList.remove('hidden');
                 initHRPanel();
             } else if (targetTab === 'my-leave') {
@@ -6435,6 +6443,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         let hrAttendance = [];
         let hrPayroll = [];
         let hrLoaded = false;
+        let hrTablesMissing = false;
         let hrEditingEmployeeId = null;
         let hrCurrentSubtab = 'dashboard';
 
@@ -6452,6 +6461,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         async function loadHRData() {
+            hrTablesMissing = false;
             try {
                 const [emp, leaveReq, leaveBal, att, pay, attLogs] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
@@ -6461,6 +6471,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     dbInstance.from('hr_payroll').select('*').order('month', { ascending: false }),
                     dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false })
                 ]);
+                if (emp.error || leaveReq.error || leaveBal.error || att.error || pay.error) {
+                    hrTablesMissing = true;
+                    console.warn('HR tables missing/unreachable in Supabase:', emp.error?.message || leaveReq.error?.message || leaveBal.error?.message || att.error?.message || pay.error?.message);
+                }
                 hrEmployees = emp.data || [];
                 hrLeaveRequests = leaveReq.data || [];
                 hrLeaveBalances = leaveBal.data || [];
@@ -6472,7 +6486,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
                 // Bridge existing accounts: if no HR employee records exist yet, auto-create one
                 // per existing portal account (user_roster) so HR isn't starting from an empty system.
-                if (hrEmployees.length === 0 && userRoster.length > 0) {
+                if (!hrTablesMissing && hrEmployees.length === 0 && userRoster.length > 0) {
                     const seedPayload = userRoster.map(u => ({
                         full_name: u.name,
                         division: 'other',
@@ -6490,8 +6504,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     }
                 }
             } catch (e) {
+                hrTablesMissing = true;
                 console.warn('HR data load failed — have the HR tables been created in Supabase? See hr_schema.sql', e.message);
             }
+            const banner = document.getElementById('hr-tables-missing-banner');
+            if (banner) banner.classList.toggle('hidden', !hrTablesMissing);
         }
 
         // Was there portal check-in/out activity for this HR employee on a given date?
