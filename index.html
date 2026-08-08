@@ -410,6 +410,7 @@
         .hr-badge-half_day { background:rgba(96,165,250,0.15); color:#60a5fa; }
         .hr-badge-wfh { background:rgba(168,85,247,0.15); color:#c084fc; }
         .hr-badge-on_leave { background:rgba(250,204,21,0.15); color:#facc15; }
+        .hr-badge-holiday { background:rgba(59,130,246,0.15); color:#60a5fa; }
         .hr-badge-pending { background:rgba(250,204,21,0.15); color:#facc15; }
         .hr-badge-approved { background:rgba(34,197,94,0.15); color:#4ade80; }
         .hr-badge-rejected { background:rgba(239,68,68,0.15); color:#f87171; }
@@ -546,7 +547,7 @@
                 </div>
                 <div><label class="hr-field-label">Department *</label><select id="hr-emp-department" class="hr-select w-full"></select></div>
                 <div><label class="hr-field-label">Designation</label><input id="hr-emp-designation" class="hr-input w-full"></div>
-                <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full" oninput="updateHREmpProbationPreview()"></div>
                 <div><label class="hr-field-label">Employment Status</label>
                     <select id="hr-emp-status" class="hr-select w-full">
                         <option value="active">Active</option>
@@ -561,6 +562,17 @@
                 <div><label class="hr-field-label">Emergency Contact Name</label><input id="hr-emp-ec-name" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Emergency Contact Phone</label><input id="hr-emp-ec-phone" class="hr-input w-full"></div>
                 <div class="sm:col-span-2"><label class="hr-field-label">Document Links (offer letter, ID proof, etc — comma separated URLs)</label><input id="hr-emp-docs" class="hr-input w-full"></div>
+                <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
+                    <p class="hr-field-label" style="margin-bottom:8px">Salary</p>
+                </div>
+                <div><label class="hr-field-label">Monthly Salary (₹)</label><input id="hr-emp-salary" type="number" min="0" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Payment Cycle</label>
+                    <select id="hr-emp-payment-cycle" class="hr-select w-full">
+                        <option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option>
+                    </select>
+                </div>
+                <div><label class="hr-field-label">Probation Period (months)</label><input id="hr-emp-probation-months" type="number" min="0" class="hr-input w-full" placeholder="e.g. 3" oninput="updateHREmpProbationPreview()"></div>
+                <div><label class="hr-field-label">Probation End Date</label><div id="hr-emp-probation-end" class="hr-input w-full" style="color:#8890b5">—</div></div>
                 <div class="sm:col-span-2"><label class="hr-field-label">Notes / History</label><textarea id="hr-emp-notes" rows="2" class="hr-input w-full"></textarea></div>
             </div>
             <button onclick="saveHREmployee()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Employee</button>
@@ -630,18 +642,73 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="sm:col-span-2"><label class="hr-field-label">Employee</label><select id="hr-pr-employee" class="hr-select w-full"></select></div>
                 <div class="sm:col-span-2"><label class="hr-field-label">Month</label><input id="hr-pr-month" type="month" class="hr-input w-full"></div>
+                <div class="sm:col-span-2">
+                    <button type="button" onclick="autoCalculateHRPayroll()" class="hr-select w-full" style="cursor:pointer;text-align:center;font-weight:700">⚡ Auto-Calculate from Attendance</button>
+                    <p id="hr-pr-leave-breakdown" class="text-[10px] text-[#6b74a0] mt-1"></p>
+                </div>
                 <div><label class="hr-field-label">Basic Salary</label><input id="hr-pr-basic" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Leave Deduction (auto)</label><input id="hr-pr-leave-deduction" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Allowances</label><input id="hr-pr-allowances" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Overtime</label><input id="hr-pr-overtime" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Bonuses</label><input id="hr-pr-bonuses" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
-                <div><label class="hr-field-label">Deductions</label><input id="hr-pr-deductions" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Other Deductions</label><input id="hr-pr-deductions" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Advances</label><input id="hr-pr-advances" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Payment Status</label>
                     <select id="hr-pr-status" class="hr-select w-full"><option value="pending">Pending</option><option value="paid">Paid</option></select>
                 </div>
-                <div><label class="hr-field-label">Net Salary</label><div id="hr-pr-net-preview" class="hr-input w-full" style="color:#4ade80;font-weight:700">₹0</div></div>
+                <input type="hidden" id="hr-pr-paid-days" value="0">
+                <input type="hidden" id="hr-pr-unpaid-days" value="0">
+                <input type="hidden" id="hr-pr-absent-days" value="0">
+                <div class="sm:col-span-2"><label class="hr-field-label">Net Salary</label><div id="hr-pr-net-preview" class="hr-input w-full" style="color:#4ade80;font-weight:700">₹0</div></div>
             </div>
             <button onclick="saveHRPayroll()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Entry</button>
+        </div>
+    </div>
+
+    <div id="hr-delete-payslip-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:400px">
+            <h3 class="text-lg font-bold text-white mb-2">Delete this payslip?</h3>
+            <p class="text-xs text-[#a5adcf] mb-5">This action will permanently remove the selected payroll record from this employee's payroll history.</p>
+            <div style="display:flex;gap:10px">
+                <button onclick="closeDeleteHRPayrollModal()" class="hr-select flex-1" style="cursor:pointer;text-align:center">Cancel</button>
+                <button onclick="executeDeleteHRPayroll()" class="flex-1" style="background:#ef4444;color:#fff;font-weight:700;border-radius:10px;padding:8px;text-transform:uppercase;font-size:11px;letter-spacing:0.5px">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="hr-increment-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:420px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Record Salary Increment</h3>
+                <button onclick="closeHRIncrementModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <input type="hidden" id="hr-inc-employee-id">
+            <div class="space-y-3">
+                <div><label class="hr-field-label">Current Salary</label><div id="hr-inc-current" class="hr-input w-full">₹0</div></div>
+                <div><label class="hr-field-label">New Salary</label><input id="hr-inc-new-salary" type="number" min="0" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Effective Date</label><input id="hr-inc-effective-date" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Reason</label><input id="hr-inc-reason" placeholder="e.g. Probation Completed + Increment" class="hr-input w-full"></div>
+            </div>
+            <button onclick="saveHRIncrement()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Increment</button>
+        </div>
+    </div>
+
+    <div id="hr-holiday-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:420px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Add Holiday</h3>
+                <button onclick="closeHRHolidayModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="space-y-3">
+                <div><label class="hr-field-label">Date</label><input id="hr-hol-date" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Holiday Name</label><input id="hr-hol-name" placeholder="e.g. Independence Day" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Type</label>
+                    <select id="hr-hol-type" class="hr-select w-full">
+                        <option>Company Holiday</option><option>Public Holiday</option><option>Optional Holiday</option>
+                    </select>
+                </div>
+            </div>
+            <button onclick="saveHRHoliday()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Holiday</button>
         </div>
     </div>
 
@@ -924,6 +991,9 @@
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">SCHEDULE</div>
                     <button id="hrtree-schedule" onclick="switchHRSubtab('schedule')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="calendar-clock" style="width:14px;height:14px"></i> Workforce Calendar
+                    </button>
+                    <button id="hrtree-holidays" onclick="switchHRSubtab('holidays')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="party-popper" style="width:14px;height:14px"></i> Holiday Calendar
                     </button>
 
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">DOCUMENTS</div>
@@ -1720,6 +1790,8 @@
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                             <input id="hr-payroll-month" type="month" class="hr-input" onchange="renderHRPayroll()">
+                            <button onclick="downloadMonthlyPayrollPDF()" class="hr-select" style="cursor:pointer">⬇ Download PDF</button>
+                            <button onclick="downloadMonthlyPayrollExcel()" class="hr-select" style="cursor:pointer">⬇ Download Excel</button>
                         </div>
                         <button onclick="openHRPayrollModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Payroll Entry</button>
                     </div>
@@ -1732,7 +1804,8 @@
                                     <th class="py-3 px-4">Allowances</th>
                                     <th class="py-3 px-4">Overtime</th>
                                     <th class="py-3 px-4">Bonuses</th>
-                                    <th class="py-3 px-4">Deductions</th>
+                                    <th class="py-3 px-4">Leave Deduction</th>
+                                    <th class="py-3 px-4">Other Deductions</th>
                                     <th class="py-3 px-4">Advances</th>
                                     <th class="py-3 px-4">Net</th>
                                     <th class="py-3 px-4">Status</th>
@@ -1794,6 +1867,25 @@
                         <i data-lucide="calendar-clock" class="w-8 h-8 mx-auto text-[#4a5182] mb-2"></i>
                         <p class="text-sm text-[#a5adcf]">Online/offline classes, shoot assignments, availability & schedule-conflict detection.</p>
                         <p class="text-xs text-[#4a5182] mt-2">Scheduling module — coming in the next phase.</p>
+                    </div>
+                </div>
+
+                <!-- HR: HOLIDAY CALENDAR -->
+                <div id="hr-sub-holidays" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Company Holiday Calendar</h1>
+                            <p class="text-[#6b74a0] text-xs mt-1">Recognized automatically by Attendance and Payroll calculations.</p>
+                        </div>
+                        <button onclick="openHRHolidayModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Holiday</button>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Date</th><th class="py-3 px-4">Holiday</th><th class="py-3 px-4">Type</th><th class="py-3 px-4 text-center">Actions</th>
+                            </tr></thead>
+                            <tbody id="hr-holidays-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -6480,7 +6572,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         };
         const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Unpaid Leave', 'Work From Home'];
         const HR_UNLIMITED_LEAVE_TYPES = ['Unpaid Leave']; // these show "—" for Allocated/Remaining instead of a number
-        const HR_ATT_STATUSES = ['present', 'absent', 'late', 'half_day', 'wfh', 'on_leave'];
+        const HR_ATT_STATUSES = ['present', 'absent', 'late', 'half_day', 'wfh', 'on_leave', 'holiday'];
 
         let hrEmployees = [];
         let hrLeaveRequests = [];
@@ -6490,6 +6582,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         let hrJobOpenings = [];
         let hrApplicants = [];
         let hrActiveJobId = null;
+        let hrSalaryHistory = [];
+        let hrHolidays = [];
         let hrLoaded = false;
         let hrTablesMissing = false;
         let hrEditingEmployeeId = null;
@@ -6512,7 +6606,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             hrTablesMissing = false;
             const missingTables = [];
             try {
-                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants] = await Promise.all([
+                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }),
                     dbInstance.from('hr_leave_balances').select('*'),
@@ -6520,7 +6614,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     dbInstance.from('hr_payroll').select('*').order('month', { ascending: false }),
                     dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false }),
                     dbInstance.from('hr_job_openings').select('*').order('created_at', { ascending: false }),
-                    dbInstance.from('hr_applicants').select('*').order('created_at', { ascending: false })
+                    dbInstance.from('hr_applicants').select('*').order('created_at', { ascending: false }),
+                    dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
+                    dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true })
                 ]);
                 if (emp.error) missingTables.push('Employees (hr_employees)');
                 if (leaveReq.error) missingTables.push('Leave Requests (hr_leave_requests)');
@@ -6529,9 +6625,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 if (pay.error) missingTables.push('Payroll (hr_payroll)');
                 if (jobs.error) missingTables.push('Job Openings (hr_job_openings)');
                 if (applicants.error) missingTables.push('Applicants (hr_applicants)');
+                if (salHist.error) missingTables.push('Salary History (hr_salary_history)');
+                if (holidays.error) missingTables.push('Holidays (hr_holidays)');
                 if (missingTables.length) {
                     hrTablesMissing = true;
-                    console.warn('HR tables missing/unreachable in Supabase:', missingTables.join(', '), emp.error, leaveReq.error, leaveBal.error, att.error, pay.error, jobs.error, applicants.error);
+                    console.warn('HR tables missing/unreachable in Supabase:', missingTables.join(', '), emp.error, leaveReq.error, leaveBal.error, att.error, pay.error, jobs.error, applicants.error, salHist.error, holidays.error);
                 }
                 hrEmployees = emp.data || [];
                 hrLeaveRequests = leaveReq.data || [];
@@ -6540,6 +6638,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 hrPayroll = pay.data || [];
                 hrJobOpenings = jobs.data || [];
                 hrApplicants = applicants.data || [];
+                hrSalaryHistory = salHist.data || [];
+                hrHolidays = holidays.data || [];
                 // Existing portal check-in/out history (from the Attendance Log feature) —
                 // used to show real check-in times and infer "present" for HR employees linked by portal email.
                 window._hrAttendanceLogsCache = attLogs.data || [];
@@ -6584,7 +6684,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return (window._hrAttendanceLogsCache || []).find(l => (l.email || '').toLowerCase() === employee.portal_email && l.log_date === dateStr);
         }
 
-        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','documents','hr-reports','notifications','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','notifications','accounts'];
 
         function switchHRSubtab(tab) {
             hrCurrentSubtab = tab;
@@ -6607,6 +6707,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             else if (tab === 'payroll') renderHRPayroll();
             else if (tab === 'payslips') renderHRPayslipsList();
             else if (tab === 'documents') renderHRDocumentsList();
+            else if (tab === 'holidays') renderHRHolidays();
             else if (tab === 'recruitment') renderHRRecruitment();
             else if (tab === 'hr-reports') renderHRReports();
             else if (tab === 'notifications') renderHRNotifications();
@@ -6728,6 +6829,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-emp-ec-phone').value = e?.emergency_contact_phone || '';
             document.getElementById('hr-emp-docs').value = e?.document_links || '';
             document.getElementById('hr-emp-notes').value = e?.notes || '';
+            document.getElementById('hr-emp-salary').value = e?.monthly_salary || '';
+            document.getElementById('hr-emp-payment-cycle').value = e?.payment_cycle || 'monthly';
+            document.getElementById('hr-emp-probation-months').value = e?.probation_months || '';
+            updateHREmpProbationPreview();
             document.getElementById('hr-employee-modal').classList.remove('hidden');
             document.getElementById('hr-employee-modal').classList.add('flex');
         }
@@ -6735,17 +6840,27 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-employee-modal').classList.add('hidden');
             document.getElementById('hr-employee-modal').classList.remove('flex');
         }
+        function updateHREmpProbationPreview() {
+            const joining = document.getElementById('hr-emp-joining').value;
+            const months = parseFloat(document.getElementById('hr-emp-probation-months').value) || 0;
+            const el = document.getElementById('hr-emp-probation-end');
+            if (!joining || !months) { el.textContent = '—'; return; }
+            const d = new Date(joining); d.setMonth(d.getMonth() + months);
+            el.textContent = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
 
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
             if (!name) { alert('Full name is required.'); return; }
+            const monthly_salary = parseFloat(document.getElementById('hr-emp-salary').value) || 0;
+            const joining_date = document.getElementById('hr-emp-joining').value || null;
             const payload = {
                 employee_id: document.getElementById('hr-emp-id').value.trim(),
                 full_name: name,
                 division: document.getElementById('hr-emp-division').value,
                 department: document.getElementById('hr-emp-department').value,
                 designation: document.getElementById('hr-emp-designation').value.trim(),
-                joining_date: document.getElementById('hr-emp-joining').value || null,
+                joining_date,
                 employment_status: document.getElementById('hr-emp-status').value,
                 dob: document.getElementById('hr-emp-dob').value || null,
                 phone: document.getElementById('hr-emp-phone').value.trim(),
@@ -6754,13 +6869,25 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 emergency_contact_name: document.getElementById('hr-emp-ec-name').value.trim(),
                 emergency_contact_phone: document.getElementById('hr-emp-ec-phone').value.trim(),
                 document_links: document.getElementById('hr-emp-docs').value.trim(),
-                notes: document.getElementById('hr-emp-notes').value.trim()
+                notes: document.getElementById('hr-emp-notes').value.trim(),
+                monthly_salary,
+                payment_cycle: document.getElementById('hr-emp-payment-cycle').value,
+                salary_type: 'monthly',
+                probation_months: parseFloat(document.getElementById('hr-emp-probation-months').value) || 0
             };
             try {
                 if (hrEditingEmployeeId) {
                     await dbInstance.from('hr_employees').update(payload).eq('id', hrEditingEmployeeId);
                 } else {
-                    await dbInstance.from('hr_employees').insert([payload]);
+                    const { data: created, error } = await dbInstance.from('hr_employees').insert([payload]).select('*');
+                    if (!error && created && created[0] && monthly_salary > 0) {
+                        await dbInstance.from('hr_salary_history').insert([{
+                            employee_id: created[0].id,
+                            salary: monthly_salary,
+                            effective_date: joining_date || new Date().toISOString().slice(0,10),
+                            reason: 'Initial Salary'
+                        }]);
+                    }
                 }
                 closeHREmployeeModal();
                 await loadHRData();
@@ -6846,7 +6973,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (!e) return;
             document.getElementById('hr-profile-name').textContent = e.full_name;
             document.getElementById('hr-profile-subtitle').textContent = e.designation || e.department || '—';
-            const tabs = ['personal','employment','attendance','leave','payroll','documents','performance','schedule'];
+            const tabs = ['personal','employment','salary','attendance','leave','payroll','documents','performance','schedule'];
             document.getElementById('hr-profile-tabs').innerHTML = tabs.map(t => `
                 <button onclick="switchHRProfileTab('${t}')" class="hr-subnav-btn ${hrProfileTab===t?'active':''}" style="text-transform:capitalize">${t}</button>
             `).join('');
@@ -6855,9 +6982,26 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 body.innerHTML = hrProfileField('Date of Birth', e.dob) + hrProfileField('Phone', e.phone) + hrProfileField('Portal Email', e.portal_email) +
                     hrProfileField('Emergency Contact', [e.emergency_contact_name, e.emergency_contact_phone].filter(Boolean).join(' — ')) + hrProfileField('Notes / History', e.notes, true);
             } else if (hrProfileTab === 'employment') {
+                const probationEnd = hrProbationEndDate(e);
                 body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Division', e.division) + hrProfileField('Department', e.department) +
                     hrProfileField('Designation', e.designation) + hrProfileField('Joining Date', e.joining_date) + hrProfileField('Employment Status', e.employment_status) +
-                    hrProfileField('Manager (portal email)', e.manager_email);
+                    hrProfileField('Manager (portal email)', e.manager_email) + hrProfileField('Probation Period', e.probation_months ? `${e.probation_months} month(s)` : null) +
+                    hrProfileField('Probation End Date', probationEnd);
+            } else if (hrProfileTab === 'salary') {
+                const history = hrSalaryHistory.filter(s => s.employee_id === e.id).sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+                body.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <div>${hrProfileField('Current Monthly Salary', '₹' + hrCurrentSalary(e.id).toLocaleString('en-IN'))}</div>
+                        <button onclick="openHRIncrementModal('${e.id}')" class="hr-icon-btn">+ Record Increment</button>
+                    </div>
+                    <div class="hr-field-label" style="margin-bottom:6px">Salary History</div>
+                    ${history.length ? `<div class="space-y-1.5">${history.map(h => `
+                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                            <span>${new Date(h.effective_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})} — ₹${h.salary.toLocaleString('en-IN')}</span>
+                            <span class="text-[#6b74a0] text-xs">${h.reason || ''}</span>
+                        </div>
+                    `).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No salary history recorded yet.</p>'}
+                `;
             } else if (hrProfileTab === 'attendance') {
                 const recs = hrAttendance.filter(a => a.employee_id === e.id).sort((a,b)=>b.att_date.localeCompare(a.att_date)).slice(0,20);
                 body.innerHTML = recs.length ? `<div class="space-y-1.5">${recs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.att_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status.replace('_',' ')}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No attendance records yet.</p>';
@@ -6866,7 +7010,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 body.innerHTML = reqs.length ? `<div class="space-y-1.5">${reqs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.leave_type} — ${r.start_date} → ${r.end_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
             } else if (hrProfileTab === 'payroll') {
                 const pay = hrPayroll.filter(p => p.employee_id === e.id);
-                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
+                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
             } else if (hrProfileTab === 'documents') {
                 const docs = (e.document_links || '').split(',').map(s => s.trim()).filter(Boolean);
                 body.innerHTML = docs.length ? docs.map(d => `<a href="${d}" target="_blank" rel="noopener" style="display:block;padding:6px 0;color:#a5adcf;border-bottom:1px solid rgba(255,255,255,0.05)">${d}</a>`).join('') : '<p class="text-[#4a5182] text-xs">No documents on file. Add links via Edit.</p>';
@@ -7306,7 +7450,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-2.5 px-4 text-[#a5adcf]">${p.month}</td>
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button></td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }
@@ -7391,6 +7535,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             });
             const pendingPayroll = hrPayroll.filter(p => p.payment_status === 'pending');
             if (pendingPayroll.length) notifs.push({ icon: 'wallet', text: `${pendingPayroll.length} payroll ${pendingPayroll.length===1?'entry':'entries'} pending payment`, time: now.toISOString(), type: 'action' });
+
+            // Probation ending soon (within next 14 days)
+            hrEmployees.filter(e => e.employment_status === 'active' && e.probation_months).forEach(e => {
+                const endDate = hrProbationEndDate(e);
+                if (!endDate) return;
+                const daysAway = Math.round((new Date(endDate) - now) / 86400000);
+                if (daysAway >= 0 && daysAway <= 14) {
+                    notifs.push({ icon: 'user-check', text: `Probation Period Ending Soon — ${e.full_name}'s probation ends on ${new Date(endDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`, time: now.toISOString(), type: 'action' });
+                }
+            });
             return notifs.sort((a,b) => new Date(b.time) - new Date(a.time));
         }
         function renderHRNotifications() {
@@ -7408,18 +7562,154 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (badge) { badge.style.display = actionCount ? 'inline-block' : 'none'; badge.textContent = actionCount; }
         }
 
+        // ---------- SALARY / PAYROLL ENGINE ----------
+        // The salary effective for a given month, looked up from history so that
+        // an increment recorded later never rewrites already-generated payslips.
+        function hrGetEffectiveSalary(employeeId, monthStr) {
+            const monthEnd = new Date(monthStr + '-01'); monthEnd.setMonth(monthEnd.getMonth() + 1); monthEnd.setDate(0);
+            const monthEndStr = monthEnd.toISOString().slice(0,10);
+            const history = hrSalaryHistory.filter(s => s.employee_id === employeeId && s.effective_date <= monthEndStr).sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+            if (history.length) return history[0].salary;
+            const e = hrEmployees.find(x => x.id === employeeId);
+            return e?.monthly_salary || 0;
+        }
+
+        function hrIsHoliday(dateStr) {
+            return hrHolidays.some(h => h.holiday_date === dateStr);
+        }
+
+        // Determines each day's status for an employee across a month, then derives
+        // paid/unpaid/absent day counts and the resulting salary deduction.
+        function hrCalculatePayrollForMonth(employeeId, monthStr) {
+            const [y, m] = monthStr.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const salary = hrGetEffectiveSalary(employeeId, monthStr);
+            const dailySalary = daysInMonth ? salary / daysInMonth : 0;
+            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, presentDays = 0;
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
+                if (hrIsHoliday(dateStr)) { holidayDays++; continue; }
+                const rec = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === dateStr);
+                if (rec) {
+                    if (rec.status === 'holiday') holidayDays++;
+                    else if (rec.status === 'absent') absentDays++;
+                    else if (rec.status === 'on_leave') {
+                        // Determine whether the covering approved leave is paid or unpaid
+                        const leave = hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
+                        if (leave && leave.leave_type === 'Unpaid Leave') unpaidLeaveDays++;
+                        else paidLeaveDays++;
+                    } else {
+                        presentDays++; // present, late, half_day, wfh all count as worked/paid
+                    }
+                } else {
+                    // Not manually marked — don't penalize unmarked days automatically.
+                    presentDays++;
+                }
+            }
+            const leaveDeduction = Math.round(dailySalary * unpaidLeaveDays * 100) / 100;
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, leaveDeduction };
+        }
+
+        // ---------- PROBATION ----------
+        function hrProbationEndDate(employee) {
+            if (!employee.joining_date || !employee.probation_months) return null;
+            const d = new Date(employee.joining_date);
+            d.setMonth(d.getMonth() + Number(employee.probation_months));
+            return d.toISOString().slice(0,10);
+        }
+
+        // ---------- SALARY HISTORY ----------
+        function hrCurrentSalary(employeeId) {
+            const history = hrSalaryHistory.filter(s => s.employee_id === employeeId).sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+            if (history.length) return history[0].salary;
+            const e = hrEmployees.find(x => x.id === employeeId);
+            return e?.monthly_salary || 0;
+        }
+
+        function openHRIncrementModal(employeeId) {
+            document.getElementById('hr-inc-employee-id').value = employeeId;
+            document.getElementById('hr-inc-current').textContent = '₹' + hrCurrentSalary(employeeId).toLocaleString('en-IN');
+            document.getElementById('hr-inc-new-salary').value = '';
+            document.getElementById('hr-inc-effective-date').value = new Date().toISOString().slice(0,10);
+            document.getElementById('hr-inc-reason').value = '';
+            document.getElementById('hr-increment-modal').classList.remove('hidden');
+            document.getElementById('hr-increment-modal').classList.add('flex');
+        }
+        function closeHRIncrementModal() {
+            document.getElementById('hr-increment-modal').classList.add('hidden');
+            document.getElementById('hr-increment-modal').classList.remove('flex');
+        }
+        async function saveHRIncrement() {
+            const employee_id = document.getElementById('hr-inc-employee-id').value;
+            const salary = parseFloat(document.getElementById('hr-inc-new-salary').value) || 0;
+            const effective_date = document.getElementById('hr-inc-effective-date').value;
+            const reason = document.getElementById('hr-inc-reason').value.trim() || 'Salary Increment';
+            if (!salary || !effective_date) { alert('New salary and effective date are required.'); return; }
+            try {
+                await dbInstance.from('hr_salary_history').insert([{ employee_id, salary, effective_date, reason }]);
+                await dbInstance.from('hr_employees').update({ monthly_salary: salary }).eq('id', employee_id);
+                closeHRIncrementModal();
+                await loadHRData();
+                renderHREmployeeProfile();
+            } catch (e) { alert('Could not save increment: ' + e.message); }
+        }
+
+        // ---------- HOLIDAY CALENDAR ----------
+        function openHRHolidayModal() {
+            document.getElementById('hr-hol-date').value = '';
+            document.getElementById('hr-hol-name').value = '';
+            document.getElementById('hr-hol-type').value = 'Company Holiday';
+            document.getElementById('hr-holiday-modal').classList.remove('hidden');
+            document.getElementById('hr-holiday-modal').classList.add('flex');
+        }
+        function closeHRHolidayModal() {
+            document.getElementById('hr-holiday-modal').classList.add('hidden');
+            document.getElementById('hr-holiday-modal').classList.remove('flex');
+        }
+        async function saveHRHoliday() {
+            const holiday_date = document.getElementById('hr-hol-date').value;
+            const name = document.getElementById('hr-hol-name').value.trim();
+            const type = document.getElementById('hr-hol-type').value;
+            if (!holiday_date || !name) { alert('Date and name are required.'); return; }
+            try {
+                await dbInstance.from('hr_holidays').insert([{ holiday_date, name, type }]);
+                closeHRHolidayModal();
+                await loadHRData();
+                renderHRHolidays();
+            } catch (e) { alert('Could not save holiday: ' + e.message); }
+        }
+        async function deleteHRHoliday(id) {
+            if (!confirm('Remove this holiday from the calendar?')) return;
+            await dbInstance.from('hr_holidays').delete().eq('id', id);
+            await loadHRData();
+            renderHRHolidays();
+        }
+        function renderHRHolidays() {
+            const rows = [...hrHolidays].sort((a,b) => a.holiday_date.localeCompare(b.holiday_date));
+            document.getElementById('hr-holidays-rows').innerHTML = rows.length ? rows.map(h => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${new Date(h.holiday_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${h.name}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${h.type}</td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="deleteHRHoliday('${h.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
+                </tr>
+            `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No holidays added yet.</td></tr>`;
+        }
+
         // ---------- PAYROLL ----------
         function updateHRPayrollNetPreview() {
             const g = id => parseFloat(document.getElementById(id).value) || 0;
-            const net = g('hr-pr-basic') + g('hr-pr-allowances') + g('hr-pr-overtime') + g('hr-pr-bonuses') - g('hr-pr-deductions') - g('hr-pr-advances');
+            const net = g('hr-pr-basic') + g('hr-pr-allowances') + g('hr-pr-overtime') + g('hr-pr-bonuses') - g('hr-pr-leave-deduction') - g('hr-pr-deductions') - g('hr-pr-advances');
             document.getElementById('hr-pr-net-preview').textContent = '₹' + net.toLocaleString('en-IN');
         }
 
         function openHRPayrollModal() {
             document.getElementById('hr-pr-employee').innerHTML = hrEmployees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
             document.getElementById('hr-pr-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
-            ['hr-pr-basic','hr-pr-allowances','hr-pr-overtime','hr-pr-bonuses','hr-pr-deductions','hr-pr-advances'].forEach(id => document.getElementById(id).value = '');
+            ['hr-pr-basic','hr-pr-allowances','hr-pr-overtime','hr-pr-bonuses','hr-pr-deductions','hr-pr-advances','hr-pr-leave-deduction'].forEach(id => document.getElementById(id).value = '');
             document.getElementById('hr-pr-status').value = 'pending';
+            document.getElementById('hr-pr-leave-breakdown').textContent = '';
             updateHRPayrollNetPreview();
             document.getElementById('hr-payroll-modal').classList.remove('hidden');
             document.getElementById('hr-payroll-modal').classList.add('flex');
@@ -7429,15 +7719,34 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-payroll-modal').classList.remove('flex');
         }
 
+        // Pulls attendance + approved leave + holidays for the selected employee/month
+        // and fills Basic Salary, Leave Deduction, and the day-count breakdown automatically.
+        function autoCalculateHRPayroll() {
+            const employee_id = document.getElementById('hr-pr-employee').value;
+            const month = document.getElementById('hr-pr-month').value;
+            if (!employee_id || !month) { alert('Pick an employee and month first.'); return; }
+            const calc = hrCalculatePayrollForMonth(employee_id, month);
+            document.getElementById('hr-pr-basic').value = calc.salary;
+            document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
+            document.getElementById('hr-pr-leave-breakdown').textContent =
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present/Paid: ${calc.presentDays + calc.paidLeaveDays} · Unpaid Leave: ${calc.unpaidLeaveDays} · Absent: ${calc.absentDays} · Holidays: ${calc.holidayDays}`;
+            document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
+            document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
+            document.getElementById('hr-pr-absent-days').value = calc.absentDays;
+            updateHRPayrollNetPreview();
+        }
+
         async function saveHRPayroll() {
             const g = id => parseFloat(document.getElementById(id).value) || 0;
             const employee_id = document.getElementById('hr-pr-employee').value;
             const month = document.getElementById('hr-pr-month').value;
             if (!employee_id || !month) { alert('Employee and month are required.'); return; }
             const basic = g('hr-pr-basic'), allowances = g('hr-pr-allowances'), overtime = g('hr-pr-overtime'),
-                  bonuses = g('hr-pr-bonuses'), deductions = g('hr-pr-deductions'), advances = g('hr-pr-advances');
-            const net_salary = basic + allowances + overtime + bonuses - deductions - advances;
-            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, net_salary, payment_status: document.getElementById('hr-pr-status').value };
+                  bonuses = g('hr-pr-bonuses'), deductions = g('hr-pr-deductions'), advances = g('hr-pr-advances'),
+                  leave_deduction = g('hr-pr-leave-deduction'), paid_leave_days = g('hr-pr-paid-days'),
+                  unpaid_leave_days = g('hr-pr-unpaid-days'), absent_days = g('hr-pr-absent-days');
+            const net_salary = basic + allowances + overtime + bonuses - leave_deduction - deductions - advances;
+            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_status: document.getElementById('hr-pr-status').value };
             try {
                 await dbInstance.from('hr_payroll').insert([payload]);
                 closeHRPayrollModal();
@@ -7456,6 +7765,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.allowances||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.overtime||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.bonuses||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4 text-red-300">₹${(p.leave_deduction||0).toLocaleString('en-IN')}${p.unpaid_leave_days ? ` (${p.unpaid_leave_days}d)` : ''}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.deductions||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.advances||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
@@ -7463,15 +7773,38 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-2.5 px-4 text-center">
                         <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button>
                         ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Mark Paid</button>` : ''}
+                        <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
                     </td>
                 </tr>
-            `).join('') : `<tr><td colspan="10" class="py-8 text-center text-[#4a5182] text-xs">No payroll entries for this month.</td></tr>`;
+            `).join('') : `<tr><td colspan="11" class="py-8 text-center text-[#4a5182] text-xs">No payroll entries for this month.</td></tr>`;
         }
 
         async function markHRPayrollPaid(id) {
             await dbInstance.from('hr_payroll').update({ payment_status: 'paid' }).eq('id', id);
             await loadHRData();
             renderHRPayroll();
+        }
+
+        let hrPendingDeletePayrollId = null;
+        function confirmDeleteHRPayroll(id) {
+            hrPendingDeletePayrollId = id;
+            document.getElementById('hr-delete-payslip-modal').classList.remove('hidden');
+            document.getElementById('hr-delete-payslip-modal').classList.add('flex');
+        }
+        function closeDeleteHRPayrollModal() {
+            hrPendingDeletePayrollId = null;
+            document.getElementById('hr-delete-payslip-modal').classList.add('hidden');
+            document.getElementById('hr-delete-payslip-modal').classList.remove('flex');
+        }
+        async function executeDeleteHRPayroll() {
+            if (!hrPendingDeletePayrollId) return;
+            try {
+                await dbInstance.from('hr_payroll').delete().eq('id', hrPendingDeletePayrollId);
+                closeDeleteHRPayrollModal();
+                await loadHRData();
+                renderHRPayroll();
+                renderHRPayslipsList();
+            } catch (e) { alert('Could not delete payroll record: ' + e.message); }
         }
 
         function downloadHRPayslip(id) {
@@ -7494,7 +7827,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             line('Overtime', p.overtime);
             line('Bonuses', p.bonuses);
             y += 2; doc.setFontSize(11); doc.text('Deductions', 14, y); y += 8; doc.setFontSize(10);
-            line('Deductions', p.deductions);
+            if (p.unpaid_leave_days) line(`Unpaid Leave (${p.unpaid_leave_days} day${p.unpaid_leave_days===1?'':'s'})`, p.leave_deduction);
+            else if (p.leave_deduction) line('Leave Deduction', p.leave_deduction);
+            line('Other Deductions', p.deductions);
             line('Advances', p.advances);
             y += 4;
             doc.setFontSize(12); doc.setFont(undefined, 'bold');
@@ -7503,6 +7838,70 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             doc.setFontSize(9); doc.setTextColor(120); doc.text(`Payment Status: ${p.payment_status}`, 14, y);
             doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
         }
+
+        // ---------- MONTHLY PAYROLL EXPORT (whole month, all employees) ----------
+        function hrMonthlyExportRows() {
+            const month = document.getElementById('hr-payroll-month').value;
+            return hrPayroll.filter(p => !month || p.month === month).map(p => {
+                const e = hrEmployees.find(x => x.id === p.employee_id);
+                return {
+                    'Employee ID': e?.employee_id || '',
+                    'Employee Name': e?.full_name || hrEmpName(p.employee_id),
+                    'Department': e?.department || '',
+                    'Basic Salary': p.basic || 0,
+                    'Paid Leave': p.paid_leave_days || 0,
+                    'Unpaid Leave': p.unpaid_leave_days || 0,
+                    'Absent Days': p.absent_days || 0,
+                    'Deductions': (p.leave_deduction || 0) + (p.deductions || 0),
+                    'Allowances': p.allowances || 0,
+                    'Bonuses': p.bonuses || 0,
+                    'Net Salary': p.net_salary || 0,
+                    'Payment Status': p.payment_status || ''
+                };
+            });
+        }
+
+        function downloadMonthlyPayrollPDF() {
+            const month = document.getElementById('hr-payroll-month').value || 'all';
+            const rows = hrMonthlyExportRows();
+            if (!rows.length) { alert('No payroll entries for this month yet.'); return; }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape' });
+            doc.setFontSize(15); doc.text(`Payroll — ${month}`, 14, 16);
+            const headers = Object.keys(rows[0]);
+            let y = 28;
+            doc.setFontSize(8);
+            const colX = [14, 45, 85, 115, 145, 168, 191, 214, 237, 258, 275];
+            headers.forEach((h, i) => doc.text(h, colX[i] || (14 + i*24), y));
+            y += 6;
+            rows.forEach(r => {
+                headers.forEach((h, i) => {
+                    const val = typeof r[h] === 'number' ? r[h].toLocaleString('en-IN') : String(r[h]);
+                    doc.text(val, colX[i] || (14 + i*24), y);
+                });
+                y += 6;
+                if (y > 190) { doc.addPage(); y = 20; }
+            });
+            doc.save(`${month} Payroll.pdf`);
+        }
+
+        function downloadMonthlyPayrollExcel() {
+            const month = document.getElementById('hr-payroll-month').value || 'all';
+            const rows = hrMonthlyExportRows();
+            if (!rows.length) { alert('No payroll entries for this month yet.'); return; }
+            const headers = Object.keys(rows[0]);
+            const csvLines = [headers.join(',')].concat(rows.map(r => headers.map(h => {
+                const val = String(r[h]).replace(/"/g, '""');
+                return /[,"\n]/.test(val) ? `"${val}"` : val;
+            }).join(',')));
+            const blob = new Blob([csvLines.join('\n')], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${month} Payroll.xlsx`;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+        }
+
         // ══════════════════════════════════════════════════════════════
         // ═══════════════ EMPLOYEE SELF-SERVICE (My Leave/Docs/Payslips) ═══
         // ══════════════════════════════════════════════════════════════
