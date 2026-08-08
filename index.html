@@ -271,6 +271,8 @@
         /* Admin-manager-only: hidden unless admin or manager */
         body:not(.role-admin):not(.role-manager) .admin-manager-only { display: none !important; }
         body:not(.role-manager) .manager-only { display: none !important; }
+        body.hr-mode .non-hr-nav-group { display: none !important; }
+        body:not(.hr-mode) .hr-mode-only { display: none !important; }
 
         /* ── Sparkline draw animation ── */
         @keyframes sparkDraw {
@@ -509,6 +511,20 @@
     </div>
 
     <!-- ══════════ HR MODALS ══════════ -->
+    <div id="hr-profile-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:680px">
+            <div class="flex items-center justify-between mb-1">
+                <div>
+                    <h3 id="hr-profile-name" class="text-lg font-bold text-white">Employee</h3>
+                    <p id="hr-profile-subtitle" class="text-xs text-[#6b74a0]"></p>
+                </div>
+                <button onclick="closeHREmployeeProfile()" class="hr-icon-btn">✕</button>
+            </div>
+            <div id="hr-profile-tabs" style="display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.07);padding:12px 0;margin-bottom:12px"></div>
+            <div id="hr-profile-body" class="text-sm"></div>
+        </div>
+    </div>
+
     <div id="hr-employee-modal" class="hr-modal-overlay hidden">
         <div class="hr-modal">
             <div class="flex items-center justify-between mb-4">
@@ -772,7 +788,7 @@
                 </div>
 
                 <!-- PIPELINE -->
-                <div style="margin-bottom:14px">
+                <div id="nav-group-pipeline" style="margin-bottom:14px" class="non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">PIPELINE</div>
                     <button id="nav-dashboard" onclick="switchTab('dashboard')" class="sidebar-link active" style="width:100%;text-align:left">
                         <i data-lucide="layout-grid" style="width:14px;height:14px"></i> Pipeline Matrix
@@ -783,7 +799,7 @@
                 </div>
 
                 <!-- MY WORKSPACE (every role) -->
-                <div style="margin-bottom:14px">
+                <div id="nav-group-workspace" style="margin-bottom:14px" class="non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MY WORKSPACE</div>
                     <button id="nav-my-profile" onclick="switchTab('my-profile')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile
@@ -803,18 +819,98 @@
                 </div>
 
                 <!-- MANAGER -->
-                <div id="nav-group-manager" style="margin-bottom:14px" class="manager-only">
+                <div id="nav-group-manager" style="margin-bottom:14px" class="manager-only non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MANAGER</div>
                     <button id="nav-team" onclick="switchTab('team')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="users-round" style="width:14px;height:14px"></i> My Team
                     </button>
                 </div>
 
-                <!-- HR -->
-                <div style="margin-bottom:14px" class="admin-only">
+                <!-- HR entry point (visible outside HR workspace) -->
+                <div id="nav-group-hr-entry" style="margin-bottom:14px" class="admin-only non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">HR</div>
-                    <button id="nav-hr" onclick="switchTab('hr')" class="sidebar-link admin-only" style="width:100%;text-align:left">
+                    <button id="nav-hr" onclick="enterHRWorkspace()" class="sidebar-link admin-only" style="width:100%;text-align:left">
                         <i data-lucide="users" style="width:14px;height:14px"></i> HR
+                    </button>
+                </div>
+
+                <!-- HR WORKSPACE TREE (replaces the sidebar entirely while active) -->
+                <div id="nav-group-hr-tree" class="hr-mode-only hidden">
+                    <button onclick="exitHRWorkspace()" class="sidebar-link" style="width:100%;text-align:left;color:#ff6b06;margin-bottom:10px">
+                        <i data-lucide="arrow-left" style="width:14px;height:14px"></i> Exit HR Workspace
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">HR MANAGEMENT</div>
+                    <button id="hrtree-dashboard" onclick="switchHRSubtab('dashboard')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="layout-dashboard" style="width:14px;height:14px"></i> Dashboard
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">PEOPLE</div>
+                    <button id="hrtree-employees" onclick="switchHRSubtab('employees')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="users" style="width:14px;height:14px"></i> Employees
+                    </button>
+                    <button id="hrtree-departments" onclick="switchHRSubtab('departments')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="building-2" style="width:14px;height:14px"></i> Departments
+                    </button>
+                    <button id="hrtree-designations" onclick="switchHRSubtab('designations')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="badge" style="width:14px;height:14px"></i> Designations
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">ATTENDANCE</div>
+                    <button id="hrtree-attendance" onclick="switchHRSubtab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="clock" style="width:14px;height:14px"></i> Attendance
+                    </button>
+                    <button id="hrtree-att-reports" onclick="switchHRSubtab('att-reports')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="bar-chart-2" style="width:14px;height:14px"></i> Attendance Reports
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">LEAVE</div>
+                    <button id="hrtree-leave" onclick="switchHRSubtab('leave')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="calendar-x" style="width:14px;height:14px"></i> Leave Requests
+                    </button>
+                    <button id="hrtree-leave-balance" onclick="switchHRSubtab('leave-balance')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="scale" style="width:14px;height:14px"></i> Leave Balance
+                    </button>
+                    <button id="hrtree-leave-calendar" onclick="switchHRSubtab('leave-calendar')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="calendar-days" style="width:14px;height:14px"></i> Leave Calendar
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">PAYROLL</div>
+                    <button id="hrtree-payroll" onclick="switchHRSubtab('payroll')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="wallet" style="width:14px;height:14px"></i> Payroll
+                    </button>
+                    <button id="hrtree-payslips" onclick="switchHRSubtab('payslips')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="receipt" style="width:14px;height:14px"></i> Payslips
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">RECRUITMENT</div>
+                    <button id="hrtree-recruitment" onclick="switchHRSubtab('recruitment')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="briefcase" style="width:14px;height:14px"></i> Job Openings & Applicants
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">PERFORMANCE</div>
+                    <button id="hrtree-performance" onclick="switchHRSubtab('performance')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="target" style="width:14px;height:14px"></i> Reviews & Goals
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">SCHEDULE</div>
+                    <button id="hrtree-schedule" onclick="switchHRSubtab('schedule')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="calendar-clock" style="width:14px;height:14px"></i> Workforce Calendar
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">DOCUMENTS</div>
+                    <button id="hrtree-documents" onclick="switchHRSubtab('documents')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="folder" style="width:14px;height:14px"></i> Employee Documents
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">REPORTS</div>
+                    <button id="hrtree-reports" onclick="switchHRSubtab('reports')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="file-bar-chart" style="width:14px;height:14px"></i> HR Reports
+                    </button>
+
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">SETTINGS</div>
+                    <button id="hrtree-settings" onclick="switchHRSubtab('accounts')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="sliders" style="width:14px;height:14px"></i> HR Settings
                     </button>
                 </div>
 
@@ -1400,29 +1496,34 @@
                 </div>
             </div>
 
-            <!-- ====== HR PANEL TAB ====== -->
+            <!-- ====== HR WORKSPACE TAB ====== -->
             <div id="tab-content-hr" class="space-y-6 hidden">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Panel</h1>
-                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employees, attendance, leave & payroll across Education and Production.</p>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Management</h1>
+                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee management, attendance, leave, payroll and workforce overview.</p>
                     </div>
-                </div>
-
-                <!-- HR sub-nav -->
-                <div style="display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.07);padding-bottom:10px">
-                    <button id="hr-subnav-dashboard" onclick="switchHRSubtab('dashboard')" class="hr-subnav-btn active">Dashboard</button>
-                    <button id="hr-subnav-employees" onclick="switchHRSubtab('employees')" class="hr-subnav-btn">Employees</button>
-                    <button id="hr-subnav-attendance" onclick="switchHRSubtab('attendance')" class="hr-subnav-btn">Attendance</button>
-                    <button id="hr-subnav-leave" onclick="switchHRSubtab('leave')" class="hr-subnav-btn">Leave</button>
-                    <button id="hr-subnav-payroll" onclick="switchHRSubtab('payroll')" class="hr-subnav-btn">Payroll</button>
-                    <button id="hr-subnav-accounts" onclick="switchHRSubtab('accounts')" class="hr-subnav-btn">Accounts & Permissions</button>
-                    <button id="hr-subnav-reports" onclick="switchHRSubtab('reports')" class="hr-subnav-btn">Reports</button>
                 </div>
 
                 <!-- HR: DASHBOARD -->
                 <div id="hr-sub-dashboard" class="space-y-6">
-                    <div id="hr-dash-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                    <div>
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">HR Overview</h3>
+                        <div id="hr-dash-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">Quick Actions</h3>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap">
+                            <button onclick="openHREmployeeModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider flex items-center gap-2"><i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Add Employee</button>
+                            <button onclick="switchHRSubtab('leave')" class="hr-select flex items-center gap-2" style="cursor:pointer"><i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i> Add Leave</button>
+                            <button onclick="switchHRSubtab('attendance')" class="hr-select flex items-center gap-2" style="cursor:pointer"><i data-lucide="check-square" class="w-3.5 h-3.5"></i> Mark Attendance</button>
+                            <button onclick="openHRPayrollModal()" class="hr-select flex items-center gap-2" style="cursor:pointer"><i data-lucide="wallet" class="w-3.5 h-3.5"></i> Generate Payroll</button>
+                            <button onclick="switchHRSubtab('recruitment')" class="hr-select flex items-center gap-2" style="cursor:pointer"><i data-lucide="briefcase" class="w-3.5 h-3.5"></i> Add Job Opening</button>
+                            <button onclick="switchHRSubtab('documents')" class="hr-select flex items-center gap-2" style="cursor:pointer"><i data-lucide="upload" class="w-3.5 h-3.5"></i> Upload Employee Document</button>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div class="card glass-card p-4 md:p-6 rounded-2xl">
                             <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Pending Leave Requests</h3>
@@ -1433,49 +1534,72 @@
                             <div id="hr-dash-events" class="space-y-2 text-sm text-[#a5adcf]"></div>
                         </div>
                     </div>
+
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <div class="p-4 md:p-6 pb-0"><h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Today's Workforce</h3></div>
+                        <table class="w-full text-sm text-left mt-2">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Department</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4">Work</th>
+                            </tr></thead>
+                            <tbody id="hr-dash-workforce-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- HR: EMPLOYEES -->
                 <div id="hr-sub-employees" class="space-y-4 hidden">
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">Employees</h1>
+                    </div>
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <input id="hr-emp-search" oninput="renderHREmployees()" placeholder="Search Employee..." class="hr-input" style="min-width:180px">
                             <select id="hr-emp-filter-division" onchange="renderHREmployees()" class="hr-select">
-                                <option value="">All Divisions</option>
+                                <option value="">Division: All</option>
                                 <option value="education">Education</option>
                                 <option value="production">Production House</option>
-                                <option value="other">Other</option>
+                                <option value="other">Administration</option>
+                            </select>
+                            <select id="hr-emp-filter-department" onchange="renderHREmployees()" class="hr-select">
+                                <option value="">Department: All</option>
+                            </select>
+                            <select id="hr-emp-filter-designation" onchange="renderHREmployees()" class="hr-select">
+                                <option value="">Designation: All</option>
                             </select>
                             <select id="hr-emp-filter-status" onchange="renderHREmployees()" class="hr-select">
-                                <option value="">All Statuses</option>
+                                <option value="">Status: All</option>
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
                                 <option value="exited">Exited</option>
                             </select>
-                            <input id="hr-emp-search" oninput="renderHREmployees()" placeholder="Search name / ID / dept" class="hr-input" style="min-width:180px">
                         </div>
                         <button onclick="openHREmployeeModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Employee</button>
                     </div>
+                    <div id="hr-employees-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </div>
+
+                <!-- HR: DEPARTMENTS -->
+                <div id="hr-sub-departments" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Departments</h1>
+                    <div id="hr-departments-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </div>
+
+                <!-- HR: DESIGNATIONS -->
+                <div id="hr-sub-designations" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Designations</h1>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
-                            <thead>
-                                <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                    <th class="py-3 px-4">Emp ID</th>
-                                    <th class="py-3 px-4">Name</th>
-                                    <th class="py-3 px-4">Division</th>
-                                    <th class="py-3 px-4">Department</th>
-                                    <th class="py-3 px-4">Designation</th>
-                                    <th class="py-3 px-4">Joined</th>
-                                    <th class="py-3 px-4">Status</th>
-                                    <th class="py-3 px-4 text-center">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="hr-employees-rows" class="divide-y divide-white/[0.05]"></tbody>
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Designation</th><th class="py-3 px-4">Division</th><th class="py-3 px-4">Employees</th>
+                            </tr></thead>
+                            <tbody id="hr-designations-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
                 </div>
 
                 <!-- HR: ATTENDANCE -->
                 <div id="hr-sub-attendance" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Today's Attendance</h1>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                         <input id="hr-att-date" type="date" class="hr-input" onchange="renderHRAttendance()">
                         <button onclick="setHRAttDateToday()" class="hr-select" style="cursor:pointer">Today</button>
@@ -1496,8 +1620,12 @@
                             <tbody id="hr-attendance-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- HR: ATTENDANCE REPORTS -->
+                <div id="hr-sub-att-reports" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Attendance Reports</h1>
                     <div class="card glass-card p-4 rounded-2xl">
-                        <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-2">Monthly Attendance Report</h3>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                             <input id="hr-att-month" type="month" class="hr-input" onchange="renderHRMonthlyAttendance()">
                             <span class="text-[11px] text-[#6b74a0]">Present / Absent / Late / Half-day / WFH totals per employee</span>
@@ -1506,17 +1634,21 @@
                     </div>
                 </div>
 
-                <!-- HR: LEAVE -->
+                <!-- HR: LEAVE REQUESTS -->
                 <div id="hr-sub-leave" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Leave Requests</h1>
                     <div class="card glass-card p-4 md:p-6 rounded-2xl">
-                        <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Leave Requests</h3>
                         <div id="hr-leave-requests-rows" class="space-y-2"></div>
                     </div>
+                </div>
+
+                <!-- HR: LEAVE BALANCE -->
+                <div id="hr-sub-leave-balance" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between">
+                        <h1 class="text-xl font-bold tracking-tight">Leave Balance</h1>
+                        <button onclick="openHRLeaveBalanceModal()" class="text-xs font-bold text-orange-400 uppercase tracking-wider">+ Set Balance</button>
+                    </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
-                        <div class="p-4 md:p-6 pb-0 flex items-center justify-between">
-                            <h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Leave Balances</h3>
-                            <button onclick="openHRLeaveBalanceModal()" class="text-xs font-bold text-orange-400 uppercase tracking-wider">+ Set Balance</button>
-                        </div>
                         <table class="w-full text-sm text-left mt-2">
                             <thead>
                                 <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
@@ -1533,8 +1665,18 @@
                     </div>
                 </div>
 
+                <!-- HR: LEAVE CALENDAR -->
+                <div id="hr-sub-leave-calendar" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Leave Calendar</h1>
+                    <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                        <input id="hr-leave-cal-month" type="month" class="hr-input" onchange="renderHRLeaveCalendar()">
+                        <div id="hr-leave-cal-rows" class="space-y-2 mt-3"></div>
+                    </div>
+                </div>
+
                 <!-- HR: PAYROLL -->
                 <div id="hr-sub-payroll" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Monthly Payroll</h1>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                             <input id="hr-payroll-month" type="month" class="hr-input" onchange="renderHRPayroll()">
@@ -1560,6 +1702,55 @@
                             <tbody id="hr-payroll-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- HR: PAYSLIPS -->
+                <div id="hr-sub-payslips" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Payslips</h1>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Month</th><th class="py-3 px-4">Net Salary</th><th class="py-3 px-4">Status</th><th class="py-3 px-4 text-center">Action</th>
+                            </tr></thead>
+                            <tbody id="hr-payslips-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- HR: RECRUITMENT (stub) -->
+                <div id="hr-sub-recruitment" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Job Openings & Applicants</h1>
+                    <div class="card glass-card p-6 rounded-2xl text-center">
+                        <i data-lucide="briefcase" class="w-8 h-8 mx-auto text-[#4a5182] mb-2"></i>
+                        <p class="text-sm text-[#a5adcf]">Job Opening → Applications → Shortlisted → Interview → Selected → Offer → Joined</p>
+                        <p class="text-xs text-[#4a5182] mt-2">Recruitment pipeline module — coming in the next phase.</p>
+                    </div>
+                </div>
+
+                <!-- HR: PERFORMANCE (stub) -->
+                <div id="hr-sub-performance" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Performance Reviews & Goals</h1>
+                    <div class="card glass-card p-6 rounded-2xl text-center">
+                        <i data-lucide="target" class="w-8 h-8 mx-auto text-[#4a5182] mb-2"></i>
+                        <p class="text-sm text-[#a5adcf]">Trainer & production team reviews, ratings, manager feedback, review history.</p>
+                        <p class="text-xs text-[#4a5182] mt-2">Performance module — coming in the next phase.</p>
+                    </div>
+                </div>
+
+                <!-- HR: SCHEDULE (stub) -->
+                <div id="hr-sub-schedule" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Workforce Calendar</h1>
+                    <div class="card glass-card p-6 rounded-2xl text-center">
+                        <i data-lucide="calendar-clock" class="w-8 h-8 mx-auto text-[#4a5182] mb-2"></i>
+                        <p class="text-sm text-[#a5adcf]">Online/offline classes, shoot assignments, availability & schedule-conflict detection.</p>
+                        <p class="text-xs text-[#4a5182] mt-2">Scheduling module — coming in the next phase.</p>
+                    </div>
+                </div>
+
+                <!-- HR: DOCUMENTS -->
+                <div id="hr-sub-documents" class="space-y-4 hidden">
+                    <h1 class="text-xl font-bold tracking-tight">Employee Documents</h1>
+                    <div id="hr-documents-list" class="space-y-3"></div>
                 </div>
             </div>
 
@@ -2419,6 +2610,7 @@
             // Set role class on body for CSS-based role visibility
             document.body.classList.remove('role-admin', 'role-manager', 'role-employee', 'role-social-media');
             document.body.classList.add('role-' + (activeRole || 'employee'));
+            if (activeRole !== 'admin') document.body.classList.remove('hr-mode');
             // Show + button only for admin/manager
             const assignBtn = document.getElementById('btn-open-assign-panel');
             if (assignBtn) {
@@ -2523,7 +2715,7 @@
             // HR (admin) -> HR Dashboard | Manager -> Manager (Team) Dashboard | Employee -> Pipeline (My Work)
             if (!window._hrLandingDone) {
                 window._hrLandingDone = true;
-                if (activeRole === 'admin') switchTab('hr');
+                if (activeRole === 'admin') enterHRWorkspace();
                 else if (activeRole === 'manager') switchTab('team');
                 else switchTab('dashboard');
             }
@@ -2587,6 +2779,7 @@
         }
 
         function switchTab(targetTab) {
+            if (targetTab !== 'hr') document.body.classList.remove('hr-mode');
             document.querySelectorAll('.sidebar-link').forEach(btn => btn.classList.remove('active'));
 
             // Reset report animation flag when leaving reports
@@ -2837,7 +3030,7 @@
             closeAccountSwitcher();
             pushLogEntry(`${activeUser} (${activeRole}) switched into session on this device.`);
             launchSession();
-            if (activeRole === 'admin') switchTab('hr');
+            if (activeRole === 'admin') enterHRWorkspace();
             else if (activeRole === 'manager') switchTab('team');
             else switchTab('dashboard');
         }
@@ -6230,7 +6423,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-att-date').value = document.getElementById('hr-att-date').value || new Date().toISOString().slice(0,10);
             document.getElementById('hr-att-month').value = document.getElementById('hr-att-month').value || new Date().toISOString().slice(0,7);
             document.getElementById('hr-payroll-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
+            document.getElementById('hr-leave-cal-month').value = document.getElementById('hr-leave-cal-month').value || new Date().toISOString().slice(0,7);
             switchHRSubtab(hrCurrentSubtab);
+        }
+
+        function enterHRWorkspace() {
+            document.body.classList.add('hr-mode');
+            switchTab('hr');
+        }
+        function exitHRWorkspace() {
+            document.body.classList.remove('hr-mode');
+            switchTab('dashboard');
         }
 
         async function loadHRData() {
@@ -6252,24 +6455,32 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
+        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','documents','accounts','reports'];
+
         function switchHRSubtab(tab) {
             hrCurrentSubtab = tab;
-            ['dashboard','employees','attendance','leave','payroll','accounts','reports'].forEach(t => {
-                document.getElementById('hr-subnav-' + t).classList.toggle('active', t === tab);
-            });
-            ['dashboard','employees','attendance','leave','payroll'].forEach(t => {
-                document.getElementById('hr-sub-' + t).classList.toggle('hidden', t !== tab);
+            HR_ALL_SUBTABS.forEach(t => {
+                document.getElementById('hrtree-' + (t === 'accounts' ? 'settings' : t))?.classList.toggle('active', t === tab);
+                document.getElementById('hr-sub-' + t)?.classList.toggle('hidden', t !== tab);
             });
             // Accounts & Reports reuse the original Setup Center / Monthly Reports tab markup
             document.getElementById('tab-content-settings').classList.toggle('hidden', tab !== 'accounts');
             document.getElementById('tab-content-reports').classList.toggle('hidden', tab !== 'reports');
             if (tab === 'dashboard') renderHRDashboard();
-            else if (tab === 'employees') renderHREmployees();
-            else if (tab === 'attendance') { renderHRAttendance(); renderHRMonthlyAttendance(); }
-            else if (tab === 'leave') { renderHRLeaveRequests(); renderHRLeaveBalances(); }
+            else if (tab === 'employees') { populateHREmployeeFilterOptions(); renderHREmployees(); }
+            else if (tab === 'departments') renderHRDepartments();
+            else if (tab === 'designations') renderHRDesignations();
+            else if (tab === 'attendance') renderHRAttendance();
+            else if (tab === 'att-reports') renderHRMonthlyAttendance();
+            else if (tab === 'leave') renderHRLeaveRequests();
+            else if (tab === 'leave-balance') renderHRLeaveBalances();
+            else if (tab === 'leave-calendar') renderHRLeaveCalendar();
             else if (tab === 'payroll') renderHRPayroll();
+            else if (tab === 'payslips') renderHRPayslipsList();
+            else if (tab === 'documents') renderHRDocumentsList();
             else if (tab === 'accounts') { editingRosterIndex = null; renderSettingsRoster(); }
             else if (tab === 'reports') { initReportSelectors(); generateReports(true); }
+            if (window.lucide) lucide.createIcons();
         }
 
         function hrEmpName(id) {
@@ -6281,6 +6492,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         function renderHRDashboard() {
             const total = hrEmployees.length;
             const active = hrEmployees.filter(e => e.employment_status === 'active').length;
+
             const now = new Date();
             const thisMonth = now.getMonth(), thisYear = now.getFullYear();
             const newThisMonth = hrEmployees.filter(e => e.joining_date && new Date(e.joining_date).getMonth() === thisMonth && new Date(e.joining_date).getFullYear() === thisYear).length;
@@ -6289,15 +6501,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const onLeaveToday = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr).length;
             const pendingLeave = hrLeaveRequests.filter(r => r.status === 'pending').length;
 
+            const absentToday = hrAttendance.filter(a => a.att_date === todayStr && a.status === 'absent').length;
+            const lateToday = hrAttendance.filter(a => a.att_date === todayStr && a.status === 'late').length;
+            const pendingPayroll = hrPayroll.filter(p => p.payment_status === 'pending').length;
+
             const stats = [
                 { label: 'Total Employees', num: total },
-                { label: 'Active Employees', num: active },
-                { label: 'New This Month', num: newThisMonth },
-                { label: "Today's Attendance", num: todayPresent },
-                { label: 'On Leave Today', num: onLeaveToday },
+                { label: 'Present Today', num: todayPresent },
+                { label: 'On Leave', num: onLeaveToday },
+                { label: 'New Employees', num: newThisMonth },
                 { label: 'Pending Leave Requests', num: pendingLeave },
-                { label: 'Pending HR Tasks', num: pendingLeave },
-                { label: 'Departments Active', num: new Set(hrEmployees.map(e=>e.department)).size }
+                { label: 'Pending Payroll', num: pendingPayroll }
             ];
             document.getElementById('hr-dash-stats').innerHTML = stats.map(s => `
                 <div class="hr-stat-card"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>
@@ -6323,6 +6537,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <span>${ev.name} — ${ev.label}</span><span class="text-[#6b74a0]">${ev.daysAway === 0 ? 'Today' : ev.daysAway + 'd'}</span>
                 </div>
             `).join('') : '<p class="text-[#4a5182] text-xs">None in the next 30 days.</p>';
+
+            // Today's Workforce
+            const activeEmps = hrEmployees.filter(e => e.employment_status === 'active');
+            document.getElementById('hr-dash-workforce-rows').innerHTML = activeEmps.length ? activeEmps.map(e => {
+                const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
+                const onLeave = hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr);
+                const status = onLeave ? 'On Leave' : rec ? rec.status.replace('_',' ') : 'Not marked';
+                const badgeClass = onLeave ? 'hr-badge-pending' : rec ? 'hr-badge-' + rec.status : '';
+                return `<tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${e.full_name}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
+                    <td class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">—</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                </tr>`;
+            }).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
         }
 
         function hrNextOccurrence(dateStr, name, label) {
@@ -6412,58 +6642,142 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             renderHREmployees();
         }
 
+        function populateHREmployeeFilterOptions() {
+            const deptSel = document.getElementById('hr-emp-filter-department');
+            const desigSel = document.getElementById('hr-emp-filter-designation');
+            const depts = [...new Set(hrEmployees.map(e => e.department).filter(Boolean))].sort();
+            const desigs = [...new Set(hrEmployees.map(e => e.designation).filter(Boolean))].sort();
+            const curDept = deptSel.value, curDesig = desigSel.value;
+            deptSel.innerHTML = '<option value="">Department: All</option>' + depts.map(d => `<option value="${d}">${d}</option>`).join('');
+            desigSel.innerHTML = '<option value="">Designation: All</option>' + desigs.map(d => `<option value="${d}">${d}</option>`).join('');
+            deptSel.value = curDept; desigSel.value = curDesig;
+        }
+
         function renderHREmployees() {
             const div = document.getElementById('hr-emp-filter-division').value;
+            const dept = document.getElementById('hr-emp-filter-department').value;
+            const desig = document.getElementById('hr-emp-filter-designation').value;
             const status = document.getElementById('hr-emp-filter-status').value;
             const q = document.getElementById('hr-emp-search').value.toLowerCase();
             let rows = hrEmployees.filter(e =>
                 (!div || e.division === div) &&
+                (!dept || e.department === dept) &&
+                (!desig || e.designation === desig) &&
                 (!status || e.employment_status === status) &&
                 (!q || [e.full_name, e.employee_id, e.department].join(' ').toLowerCase().includes(q))
             );
-            document.getElementById('hr-employees-rows').innerHTML = rows.length ? rows.map(e => `
-                <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.employee_id || '—'}</td>
-                    <td class="py-2.5 px-4 text-white font-semibold cursor-pointer" onclick="viewHREmployee('${e.id}')">${e.full_name}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.joining_date || '—'}</td>
-                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center">
+            const divisionLabel = { education: 'Education', production: 'Production House', other: 'Administration' };
+            document.getElementById('hr-employees-cards').innerHTML = rows.length ? rows.map(e => `
+                <div class="card glass-card p-4 rounded-2xl space-y-2">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="text-white font-bold text-sm">${e.full_name}</p>
+                            <p class="text-[10px] text-[#6b74a0] uppercase tracking-wider mt-0.5">${e.employee_id || 'No ID'}</p>
+                        </div>
+                        <span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span>
+                    </div>
+                    <p class="text-xs text-[#a5adcf]">${divisionLabel[e.division] || e.division} · ${e.designation || e.department || '—'}</p>
+                    <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
+                        <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
                         <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
-                        <button onclick="deleteHREmployee('${e.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
-                    </td>
-                </tr>
-            `).join('') : `<tr><td colspan="8" class="py-8 text-center text-[#4a5182] text-xs">No employees found.</td></tr>`;
+                        <button onclick="openHREmployeeProfile('${e.id}','documents')" class="hr-icon-btn">Documents</button>
+                        <button onclick="deleteHREmployee('${e.id}')" class="hr-icon-btn" style="margin-left:auto;color:#f87171">Del</button>
+                    </div>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No employees found.</p>';
         }
 
-        function viewHREmployee(id) {
-            const e = hrEmployees.find(x => x.id === id);
+        // ---------- EMPLOYEE PROFILE (full detail view with tabs) ----------
+        let hrProfileEmployeeId = null;
+        let hrProfileTab = 'personal';
+        function openHREmployeeProfile(id, tab = 'personal') {
+            hrProfileEmployeeId = id;
+            hrProfileTab = tab;
+            document.getElementById('hr-profile-modal').classList.remove('hidden');
+            document.getElementById('hr-profile-modal').classList.add('flex');
+            renderHREmployeeProfile();
+        }
+        function closeHREmployeeProfile() {
+            document.getElementById('hr-profile-modal').classList.add('hidden');
+            document.getElementById('hr-profile-modal').classList.remove('flex');
+        }
+        function switchHRProfileTab(tab) {
+            hrProfileTab = tab;
+            renderHREmployeeProfile();
+        }
+        function renderHREmployeeProfile() {
+            const e = hrEmployees.find(x => x.id === hrProfileEmployeeId);
             if (!e) return;
-            const docs = (e.document_links || '').split(',').map(s => s.trim()).filter(Boolean);
-            const body = `Employee ID: ${e.employee_id || '—'}
-Division: ${e.division}
-Department: ${e.department || '—'}
-Designation: ${e.designation || '—'}
-Joined: ${e.joining_date || '—'}
-Status: ${e.employment_status}
-DOB: ${e.dob || '—'}
-Phone: ${e.phone || '—'}
-Portal Email: ${e.portal_email || '—'}
-Emergency Contact: ${e.emergency_contact_name || '—'} (${e.emergency_contact_phone || '—'})
-
-Documents:
-${docs.length ? docs.join('\\n') : 'None on file'}
-
-Notes / History:
-${e.notes || '—'}`;
-            document.getElementById('note-modal-body').textContent = body;
-            document.getElementById('note-modal').classList.remove('hidden');
-            document.getElementById('note-modal').classList.add('flex');
+            document.getElementById('hr-profile-name').textContent = e.full_name;
+            document.getElementById('hr-profile-subtitle').textContent = e.designation || e.department || '—';
+            const tabs = ['personal','employment','attendance','leave','payroll','documents','performance','schedule'];
+            document.getElementById('hr-profile-tabs').innerHTML = tabs.map(t => `
+                <button onclick="switchHRProfileTab('${t}')" class="hr-subnav-btn ${hrProfileTab===t?'active':''}" style="text-transform:capitalize">${t}</button>
+            `).join('');
+            const body = document.getElementById('hr-profile-body');
+            if (hrProfileTab === 'personal') {
+                body.innerHTML = hrProfileField('Date of Birth', e.dob) + hrProfileField('Phone', e.phone) + hrProfileField('Portal Email', e.portal_email) +
+                    hrProfileField('Emergency Contact', [e.emergency_contact_name, e.emergency_contact_phone].filter(Boolean).join(' — ')) + hrProfileField('Notes / History', e.notes, true);
+            } else if (hrProfileTab === 'employment') {
+                body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Division', e.division) + hrProfileField('Department', e.department) +
+                    hrProfileField('Designation', e.designation) + hrProfileField('Joining Date', e.joining_date) + hrProfileField('Employment Status', e.employment_status) +
+                    hrProfileField('Manager (portal email)', e.manager_email);
+            } else if (hrProfileTab === 'attendance') {
+                const recs = hrAttendance.filter(a => a.employee_id === e.id).sort((a,b)=>b.att_date.localeCompare(a.att_date)).slice(0,20);
+                body.innerHTML = recs.length ? `<div class="space-y-1.5">${recs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.att_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status.replace('_',' ')}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No attendance records yet.</p>';
+            } else if (hrProfileTab === 'leave') {
+                const reqs = hrLeaveRequests.filter(r => r.employee_id === e.id);
+                body.innerHTML = reqs.length ? `<div class="space-y-1.5">${reqs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.leave_type} — ${r.start_date} → ${r.end_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
+            } else if (hrProfileTab === 'payroll') {
+                const pay = hrPayroll.filter(p => p.employee_id === e.id);
+                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
+            } else if (hrProfileTab === 'documents') {
+                const docs = (e.document_links || '').split(',').map(s => s.trim()).filter(Boolean);
+                body.innerHTML = docs.length ? docs.map(d => `<a href="${d}" target="_blank" rel="noopener" style="display:block;padding:6px 0;color:#a5adcf;border-bottom:1px solid rgba(255,255,255,0.05)">${d}</a>`).join('') : '<p class="text-[#4a5182] text-xs">No documents on file. Add links via Edit.</p>';
+            } else if (hrProfileTab === 'performance') {
+                body.innerHTML = '<p class="text-[#4a5182] text-xs">Performance reviews module coming in the next phase.</p>';
+            } else if (hrProfileTab === 'schedule') {
+                body.innerHTML = '<p class="text-[#4a5182] text-xs">Scheduling module coming in the next phase.</p>';
+            }
+        }
+        function hrProfileField(label, value, block = false) {
+            return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                <div class="hr-field-label" style="margin-bottom:2px">${label}</div>
+                <div class="text-sm ${block?'whitespace-pre-wrap':''} text-[#e6e9f5]">${value || '—'}</div>
+            </div>`;
         }
 
-        // ---------- ATTENDANCE ----------
+        // ---------- DEPARTMENTS & DESIGNATIONS ----------
+        function renderHRDepartments() {
+            const divisionLabel = { education: 'Education', production: 'Production House', other: 'Administration' };
+            const groups = {};
+            Object.keys(HR_DEPARTMENTS).forEach(div => HR_DEPARTMENTS[div].forEach(d => { groups[d] = { division: div, count: 0 }; }));
+            hrEmployees.forEach(e => { if (e.department && groups[e.department]) groups[e.department].count++; });
+            document.getElementById('hr-departments-grid').innerHTML = Object.entries(groups).map(([name, g]) => `
+                <div class="card glass-card p-4 rounded-2xl cursor-pointer" onclick="document.getElementById('hr-emp-filter-department').value='${name}';switchHRSubtab('employees')">
+                    <p class="text-white font-bold text-sm">${name}</p>
+                    <p class="text-[10px] text-[#6b74a0] uppercase tracking-wider mt-1">${divisionLabel[g.division]}</p>
+                    <p class="text-2xl font-extrabold text-white mt-2">${g.count}</p>
+                    <p class="text-[10px] text-[#4a5182]">employees</p>
+                </div>
+            `).join('');
+        }
+        function renderHRDesignations() {
+            const counts = {};
+            hrEmployees.forEach(e => {
+                if (!e.designation) return;
+                const key = e.designation + '|' + e.division;
+                counts[key] = (counts[key] || 0) + 1;
+            });
+            const divisionLabel = { education: 'Education', production: 'Production House', other: 'Administration' };
+            const rows = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+            document.getElementById('hr-designations-rows').innerHTML = rows.length ? rows.map(([key, count]) => {
+                const [desig, div] = key.split('|');
+                return `<tr><td class="py-2.5 px-4 text-white font-semibold">${desig}</td><td class="py-2.5 px-4 text-[#a5adcf]">${divisionLabel[div]||div}</td><td class="py-2.5 px-4 text-[#a5adcf]">${count}</td></tr>`;
+            }).join('') : `<tr><td colspan="3" class="py-8 text-center text-[#4a5182] text-xs">No designations recorded yet.</td></tr>`;
+        }
+
+
         function setHRAttDateToday() {
             document.getElementById('hr-att-date').value = new Date().toISOString().slice(0,10);
             renderHRAttendance();
@@ -6604,6 +6918,43 @@ ${e.notes || '—'}`;
                     <td class="py-2.5 px-4 text-center"><button onclick="openHRLeaveBalanceModal()" class="hr-icon-btn">Edit</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No leave balances set.</td></tr>`;
+        }
+
+        function renderHRLeaveCalendar() {
+            const month = document.getElementById('hr-leave-cal-month').value;
+            const rows = hrLeaveRequests.filter(r => r.status === 'approved' && (r.start_date.startsWith(month) || r.end_date.startsWith(month))).sort((a,b) => a.start_date.localeCompare(b.start_date));
+            document.getElementById('hr-leave-cal-rows').innerHTML = rows.length ? rows.map(r => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
+                    <span class="text-sm text-white">${hrEmpName(r.employee_id)} — ${r.leave_type}</span>
+                    <span class="text-xs text-[#a5adcf]">${r.start_date} → ${r.end_date}</span>
+                </div>
+            `).join('') : '<p class="text-[#4a5182] text-xs">No approved leave in this month.</p>';
+        }
+
+        function renderHRDocumentsList() {
+            const withDocs = hrEmployees.filter(e => (e.document_links || '').trim());
+            document.getElementById('hr-documents-list').innerHTML = hrEmployees.length ? hrEmployees.map(e => {
+                const docs = (e.document_links || '').split(',').map(s => s.trim()).filter(Boolean);
+                return `<div class="card glass-card p-4 rounded-2xl">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-white font-bold text-sm">${e.full_name}</p>
+                        <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Add / Edit Docs</button>
+                    </div>
+                    ${docs.length ? docs.map(d => `<a href="${d}" target="_blank" rel="noopener" style="display:block;padding:4px 0;color:#a5adcf;font-size:12px">${d}</a>`).join('') : '<p class="text-[#4a5182] text-xs">No documents on file.</p>'}
+                </div>`;
+            }).join('') : '<p class="text-[#4a5182] text-xs">No employees yet.</p>';
+        }
+
+        function renderHRPayslipsList() {
+            document.getElementById('hr-payslips-rows').innerHTML = hrPayroll.length ? hrPayroll.map(p => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${hrEmpName(p.employee_id)}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${p.month}</td>
+                    <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
+                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button></td>
+                </tr>
+            `).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }
 
         // ---------- PAYROLL ----------
