@@ -2460,9 +2460,6 @@
 
             if (activeRole === 'admin') {
                 document.getElementById('admin-assignment-panel')?.classList.remove('hidden');
-                document.getElementById('nav-settings')?.classList.remove('hidden');
-                document.getElementById('nav-attendance')?.classList.remove('hidden');
-                document.getElementById('nav-reports')?.classList.remove('hidden');
                 document.getElementById('th-actions')?.classList.remove('hidden');
                 document.getElementById('admin-download-wrapper')?.classList.remove('hidden');
                 document.getElementById('admin-download-logs-btn')?.classList.remove('hidden');
@@ -2470,8 +2467,6 @@
                 document.getElementById('attendance-clock-card')?.classList.add('hidden');
             } else if (activeRole === 'manager') {
                 document.getElementById('admin-assignment-panel')?.classList.remove('hidden');
-                document.getElementById('nav-settings')?.classList.add('hidden');
-                document.getElementById('nav-attendance')?.classList.add('hidden');
                 document.getElementById('th-actions')?.classList.add('hidden');
                 document.getElementById('admin-download-wrapper')?.classList.add('hidden');
                 document.getElementById('admin-download-logs-btn')?.classList.add('hidden');
@@ -2481,8 +2476,6 @@
             } else {
                 // SECURITY ENHANCEMENT: Hide assignment panel explicitly from employee creator accounts
                 document.getElementById('admin-assignment-panel')?.classList.add('hidden');
-                document.getElementById('nav-settings')?.classList.add('hidden');
-                document.getElementById('nav-attendance')?.classList.add('hidden');
                 document.getElementById('th-actions')?.classList.add('hidden');
                 document.getElementById('admin-download-wrapper')?.classList.add('hidden');
                 document.getElementById('admin-download-logs-btn')?.classList.add('hidden');
@@ -2517,8 +2510,7 @@
             }
 
             // Load notifications for this user
-            loadNotifs();
-            loadKnownTasks();
+            loadNotifs();            loadKnownTasks();
             renderNotifBadges();
             renderDashboardNotifFeed();
 
@@ -2526,6 +2518,15 @@
 
             // Auto-delete chat messages older than 7 days (runs for everyone)
             autoDeleteOldChatMessages();
+
+            // Land on the role-appropriate home screen.
+            // HR (admin) -> HR Dashboard | Manager -> Manager (Team) Dashboard | Employee -> Pipeline (My Work)
+            if (!window._hrLandingDone) {
+                window._hrLandingDone = true;
+                if (activeRole === 'admin') switchTab('hr');
+                else if (activeRole === 'manager') switchTab('team');
+                else switchTab('dashboard');
+            }
         }
 
         function _getBriefBannerKey() {
@@ -2836,7 +2837,9 @@
             closeAccountSwitcher();
             pushLogEntry(`${activeUser} (${activeRole}) switched into session on this device.`);
             launchSession();
-            switchTab('dashboard');
+            if (activeRole === 'admin') switchTab('hr');
+            else if (activeRole === 'manager') switchTab('team');
+            else switchTab('dashboard');
         }
 
         function startAddAccountFlow() {
