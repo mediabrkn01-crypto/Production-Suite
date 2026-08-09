@@ -6646,6 +6646,27 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         };
         const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Unpaid Leave', 'Work From Home'];
         const HR_UNLIMITED_LEAVE_TYPES = ['Unpaid Leave']; // these show "—" for Allocated/Remaining instead of a number
+        // Company's standard/default leave policy — auto-assigned to every new employee so HR
+        // never has to manually type a starting allocation per person. Edit these numbers to
+        // change the company-wide policy; existing employees' allocations are untouched (they're
+        // only used as the seed value at the moment an employee record is first created).
+        const HR_DEFAULT_LEAVE_ALLOCATION = {
+            'Casual Leave': 3,
+            'Sick Leave': 1,
+            'Annual Leave': 12,
+            'Emergency Leave': 3,
+            'Unpaid Leave': null, // no fixed allocation
+            'Work From Home': 10
+        };
+
+        async function hrSeedDefaultLeaveBalances(employeeId) {
+            const rows = HR_LEAVE_TYPES.filter(t => !HR_UNLIMITED_LEAVE_TYPES.includes(t)).map(t => ({
+                employee_id: employeeId, leave_type: t, allotted: HR_DEFAULT_LEAVE_ALLOCATION[t] || 0, used: 0
+            }));
+            if (!rows.length) return;
+            try { await dbInstance.from('hr_leave_balances').insert(rows); }
+            catch (e) { console.warn('Could not seed default leave balances:', e.message); }
+        }
         const HR_ATT_STATUSES = ['present', 'absent', 'late', 'half_day', 'wfh', 'on_leave', 'holiday'];
 
         let hrEmployees = [];
@@ -6738,6 +6759,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         const { data: seeded, error: seedErr } = await dbInstance.from('hr_employees').insert(seedPayload).select('*');
                         if (!seedErr && seeded) {
                             hrEmployees = hrEmployees.concat(seeded);
+                            await Promise.all(seeded.map(e => hrSeedDefaultLeaveBalances(e.id)));
                             console.log(`HR: synced ${seeded.length} account(s) from Supervisor as HR employees.`);
                         } else if (seedErr) {
                             console.warn('HR sync from Supervisor accounts failed:', seedErr.message);
@@ -6983,6 +7005,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         const existing = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === payload.portal_email);
                         if (existing) {
                             await dbInstance.from('hr_employees').update(payload).eq('id', existing.id);
+                            // Returning employee with no leave balances yet (e.g. synced in from
+                            // Supervisor but never had HR set anything up) — seed the defaults now.
+                            if (!hrLeaveBalances.some(b => b.employee_id === existing.id)) {
+                                await hrSeedDefaultLeaveBalances(existing.id);
+                            }
                             closeHREmployeeModal();
                             await loadHRData();
                             renderHREmployees();
@@ -6991,13 +7018,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         }
                     }
                     const { data: created, error } = await dbInstance.from('hr_employees').insert([payload]).select('*');
-                    if (!error && created && created[0] && monthly_salary > 0) {
-                        await dbInstance.from('hr_salary_history').insert([{
-                            employee_id: created[0].id,
-                            salary: monthly_salary,
-                            effective_date: joining_date || new Date().toISOString().slice(0,10),
-                            reason: 'Initial Salary'
-                        }]);
+                    if (!error && created && created[0]) {
+                        await hrSeedDefaultLeaveBalances(created[0].id);
+                        if (monthly_salary > 0) {
+                            await dbInstance.from('hr_salary_history').insert([{
+                                employee_id: created[0].id,
+                                salary: monthly_salary,
+                                effective_date: joining_date || new Date().toISOString().slice(0,10),
+                                reason: 'Initial Salary'
+                            }]);
+                        }
                     }
                 }
                 closeHREmployeeModal();
