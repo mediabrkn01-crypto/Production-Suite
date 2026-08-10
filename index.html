@@ -705,7 +705,7 @@
     <div id="hr-payroll-modal" class="hr-modal-overlay hidden">
         <div class="hr-modal">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold text-white">Add Payroll Entry</h3>
+                <h3 id="hr-payroll-modal-title" class="text-lg font-bold text-white">Add Payroll Entry</h3>
                 <button onclick="closeHRPayrollModal()" class="hr-icon-btn">✕</button>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -715,8 +715,8 @@
                     <button type="button" onclick="autoCalculateHRPayroll()" class="hr-select w-full" style="cursor:pointer;text-align:center;font-weight:700">⚡ Auto-Calculate from Attendance</button>
                     <p id="hr-pr-leave-breakdown" class="text-[10px] text-[#6b74a0] mt-1"></p>
                 </div>
-                <div><label class="hr-field-label">Basic Salary (payable amount — auto-calc prorates this by attendance)</label><input id="hr-pr-basic" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
-                <div><label class="hr-field-label">Leave Deduction (auto)</label><input id="hr-pr-leave-deduction" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Basic Salary (full salary — auto-calc fills this from the employee record)</label><input id="hr-pr-basic" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">LOP Deduction (auto — unpaid leave + absent days)</label><input id="hr-pr-leave-deduction" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Allowances</label><input id="hr-pr-allowances" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Overtime</label><input id="hr-pr-overtime" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Bonuses</label><input id="hr-pr-bonuses" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
@@ -730,7 +730,7 @@
                 <input type="hidden" id="hr-pr-absent-days" value="0">
                 <div class="sm:col-span-2"><label class="hr-field-label">Net Salary</label><div id="hr-pr-net-preview" class="hr-input w-full" style="color:#4ade80;font-weight:700">₹0</div></div>
             </div>
-            <button onclick="saveHRPayroll()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Entry</button>
+            <button id="hr-payroll-save-btn" onclick="saveHRPayroll()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Entry</button>
         </div>
     </div>
 
@@ -7380,7 +7380,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 body.innerHTML = reqs.length ? `<div class="space-y-1.5">${reqs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.leave_type} — ${r.start_date} → ${r.end_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
             } else if (hrProfileTab === 'payroll') {
                 const pay = hrPayroll.filter(p => p.employee_id === e.id);
-                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
+                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
             } else if (hrProfileTab === 'documents') {
                 body.innerHTML = hrRenderEmployeeDocuments(e.id);
             } else if (hrProfileTab === 'performance') {
@@ -8089,7 +8089,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-2.5 px-4 text-[#a5adcf]">${p.month}</td>
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }
@@ -8217,48 +8217,57 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return hrHolidays.some(h => h.holiday_date === dateStr);
         }
 
-        // Determines each day's status for an employee across a month, then derives the
-        // actual PAYABLE salary — proportional to real attendance, not the full monthly
-        // figure. Weekly-offs and holidays are neutral (neither payable nor deducted).
+        // Determines each day's status for an employee across a month, then derives LOP
+        // (Loss of Pay) — the single mechanism that reduces pay from the full salary:
+        //   Present            → paid, not LOP
+        //   Approved paid leave→ paid, not LOP  (Casual/Sick/Annual/Emergency/WFH — anything
+        //                        but the "Unpaid Leave" type)
+        //   Weekly off         → paid, not LOP
+        //   Company holiday    → paid, not LOP
+        //   Approved UNPAID leave → LOP
+        //   Absent, nothing filed → LOP
+        //   Half day           → half paid, half LOP
+        // Basic is the employee's full contracted salary for the month; LOP Deduction (see
+        // leaveDeduction below) is the only thing that reduces it — so a day's pay is never
+        // removed twice by two different mechanisms.
         // Future dates (not yet occurred) are skipped entirely — can't dock pay for a day
-        // that hasn't happened.
+        // that hasn't happened. "Paid Days" on the payslip is a separate, always-full
+        // calendar-days-in-month figure — see downloadHRPayslip.
         function hrCalculatePayrollForMonth(employeeId, monthStr) {
             const [y, m] = monthStr.split('-').map(Number);
             const daysInMonth = new Date(y, m, 0).getDate();
             const salary = hrGetEffectiveSalary(employeeId, monthStr);
             const dailySalary = daysInMonth ? salary / daysInMonth : 0;
             const todayStr = new Date().toISOString().slice(0,10);
-            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, payableDays = 0;
+            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
                 if (dateStr > todayStr) continue; // hasn't happened yet — excluded entirely
                 const dow = new Date(y, m - 1, d).getDay();
-                if (hrIsHoliday(dateStr)) { holidayDays++; continue; } // neutral — not payable, not deducted
+                if (hrIsHoliday(dateStr)) { holidayDays++; continue; }
                 const rec = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === dateStr);
                 if (rec) {
-                    if (rec.status === 'holiday') { holidayDays++; continue; } // neutral
+                    if (rec.status === 'holiday') { holidayDays++; continue; }
                     if (rec.status === 'absent') { absentDays++; continue; }
                     if (rec.status === 'on_leave') {
                         const leave = hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
-                        // Unpaid-leave days still count toward payableDays here — leaveDeduction
-                        // below is the ONE place their pay gets removed. Excluding them from
-                        // payableDays *and* subtracting leaveDeduction for the same days was
-                        // deducting each unpaid-leave day's pay twice.
-                        if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; payableDays++; continue; }
-                        paidLeaveDays++; payableDays++; continue;
+                        if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
+                        paidLeaveDays++; continue;
                     }
-                    if (rec.status === 'half_day') { payableDays += 0.5; continue; }
-                    // present, late, wfh — all worked/payable
-                    presentDays++; payableDays++; continue;
+                    if (rec.status === 'half_day') { halfDayDays++; continue; }
+                    presentDays++; continue; // present, late, wfh — all worked
                 }
-                if (hrIsWeeklyOff(dow)) { weeklyOffDays++; continue; } // neutral — not payable, not deducted
-                // No record, not a weekly-off, not a holiday — genuinely unmarked/unworked, not payable.
+                if (hrIsWeeklyOff(dow)) { weeklyOffDays++; continue; }
+                // No record, not a weekly-off, not a holiday — genuinely unmarked/unworked → LOP.
                 absentDays++;
             }
-            const earnedBasic = Math.round(dailySalary * payableDays * 100) / 100;
-            const leaveDeduction = Math.round(dailySalary * unpaidLeaveDays * 100) / 100;
-            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, payableDays, earnedBasic, leaveDeduction };
+            // LOP: every day that isn't Present, Approved Paid Leave, Weekly Off, or Holiday.
+            const lopDays = unpaidLeaveDays + absentDays + halfDayDays * 0.5;
+            const payableDays = presentDays + paidLeaveDays + weeklyOffDays + holidayDays + halfDayDays * 0.5;
+            const earnedBasic = salary; // full contracted salary — LOP deduction does the rest
+            const leaveDeduction = Math.round(dailySalary * lopDays * 100) / 100;
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, lopDays, payableDays, earnedBasic, leaveDeduction };
         }
 
         // ---------- PROBATION ----------
@@ -8356,17 +8365,44 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-pr-net-preview').textContent = '₹' + net.toLocaleString('en-IN');
         }
 
-        function openHRPayrollModal() {
+        // Set while the payroll modal is open for an existing row — saveHRPayroll() UPDATEs
+        // that row instead of INSERTing a new one, so editing never creates a duplicate payslip.
+        let hrEditingPayrollId = null;
+
+        function openHRPayrollModal(editId = null) {
+            hrEditingPayrollId = editId;
             document.getElementById('hr-pr-employee').innerHTML = hrEmployees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
-            document.getElementById('hr-pr-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
-            ['hr-pr-basic','hr-pr-allowances','hr-pr-overtime','hr-pr-bonuses','hr-pr-deductions','hr-pr-advances','hr-pr-leave-deduction'].forEach(id => document.getElementById(id).value = '');
-            document.getElementById('hr-pr-status').value = 'pending';
-            document.getElementById('hr-pr-leave-breakdown').textContent = '';
+            const p = editId ? hrPayroll.find(x => x.id === editId) : null;
+            document.getElementById('hr-payroll-modal-title').textContent = p ? 'Edit Payslip' : 'Add Payroll Entry';
+            document.getElementById('hr-payroll-save-btn').textContent = p ? 'Save Changes' : 'Save Entry';
+            if (p) {
+                document.getElementById('hr-pr-employee').value = p.employee_id;
+                document.getElementById('hr-pr-month').value = p.month;
+                document.getElementById('hr-pr-basic').value = p.basic ?? '';
+                document.getElementById('hr-pr-allowances').value = p.allowances ?? '';
+                document.getElementById('hr-pr-overtime').value = p.overtime ?? '';
+                document.getElementById('hr-pr-bonuses').value = p.bonuses ?? '';
+                document.getElementById('hr-pr-deductions').value = p.deductions ?? '';
+                document.getElementById('hr-pr-advances').value = p.advances ?? '';
+                document.getElementById('hr-pr-leave-deduction').value = p.leave_deduction ?? '';
+                document.getElementById('hr-pr-paid-days').value = p.paid_leave_days ?? 0;
+                document.getElementById('hr-pr-unpaid-days').value = p.unpaid_leave_days ?? 0;
+                document.getElementById('hr-pr-absent-days').value = p.absent_days ?? 0;
+                document.getElementById('hr-pr-status').value = p.payment_status || 'pending';
+                document.getElementById('hr-pr-leave-breakdown').textContent = 'Editing a saved payslip — re-run Auto-Calculate if you want these figures refreshed from current attendance.';
+            } else {
+                document.getElementById('hr-pr-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
+                ['hr-pr-basic','hr-pr-allowances','hr-pr-overtime','hr-pr-bonuses','hr-pr-deductions','hr-pr-advances','hr-pr-leave-deduction'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('hr-pr-status').value = 'pending';
+                document.getElementById('hr-pr-leave-breakdown').textContent = '';
+            }
             updateHRPayrollNetPreview();
             document.getElementById('hr-payroll-modal').classList.remove('hidden');
             document.getElementById('hr-payroll-modal').classList.add('flex');
         }
+        function editHRPayroll(id) { openHRPayrollModal(id); }
         function closeHRPayrollModal() {
+            hrEditingPayrollId = null;
             document.getElementById('hr-payroll-modal').classList.add('hidden');
             document.getElementById('hr-payroll-modal').classList.remove('flex');
         }
@@ -8378,14 +8414,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const month = document.getElementById('hr-pr-month').value;
             if (!employee_id || !month) { alert('Pick an employee and month first.'); return; }
             const calc = hrCalculatePayrollForMonth(employee_id, month);
-            // Basic is the actual EARNED/payable amount — proportional to real attendance,
-            // not the full monthly salary. Payable days include unpaid-leave days (their pay
-            // is removed exactly once, via leave_deduction below — not by excluding them here
-            // too). Absent/unmarked days are the only ones excluded from Basic itself.
+            // Basic is the employee's full contracted salary — LOP Deduction (unpaid leave +
+            // absent/unmarked days, at the daily rate) is the one mechanism that reduces it.
+            // Present, approved paid leave, weekly-off and holiday days are all fully paid.
             document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Payable: ${calc.payableDays} (Present ${calc.presentDays} + Paid Leave ${calc.paidLeaveDays} + Unpaid Leave ${calc.unpaidLeaveDays}, deducted separately below) · Absent/Unmarked: ${calc.absentDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} · LOP: ${calc.lopDays} (Unpaid Leave ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''}) — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
             document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
@@ -8404,10 +8439,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const net_salary = basic + allowances + overtime + bonuses - leave_deduction - deductions - advances;
             const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_status: document.getElementById('hr-pr-status').value };
             try {
-                await dbInstance.from('hr_payroll').insert([payload]);
+                // Editing an existing payslip UPDATEs that same row — never a second INSERT,
+                // so it can't create a duplicate payslip for the same employee/month.
+                const { error } = hrEditingPayrollId
+                    ? await dbInstance.from('hr_payroll').update(payload).eq('id', hrEditingPayrollId)
+                    : await dbInstance.from('hr_payroll').insert([payload]);
+                if (error) { alert('Could not save payroll entry: ' + error.message); return; }
                 closeHRPayrollModal();
                 await loadHRData();
                 renderHRPayroll();
+                renderHREmployeeProfile();
             } catch (e) { alert('Could not save payroll entry: ' + e.message); }
         }
 
@@ -8427,7 +8468,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
                     <td class="py-2.5 px-4 text-center">
-                        <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Payslip</button>
+                        <button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button>
+                        <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">Payslip</button>
                         ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Mark Paid</button>` : ''}
                         <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
                     </td>
@@ -8522,24 +8564,28 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const [y, m] = p.month.split('-').map(Number);
             const daysInMonth = new Date(y, m, 0).getDate();
             const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-            const lopDays = p.unpaid_leave_days || 0;
-            const paidDays = Math.max(0, daysInMonth - lopDays - (p.absent_days || 0));
+            // Paid Days is always the full calendar days in the month (Aug → 31, Feb → 28/29),
+            // independent of attendance — it's a reference figure, not derived from LOP.
+            const paidDays = daysInMonth;
+            // Day-count breakdown (Present/Leave/Weekly Off/Holiday/LOP) is recomputed live from
+            // current attendance + approved-leave records — always automatic, per the payroll
+            // rule: Present→Present, Approved Paid Leave→Leave (not LOP), Sunday/Weekly Off and
+            // Company Holiday→not LOP, Absent with nothing approved→LOP.
+            const dayInfo = hrCalculatePayrollForMonth(p.employee_id, p.month);
+            const lopDays = dayInfo.lopDays;
             // Standard "salary for the period, paid at period end" convention — hr_payroll
             // doesn't store a separate disbursement date, so this is the last day of the month.
             const payDate = new Date(y, m, 0).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
             // "Basic Salary" on the payslip is the employee's actual saved salary (from HR's
-            // salary history / employee record) — not p.basic, which is hr_payroll's already
-            // attendance-prorated EARNED figure. Showing the real original salary and then an
-            // explicit "Attendance Adjustment" deduction for the gap makes the full path from
-            // contracted salary → net pay visible, instead of silently baking the proration
-            // into a pre-shrunk "Basic" line. Net Pay still reconciles to the exact same
-            // p.net_salary HR already saved — nothing about the actual paid amount changes.
+            // salary history / employee record), not a prorated figure — LOP Deduction is the
+            // one line that reduces it. The deduction amount itself comes from the stored
+            // hr_payroll row (what HR actually approved), not a fresh recalculation, so Net Pay
+            // here always matches p.net_salary exactly, even if HR manually adjusted a figure.
             const originalSalary = hrGetEffectiveSalary(p.employee_id, p.month);
-            const attendanceAdjustment = Math.round((originalSalary - (p.basic||0)) * 100) / 100;
             const grossEarnings = originalSalary + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
-            const totalDeductions = Math.max(0, attendanceAdjustment) + (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
-            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions - Math.min(0, attendanceAdjustment));
+            const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
+            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
             // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
             // a broken superscript-1. "Rs." is what actually prints correctly.
             const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -8579,10 +8625,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             summaryRow('Pay Period', monthLabel);
             summaryRow('Pay Date', payDate);
 
-            // Paid Days / LOP Days are stacked (not side-by-side) — the reference PDF's values
-            // happen to be short single digits, but ours can run to a decimal like "28.5", which
-            // would collide with a neighboring "LOP Days" label if placed on the same line.
-            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = 36;
+            // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
+            // run to a decimal like "28.5", which would collide with a neighboring label if two
+            // were placed on the same line.
+            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = 58;
             doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
             doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
             doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
@@ -8591,15 +8637,21 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             doc.text('Total Net Pay', boxX + 9, boxY + 18);
             doc.setDrawColor(200, 230, 215); doc.line(boxX + 4, boxY + 21, boxX + boxW - 4, boxY + 21);
             doc.setFontSize(8.5); doc.setTextColor(60);
-            doc.text('Paid Days', boxX + 9, boxY + 26); doc.text(':', boxX + 34, boxY + 26); doc.text(String(paidDays), boxX + 38, boxY + 26);
-            doc.text('LOP Days', boxX + 9, boxY + 32); doc.text(':', boxX + 34, boxY + 32); doc.text(String(lopDays), boxX + 38, boxY + 32);
+            const statRow = (label, val, i) => {
+                const ry = boxY + 26 + i * 6.2;
+                doc.text(label, boxX + 9, ry); doc.text(':', boxX + 34, ry); doc.text(String(val), boxX + 38, ry);
+            };
+            statRow('Paid Days', paidDays, 0);
+            statRow('Present Days', dayInfo.presentDays, 1);
+            statRow('Leave Days', dayInfo.paidLeaveDays, 2);
+            statRow('LOP Days', lopDays, 3);
 
             let y2 = Math.max(sy, boxY + boxH) + 6;
             if (lopDays > 0) {
                 doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
                 doc.setFontSize(9); doc.setTextColor(120); doc.text('LOP', marginX, y2);
                 doc.text(':', marginX + 34, y2); doc.setTextColor(20);
-                doc.text(`${lopDays} day${lopDays===1?'':'s'} deduction on unpaid leave`, marginX + 38, y2);
+                doc.text(`${lopDays} day${lopDays===1?'':'s'} — absent or unpaid leave (not Sunday/weekly-off, holiday, or approved paid leave)`, marginX + 38, y2, { maxWidth: rightX - marginX - 38 });
                 y2 += 8;
             }
             doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 8;
@@ -8621,9 +8673,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             const earnings = [['Basic Salary', originalSalary], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
             const deductions = [];
-            if (p.leave_deduction) deductions.push([`Unpaid Leave${lopDays ? ` (${lopDays}d)` : ''}`, p.leave_deduction]);
-            if (attendanceAdjustment > 0.01) deductions.push(['Attendance Adjustment', attendanceAdjustment]);
-            else if (attendanceAdjustment < -0.01) earnings.push(['Attendance Adjustment', -attendanceAdjustment]);
+            if (p.leave_deduction) deductions.push([`LOP Deduction${lopDays ? ` (${lopDays}d)` : ''}`, p.leave_deduction]);
             if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
             if (p.advances) deductions.push(['Advances', p.advances]);
             if (!deductions.length) deductions.push(['—', 0]);
