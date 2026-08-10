@@ -552,7 +552,20 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="sm:col-span-2" style="display:flex;align-items:center;gap:12px">
                     <div id="hr-emp-photo-preview"></div>
-                    <div style="flex:1"><label class="hr-field-label">Photo URL (paste a shareable Google Drive/image link)</label><input id="hr-emp-photo-url" class="hr-input w-full" placeholder="https://..." oninput="updateHREmpPhotoPreview()"></div>
+                    <div style="flex:1">
+                        <label class="hr-field-label">Employee Photo</label>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button type="button" onclick="document.getElementById('hr-emp-photo-file').click()" class="hr-select" style="cursor:pointer">📷 Upload Photo</button>
+                            <input type="file" id="hr-emp-photo-file" accept="image/*" style="display:none" onchange="handleHREmpPhotoUpload(event)">
+                            <button type="button" id="hr-emp-photo-remove-btn" onclick="removeHREmpPhoto()" class="hr-icon-btn hidden" style="color:#f87171">Remove</button>
+                            <span id="hr-emp-photo-upload-status" class="text-[10px] text-[#4a5182]"></span>
+                        </div>
+                        <input type="hidden" id="hr-emp-photo-base64">
+                        <details style="margin-top:6px">
+                            <summary class="text-[10px] text-[#4a5182] cursor-pointer">Or use an image URL instead</summary>
+                            <input id="hr-emp-photo-url" class="hr-input w-full mt-1" placeholder="https://..." oninput="updateHREmpPhotoPreview()">
+                        </details>
+                    </div>
                 </div>
                 <div><label class="hr-field-label">Employee ID</label><input id="hr-emp-id" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Full Name *</label><input id="hr-emp-name" class="hr-input w-full" oninput="updateHREmpPhotoPreview()"></div>
@@ -6883,11 +6896,37 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return e ? e.full_name : '—';
         }
 
+        // Converts a Google Drive "share" link (file/d/ID/view, ?id=ID, /open?id=ID, etc.)
+        // into a direct embeddable image URL. Uses the "thumbnail" endpoint, which is the
+        // most reliable for <img> embedding of a publicly-shared Drive file (the "uc?export=view"
+        // form often triggers a virus-scan interstitial page instead of the raw image for some
+        // files). Non-Drive URLs are returned unchanged.
+        function hrConvertDriveUrl(url) {
+            if (!url) return url;
+            url = url.trim();
+            if (!/drive\.google\.com/.test(url)) return url; // not a Drive link — leave as-is
+            if (/drive\.google\.com\/thumbnail\?id=/.test(url)) return url; // already converted
+            const patterns = [
+                /\/file\/d\/([a-zA-Z0-9_-]{10,})/,   // .../file/d/FILE_ID/view
+                /[?&]id=([a-zA-Z0-9_-]{10,})/,        // .../uc?id=FILE_ID or /open?id=FILE_ID
+                /\/d\/([a-zA-Z0-9_-]{10,})/           // .../d/FILE_ID
+            ];
+            for (const re of patterns) {
+                const m = url.match(re);
+                if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1000`;
+            }
+            return url; // couldn't parse a file ID — leave as-is, fallback avatar will catch a bad load
+        }
+
         // Renders a small circular avatar — a photo if one is on file, otherwise initials.
         function hrAvatarHTML(nameOrEmp, sizePx) {
             sizePx = sizePx || 28;
             const name = typeof nameOrEmp === 'string' ? nameOrEmp : (nameOrEmp?.full_name || '');
-            const photoUrl = typeof nameOrEmp === 'object' ? nameOrEmp?.photo_url : null;
+            const base64Photo = typeof nameOrEmp === 'object' ? nameOrEmp?.photo_base64 : null;
+            const rawPhotoUrl = typeof nameOrEmp === 'object' ? nameOrEmp?.photo_url : null;
+            // Uploaded (base64) photo always wins over a legacy URL — Supabase is the single
+            // source of truth either way, but base64 doesn't depend on an external host.
+            const photoUrl = base64Photo || (rawPhotoUrl ? hrConvertDriveUrl(rawPhotoUrl) : null);
             const initials = name.split(' ').filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
             const style = `width:${sizePx}px;height:${sizePx}px;border-radius:50%;flex-shrink:0;object-fit:cover;font-size:${Math.round(sizePx*0.38)}px`;
             return photoUrl
@@ -6961,13 +7000,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // birthdays & anniversaries in next 30 days
             const events = [];
             hrEmployees.forEach(e => {
-                if (e.dob) events.push(hrNextOccurrence(e.dob, e.full_name, 'Birthday'));
-                if (e.joining_date) events.push(hrNextOccurrence(e.joining_date, e.full_name, 'Work Anniversary'));
+                if (e.dob) events.push(hrNextOccurrence(e.dob, e.full_name, 'Birthday', e));
+                if (e.joining_date) events.push(hrNextOccurrence(e.joining_date, e.full_name, 'Work Anniversary', e));
             });
             const upcoming = events.filter(ev => ev && ev.daysAway <= 30).sort((a,b) => a.daysAway - b.daysAway).slice(0, 8);
             document.getElementById('hr-dash-events').innerHTML = upcoming.length ? upcoming.map(ev => `
-                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-                    <span>${ev.name} — ${ev.label}</span><span class="text-[#6b74a0]">${ev.daysAway === 0 ? 'Today' : ev.daysAway + 'd'}</span>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                    <span style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(ev.emp || ev.name, 22)}${ev.name} — ${ev.label}</span><span class="text-[#6b74a0]">${ev.daysAway === 0 ? 'Today' : ev.daysAway + 'd'}</span>
                 </div>
             `).join('') : '<p class="text-[#4a5182] text-xs">None in the next 30 days.</p>';
 
@@ -6991,14 +7030,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
         }
 
-        function hrNextOccurrence(dateStr, name, label) {
+        function hrNextOccurrence(dateStr, name, label, emp) {
             const d = new Date(dateStr);
             if (isNaN(d)) return null;
             const now = new Date(); now.setHours(0,0,0,0);
             let next = new Date(now.getFullYear(), d.getMonth(), d.getDate());
             if (next < now) next = new Date(now.getFullYear()+1, d.getMonth(), d.getDate());
             const daysAway = Math.round((next - now) / 86400000);
-            return { name, label, daysAway };
+            return { name, label, daysAway, emp };
         }
 
         // ---------- EMPLOYEES ----------
@@ -7012,7 +7051,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             hrEditingEmployeeId = id;
             document.getElementById('hr-employee-modal-title').textContent = id ? 'Edit Employee' : 'Add Employee';
             const e = id ? hrEmployees.find(x => x.id === id) : null;
-            document.getElementById('hr-emp-photo-url').value = e?.photo_url || '';
+            document.getElementById('hr-emp-photo-url').value = (e?.photo_base64 ? '' : e?.photo_url) || '';
+            document.getElementById('hr-emp-photo-base64').value = e?.photo_base64 || '';
+            document.getElementById('hr-emp-photo-file').value = '';
+            document.getElementById('hr-emp-photo-upload-status').textContent = '';
             updateHREmpPhotoPreview();
             document.getElementById('hr-emp-id').value = e?.employee_id || '';
             document.getElementById('hr-emp-name').value = e?.full_name || '';
@@ -7073,8 +7115,51 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
         function updateHREmpPhotoPreview() {
             const url = document.getElementById('hr-emp-photo-url').value.trim();
+            const base64 = document.getElementById('hr-emp-photo-base64').value;
             const nameEl = document.getElementById('hr-emp-name');
-            document.getElementById('hr-emp-photo-preview').innerHTML = hrAvatarHTML({ full_name: nameEl ? nameEl.value : '', photo_url: url || null }, 48);
+            document.getElementById('hr-emp-photo-preview').innerHTML = hrAvatarHTML({ full_name: nameEl ? nameEl.value : '', photo_base64: base64 || null, photo_url: url || null }, 48);
+            document.getElementById('hr-emp-photo-remove-btn').classList.toggle('hidden', !base64 && !url);
+        }
+
+        // Reads the chosen file, downsizes it (max 400px) and re-encodes as JPEG so the
+        // resulting base64 data URL stays a reasonable size for a Supabase text column,
+        // then stores that data URL directly on the employee record — no external storage,
+        // no Google Drive link needed.
+        function handleHREmpPhotoUpload(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+            const statusEl = document.getElementById('hr-emp-photo-upload-status');
+            statusEl.textContent = 'Processing...';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const maxDim = 400;
+                    let { width, height } = img;
+                    if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+                    else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    document.getElementById('hr-emp-photo-base64').value = dataUrl;
+                    document.getElementById('hr-emp-photo-url').value = ''; // base64 takes priority over URL
+                    updateHREmpPhotoPreview();
+                    statusEl.textContent = `Ready (${Math.round(dataUrl.length / 1024)} KB)`;
+                };
+                img.onerror = () => { statusEl.textContent = 'Could not read that image.'; };
+                img.src = e.target.result;
+            };
+            reader.onerror = () => { statusEl.textContent = 'Could not read that file.'; };
+            reader.readAsDataURL(file);
+        }
+        function removeHREmpPhoto() {
+            document.getElementById('hr-emp-photo-base64').value = '';
+            document.getElementById('hr-emp-photo-url').value = '';
+            document.getElementById('hr-emp-photo-file').value = '';
+            document.getElementById('hr-emp-photo-upload-status').textContent = '';
+            updateHREmpPhotoPreview();
         }
         function closeHREmployeeModal() {
             document.getElementById('hr-employee-modal').classList.add('hidden');
@@ -7094,7 +7179,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // field(s) that didn't persist, instead of just closing the modal and hoping.
         function hrVerifySavedFields(submitted, savedRow) {
             if (!savedRow) { alert('Save may have failed — the database did not return the updated record. Please reopen this employee and check their details.'); return; }
-            const criticalFields = ['dob', 'phone', 'joining_date', 'department', 'designation', 'emergency_contact_name', 'emergency_contact_phone', 'monthly_salary', 'probation_months', 'photo_url'];
+            const criticalFields = ['dob', 'phone', 'joining_date', 'department', 'designation', 'emergency_contact_name', 'emergency_contact_phone', 'monthly_salary', 'probation_months', 'photo_url', 'photo_base64'];
             const mismatches = criticalFields.filter(f => {
                 const a = submitted[f] ?? null;
                 const b = savedRow[f] ?? null;
@@ -7126,7 +7211,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 portal_email: loginEmail,
                 manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
                 portal_access_enabled: document.getElementById('hr-emp-portal-access').checked,
-                photo_url: document.getElementById('hr-emp-photo-url').value.trim() || null,
+                photo_url: hrConvertDriveUrl(document.getElementById('hr-emp-photo-url').value.trim()) || null,
+                photo_base64: document.getElementById('hr-emp-photo-base64').value || null,
                 emergency_contact_name: document.getElementById('hr-emp-ec-name').value.trim(),
                 emergency_contact_phone: document.getElementById('hr-emp-ec-phone').value.trim(),
                 document_links: document.getElementById('hr-emp-docs').value.trim(),
@@ -7888,7 +7974,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <div class="flex items-start justify-between gap-3 flex-wrap">
                         <div style="display:flex;gap:10px;align-items:center">
                             <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,107,6,0.12);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#ff6b06;overflow:hidden">
-                                ${a.photo_url ? `<img src="${a.photo_url}" style="width:100%;height:100%;object-fit:cover">` : (a.name||'?').slice(0,2).toUpperCase()}
+                                ${a.photo_url ? `<img src="${hrConvertDriveUrl(a.photo_url)}" style="width:100%;height:100%;object-fit:cover" onerror="this.replaceWith(document.createTextNode('${(a.name||'?').slice(0,2).toUpperCase()}'))">` : (a.name||'?').slice(0,2).toUpperCase()}
                             </div>
                             <div>
                                 <p class="text-white font-bold text-sm">${a.name}</p>
@@ -8002,7 +8088,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 position: document.getElementById('hr-app-position').value.trim(),
                 phone: document.getElementById('hr-app-phone').value.trim(),
                 email: document.getElementById('hr-app-email').value.trim(),
-                photo_url: document.getElementById('hr-app-photo').value.trim(),
+                photo_url: hrConvertDriveUrl(document.getElementById('hr-app-photo').value.trim()),
                 resume_url: document.getElementById('hr-app-resume').value.trim(),
                 portfolio_url: document.getElementById('hr-app-portfolio').value.trim(),
                 experience: document.getElementById('hr-app-experience').value.trim(),
