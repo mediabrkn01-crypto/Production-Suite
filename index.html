@@ -2873,6 +2873,9 @@
                 if (ini) ini.textContent = initials;
                 if (img && liveMe.avatar) { img.src = liveMe.avatar; img.classList.remove('hidden'); }
             }
+            // HR-saved photo (from the employee's linked HR record) takes priority over the
+            // legacy chat-avatar upload above, everywhere the person's own avatar is shown.
+            hrFetchAndApplyMyPhoto();
 
             const loginScreen = document.getElementById('portal-login-screen');
             loginScreen.classList.add('hidden');
@@ -6894,6 +6897,36 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         function hrEmpName(id) {
             const e = hrEmployees.find(x => x.id === id);
             return e ? e.full_name : '—';
+        }
+
+        // Fetches the current user's own linked HR employee record (by portal email) and
+        // applies its saved photo — sidebar avatar and the My Profile page's photo widget —
+        // so whatever HR uploaded/saved for this person is what shows everywhere for them,
+        // not a separate self-service photo. Self-contained: works even if the HR panel was
+        // never opened this session, and fails silently if the HR tables aren't reachable.
+        async function hrFetchAndApplyMyPhoto() {
+            if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
+            try {
+                const { data, error } = await dbInstance.from('hr_employees').select('photo_base64, photo_url').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
+                if (error || !data || !data[0]) return;
+                const rec = data[0];
+                const photo = rec.photo_base64 || (rec.photo_url ? hrConvertDriveUrl(rec.photo_url) : null);
+                if (!photo) return;
+                // Sidebar avatar (bottom-left, next to name/role)
+                const sidebarAvatar = document.getElementById('sidebar-user-avatar');
+                if (sidebarAvatar) {
+                    sidebarAvatar.innerHTML = `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
+                }
+                // "My Profile Photo" widget on the My Settings page
+                const img = document.getElementById('my-avatar-img');
+                if (img) {
+                    img.src = photo;
+                    img.classList.remove('hidden');
+                    img.onerror = () => img.classList.add('hidden');
+                }
+            } catch (e) {
+                console.warn('Could not load HR-saved profile photo:', e.message);
+            }
         }
 
         // Converts a Google Drive "share" link (file/d/ID/view, ?id=ID, /open?id=ID, etc.)
