@@ -7089,6 +7089,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             el.textContent = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
         }
 
+        // Confirms what was actually written to the database matches what was submitted —
+        // turns a silent partial-save into an explicit, visible warning naming the exact
+        // field(s) that didn't persist, instead of just closing the modal and hoping.
+        function hrVerifySavedFields(submitted, savedRow) {
+            if (!savedRow) { alert('Save may have failed — the database did not return the updated record. Please reopen this employee and check their details.'); return; }
+            const criticalFields = ['dob', 'phone', 'joining_date', 'department', 'designation', 'emergency_contact_name', 'emergency_contact_phone', 'monthly_salary', 'probation_months', 'photo_url'];
+            const mismatches = criticalFields.filter(f => {
+                const a = submitted[f] ?? null;
+                const b = savedRow[f] ?? null;
+                return String(a) !== String(b);
+            });
+            if (mismatches.length) {
+                alert(`Saved, but these fields did NOT persist correctly and may need to be re-entered:\n\n${mismatches.join(', ')}\n\nThis usually means the database table is missing a column — re-run the latest hr_schema.sql in Supabase.`);
+            }
+        }
+
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
             if (!name) { alert('Full name is required.'); return; }
@@ -7133,7 +7149,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         const clash = hrEmployees.find(e => e.id !== hrEditingEmployeeId && (e.portal_email || '').toLowerCase() === payload.portal_email);
                         if (clash) { alert(`That login email is already linked to ${clash.full_name}. Each login can only be linked to one employee record.`); return; }
                     }
-                    await dbInstance.from('hr_employees').update(payload).eq('id', hrEditingEmployeeId);
+                    const { data: updated, error: updateErr } = await dbInstance.from('hr_employees').update(payload).eq('id', hrEditingEmployeeId).select('*');
+                    if (updateErr) { alert(`Save FAILED — nothing was persisted to the database.\n\nReason: ${updateErr.message}\n\nThis usually means the database table is missing a column this form expects — re-run the latest hr_schema.sql in Supabase and try again.`); return; }
+                    hrVerifySavedFields(payload, updated && updated[0]);
                     await hrCreateOrSyncLogin(loginEmail, name, loginRole, loginPassword);
                 } else {
                     // Reuse an existing record instead of duplicating if this email is already
@@ -7141,7 +7159,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     if (payload.portal_email) {
                         const existing = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === payload.portal_email);
                         if (existing) {
-                            await dbInstance.from('hr_employees').update(payload).eq('id', existing.id);
+                            const { data: updated, error: updateErr } = await dbInstance.from('hr_employees').update(payload).eq('id', existing.id).select('*');
+                            if (updateErr) { alert(`Save FAILED — nothing was persisted to the database.\n\nReason: ${updateErr.message}\n\nThis usually means the database table is missing a column this form expects — re-run the latest hr_schema.sql in Supabase and try again.`); return; }
+                            hrVerifySavedFields(payload, updated && updated[0]);
                             await hrCreateOrSyncLogin(loginEmail, name, loginRole, loginPassword);
                             if (!hrLeaveBalances.some(b => b.employee_id === existing.id)) {
                                 await hrSeedDefaultLeaveBalances(existing.id);
@@ -7154,7 +7174,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         }
                     }
                     const { data: created, error } = await dbInstance.from('hr_employees').insert([payload]).select('*');
-                    if (!error && created && created[0]) {
+                    if (error) { alert(`Save FAILED — employee was not created.\n\nReason: ${error.message}\n\nThis usually means the database table is missing a column this form expects — re-run the latest hr_schema.sql in Supabase and try again.`); return; }
+                    if (created && created[0]) {
+                        hrVerifySavedFields(payload, created[0]);
                         await hrSeedDefaultLeaveBalances(created[0].id);
                         await hrCreateOrSyncLogin(loginEmail, name, loginRole, loginPassword);
                         if (monthly_salary > 0) {
