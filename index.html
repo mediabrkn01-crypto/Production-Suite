@@ -8372,11 +8372,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const salary = hrGetEffectiveSalary(employeeId, monthStr);
             const dailySalary = daysInMonth ? salary / daysInMonth : 0;
             const todayStr = new Date().toISOString().slice(0,10);
-            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0;
+            // "Basic = full salary, LOP is the only deduction" only works if every day in the
+            // month is actually a day the employee was employed. A joining date partway through
+            // the month means the days before it were never part of this job — without this,
+            // they fell into "no record, not weekly-off/holiday → absent → LOP", which is a real
+            // LOP (a disciplinary/attendance concept) blown up to cover a person who simply
+            // wasn't hired yet. preJoiningDays tracks that separately, but still has to reduce
+            // pay the same way LOP does — otherwise a employee joining on the 29th would be paid
+            // their full month's salary for 2 days worked.
+            const employee = hrEmployees.find(e => e.id === employeeId);
+            const joiningDate = employee?.joining_date || null;
+            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0, preJoiningDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
                 if (dateStr > todayStr) continue; // hasn't happened yet — excluded entirely
+                if (joiningDate && dateStr < joiningDate) { preJoiningDays++; continue; } // not yet hired
                 const dow = new Date(y, m - 1, d).getDay();
                 if (hrIsHoliday(dateStr)) { holidayDays++; continue; }
                 const rec = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === dateStr);
@@ -8395,12 +8406,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 // No record, not a weekly-off, not a holiday — genuinely unmarked/unworked → LOP.
                 absentDays++;
             }
-            // LOP: every day that isn't Present, Approved Paid Leave, Weekly Off, or Holiday.
+            // LOP: every day that isn't Present, Approved Paid Leave, Weekly Off, or Holiday —
+            // plus pre-joining days, which reduce pay the same way but aren't "LOP" in the
+            // attendance-discipline sense, so they're reported separately (see preJoiningDays).
             const lopDays = unpaidLeaveDays + absentDays + halfDayDays * 0.5;
             const payableDays = presentDays + paidLeaveDays + weeklyOffDays + holidayDays + halfDayDays * 0.5;
-            const earnedBasic = salary; // full contracted salary — LOP deduction does the rest
-            const leaveDeduction = Math.round(dailySalary * lopDays * 100) / 100;
-            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, lopDays, payableDays, earnedBasic, leaveDeduction };
+            const earnedBasic = salary; // full contracted salary — LOP + pre-joining deduction does the rest
+            const leaveDeduction = Math.round(dailySalary * (lopDays + preJoiningDays) * 100) / 100;
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, lopDays, payableDays, earnedBasic, leaveDeduction };
         }
 
         // ---------- PROBATION ----------
@@ -8553,7 +8566,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} · LOP: ${calc.lopDays} (Unpaid Leave ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''}) — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} · LOP: ${calc.lopDays} (Unpaid Leave ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''})` +
+                `${calc.preJoiningDays ? ` · Before joining: ${calc.preJoiningDays} day(s) (also deducted — not yet employed, counted separately from LOP)` : ''}` +
+                ` — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
             document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
@@ -8761,8 +8776,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
             // run to a decimal like "28.5", which would collide with a neighboring label if two
-            // were placed on the same line.
-            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = 70;
+            // were placed on the same line. Pre-Joining only shows when it's actually nonzero
+            // (mid-month joiner) — no clutter for the normal case.
+            const hasPreJoining = dayInfo.preJoiningDays > 0;
+            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = hasPreJoining ? 76 : 70;
             doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
             doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
             doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
@@ -8781,14 +8798,20 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             statRow('Weekly Off', dayInfo.weeklyOffDays, 3);
             statRow('Company Holidays', dayInfo.holidayDays, 4);
             statRow('LOP Days', lopDays, 5);
+            if (hasPreJoining) statRow('Before Joining', dayInfo.preJoiningDays, 6);
 
             let y2 = Math.max(sy, boxY + boxH) + 6;
-            if (lopDays > 0) {
+            if (lopDays > 0 || hasPreJoining) {
                 doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
                 doc.setFontSize(9); doc.setTextColor(120); doc.text('LOP', marginX, y2);
                 doc.text(':', marginX + 34, y2); doc.setTextColor(20);
-                doc.text(`${lopDays} day${lopDays===1?'':'s'} — absent or unpaid leave (not Sunday/weekly-off, holiday, or approved paid leave)`, marginX + 38, y2, { maxWidth: rightX - marginX - 38 });
-                y2 += 8;
+                const lopNote = lopDays > 0
+                    ? `${lopDays} day${lopDays===1?'':'s'} — absent or unpaid leave (not Sunday/weekly-off, holiday, or approved paid leave)`
+                    : 'No absence-based LOP this period.';
+                const joinNote = hasPreJoining ? ` Plus ${dayInfo.preJoiningDays} day(s) before this employee's joining date — also unpaid, but not attendance-related.` : '';
+                const noteLines = doc.splitTextToSize(lopNote + joinNote, rightX - marginX - 38);
+                doc.text(noteLines, marginX + 38, y2);
+                y2 += 5 * noteLines.length + 3;
             }
             doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 8;
 
@@ -8809,7 +8832,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             const earnings = [['Basic Salary', originalSalary], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
             const deductions = [];
-            if (p.leave_deduction) deductions.push([`LOP Deduction${lopDays ? ` (${lopDays}d)` : ''}`, p.leave_deduction]);
+            // Day count in the label matches exactly what the rupee figure was calculated over
+            // — LOP days plus any pre-joining days, since both reduce this same deduction line.
+            const deductionDays = lopDays + dayInfo.preJoiningDays;
+            if (p.leave_deduction) deductions.push([`LOP Deduction${deductionDays ? ` (${deductionDays}d)` : ''}`, p.leave_deduction]);
             if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
             if (p.advances) deductions.push(['Advances', p.advances]);
             if (!deductions.length) deductions.push(['—', 0]);
