@@ -377,18 +377,8 @@
         .voice-bar { width:3px;min-height:4px;background:linear-gradient(to top,var(--brand-1),var(--brand-3));border-radius:3px;animation:voiceBarBounce 0.6s ease-in-out infinite;animation-delay:var(--d,0s); }
 
         /* ── Toggle switch ── */
-        .chat-toggle-switch { width:40px;height:22px;border-radius:999px;background:rgba(255,255,255,0.1);position:relative;flex-shrink:0;transition:background 0.2s; }
-        .chat-toggle-switch.on { background: linear-gradient(135deg,var(--brand-1),var(--brand-3)); }
-        .chat-toggle-knob { position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.4); }
-        .chat-toggle-switch.on .chat-toggle-knob { transform:translateX(18px); }
 
         /* ── Call UI ── */
-        @keyframes call-ring-pulse { 0%{transform:scale(1);opacity:.6} 70%,100%{transform:scale(1.5);opacity:0} }
-        .call-ring-anim { animation:call-ring-pulse 1.6s ease-out infinite; }
-        #call-local-video { background:#000;transform:scaleX(-1); }
-        .call-bars span { display:inline-block;width:3px;margin:0 1px;background:var(--brand-1);border-radius:2px;animation:call-bar-bounce 1s ease-in-out infinite; }
-        .call-bars span:nth-child(2){animation-delay:.15s}.call-bars span:nth-child(3){animation-delay:.3s}.call-bars span:nth-child(4){animation-delay:.45s}
-        @keyframes call-bar-bounce{0%,100%{height:6px}50%{height:20px}}
 
         /* ── Delivery dropzone ── */
         #delivery-dropzone { border-radius: 6px !important; border-color: rgba(255,255,255,0.12) !important; }
@@ -831,79 +821,6 @@
             <button onclick="copyNoteText()" id="note-copy-btn" class="w-full brand-gradient text-white font-bold py-2.5 rounded-xl uppercase tracking-wider text-xs flex items-center justify-center gap-2 active:scale-[0.98] transition">
                 <i data-lucide="copy" class="w-4 h-4"></i> Copy Text
             </button>
-        </div>
-    </div>
-
-    <!-- ══════════ AUDIO / VIDEO CALL OVERLAY ══════════ -->
-    <div id="call-overlay" class="hidden fixed inset-0 z-[90] flex flex-col items-center justify-center p-4 text-center">
-
-        <!-- Incoming / Outgoing ringing state -->
-        <div id="call-ring-state" class="hidden flex-col items-center gap-6">
-            <div class="relative">
-                <div id="call-ring-avatar-wrap" class="call-avatar-ring w-28 h-28 rounded-full flex items-center justify-center overflow-hidden bg-transparent">
-                    <img id="call-ring-avatar-img" src="" class="hidden w-28 h-28 rounded-full object-cover">
-                    <span id="call-ring-avatar-initials" class="text-3xl font-bold text-gray-300"></span>
-                </div>
-                <div id="call-ring-type-badge" class="absolute -bottom-1 -right-1 brand-gradient rounded-full p-2 border-4 border-[#05060e]">
-                    <i data-lucide="phone" class="w-3.5 h-3.5 text-white"></i>
-                </div>
-            </div>
-            <div>
-                <p id="call-ring-name" class="text-lg font-bold text-white">Name</p>
-                <p id="call-ring-status" class="text-xs text-[#6b74a0] mt-1 uppercase tracking-wider">Calling…</p>
-            </div>
-            <div id="call-ring-actions-outgoing" class="hidden flex items-center gap-8">
-                <button onclick="cancelOutgoingCall()" title="Cancel" class="call-btn-end w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition">
-                    <i data-lucide="phone-off" class="w-6 h-6"></i>
-                </button>
-            </div>
-            <div id="call-ring-actions-incoming" class="hidden flex items-center gap-10">
-                <button onclick="declineCall()" title="Decline" class="call-btn-decline w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition">
-                    <i data-lucide="phone-off" class="w-6 h-6"></i>
-                </button>
-                <button onclick="acceptCall()" title="Accept" class="call-btn-accept w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition">
-                    <i data-lucide="phone" class="w-6 h-6"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- Connected state -->
-        <div id="call-connected-state" class="hidden absolute inset-0 flex flex-col">
-            <video id="call-remote-video" class="hidden absolute inset-0 w-full h-full object-cover" autoplay playsinline></video>
-            <audio id="call-remote-audio" autoplay></audio>
-
-            <!-- Audio-call centerpiece (shown when no remote video) -->
-            <div id="call-audio-centerpiece" class="flex-1 flex flex-col items-center justify-center gap-4">
-                <div class="w-32 h-32 rounded-full flex items-center justify-center overflow-hidden bg-transparent">
-                    <img id="call-connected-avatar-img" src="" class="hidden w-32 h-32 rounded-full object-cover">
-                    <span id="call-connected-avatar-initials" class="text-4xl font-bold text-gray-300"></span>
-                </div>
-                <p id="call-connected-name" class="text-lg font-bold text-white">Name</p>
-                <div class="call-bars flex items-end h-5"><span></span><span></span><span></span><span></span></div>
-            </div>
-
-            <video id="call-local-video" class="hidden absolute bottom-24 right-4 w-28 h-40 md:w-36 md:h-48 rounded-2xl object-cover shadow-2xl border border-white/[0.1] z-10" autoplay playsinline muted></video>
-
-            <div class="absolute top-4 left-0 right-0 flex flex-col items-center gap-0.5 z-10">
-                <p id="call-connected-name-top" class="text-sm font-bold text-white drop-shadow"></p>
-                <p id="call-duration" class="text-[11px] text-gray-300 font-mono drop-shadow">00:00</p>
-            </div>
-
-            <button id="call-tap-to-enable" onclick="retryCallPlayback()" class="hidden absolute top-16 left-1/2 -translate-x-1/2 z-20 brand-gradient text-white text-xs font-bold px-4 py-2 rounded-full shadow-2xl items-center gap-2">
-                <i data-lucide="volume-2" class="w-4 h-4"></i> Tap to enable audio/video
-            </button>
-
-            <div class="relative z-10 pb-8 pt-4 flex items-center justify-center gap-5">
-                <button id="call-mute-btn" onclick="toggleCallMic()" title="Mute" class="call-ctrl-btn w-14 h-14 rounded-full flex items-center justify-center text-white transition">
-                    <i data-lucide="mic" class="w-5 h-5"></i>
-                </button>
-                <button id="call-cam-btn" onclick="toggleCallCam()" title="Camera" class="call-ctrl-btn w-14 h-14 rounded-full flex items-center justify-center text-white transition">
-                    <i data-lucide="video" class="w-5 h-5"></i>
-                </button>
-                <button onclick="endCall()" title="End call" class="call-btn-end w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition">
-                    <i data-lucide="phone-off" class="w-6 h-6"></i>
-                </button>
-            </div>
         </div>
     </div>
 
@@ -2458,34 +2375,6 @@
         let chatRoomsChannel = null;                  // realtime channel for message inserts
         let presenceChannel = null;                   // realtime presence channel
 
-        // ── Audio/Video call state ──
-        let myCallInboxChannel = null;   // subscribed channel receiving signals addressed to me
-        let peerCallChannel = null;      // channel used to SEND signals to current call peer's inbox
-        let peerCallChannelEmail = null; // which email peerCallChannel currently points to
-        let callPc = null;               // RTCPeerConnection for the active/pending call
-        let callLocalStream = null;
-        let currentCallId = null;
-        let currentCallPeerEmail = null;
-        let currentCallPeerName = null;
-        let currentCallType = null;      // 'audio' | 'video'
-        let currentCallRole = null;      // 'caller' | 'callee'
-        let pendingIncomingOffer = null; // {callId, from, fromName, callType, sdp}
-        let pendingRemoteIce = []; // ICE candidates that arrived before remoteDescription was set
-        let callNoAnswerTimer = null;
-        let _iceStallWarningTimer = null;
-        let callDurationInterval = null;
-        let callStartTime = null;
-        let isCallMicMuted = false;
-        let isCallCamOff = false;
-        let ringToneCtx = null, ringToneTimer = null;
-        const RTC_CONFIG = { iceServers: [
-            { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
-            { urls: 'stun:stun.stunprotocol.org:3478' },
-            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-            { urls: 'turn:openrelay.metered.ca:3478', username: 'openrelayproject', credential: 'openrelayproject' },
-            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-        ], iceCandidatePoolSize: 6, bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
         let onlinePresenceMap = {};                    // email -> true while online
         let lastReadTimestamps = {};                    // room -> ISO string of last message we've seen
         let chatHasUnread = false;
@@ -3170,7 +3059,6 @@
         }
 
         function logoutPortal() {
-            hangUpAllCallResources();
             localStorage.removeItem('be_active_user');
             localStorage.removeItem('be_active_role');
             localStorage.removeItem('be_active_email');
@@ -3238,13 +3126,6 @@
             return div.innerHTML;
         }
 
-        // Stub — call engine exists but hangUp needs to be safe to call during account switch
-        function hangUpAllCallResources() {
-            try {
-                if (typeof cleanupCallState === 'function') cleanupCallState();
-            } catch(e) {}
-        }
-
         function renderAccountSwitcherList() {
             const accounts = getSavedAccounts();
             const targets = [
@@ -3294,8 +3175,6 @@
                 closeAccountSwitcher();
                 return;
             }
-
-            hangUpAllCallResources();
 
             activeUser = target.name;
             activeRole = target.role;
@@ -4596,7 +4475,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                                 </select>
                             </td>
                             <td class="py-2 px-1">
-                                <input type="text" id="edit-roster-pass-${i}" value="${u.pass || ''}" placeholder="Set pass key" class="w-full bg-transparent border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
+                                <input type="password" id="edit-roster-pass-${i}" value="" autocomplete="new-password" placeholder="${u.pass ? 'Leave blank to keep current' : 'Set pass key'}" class="w-full bg-transparent border border-orange-500 rounded px-2 py-1 text-xs text-white focus:outline-none">
                             </td>
                             <td class="py-2 text-center whitespace-nowrap space-x-2">
                                 <button onclick="saveEditedRoster(${i})" class="text-emerald-400 hover:text-emerald-500 font-bold px-1">
@@ -4614,7 +4493,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                             <td class="py-2.5 font-bold text-white">${u.name}</td>
                             <td class="py-2.5 font-mono text-[#6b74a0]">${u.email}</td>
                             <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${u.role==='admin'?'bg-red-500/20 text-red-400':u.role==='manager'?'bg-purple-500/20 text-purple-400':'bg-blue-500/20 text-blue-400'}">${u.role}</span></td>
-                            <td class="py-2.5 font-mono text-[#6b74a0]">${u.pass || '•••••'}</td>
+                            <td class="py-2.5 font-mono text-[#6b74a0]">${u.pass ? '••••••••' : '— not set —'}</td>
                             <td class="py-2.5 text-center whitespace-nowrap space-x-2">
                                 <button onclick="startEditingRoster(${i})" class="text-blue-400 hover:text-blue-500" title="Edit Credentials">
                                     <i data-lucide="edit-3" class="w-4 h-4 inline"></i>
@@ -6843,6 +6722,21 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         }
                     }
                 }
+
+                // Self-heal: hrSeedDefaultLeaveBalances() above only fires once, at the moment
+                // an employee record is created, and a failed/interrupted insert there (e.g. the
+                // batch above, or the one in saveHREmployee) used to fail silently — leaving that
+                // employee with zero hr_leave_balances rows forever, showing as "0 allotted" with
+                // no way to tell that from a real zero allocation. Re-seed anyone still missing
+                // every load, so it recovers on its own instead of staying silently broken.
+                const employeeIdsWithBalances = new Set(hrLeaveBalances.map(b => b.employee_id));
+                const employeesMissingBalances = hrEmployees.filter(e => !employeeIdsWithBalances.has(e.id));
+                if (employeesMissingBalances.length) {
+                    await Promise.all(employeesMissingBalances.map(e => hrSeedDefaultLeaveBalances(e.id)));
+                    const backfill = await dbInstance.from('hr_leave_balances').select('*').in('employee_id', employeesMissingBalances.map(e => e.id));
+                    if (backfill.data) hrLeaveBalances = hrLeaveBalances.concat(backfill.data);
+                    console.log(`HR: backfilled default leave balances for ${employeesMissingBalances.length} employee(s) that were missing them.`);
+                }
             } catch (e) {
                 hrTablesMissing = true;
                 missingTables.push('(load failed: ' + e.message + ')');
@@ -6935,6 +6829,93 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             } catch (e) {
                 console.warn('Could not load HR-saved profile photo:', e.message);
             }
+        }
+
+        // ---------- MY PROFILE PHOTO (Settings → "My Profile Photo" card) ----------
+        // Fallback path for anyone without an HR-linked photo yet — hrFetchAndApplyMyPhoto()
+        // above still takes priority and will overwrite this on next load if an HR photo exists.
+        // Saves straight onto user_roster.avatar (already read back at launchSession()).
+        function _downsizeImageToDataUrl(imgSrc, maxDim = 400) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+                    else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.85));
+                };
+                img.onerror = () => reject(new Error('Could not read that image.'));
+                img.src = imgSrc;
+            });
+        }
+        async function _saveMyAvatarDataUrl(dataUrl) {
+            const { error } = await dbInstance.from('user_roster').update({ avatar: dataUrl }).eq('email', activeEmail);
+            if (error) { alert('Could not save photo: ' + error.message); return false; }
+            const img = document.getElementById('my-avatar-img');
+            if (img) { img.src = dataUrl; img.classList.remove('hidden'); }
+            const sidebarAvatar = document.getElementById('sidebar-user-avatar');
+            if (sidebarAvatar) sidebarAvatar.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
+            const liveMe = userRoster.find(u => u.email === activeEmail);
+            if (liveMe) liveMe.avatar = dataUrl;
+            return true;
+        }
+        async function uploadProfilePhoto(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+            if (file.size > 5 * 1024 * 1024) { alert('That image is larger than 5MB — please choose a smaller file.'); return; }
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const dataUrl = await _downsizeImageToDataUrl(e.target.result);
+                    await _saveMyAvatarDataUrl(dataUrl);
+                } catch (err) { alert(err.message); }
+                finally { input.value = ''; }
+            };
+            reader.onerror = () => alert('Could not read that file.');
+            reader.readAsDataURL(file);
+        }
+        async function takeProfilePhoto() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('Camera capture is not supported on this device/browser.'); return; }
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+            } catch (e) { alert('Could not access the camera: ' + e.message); return; }
+
+            // Minimal capture overlay — video preview + Capture/Cancel — torn down right after use.
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
+            const video = document.createElement('video');
+            video.autoplay = true; video.playsInline = true; video.muted = true;
+            video.style.cssText = 'max-width:90vw;max-height:70vh;border-radius:16px;transform:scaleX(-1)';
+            video.srcObject = stream;
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:12px';
+            const captureBtn = document.createElement('button');
+            captureBtn.type = 'button'; captureBtn.textContent = 'Capture';
+            captureBtn.style.cssText = 'background:linear-gradient(135deg,#f97316,#ef4444);color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;border:none;cursor:pointer';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button'; cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;cursor:pointer';
+            btnRow.append(captureBtn, cancelBtn);
+            overlay.append(video, btnRow);
+            document.body.appendChild(overlay);
+
+            const cleanup = () => { stream.getTracks().forEach(t => t.stop()); overlay.remove(); };
+            cancelBtn.onclick = cleanup;
+            captureBtn.onclick = async () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                cleanup();
+                try {
+                    const dataUrl = await _downsizeImageToDataUrl(canvas.toDataURL('image/jpeg', 0.9));
+                    await _saveMyAvatarDataUrl(dataUrl);
+                } catch (err) { alert(err.message); }
+            };
         }
 
         // Converts a Google Drive "share" link (file/d/ID/view, ?id=ID, /open?id=ID, etc.)
@@ -8576,9 +8557,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     'Paid Leave': p.paid_leave_days || 0,
                     'Unpaid Leave': p.unpaid_leave_days || 0,
                     'Absent Days': p.absent_days || 0,
-                    'Deductions': (p.leave_deduction || 0) + (p.deductions || 0),
                     'Allowances': p.allowances || 0,
+                    'Overtime': p.overtime || 0,
                     'Bonuses': p.bonuses || 0,
+                    // Every deduction that comes off Net Salary — was missing Advances before,
+                    // which made this total not reconcile against Net Salary (see saveHRPayroll).
+                    'Deductions': (p.leave_deduction || 0) + (p.deductions || 0) + (p.advances || 0),
+                    'Advances': p.advances || 0,
                     'Net Salary': p.net_salary || 0,
                     'Payment Status': p.payment_status || ''
                 };
@@ -8595,16 +8580,21 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const headers = Object.keys(rows[0]);
             let y = 28;
             doc.setFontSize(8);
-            const colX = [14, 45, 85, 115, 145, 168, 191, 214, 237, 258, 275];
-            headers.forEach((h, i) => doc.text(h, colX[i] || (14 + i*24), y));
-            y += 6;
+            // Columns are spread evenly across the printable landscape width so adding/removing
+            // a column (e.g. Overtime, Advances) never pushes later columns off the page edge.
+            const marginX = 14;
+            const printableWidth = doc.internal.pageSize.getWidth() - marginX * 2;
+            const colWidth = printableWidth / headers.length;
+            const colX = headers.map((_, i) => marginX + i * colWidth);
+            const printHeaderRow = () => { headers.forEach((h, i) => doc.text(h, colX[i], y)); y += 6; };
+            printHeaderRow();
             rows.forEach(r => {
                 headers.forEach((h, i) => {
                     const val = typeof r[h] === 'number' ? r[h].toLocaleString('en-IN') : String(r[h]);
-                    doc.text(val, colX[i] || (14 + i*24), y);
+                    doc.text(val, colX[i], y);
                 });
                 y += 6;
-                if (y > 190) { doc.addPage(); y = 20; }
+                if (y > 190) { doc.addPage(); y = 20; printHeaderRow(); }
             });
             doc.save(`${month} Payroll.pdf`);
         }
@@ -8618,10 +8608,12 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const val = String(r[h]).replace(/"/g, '""');
                 return /[,"\n]/.test(val) ? `"${val}"` : val;
             }).join(',')));
-            const blob = new Blob([csvLines.join('\n')], { type: 'application/vnd.ms-excel' });
+            // This is plain CSV data — label it .csv/text-csv so Excel opens it straight away
+            // instead of throwing a "file format doesn't match extension" warning for .xlsx.
+            const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `${month} Payroll.xlsx`;
+            a.href = url; a.download = `${month} Payroll.csv`;
             document.body.appendChild(a); a.click(); a.remove();
             URL.revokeObjectURL(url);
         }
@@ -8645,9 +8637,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 return;
             }
             const balances = hrLeaveBalances.filter(b => b.employee_id === me.id);
-            document.getElementById('my-leave-balances').innerHTML = balances.length ? balances.map(b => `
-                <div class="hr-stat-card"><div class="num">${(b.allotted||0)-(b.used||0)}</div><div class="label">${b.leave_type}</div></div>
-            `).join('') : '<p class="text-[#4a5182] text-xs col-span-3">No balances set yet.</p>';
+            document.getElementById('my-leave-balances').innerHTML = balances.length ? balances.map(b => {
+                // Same live-computed "used" as the HR admin view (renderHRLeaveBalances) —
+                // never trust the stored counter, it can drift from approved requests.
+                const used = hrComputeLeaveUsed(me.id, b.leave_type);
+                const remaining = HR_UNLIMITED_LEAVE_TYPES.includes(b.leave_type) ? '—' : Math.max(0, (b.allotted||0) - used);
+                return `<div class="hr-stat-card"><div class="num">${remaining}</div><div class="label">${b.leave_type}</div></div>`;
+            }).join('') : '<p class="text-[#4a5182] text-xs col-span-3">No balances set yet.</p>';
             const mine = hrLeaveRequests.filter(r => r.employee_id === me.id);
             document.getElementById('my-leave-history').innerHTML = mine.length ? mine.map(r => `
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
@@ -8775,129 +8771,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         </button>
     </div>
 
-    <!-- Chat Settings Panel (WhatsApp/Telegram-style) -->
-    <div id="chat-settings-overlay" class="hidden fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-        <div class="bg-transparent border border-white/[0.06] glass-input rounded-2xl shadow-2xl shadow-black/60 w-full max-w-sm sm:max-w-md max-h-[85vh] overflow-y-auto">
-            <div class="sticky top-0 bg-transparent border-b border-white/[0.06] p-4 flex items-center justify-between z-10">
-                <h3 class="text-white font-bold text-sm flex items-center gap-2"><i data-lucide="settings" class="w-4 h-4 text-white/70"></i> Chat Settings</h3>
-                <button onclick="closeChatSettingsPanel()" class="text-[#6b74a0] hover:text-white p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-
-            <div class="p-4 space-y-5">
-                <!-- Notifications -->
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-[#4a5182] mb-2 px-1">Notifications</p>
-                    <div class="bg-transparent rounded-xl divide-y divide-[#2e3554]/60">
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="bell-off" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Mute this chat</span>
-                            </div>
-                            <button id="chat-set-mute-toggle" onclick="toggleRoomMute()" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
-                        </div>
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="volume-2" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Message sound</span>
-                            </div>
-                            <button id="chat-set-sound-toggle" onclick="toggleGlobalChatSetting('soundEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Privacy -->
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-[#4a5182] mb-2 px-1">Privacy</p>
-                    <div class="bg-transparent rounded-xl divide-y divide-[#2e3554]/60">
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="check-check" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Read receipts</span>
-                            </div>
-                            <button id="chat-set-receipts-toggle" onclick="toggleGlobalChatSetting('readReceiptsEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
-                        </div>
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="eye" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Show last seen</span>
-                            </div>
-                            <button id="chat-set-lastseen-toggle" onclick="toggleGlobalChatSetting('lastSeenEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Appearance -->
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-[#4a5182] mb-2 px-1">Appearance</p>
-                    <div class="bg-transparent rounded-xl divide-y divide-[#2e3554]/60">
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="image" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Chat wallpaper</span>
-                            </div>
-                            <button id="chat-set-wallpaper-toggle" onclick="toggleGlobalChatSetting('wallpaperEnabled')" class="chat-toggle-switch"><span class="chat-toggle-knob"></span></button>
-                        </div>
-                        <div class="px-3.5 py-3">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center gap-2.5">
-                                    <i data-lucide="upload" class="w-4 h-4 text-[#6b74a0]"></i>
-                                    <span class="text-xs text-gray-200">Custom wallpaper</span>
-                                </div>
-                                <div class="flex items-center gap-1.5">
-                                    <input type="file" id="chat-wallpaper-file-input" accept="image/*" class="hidden" onchange="handleWallpaperUpload(this)">
-                                    <button onclick="document.getElementById('chat-wallpaper-file-input').click()" class="bg-transparent border border-white/[0.1] hover:border-orange-500/50 text-gray-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition">Upload</button>
-                                    <button id="chat-wallpaper-remove-btn" onclick="removeCustomWallpaper()" class="hidden bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition">Remove</button>
-                                </div>
-                            </div>
-                            <div id="chat-wallpaper-preview-wrap" class="hidden mt-2.5">
-                                <img id="chat-wallpaper-preview" class="w-full h-16 object-cover rounded-lg border border-white/[0.1]">
-                            </div>
-                            <p class="text-[9px] text-[#4a5182] mt-1.5">Applies only on this device. Large images are auto-resized.</p>
-                        </div>
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="type" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Font size</span>
-                            </div>
-                            <select id="chat-set-fontsize-select" onchange="setChatFontSize(this.value)" class="bg-transparent border border-white/[0.1] rounded-lg text-[11px] text-white px-2 py-1.5 focus:outline-none focus:border-orange-500">
-                                <option value="small">Small</option>
-                                <option value="medium">Medium</option>
-                                <option value="large">Large</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Disappearing messages -->
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-[#4a5182] mb-2 px-1">This Chat</p>
-                    <div class="bg-transparent rounded-xl divide-y divide-[#2e3554]/60">
-                        <div class="flex items-center justify-between px-3.5 py-3">
-                            <div class="flex items-center gap-2.5">
-                                <i data-lucide="timer" class="w-4 h-4 text-[#6b74a0]"></i>
-                                <span class="text-xs text-gray-200">Disappearing messages</span>
-                            </div>
-                            <select id="chat-set-disappearing-select" onchange="setRoomDisappearing(this.value)" class="bg-transparent border border-white/[0.1] rounded-lg text-[11px] text-white px-2 py-1.5 focus:outline-none focus:border-orange-500">
-                                <option value="off">Off</option>
-                                <option value="24h">24 Hours</option>
-                                <option value="7d">7 Days</option>
-                                <option value="90d">90 Days</option>
-                            </select>
-                        </div>
-                    </div>
-                    <p class="text-[10px] text-[#4a5182] mt-1.5 px-1">Older messages will be hidden from view in this chat on this device.</p>
-                </div>
-
-                <!-- Danger zone -->
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-[#4a5182] mb-2 px-1">Danger Zone</p>
-                    <button onclick="clearThisChat()" class="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold px-3.5 py-3 rounded-xl flex items-center gap-2.5 transition">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i> Clear This Chat
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Custom Alert / Confirm Modal (replaces native browser dialogs) -->
     <div id="be-modal-overlay" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
