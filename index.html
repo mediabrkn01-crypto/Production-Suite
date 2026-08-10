@@ -413,6 +413,9 @@
         .hr-att-cell-WO { color:#5b6389; }
         .hr-att-cell-H { color:#c084fc; font-weight:700; }
         .hr-att-cell-blank { color:#3a4062; }
+        .hr-role-chip { padding:6px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.1); background:transparent; color:#a5adcf; font-size:11px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+        .hr-role-chip:hover { border-color:rgba(249,115,22,0.5); color:#fff; }
+        .hr-role-chip.active { background:linear-gradient(135deg,#f97316,#ef4444); border-color:transparent; color:#fff; }
         .hr-badge-pending { background:rgba(250,204,21,0.15); color:#facc15; }
         .hr-badge-approved { background:rgba(34,197,94,0.15); color:#4ade80; }
         .hr-badge-rejected { background:rgba(239,68,68,0.15); color:#f87171; }
@@ -560,15 +563,18 @@
                 </div>
                 <div><label class="hr-field-label">Employee ID</label><input id="hr-emp-id" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Full Name *</label><input id="hr-emp-name" class="hr-input w-full" oninput="updateHREmpPhotoPreview()"></div>
-                <div><label class="hr-field-label">Division *</label>
-                    <select id="hr-emp-division" class="hr-select w-full" onchange="populateHRDeptOptions()">
-                        <option value="education">Education</option>
+                <div><label class="hr-field-label">Department *</label>
+                    <select id="hr-emp-division" class="hr-select w-full" onchange="renderHREmpRoleChips()">
                         <option value="production">Production House</option>
+                        <option value="education">Education</option>
                         <option value="other">Other</option>
                     </select>
                 </div>
-                <div><label class="hr-field-label">Department *</label><select id="hr-emp-department" class="hr-select w-full"></select></div>
-                <div><label class="hr-field-label">Designation</label><input id="hr-emp-designation" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Designation</label><input id="hr-emp-designation" class="hr-input w-full" placeholder="e.g. Manager, HR / Admin"></div>
+                <div class="sm:col-span-2">
+                    <label class="hr-field-label">Roles (select one or more)</label>
+                    <div id="hr-emp-roles-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                </div>
                 <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full" oninput="updateHREmpProbationPreview()"></div>
                 <div><label class="hr-field-label">Employment Status</label>
                     <select id="hr-emp-status" class="hr-select w-full">
@@ -1657,13 +1663,13 @@
                         <div style="display:flex;gap:8px;flex-wrap:wrap">
                             <input id="hr-emp-search" oninput="renderHREmployees()" placeholder="Search Employee..." class="hr-input" style="min-width:180px">
                             <select id="hr-emp-filter-division" onchange="renderHREmployees()" class="hr-select">
-                                <option value="">Division: All</option>
-                                <option value="education">Education</option>
+                                <option value="">Department: All</option>
                                 <option value="production">Production House</option>
-                                <option value="other">Administration</option>
+                                <option value="education">Education</option>
+                                <option value="other">Other</option>
                             </select>
                             <select id="hr-emp-filter-department" onchange="renderHREmployees()" class="hr-select">
-                                <option value="">Department: All</option>
+                                <option value="">Role: All</option>
                             </select>
                             <select id="hr-emp-filter-designation" onchange="renderHREmployees()" class="hr-select">
                                 <option value="">Designation: All</option>
@@ -6597,6 +6603,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators', 'Graphic Designers', 'Designers'],
             other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
         };
+        // Multi-select Roles, by Department. An employee can hold more than one — e.g. an
+        // Editor who's also a Cinematographer. Stored as a comma-joined string in the SAME
+        // hr_employees.department column that used to hold one sub-department value — no new
+        // Supabase column needed, so this can't hit the "column doesn't exist" failure mode
+        // that broke photo uploads earlier. One field, read/written everywhere consistently.
+        const HR_ROLES = {
+            production: ['Editor', 'Designer', 'Cinematographer', 'Photographer', 'Video Editor', 'Colorist', 'VFX & Motion Graphics Artist', 'Production Coordinator'],
+            education: ['Academic Counselor', 'Academic Head', 'Academic Trainer'],
+            other: [] // Administration/HR/etc. — no preset chips, Designation field covers the title
+        };
+        function hrParseRoles(departmentStr) {
+            return (departmentStr || '').split(',').map(s => s.trim()).filter(Boolean);
+        }
+        function hrJoinRoles(rolesArray) {
+            return (rolesArray || []).join(', ');
+        }
         const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Unpaid Leave', 'Work From Home'];
         const HR_UNLIMITED_LEAVE_TYPES = ['Unpaid Leave']; // these show "—" for Allocated/Remaining instead of a number
         // Company's standard/default leave policy — auto-assigned to every new employee so HR
@@ -6986,10 +7008,28 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         // ---------- EMPLOYEES ----------
-        function populateHRDeptOptions() {
+        // Roles chip picker for the Add/Edit Employee modal — options depend on the selected
+        // Department (Production House / Education / Other), selection is multi-value.
+        let hrEmpSelectedRoles = [];
+        function renderHREmpRoleChips() {
             const div = document.getElementById('hr-emp-division').value;
-            const sel = document.getElementById('hr-emp-department');
-            sel.innerHTML = HR_DEPARTMENTS[div].map(d => `<option value="${d}">${d}</option>`).join('');
+            const options = HR_ROLES[div] || [];
+            const container = document.getElementById('hr-emp-roles-chips');
+            if (!container) return;
+            // Dropping to a department with no preset roles (e.g. "Other") doesn't wipe an
+            // existing selection — it just won't render chips for it. Switching to a real
+            // department still shows whichever of those roles were already selected.
+            container.innerHTML = options.length
+                ? options.map(r => {
+                    const on = hrEmpSelectedRoles.includes(r);
+                    return `<button type="button" onclick="hrToggleEmpRole('${r.replace(/'/g, "\\'")}')" class="hr-role-chip${on ? ' active' : ''}">${on ? '✓ ' : ''}${r}</button>`;
+                  }).join('')
+                : '<p class="text-[10px] text-[#4a5182]">No preset roles for this department — use the Designation field for a title.</p>';
+        }
+        function hrToggleEmpRole(role) {
+            const i = hrEmpSelectedRoles.indexOf(role);
+            if (i === -1) hrEmpSelectedRoles.push(role); else hrEmpSelectedRoles.splice(i, 1);
+            renderHREmpRoleChips();
         }
 
         function openHREmployeeModal(id = null) {
@@ -7003,9 +7043,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             updateHREmpPhotoPreview();
             document.getElementById('hr-emp-id').value = e?.employee_id || '';
             document.getElementById('hr-emp-name').value = e?.full_name || '';
-            document.getElementById('hr-emp-division').value = e?.division || 'education';
-            populateHRDeptOptions();
-            if (e?.department) document.getElementById('hr-emp-department').value = e.department;
+            document.getElementById('hr-emp-division').value = e?.division || 'production';
+            hrEmpSelectedRoles = hrParseRoles(e?.department);
+            renderHREmpRoleChips();
             document.getElementById('hr-emp-designation').value = e?.designation || '';
             document.getElementById('hr-emp-joining').value = e?.joining_date || '';
             document.getElementById('hr-emp-status').value = e?.employment_status || 'active';
@@ -7167,7 +7207,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 employee_id: document.getElementById('hr-emp-id').value.trim(),
                 full_name: name,
                 division: document.getElementById('hr-emp-division').value,
-                department: document.getElementById('hr-emp-department').value,
+                department: hrJoinRoles(hrEmpSelectedRoles),
                 designation: document.getElementById('hr-emp-designation').value.trim(),
                 joining_date,
                 employment_status: document.getElementById('hr-emp-status').value,
@@ -7270,10 +7310,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         function populateHREmployeeFilterOptions() {
             const deptSel = document.getElementById('hr-emp-filter-department');
             const desigSel = document.getElementById('hr-emp-filter-designation');
-            const depts = [...new Set(hrEmployees.map(e => e.department).filter(Boolean))].sort();
+            // Roles filter options come from each employee's *individual* roles, not the whole
+            // comma-joined string — an employee with "Editor, Cinematographer" should show up
+            // (and be filterable) under both, not only as one combined option.
+            const depts = [...new Set(hrEmployees.flatMap(e => hrParseRoles(e.department)))].sort();
             const desigs = [...new Set(hrEmployees.map(e => e.designation).filter(Boolean))].sort();
             const curDept = deptSel.value, curDesig = desigSel.value;
-            deptSel.innerHTML = '<option value="">Department: All</option>' + depts.map(d => `<option value="${d}">${d}</option>`).join('');
+            deptSel.innerHTML = '<option value="">Role: All</option>' + depts.map(d => `<option value="${d}">${d}</option>`).join('');
             desigSel.innerHTML = '<option value="">Designation: All</option>' + desigs.map(d => `<option value="${d}">${d}</option>`).join('');
             deptSel.value = curDept; desigSel.value = curDesig;
         }
@@ -7286,7 +7329,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const q = document.getElementById('hr-emp-search').value.toLowerCase();
             let rows = hrEmployees.filter(e =>
                 (!div || e.division === div) &&
-                (!dept || e.department === dept) &&
+                (!dept || hrParseRoles(e.department).includes(dept)) &&
                 (!desig || e.designation === desig) &&
                 (!status || e.employment_status === status) &&
                 (!q || [e.full_name, e.employee_id, e.department].join(' ').toLowerCase().includes(q))
@@ -7350,7 +7393,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     hrProfileField('Emergency Contact', [e.emergency_contact_name, e.emergency_contact_phone].filter(Boolean).join(' — ')) + hrProfileField('Notes / History', e.notes, true);
             } else if (hrProfileTab === 'employment') {
                 const probationEnd = hrProbationEndDate(e);
-                body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Division', e.division) + hrProfileField('Department', e.department) +
+                const divisionLabelMap = { education: 'Education', production: 'Production House', other: 'Other' };
+                body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Department', divisionLabelMap[e.division] || e.division) + hrProfileField('Roles', hrParseRoles(e.department).join(', ')) +
                     hrProfileField('Designation', e.designation) + hrProfileField('Joining Date', e.joining_date) + hrProfileField('Employment Status', e.employment_status) +
                     hrProfileField('Manager (portal email)', e.manager_email) + hrProfileField('Probation Period', e.probation_months ? `${e.probation_months} month(s)` : null) +
                     hrProfileField('Probation End Date', probationEnd);
@@ -7400,8 +7444,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         function renderHRDepartments() {
             const divisionLabel = { education: 'Education', production: 'Production House', other: 'Administration' };
             const groups = {};
-            Object.keys(HR_DEPARTMENTS).forEach(div => HR_DEPARTMENTS[div].forEach(d => { groups[d] = { division: div, count: 0 }; }));
-            hrEmployees.forEach(e => { if (e.department && groups[e.department]) groups[e.department].count++; });
+            Object.keys(HR_ROLES).forEach(div => HR_ROLES[div].forEach(d => { groups[d] = { division: div, count: 0 }; }));
+            // An employee with multiple roles counts toward each one — e.g. an Editor +
+            // Cinematographer shows up under both tiles, not just the first.
+            hrEmployees.forEach(e => hrParseRoles(e.department).forEach(role => { if (groups[role]) groups[role].count++; }));
             document.getElementById('hr-departments-grid').innerHTML = Object.entries(groups).map(([name, g]) => `
                 <div class="card glass-card p-4 rounded-2xl cursor-pointer" onclick="document.getElementById('hr-emp-filter-department').value='${name}';switchHRSubtab('employees')">
                     <p class="text-white font-bold text-sm">${name}</p>
@@ -7995,8 +8041,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-emp-designation').value = a.position || (job?.title || '');
             if (job) {
                 document.getElementById('hr-emp-division').value = job.division || 'other';
-                populateHRDeptOptions();
-                if (job.department) document.getElementById('hr-emp-department').value = job.department;
+                // Pre-select whichever of the job's department text matches a known role for
+                // this department (e.g. job.department "Editor" → Editor chip checked). If it
+                // doesn't match one of the preset roles, HR just picks the right chip(s) manually.
+                hrEmpSelectedRoles = job.department ? hrParseRoles(job.department).filter(r => (HR_ROLES[job.division] || []).includes(r)) : [];
+                renderHREmpRoleChips();
             }
             document.getElementById('hr-emp-joining').value = new Date().toISOString().slice(0,10);
             const docLinks = [a.resume_url ? `Resume: ${a.resume_url}` : '', a.portfolio_url ? `Portfolio: ${a.portfolio_url}` : ''].filter(Boolean).join('\n');
@@ -8810,10 +8859,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 return;
             }
             const probationEnd = hrProbationEndDate(me);
+            const myDivisionLabel = { education: 'Education', production: 'Production House', other: 'Other' }[me.division] || me.division;
             body.innerHTML =
                 hrProfileField('Employee ID', me.employee_id) +
-                hrProfileField('Department', me.department) +
-                hrProfileField('Division', me.division) +
+                hrProfileField('Department', myDivisionLabel) +
+                hrProfileField('Roles', hrParseRoles(me.department).join(', ')) +
                 hrProfileField('Designation', me.designation) +
                 hrProfileField('Joining Date', me.joining_date) +
                 hrProfileField('Date of Birth', me.dob) +
