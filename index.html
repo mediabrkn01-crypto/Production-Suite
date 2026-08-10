@@ -711,7 +711,7 @@
                     <button type="button" onclick="autoCalculateHRPayroll()" class="hr-select w-full" style="cursor:pointer;text-align:center;font-weight:700">⚡ Auto-Calculate from Attendance</button>
                     <p id="hr-pr-leave-breakdown" class="text-[10px] text-[#6b74a0] mt-1"></p>
                 </div>
-                <div><label class="hr-field-label">Basic Salary</label><input id="hr-pr-basic" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
+                <div><label class="hr-field-label">Basic Salary (payable amount — auto-calc prorates this by attendance)</label><input id="hr-pr-basic" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Leave Deduction (auto)</label><input id="hr-pr-leave-deduction" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Allowances</label><input id="hr-pr-allowances" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
                 <div><label class="hr-field-label">Overtime</label><input id="hr-pr-overtime" type="number" min="0" class="hr-input w-full" oninput="updateHRPayrollNetPreview()"></div>
@@ -8163,37 +8163,44 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return hrHolidays.some(h => h.holiday_date === dateStr);
         }
 
-        // Determines each day's status for an employee across a month, then derives
-        // paid/unpaid/absent day counts and the resulting salary deduction.
+        // Determines each day's status for an employee across a month, then derives the
+        // actual PAYABLE salary — proportional to real attendance, not the full monthly
+        // figure. Weekly-offs and holidays are neutral (neither payable nor deducted).
+        // Future dates (not yet occurred) are skipped entirely — can't dock pay for a day
+        // that hasn't happened.
         function hrCalculatePayrollForMonth(employeeId, monthStr) {
             const [y, m] = monthStr.split('-').map(Number);
             const daysInMonth = new Date(y, m, 0).getDate();
             const salary = hrGetEffectiveSalary(employeeId, monthStr);
             const dailySalary = daysInMonth ? salary / daysInMonth : 0;
-            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, presentDays = 0;
+            const todayStr = new Date().toISOString().slice(0,10);
+            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, payableDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
-                if (hrIsHoliday(dateStr)) { holidayDays++; continue; }
+                if (dateStr > todayStr) continue; // hasn't happened yet — excluded entirely
+                const dow = new Date(y, m - 1, d).getDay();
+                if (hrIsHoliday(dateStr)) { holidayDays++; continue; } // neutral — not payable, not deducted
                 const rec = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === dateStr);
                 if (rec) {
-                    if (rec.status === 'holiday') holidayDays++;
-                    else if (rec.status === 'absent') absentDays++;
-                    else if (rec.status === 'on_leave') {
-                        // Determine whether the covering approved leave is paid or unpaid
+                    if (rec.status === 'holiday') { holidayDays++; continue; } // neutral
+                    if (rec.status === 'absent') { absentDays++; continue; }
+                    if (rec.status === 'on_leave') {
                         const leave = hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
-                        if (leave && leave.leave_type === 'Unpaid Leave') unpaidLeaveDays++;
-                        else paidLeaveDays++;
-                    } else {
-                        presentDays++; // present, late, half_day, wfh all count as worked/paid
+                        if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
+                        paidLeaveDays++; payableDays++; continue;
                     }
-                } else {
-                    // Not manually marked — don't penalize unmarked days automatically.
-                    presentDays++;
+                    if (rec.status === 'half_day') { payableDays += 0.5; continue; }
+                    // present, late, wfh — all worked/payable
+                    presentDays++; payableDays++; continue;
                 }
+                if (hrIsWeeklyOff(dow)) { weeklyOffDays++; continue; } // neutral — not payable, not deducted
+                // No record, not a weekly-off, not a holiday — genuinely unmarked/unworked, not payable.
+                absentDays++;
             }
+            const earnedBasic = Math.round(dailySalary * payableDays * 100) / 100;
             const leaveDeduction = Math.round(dailySalary * unpaidLeaveDays * 100) / 100;
-            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, leaveDeduction };
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, payableDays, earnedBasic, leaveDeduction };
         }
 
         // ---------- PROBATION ----------
@@ -8313,10 +8320,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const month = document.getElementById('hr-pr-month').value;
             if (!employee_id || !month) { alert('Pick an employee and month first.'); return; }
             const calc = hrCalculatePayrollForMonth(employee_id, month);
-            document.getElementById('hr-pr-basic').value = calc.salary;
+            // Basic is the actual EARNED/payable amount — proportional to real attendance,
+            // not the full monthly salary. Leave deduction covers unpaid-leave days on top
+            // of that (Absent days are already excluded from the earned amount itself).
+            document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present/Paid: ${calc.presentDays + calc.paidLeaveDays} · Unpaid Leave: ${calc.unpaidLeaveDays} · Absent: ${calc.absentDays} · Holidays: ${calc.holidayDays}`;
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Payable: ${calc.payableDays} (Present ${calc.presentDays} + Paid Leave ${calc.paidLeaveDays}) · Unpaid Leave: ${calc.unpaidLeaveDays} · Absent/Unmarked: ${calc.absentDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
             document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
