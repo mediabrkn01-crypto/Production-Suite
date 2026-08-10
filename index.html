@@ -8382,6 +8382,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // their full month's salary for 2 days worked.
             const employee = hrEmployees.find(e => e.id === employeeId);
             const joiningDate = employee?.joining_date || null;
+            // How much of the month has actually happened yet. A past month is fully elapsed;
+            // a future month hasn't started; the current month is elapsed up to today.
+            // THIS is what Basic gets prorated against below — not always the full month — so
+            // checking payroll mid-month can't inflate pay for days that haven't occurred:
+            // previously Basic assumed the FULL month's salary regardless, while LOP only ever
+            // covered the days already evaluated, so a sparse mid-month check (e.g. 2 Present
+            // days out of 10 elapsed, in a 31-day month) paid out for the other 21 days that
+            // simply hadn't happened yet, instead of correctly excluding them until they do.
+            const monthPrefix = monthStr, todayMonthPrefix = todayStr.slice(0, 7);
+            const elapsedDays = monthPrefix < todayMonthPrefix ? daysInMonth
+                : monthPrefix > todayMonthPrefix ? 0
+                : Number(todayStr.slice(8, 10));
             let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0, preJoiningDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
@@ -8411,9 +8423,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // attendance-discipline sense, so they're reported separately (see preJoiningDays).
             const lopDays = unpaidLeaveDays + absentDays + halfDayDays * 0.5;
             const payableDays = presentDays + paidLeaveDays + weeklyOffDays + holidayDays + halfDayDays * 0.5;
-            const earnedBasic = salary; // full contracted salary — LOP + pre-joining deduction does the rest
+            const futureDays = daysInMonth - elapsedDays; // not yet occurred — never paid, never LOP'd, simply not evaluated
+            // Basic is prorated to the elapsed portion of the month, not always the full salary
+            // — for a month that's completely in the past this equals the full salary anyway
+            // (elapsedDays === daysInMonth), so nothing changes for normal end-of-month payroll.
+            const earnedBasic = Math.round(dailySalary * elapsedDays * 100) / 100;
             const leaveDeduction = Math.round(dailySalary * (lopDays + preJoiningDays) * 100) / 100;
-            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, lopDays, payableDays, earnedBasic, leaveDeduction };
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
         }
 
         // ---------- PROBATION ----------
@@ -8725,13 +8741,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // doesn't store a separate disbursement date, so this is the last day of the month.
             const payDate = new Date(y, m, 0).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-            // "Basic Salary" on the payslip is the employee's actual saved salary (from HR's
-            // salary history / employee record), not a prorated figure — LOP Deduction is the
-            // one line that reduces it. The deduction amount itself comes from the stored
-            // hr_payroll row (what HR actually approved), not a fresh recalculation, so Net Pay
-            // here always matches p.net_salary exactly, even if HR manually adjusted a figure.
-            const originalSalary = hrGetEffectiveSalary(p.employee_id, p.month);
-            const grossEarnings = originalSalary + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
+            // "Basic Salary" on the payslip is p.basic — the stored, HR-approved figure (full
+            // month's salary once the whole period has elapsed; prorated to the elapsed portion
+            // if payroll's being checked mid-month — see hrCalculatePayrollForMonth). It's
+            // deliberately NOT re-derived independently here: doing that used to make the
+            // printed Gross Earnings disagree with the actual Net Pay whenever Basic had been
+            // prorated, since Gross would show the full salary while Net reflected the smaller
+            // prorated+LOP-adjusted figure. Using the same stored value everywhere means the
+            // printed arithmetic always adds up, and this can never drift from what HR approved.
+            const monthlySalary = hrGetEffectiveSalary(p.employee_id, p.month); // full contracted salary — shown as a reference only
+            const basicForPayslip = p.basic != null ? p.basic : monthlySalary;
+            const grossEarnings = basicForPayslip + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
             const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
             const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
             // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
@@ -8773,12 +8793,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             summaryRow('Employee ID', e?.employee_id || '—');
             summaryRow('Pay Period', monthLabel);
             summaryRow('Pay Date', payDate);
+            // Full contracted salary, always — a fixed reference point so it's clear the payslip
+            // isn't wrong when Basic Salary below is lower (mid-period check or partial month).
+            summaryRow('Monthly Salary', rupee(monthlySalary));
 
             // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
             // run to a decimal like "28.5", which would collide with a neighboring label if two
             // were placed on the same line. Pre-Joining only shows when it's actually nonzero
             // (mid-month joiner) — no clutter for the normal case.
             const hasPreJoining = dayInfo.preJoiningDays > 0;
+            const hasFutureDays = dayInfo.futureDays > 0;
             const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = hasPreJoining ? 76 : 70;
             doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
             doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
@@ -8813,6 +8837,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 doc.text(noteLines, marginX + 38, y2);
                 y2 += 5 * noteLines.length + 3;
             }
+            if (hasFutureDays) {
+                doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
+                doc.setFontSize(9); doc.setTextColor(120); doc.text('Note', marginX, y2);
+                doc.text(':', marginX + 34, y2); doc.setTextColor(20);
+                const futureNote = doc.splitTextToSize(`This pay period isn't finished yet — ${dayInfo.futureDays} day(s) haven't happened. Basic Salary above reflects only the ${dayInfo.elapsedDays} elapsed day(s) so far; re-generate this payslip after the period ends for the final figure.`, rightX - marginX - 38);
+                doc.text(futureNote, marginX + 38, y2);
+                y2 += 5 * futureNote.length + 3;
+            }
             doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 8;
 
             // Two-column Earnings / Deductions table (16mm gutter between columns so a
@@ -8830,7 +8862,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             y2 += 6;
             doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
 
-            const earnings = [['Basic Salary', originalSalary], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
+            const earnings = [['Basic Salary', basicForPayslip], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
             const deductions = [];
             // Day count in the label matches exactly what the rupee figure was calculated over
             // — LOP days plus any pre-joining days, since both reduce this same deduction line.
