@@ -30,6 +30,7 @@
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -729,7 +730,8 @@
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="sm:col-span-2"><label class="hr-field-label">Employee</label><select id="hr-pr-employee" class="hr-select w-full"></select></div>
-                <div class="sm:col-span-2"><label class="hr-field-label">Month</label><input id="hr-pr-month" type="month" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Pay Period (Month)</label><input id="hr-pr-month" type="month" class="hr-input w-full" onchange="hrDefaultPaymentDate()"></div>
+                <div><label class="hr-field-label">Payment Date</label><input id="hr-pr-payment-date" type="date" class="hr-input w-full"></div>
                 <div class="sm:col-span-2">
                     <button type="button" onclick="autoCalculateHRPayroll()" class="hr-select w-full" style="cursor:pointer;text-align:center;font-weight:700">⚡ Auto-Calculate from Attendance</button>
                     <p id="hr-pr-leave-breakdown" class="text-[10px] text-[#6b74a0] mt-1"></p>
@@ -1823,9 +1825,14 @@
                             <input id="hr-payroll-month" type="month" class="hr-input" onchange="renderHRPayroll()">
                             <button onclick="downloadMonthlyPayrollPDF()" class="hr-select" style="cursor:pointer">⬇ Download PDF</button>
                             <button onclick="downloadMonthlyPayrollExcel()" class="hr-select" style="cursor:pointer">⬇ Download Excel</button>
+                            <button onclick="downloadAllHRPayslipsZip()" class="hr-select" style="cursor:pointer">⬇ Download All Payslips (ZIP)</button>
                         </div>
-                        <button onclick="openHRPayrollModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Payroll Entry</button>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button onclick="generateAllHRPayslips()" class="hr-select" style="cursor:pointer;font-weight:700;border-color:rgba(74,222,128,0.4);color:#4ade80">⚡ Generate All Payslips</button>
+                            <button onclick="openHRPayrollModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Payroll Entry</button>
+                        </div>
                     </div>
+                    <p id="hr-payroll-bulk-status" class="text-[11px] text-[#6b74a0]"></p>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
                             <thead>
@@ -7604,7 +7611,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const input = document.getElementById('hr-att-month');
             const [y, m] = (input.value || new Date().toISOString().slice(0,7)).split('-').map(Number);
             const d = new Date(y, m - 1 + delta, 1);
-            input.value = d.toISOString().slice(0,7);
+            // d.toISOString() converts to UTC first — in a timezone ahead of UTC (e.g. IST),
+            // local midnight on the 1st is still the previous day in UTC, so the resulting
+            // string silently rolled back to the WRONG month. That's why "next month" looked
+            // stuck: clicking ▶ moved the date forward by one, toISOString() then rolled it
+            // back by (up to) a day, and slice(0,7) frequently landed back on the same month
+            // string. Building the string from the Date's own local fields avoids the whole
+            // UTC round-trip.
+            input.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             renderHRMonthlyAttendance();
         }
 
@@ -8551,16 +8565,30 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 document.getElementById('hr-pr-unpaid-days').value = p.unpaid_leave_days ?? 0;
                 document.getElementById('hr-pr-absent-days').value = p.absent_days ?? 0;
                 document.getElementById('hr-pr-status').value = p.payment_status || 'pending';
+                document.getElementById('hr-pr-payment-date').value = p.payment_date || hrDefaultPaymentDateFor(p.month);
                 document.getElementById('hr-pr-leave-breakdown').textContent = 'Editing a saved payslip — re-run Auto-Calculate if you want these figures refreshed from current attendance.';
             } else {
                 document.getElementById('hr-pr-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
                 ['hr-pr-basic','hr-pr-allowances','hr-pr-overtime','hr-pr-bonuses','hr-pr-deductions','hr-pr-advances','hr-pr-leave-deduction'].forEach(id => document.getElementById(id).value = '');
                 document.getElementById('hr-pr-status').value = 'pending';
                 document.getElementById('hr-pr-leave-breakdown').textContent = '';
+                hrDefaultPaymentDate();
             }
             updateHRPayrollNetPreview();
             document.getElementById('hr-payroll-modal').classList.remove('hidden');
             document.getElementById('hr-payroll-modal').classList.add('flex');
+        }
+        // Pay Period and Payment Date are two different things — salary for August is paid
+        // in September. Default is the 10th of the month AFTER the selected pay period, but
+        // HR can override it (e.g. a different pay-day policy, or a specific late/early run).
+        function hrDefaultPaymentDateFor(monthStr) {
+            if (!monthStr) return '';
+            const [y, m] = monthStr.split('-').map(Number);
+            const d = new Date(y, m, 10); // m (not m-1) lands one month after the pay period
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        function hrDefaultPaymentDate() {
+            document.getElementById('hr-pr-payment-date').value = hrDefaultPaymentDateFor(document.getElementById('hr-pr-month').value);
         }
         function editHRPayroll(id) { openHRPayrollModal(id); }
         function closeHRPayrollModal() {
@@ -8591,6 +8619,24 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             updateHRPayrollNetPreview();
         }
 
+        // Same defensive pattern as hrSaveEmployeeRow (see photo_base64) — 'payment_date' is a
+        // new column that may not exist on every deployment's hr_payroll table yet. Retry once
+        // without it rather than let a missing column silently fail the whole payroll save.
+        async function hrSavePayrollRow(payload, editId) {
+            const run = p => editId
+                ? dbInstance.from('hr_payroll').update(p).eq('id', editId)
+                : dbInstance.from('hr_payroll').insert([p]);
+            let result = await run(payload);
+            if (result.error && /payment_date/i.test(result.error.message || '') && Object.prototype.hasOwnProperty.call(payload, 'payment_date')) {
+                const { payment_date, ...rest } = payload;
+                result = await run(rest);
+                if (!result.error) {
+                    console.warn('Payment Date could not be saved — this database is missing the "payment_date" column. Ask whoever manages Supabase to run:\nALTER TABLE hr_payroll ADD COLUMN payment_date date;');
+                }
+            }
+            return result;
+        }
+
         async function saveHRPayroll() {
             const g = id => parseFloat(document.getElementById(id).value) || 0;
             const employee_id = document.getElementById('hr-pr-employee').value;
@@ -8601,19 +8647,73 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                   leave_deduction = g('hr-pr-leave-deduction'), paid_leave_days = g('hr-pr-paid-days'),
                   unpaid_leave_days = g('hr-pr-unpaid-days'), absent_days = g('hr-pr-absent-days');
             const net_salary = basic + allowances + overtime + bonuses - leave_deduction - deductions - advances;
-            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_status: document.getElementById('hr-pr-status').value };
+            const payment_date = document.getElementById('hr-pr-payment-date').value || hrDefaultPaymentDateFor(month);
+            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_date, payment_status: document.getElementById('hr-pr-status').value };
             try {
                 // Editing an existing payslip UPDATEs that same row — never a second INSERT,
                 // so it can't create a duplicate payslip for the same employee/month.
-                const { error } = hrEditingPayrollId
-                    ? await dbInstance.from('hr_payroll').update(payload).eq('id', hrEditingPayrollId)
-                    : await dbInstance.from('hr_payroll').insert([payload]);
+                const { error } = await hrSavePayrollRow(payload, hrEditingPayrollId);
                 if (error) { alert('Could not save payroll entry: ' + error.message); return; }
                 closeHRPayrollModal();
                 await loadHRData();
                 renderHRPayroll();
                 renderHREmployeeProfile();
             } catch (e) { alert('Could not save payroll entry: ' + e.message); }
+        }
+
+        // "Generate All Payslips" — one click computes and saves a payroll row for every active
+        // employee for the selected month: Basic Salary, Present/Paid-Leave/Weekly-Off/Holiday
+        // days, LOP days and LOP Deduction all come from hrCalculatePayrollForMonth, the exact
+        // same engine Auto-Calculate uses for a single employee — so a bulk-generated payslip
+        // and a manually-generated one for the same person/month always agree. An employee who
+        // already has a saved row for this month gets that row UPDATED, never a second one, so
+        // running this twice (e.g. after fixing an attendance record) can't create duplicates.
+        // Every row it creates is a normal hr_payroll row — same Edit button, same download,
+        // same everything as one added by hand.
+        async function generateAllHRPayslips() {
+            const month = document.getElementById('hr-payroll-month').value;
+            if (!month) { alert('Pick a payroll month first.'); return; }
+            const active = hrEmployees.filter(e => e.employment_status === 'active');
+            if (!active.length) { alert('No active employees to generate payslips for.'); return; }
+            if (!confirm(`Generate payslips for all ${active.length} active employee(s) for ${month}?\n\nAnyone who already has a payslip for this month will have it recalculated and updated — not duplicated.`)) return;
+
+            const statusEl = document.getElementById('hr-payroll-bulk-status');
+            const payment_date = hrDefaultPaymentDateFor(month);
+            let done = 0, failed = [];
+            for (const emp of active) {
+                if (statusEl) statusEl.textContent = `Generating ${done + 1} of ${active.length} — ${emp.full_name}…`;
+                try {
+                    const calc = hrCalculatePayrollForMonth(emp.id, month);
+                    const existing = hrPayroll.find(p => p.employee_id === emp.id && p.month === month);
+                    const basic = calc.earnedBasic, leave_deduction = calc.leaveDeduction;
+                    // Manual figures (allowances/overtime/bonuses/other deductions/advances) on
+                    // an existing row are preserved across a re-generate — only the
+                    // attendance-derived numbers refresh. A fresh row starts all of these at 0,
+                    // same as opening "Add Payroll Entry" and clicking Auto-Calculate.
+                    const allowances = existing?.allowances || 0, overtime = existing?.overtime || 0,
+                          bonuses = existing?.bonuses || 0, deductions = existing?.deductions || 0, advances = existing?.advances || 0;
+                    const net_salary = basic + allowances + overtime + bonuses - leave_deduction - deductions - advances;
+                    const payload = {
+                        employee_id: emp.id, month, basic, allowances, overtime, bonuses, deductions, advances,
+                        leave_deduction, paid_leave_days: calc.paidLeaveDays, unpaid_leave_days: calc.unpaidLeaveDays,
+                        absent_days: calc.absentDays, net_salary, payment_date,
+                        payment_status: existing?.payment_status || 'pending'
+                    };
+                    const { error } = await hrSavePayrollRow(payload, existing?.id || null);
+                    if (error) failed.push(`${emp.full_name}: ${error.message}`);
+                } catch (e) {
+                    failed.push(`${emp.full_name}: ${e.message}`);
+                }
+                done++;
+            }
+            await loadHRData();
+            renderHRPayroll();
+            renderHREmployeeProfile();
+            if (statusEl) {
+                statusEl.textContent = failed.length
+                    ? `Generated ${done - failed.length} of ${done} — ${failed.length} failed: ${failed.join('; ')}`
+                    : `Generated ${done} payslip(s) for ${month}, payable on ${payment_date}.`;
+            }
         }
 
         function renderHRPayroll() {
@@ -8715,10 +8815,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // two-column Earnings/Deductions, Gross Earnings vs Total Deductions, Total Net Payable,
         // amount in words). Every figure comes straight off the same hr_payroll row HR saved —
         // nothing here is recalculated independently, so this can never drift from HR's numbers.
-        async function downloadHRPayslip(id) {
-            const p = hrPayroll.find(x => x.id === id);
-            if (!p) return;
-            const e = hrEmployees.find(x => x.id === p.employee_id);
+        // Builds the payslip jsPDF document for one payroll row/employee, without saving it —
+        // shared by the single Download button and the bulk "Download All Payslips (ZIP)".
+        async function _buildHRPayslipDoc(p, e) {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const pageW = doc.internal.pageSize.getWidth();
@@ -8737,9 +8836,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // Company Holiday→not LOP, Absent with nothing approved→LOP.
             const dayInfo = hrCalculatePayrollForMonth(p.employee_id, p.month);
             const lopDays = dayInfo.lopDays;
-            // Standard "salary for the period, paid at period end" convention — hr_payroll
-            // doesn't store a separate disbursement date, so this is the last day of the month.
-            const payDate = new Date(y, m, 0).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            // Payment Date is a distinct thing from the Pay Period — salary for August is paid
+            // in September. Uses whatever was actually saved on this payroll row; falls back to
+            // the standard default (10th of the following month) for older rows saved before
+            // this field existed, or on a database that hasn't had the column added yet.
+            const payDateStr = p.payment_date || hrDefaultPaymentDateFor(p.month);
+            const [pdy, pdm, pdd] = payDateStr.split('-').map(Number);
+            const payDate = new Date(pdy, pdm - 1, pdd).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
             // "Basic Salary" on the payslip is p.basic — the stored, HR-approved figure (full
             // month's salary once the whole period has elapsed; prorated to the elapsed portion
@@ -8904,7 +9007,48 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             doc.setFontSize(8); doc.setTextColor(160);
             doc.text('-- This is a system-generated document. --', pageW / 2, 285, { align: 'center' });
 
+            return doc;
+        }
+
+        async function downloadHRPayslip(id) {
+            const p = hrPayroll.find(x => x.id === id);
+            if (!p) return;
+            const e = hrEmployees.find(x => x.id === p.employee_id);
+            const doc = await _buildHRPayslipDoc(p, e);
             doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
+        }
+
+        // "Download All Payslips (ZIP)" — every payroll row for the selected month, packaged
+        // together so HR doesn't have to click Download once per employee.
+        async function downloadAllHRPayslipsZip() {
+            const month = document.getElementById('hr-payroll-month').value;
+            if (!month) { alert('Pick a payroll month first.'); return; }
+            const rows = hrPayroll.filter(p => p.month === month);
+            if (!rows.length) { alert('No payslips saved for this month yet — use Generate All Payslips first.'); return; }
+            const statusEl = document.getElementById('hr-payroll-bulk-status');
+            if (statusEl) statusEl.textContent = `Building ${rows.length} payslip(s)…`;
+            try {
+                const zip = new JSZip();
+                const usedNames = new Set();
+                for (const p of rows) {
+                    const e = hrEmployees.find(x => x.id === p.employee_id);
+                    const doc = await _buildHRPayslipDoc(p, e);
+                    let name = `Payslip_${(e?.full_name || 'employee').replace(/\s+/g, '_')}_${p.month}.pdf`;
+                    if (usedNames.has(name)) name = `Payslip_${(e?.full_name || 'employee').replace(/\s+/g, '_')}_${p.month}_${p.id.slice(0, 6)}.pdf`;
+                    usedNames.add(name);
+                    zip.file(name, doc.output('blob'));
+                }
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `Payslips_${month}.zip`;
+                document.body.appendChild(a); a.click(); a.remove();
+                URL.revokeObjectURL(url);
+                if (statusEl) statusEl.textContent = `Downloaded ${rows.length} payslip(s) for ${month}.`;
+            } catch (e) {
+                if (statusEl) statusEl.textContent = '';
+                alert('Could not build the ZIP: ' + e.message);
+            }
         }
 
         // ---------- MONTHLY PAYROLL EXPORT (whole month, all employees) ----------
