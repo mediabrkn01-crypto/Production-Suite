@@ -1829,14 +1829,23 @@
                         </div>
                         <div style="display:flex;gap:8px;flex-wrap:wrap">
                             <button onclick="generateAllHRPayslips()" class="hr-select" style="cursor:pointer;font-weight:700;border-color:rgba(74,222,128,0.4);color:#4ade80">⚡ Generate All Payslips</button>
+                            <button onclick="sendAllHRPayslips()" class="hr-select" style="cursor:pointer;font-weight:700;border-color:rgba(96,165,250,0.4);color:#60a5fa">📤 Send All Payslips</button>
                             <button onclick="openHRPayrollModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Payroll Entry</button>
                         </div>
                     </div>
                     <p id="hr-payroll-bulk-status" class="text-[11px] text-[#6b74a0]"></p>
+                    <!-- Bulk-select toolbar — only relevant once at least one row is checked -->
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#a5adcf;cursor:pointer">
+                            <input type="checkbox" id="hr-payroll-select-all" onchange="toggleAllHRPayrollSelection(this.checked)"> Select All
+                        </label>
+                        <button onclick="deleteSelectedHRPayroll()" class="hr-select" style="cursor:pointer;color:#f87171;border-color:rgba(248,113,113,0.4)">🗑 Delete Selected</button>
+                    </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
                             <thead>
                                 <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                    <th class="py-3 px-4"></th>
                                     <th class="py-3 px-4">Employee</th>
                                     <th class="py-3 px-4">Basic</th>
                                     <th class="py-3 px-4">Allowances</th>
@@ -1847,6 +1856,7 @@
                                     <th class="py-3 px-4">Advances</th>
                                     <th class="py-3 px-4">Net</th>
                                     <th class="py-3 px-4">Status</th>
+                                    <th class="py-3 px-4">Access</th>
                                     <th class="py-3 px-4 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -6722,12 +6732,36 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             hrTablesMissing = false;
             const missingTables = [];
             try {
+                // Payroll is scoped down AT THE QUERY, not just hidden in the UI afterward, for
+                // anyone who isn't HR/a manager: a plain employee's browser only ever receives
+                // their OWN, PUBLISHED payroll rows — other employees' payroll and any draft
+                // (unpublished) rows never arrive over the network in the first place.
+                // Caveat (real limitation, not a design choice): this app's login is a custom
+                // user_roster table, not Supabase Auth, so the anon key is identical for every
+                // visitor — Supabase can't tell "this request is Ali" from "this request is
+                // anyone else" the way real RLS policies (keyed on auth.uid()) require. This
+                // query-level scoping meaningfully shrinks what a normal employee's browser ever
+                // receives, but it isn't a hard security boundary: someone who called the
+                // Supabase REST API directly with the same anon key, bypassing this app's own
+                // JS, could still construct a different query. Closing that gap for real needs
+                // either migrating logins to Supabase Auth (so RLS can key off auth.uid()) or
+                // routing reads through a small server-side proxy that checks the session first
+                // — both are real architecture changes, not something this file alone can do.
+                const isHRPrivileged = activeRole === 'admin' || activeRole === 'manager';
+                let payrollQuery = dbInstance.from('hr_payroll').select('*').order('month', { ascending: false });
+                if (!isHRPrivileged) {
+                    const myLookup = await dbInstance.from('hr_employees').select('id').eq('portal_email', (activeEmail || '').toLowerCase()).limit(1);
+                    const myEmpId = myLookup.data && myLookup.data[0] && myLookup.data[0].id;
+                    payrollQuery = myEmpId
+                        ? dbInstance.from('hr_payroll').select('*').eq('employee_id', myEmpId).eq('published', true).order('month', { ascending: false })
+                        : dbInstance.from('hr_payroll').select('*').eq('employee_id', '00000000-0000-0000-0000-000000000000'); // no linked record → nothing to fetch
+                }
                 const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, empDocs, settings] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }),
                     dbInstance.from('hr_leave_balances').select('*'),
                     dbInstance.from('hr_attendance').select('*'),
-                    dbInstance.from('hr_payroll').select('*').order('month', { ascending: false }),
+                    payrollQuery,
                     dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false }),
                     dbInstance.from('hr_job_openings').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_applicants').select('*').order('created_at', { ascending: false }),
@@ -6736,6 +6770,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_company_settings').select('*').limit(1)
                 ]);
+                // Fail CLOSED, not open: if the scoped query errored (e.g. 'published' column
+                // doesn't exist yet on this database), a non-HR user gets no payroll data rather
+                // than the unscoped fallback silently exposing everyone's.
+                if (pay.error && !isHRPrivileged) { pay.data = []; pay.error = null; }
                 if (emp.error) missingTables.push('Employees (hr_employees)');
                 if (leaveReq.error) missingTables.push('Leave Requests (hr_leave_requests)');
                 if (leaveBal.error) missingTables.push('Leave Balances (hr_leave_balances)');
@@ -8619,20 +8657,30 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             updateHRPayrollNetPreview();
         }
 
-        // Same defensive pattern as hrSaveEmployeeRow (see photo_base64) — 'payment_date' is a
-        // new column that may not exist on every deployment's hr_payroll table yet. Retry once
-        // without it rather than let a missing column silently fail the whole payroll save.
+        // Same defensive pattern as hrSaveEmployeeRow (see photo_base64) — 'payment_date' and
+        // 'published' are newer columns that may not exist on every deployment's hr_payroll
+        // table yet. Strips whichever one the database rejects and retries, one column at a
+        // time, rather than let a single missing column fail the whole payroll save.
+        const HR_PAYROLL_OPTIONAL_COLUMNS = {
+            payment_date: 'ALTER TABLE hr_payroll ADD COLUMN payment_date date;',
+            published: 'ALTER TABLE hr_payroll ADD COLUMN published boolean DEFAULT false;'
+        };
         async function hrSavePayrollRow(payload, editId) {
             const run = p => editId
                 ? dbInstance.from('hr_payroll').update(p).eq('id', editId)
                 : dbInstance.from('hr_payroll').insert([p]);
-            let result = await run(payload);
-            if (result.error && /payment_date/i.test(result.error.message || '') && Object.prototype.hasOwnProperty.call(payload, 'payment_date')) {
-                const { payment_date, ...rest } = payload;
-                result = await run(rest);
-                if (!result.error) {
-                    console.warn('Payment Date could not be saved — this database is missing the "payment_date" column. Ask whoever manages Supabase to run:\nALTER TABLE hr_payroll ADD COLUMN payment_date date;');
-                }
+            let current = { ...payload };
+            let result = await run(current);
+            let attempts = 0;
+            while (result.error && attempts < Object.keys(HR_PAYROLL_OPTIONAL_COLUMNS).length) {
+                const badCol = Object.keys(HR_PAYROLL_OPTIONAL_COLUMNS).find(col =>
+                    Object.prototype.hasOwnProperty.call(current, col) && new RegExp(col, 'i').test(result.error.message || ''));
+                if (!badCol) break;
+                console.warn(`"${badCol}" could not be saved — this database is missing that column. Ask whoever manages Supabase to run:\n${HR_PAYROLL_OPTIONAL_COLUMNS[badCol]}`);
+                const { [badCol]: _drop, ...rest } = current;
+                current = rest;
+                result = await run(current);
+                attempts++;
             }
             return result;
         }
@@ -8648,7 +8696,12 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                   unpaid_leave_days = g('hr-pr-unpaid-days'), absent_days = g('hr-pr-absent-days');
             const net_salary = basic + allowances + overtime + bonuses - leave_deduction - deductions - advances;
             const payment_date = document.getElementById('hr-pr-payment-date').value || hrDefaultPaymentDateFor(month);
-            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_date, payment_status: document.getElementById('hr-pr-status').value };
+            // Editing a payslip never changes who can see it — a draft stays a draft, an
+            // already-Sent payslip stays visible to that employee. Access is only ever changed
+            // via the explicit Send / Revoke buttons.
+            const existingRow = hrEditingPayrollId ? hrPayroll.find(x => x.id === hrEditingPayrollId) : null;
+            const published = existingRow ? !!existingRow.published : false;
+            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_date, published, payment_status: document.getElementById('hr-pr-status').value };
             try {
                 // Editing an existing payslip UPDATEs that same row — never a second INSERT,
                 // so it can't create a duplicate payslip for the same employee/month.
@@ -8697,7 +8750,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         employee_id: emp.id, month, basic, allowances, overtime, bonuses, deductions, advances,
                         leave_deduction, paid_leave_days: calc.paidLeaveDays, unpaid_leave_days: calc.unpaidLeaveDays,
                         absent_days: calc.absentDays, net_salary, payment_date,
-                        payment_status: existing?.payment_status || 'pending'
+                        payment_status: existing?.payment_status || 'pending',
+                        // Re-generating never changes who can already see a payslip — Generate
+                        // All only fills in the numbers; Send/Send All is the only thing that
+                        // makes one visible to its employee.
+                        published: existing ? !!existing.published : false
                     };
                     const { error } = await hrSavePayrollRow(payload, existing?.id || null);
                     if (error) failed.push(`${emp.full_name}: ${error.message}`);
@@ -8716,11 +8773,30 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
+        // Which payroll rows are checked, for the bulk Delete Selected / Select All toolbar.
+        // Cleared whenever the visible set changes (month filter, reload) so a stale selection
+        // can never silently apply to rows that aren't even shown.
+        let hrSelectedPayrollIds = new Set();
+        function toggleHRPayrollSelection(id, checked) {
+            if (checked) hrSelectedPayrollIds.add(id); else hrSelectedPayrollIds.delete(id);
+        }
+        function toggleAllHRPayrollSelection(checked) {
+            const month = document.getElementById('hr-payroll-month').value;
+            const rows = hrPayroll.filter(p => !month || p.month === month);
+            hrSelectedPayrollIds = checked ? new Set(rows.map(p => p.id)) : new Set();
+            renderHRPayroll();
+        }
+
         function renderHRPayroll() {
             const month = document.getElementById('hr-payroll-month').value;
             const rows = hrPayroll.filter(p => !month || p.month === month);
+            // Drop selections for rows no longer in view (different month, deleted, etc.).
+            hrSelectedPayrollIds = new Set([...hrSelectedPayrollIds].filter(id => rows.some(p => p.id === id)));
+            const selectAllBox = document.getElementById('hr-payroll-select-all');
+            if (selectAllBox) selectAllBox.checked = rows.length > 0 && hrSelectedPayrollIds.size === rows.length;
             document.getElementById('hr-payroll-rows').innerHTML = rows.length ? rows.map(p => `
                 <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4"><input type="checkbox" ${hrSelectedPayrollIds.has(p.id) ? 'checked' : ''} onchange="toggleHRPayrollSelection('${p.id}', this.checked)"></td>
                     <td class="py-2.5 px-4 text-white font-semibold">${hrEmpName(p.employee_id)}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.basic||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.allowances||0).toLocaleString('en-IN')}</td>
@@ -8731,20 +8807,96 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     <td class="py-2.5 px-4 text-[#a5adcf]">₹${(p.advances||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center">
+                    <td class="py-2.5 px-4">${p.published ? '<span class="hr-badge hr-badge-approved">Sent</span>' : '<span class="hr-badge hr-badge-pending">Draft — HR only</span>'}</td>
+                    <td class="py-2.5 px-4 text-center" style="white-space:nowrap">
                         <button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button>
-                        <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">Payslip</button>
+                        <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">View</button>
+                        ${p.published
+                            ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#fb923c">Revoke</button>`
+                            : `<button onclick="sendHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Send</button>`}
                         ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Mark Paid</button>` : ''}
                         <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
                     </td>
                 </tr>
-            `).join('') : `<tr><td colspan="11" class="py-8 text-center text-[#4a5182] text-xs">No payroll entries for this month.</td></tr>`;
+            `).join('') : `<tr><td colspan="13" class="py-8 text-center text-[#4a5182] text-xs">No payroll entries for this month.</td></tr>`;
         }
 
         async function markHRPayrollPaid(id) {
             await dbInstance.from('hr_payroll').update({ payment_status: 'paid' }).eq('id', id);
             await loadHRData();
             renderHRPayroll();
+        }
+
+        // ---------- PAYSLIP ACCESS CONTROL (Send / Revoke / Send All) ----------
+        // A payslip is HR-only (draft) until explicitly published — initMyPayslips() only ever
+        // shows an employee rows where published === true AND employee_id matches them. Setting
+        // 'published' is the one and only thing that makes a payslip visible on the employee
+        // side; nothing publishes automatically just by being generated or edited.
+        // Same defensive pattern as photo_base64/payment_date: if this Supabase project's
+        // hr_payroll table doesn't have a 'published' column yet, every payslip fails closed
+        // (invisible to employees) rather than failing open (visible to everyone) — safer
+        // default for a column that gates access to salary data.
+        async function hrSetPayrollPublished(id, value) {
+            const { error } = await dbInstance.from('hr_payroll').update({ published: value }).eq('id', id);
+            if (error && /published/i.test(error.message || '')) {
+                return { error: new Error('This database is missing the "published" column, so payslips can\'t be sent yet. Ask whoever manages Supabase to run:\n\nALTER TABLE hr_payroll ADD COLUMN published boolean DEFAULT false;') };
+            }
+            return { error };
+        }
+        async function sendHRPayslip(id) {
+            const { error } = await hrSetPayrollPublished(id, true);
+            if (error) { alert(error.message); return; }
+            await loadHRData();
+            renderHRPayroll();
+            renderHREmployeeProfile();
+        }
+        async function revokeHRPayslipAccess(id) {
+            if (!confirm('Revoke this employee\'s access to this payslip? It will go back to Draft (HR only) until you Send it again.')) return;
+            const { error } = await hrSetPayrollPublished(id, false);
+            if (error) { alert(error.message); return; }
+            await loadHRData();
+            renderHRPayroll();
+            renderHREmployeeProfile();
+        }
+        async function sendAllHRPayslips() {
+            const month = document.getElementById('hr-payroll-month').value;
+            if (!month) { alert('Pick a payroll month first.'); return; }
+            const rows = hrPayroll.filter(p => p.month === month && !p.published);
+            if (!rows.length) { alert('Nothing to send — every payslip for this month is already published, or none have been generated yet.'); return; }
+            if (!confirm(`Send ${rows.length} payslip(s) for ${month} to their respective employees?\n\nEach employee will only be able to see their own payslip.`)) return;
+            const statusEl = document.getElementById('hr-payroll-bulk-status');
+            let sent = 0, failed = [];
+            for (const p of rows) {
+                if (statusEl) statusEl.textContent = `Sending ${sent + 1} of ${rows.length}…`;
+                const { error } = await hrSetPayrollPublished(p.id, true);
+                if (error) failed.push(`${hrEmpName(p.employee_id)}: ${error.message}`); else sent++;
+            }
+            await loadHRData();
+            renderHRPayroll();
+            renderHREmployeeProfile();
+            if (statusEl) statusEl.textContent = failed.length
+                ? `Sent ${sent} of ${rows.length} — ${failed.length} failed: ${failed.join('; ')}`
+                : `Sent ${sent} payslip(s) for ${month}.`;
+        }
+
+        // ---------- BULK DELETE (checkboxes + Select All) ----------
+        async function deleteSelectedHRPayroll() {
+            if (!hrSelectedPayrollIds.size) { alert('No payslips selected.'); return; }
+            const ids = [...hrSelectedPayrollIds];
+            if (!confirm(`Delete ${ids.length} selected payroll record(s)? This cannot be undone.`)) return;
+            const statusEl = document.getElementById('hr-payroll-bulk-status');
+            let deleted = 0, failed = [];
+            for (const id of ids) {
+                const { error } = await dbInstance.from('hr_payroll').delete().eq('id', id);
+                if (error) failed.push(id); else deleted++;
+            }
+            hrSelectedPayrollIds = new Set();
+            await loadHRData();
+            renderHRPayroll();
+            renderHRPayslipsList();
+            if (statusEl) statusEl.textContent = failed.length
+                ? `Deleted ${deleted} of ${ids.length} — ${failed.length} failed.`
+                : `Deleted ${deleted} payroll record(s).`;
         }
 
         let hrPendingDeletePayrollId = null;
@@ -9233,7 +9385,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const me = myHREmployeeRecord();
             const el = document.getElementById('my-payslips-rows');
             if (!me) { el.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No HR employee record is linked to your login yet.</td></tr>`; return; }
-            const mine = hrPayroll.filter(p => p.employee_id === me.id);
+            // Access control: only payslips (a) belonging to this employee AND (b) explicitly
+            // Sent by HR (published === true). A generated-but-not-yet-sent payslip is a draft
+            // that even the employee it belongs to can't see — matches "HR controls when the
+            // payslip is released." See the note in hrSetPayrollPublished about the matching
+            // Supabase RLS policy this needs to be a real access-control boundary, not just a
+            // UI filter.
+            const mine = hrPayroll.filter(p => p.employee_id === me.id && p.published === true);
             el.innerHTML = mine.length ? mine.map(p => `
                 <tr class="hover:bg-white/[0.02]">
                     <td class="py-2.5 px-4 text-white font-semibold">${p.month}</td>
