@@ -3112,6 +3112,7 @@
             } else if (targetTab === 'my-profile') {
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
+                hrFetchAndApplyMyPhoto();
             } else if (targetTab === 'hr' && activeRole === 'admin') {
                 document.getElementById('tab-content-hr').classList.remove('hidden');
                 initHRPanel();
@@ -6907,11 +6908,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         async function hrFetchAndApplyMyPhoto() {
             if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
             try {
-                const { data, error } = await dbInstance.from('hr_employees').select('photo_base64, photo_url').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
-                if (error || !data || !data[0]) return;
+                let { data, error } = await dbInstance.from('hr_employees').select('photo_base64, photo_url, full_name').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
+                if (error) { console.warn('HR photo lookup by email failed:', error.message); return; }
+                if (!data || !data[0]) {
+                    // Fallback: no HR record linked by email — try matching by name instead,
+                    // in case this person's HR record was never given a portal email.
+                    const byName = await dbInstance.from('hr_employees').select('photo_base64, photo_url, full_name').eq('full_name', activeUser).limit(1);
+                    if (!byName.error && byName.data && byName.data[0]) data = byName.data;
+                }
+                if (!data || !data[0]) { console.warn(`HR photo lookup: no hr_employees record found for "${activeUser}" (${activeEmail}). Photo can't sync until HR links this login to an employee record.`); return; }
                 const rec = data[0];
                 const photo = rec.photo_base64 || (rec.photo_url ? hrConvertDriveUrl(rec.photo_url) : null);
-                if (!photo) return;
+                if (!photo) { console.warn(`HR photo lookup: found employee record "${rec.full_name}" but it has no photo saved yet.`); return; }
                 // Sidebar avatar (bottom-left, next to name/role)
                 const sidebarAvatar = document.getElementById('sidebar-user-avatar');
                 if (sidebarAvatar) {
