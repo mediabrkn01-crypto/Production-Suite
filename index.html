@@ -409,6 +409,7 @@
         .hr-att-cell-A { color:#f87171; font-weight:700; }
         .hr-att-cell-L { color:#facc15; font-weight:700; }
         .hr-att-cell-PL { color:#60a5fa; font-weight:700; }
+        .hr-att-cell-UL { color:#fb923c; font-weight:700; }
         .hr-att-cell-WO { color:#5b6389; }
         .hr-att-cell-H { color:#c084fc; font-weight:700; }
         .hr-att-cell-blank { color:#3a4062; }
@@ -1470,16 +1471,7 @@
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2"><i data-lucide="user-circle" class="w-4 h-4 text-white/70"></i> My Profile Photo</p>
-                        <p class="text-[10px] text-[#4a5182] mt-0.5">Max 5MB. Shown in chat to all team members.</p>
-                    </div>
-                    <div class="flex gap-2 shrink-0">
-                        <input type="file" id="profile-photo-input" class="hidden" accept="image/*" onchange="uploadProfilePhoto(this)">
-                        <button onclick="document.getElementById('profile-photo-input').click()" class="bg-transparent border border-white/[0.06] glass-input hover:border-orange-500/50 text-gray-300 text-xs font-bold px-3 py-2 rounded-xl uppercase tracking-wider transition flex items-center justify-center gap-2">
-                            <i data-lucide="upload" class="w-3.5 h-3.5"></i> Upload
-                        </button>
-                        <button onclick="takeProfilePhoto()" class="bg-transparent border border-white/[0.06] glass-input hover:border-orange-500/50 text-gray-300 text-xs font-bold px-3 py-2 rounded-xl uppercase tracking-wider transition flex items-center justify-center gap-2">
-                            <i data-lucide="camera" class="w-3.5 h-3.5"></i> Camera
-                        </button>
+                        <p class="text-[10px] text-[#4a5182] mt-0.5">Set by HR. Shown in chat to all team members.</p>
                     </div>
                 </div>
 
@@ -1753,6 +1745,7 @@
                         <span><b class="text-red-400">A</b> = Absent</span>
                         <span><b class="text-yellow-400">L</b> = Late</span>
                         <span><b class="text-blue-400">PL</b> = Paid Leave</span>
+                        <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
                         <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
                         <span><b class="text-purple-400">H</b> = Holiday</span>
                     </div>
@@ -6814,12 +6807,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         async function hrFetchAndApplyMyPhoto() {
             if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
             try {
-                let { data, error } = await dbInstance.from('hr_employees').select('photo_base64, photo_url, full_name').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
+                // select('*') rather than naming photo_base64 explicitly — on a database where
+                // that column hasn't been added yet, naming it here makes the whole query error
+                // out (PGRST 42703), which silently broke photo sync for every employee, not
+                // just ones with an uploaded photo. select('*') degrades gracefully instead:
+                // rec.photo_base64 below is just undefined if the column doesn't exist.
+                let { data, error } = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
                 if (error) { console.warn('HR photo lookup by email failed:', error.message); return; }
                 if (!data || !data[0]) {
                     // Fallback: no HR record linked by email — try matching by name instead,
                     // in case this person's HR record was never given a portal email.
-                    const byName = await dbInstance.from('hr_employees').select('photo_base64, photo_url, full_name').eq('full_name', activeUser).limit(1);
+                    const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
                     if (!byName.error && byName.data && byName.data[0]) data = byName.data;
                 }
                 if (!data || !data[0]) { console.warn(`HR photo lookup: no hr_employees record found for "${activeUser}" (${activeEmail}). Photo can't sync until HR links this login to an employee record.`); return; }
@@ -6841,93 +6839,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             } catch (e) {
                 console.warn('Could not load HR-saved profile photo:', e.message);
             }
-        }
-
-        // ---------- MY PROFILE PHOTO (Settings → "My Profile Photo" card) ----------
-        // Fallback path for anyone without an HR-linked photo yet — hrFetchAndApplyMyPhoto()
-        // above still takes priority and will overwrite this on next load if an HR photo exists.
-        // Saves straight onto user_roster.avatar (already read back at launchSession()).
-        function _downsizeImageToDataUrl(imgSrc, maxDim = 400) {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    let { width, height } = img;
-                    if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
-                    else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
-                    const canvas = document.createElement('canvas');
-                    canvas.width = width; canvas.height = height;
-                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.85));
-                };
-                img.onerror = () => reject(new Error('Could not read that image.'));
-                img.src = imgSrc;
-            });
-        }
-        async function _saveMyAvatarDataUrl(dataUrl) {
-            const { error } = await dbInstance.from('user_roster').update({ avatar: dataUrl }).eq('email', activeEmail);
-            if (error) { alert('Could not save photo: ' + error.message); return false; }
-            const img = document.getElementById('my-avatar-img');
-            if (img) { img.src = dataUrl; img.classList.remove('hidden'); }
-            const sidebarAvatar = document.getElementById('sidebar-user-avatar');
-            if (sidebarAvatar) sidebarAvatar.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
-            const liveMe = userRoster.find(u => u.email === activeEmail);
-            if (liveMe) liveMe.avatar = dataUrl;
-            return true;
-        }
-        async function uploadProfilePhoto(input) {
-            const file = input.files && input.files[0];
-            if (!file) return;
-            if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
-            if (file.size > 5 * 1024 * 1024) { alert('That image is larger than 5MB — please choose a smaller file.'); return; }
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const dataUrl = await _downsizeImageToDataUrl(e.target.result);
-                    await _saveMyAvatarDataUrl(dataUrl);
-                } catch (err) { alert(err.message); }
-                finally { input.value = ''; }
-            };
-            reader.onerror = () => alert('Could not read that file.');
-            reader.readAsDataURL(file);
-        }
-        async function takeProfilePhoto() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('Camera capture is not supported on this device/browser.'); return; }
-            let stream;
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-            } catch (e) { alert('Could not access the camera: ' + e.message); return; }
-
-            // Minimal capture overlay — video preview + Capture/Cancel — torn down right after use.
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
-            const video = document.createElement('video');
-            video.autoplay = true; video.playsInline = true; video.muted = true;
-            video.style.cssText = 'max-width:90vw;max-height:70vh;border-radius:16px;transform:scaleX(-1)';
-            video.srcObject = stream;
-            const btnRow = document.createElement('div');
-            btnRow.style.cssText = 'display:flex;gap:12px';
-            const captureBtn = document.createElement('button');
-            captureBtn.type = 'button'; captureBtn.textContent = 'Capture';
-            captureBtn.style.cssText = 'background:linear-gradient(135deg,#f97316,#ef4444);color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;border:none;cursor:pointer';
-            const cancelBtn = document.createElement('button');
-            cancelBtn.type = 'button'; cancelBtn.textContent = 'Cancel';
-            cancelBtn.style.cssText = 'background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;cursor:pointer';
-            btnRow.append(captureBtn, cancelBtn);
-            overlay.append(video, btnRow);
-            document.body.appendChild(overlay);
-
-            const cleanup = () => { stream.getTracks().forEach(t => t.stop()); overlay.remove(); };
-            cancelBtn.onclick = cleanup;
-            captureBtn.onclick = async () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                cleanup();
-                try {
-                    const dataUrl = await _downsizeImageToDataUrl(canvas.toDataURL('image/jpeg', 0.9));
-                    await _saveMyAvatarDataUrl(dataUrl);
-                } catch (err) { alert(err.message); }
-            };
         }
 
         // Converts a Google Drive "share" link (file/d/ID/view, ?id=ID, /open?id=ID, etc.)
@@ -7224,6 +7135,26 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
+        // Some deployments' hr_employees table hasn't had the 'photo_base64' column added yet
+        // (PostgREST error 42703 "column does not exist"). Previously that made the ENTIRE
+        // employee save fail — every field on the form, not just the photo, silently didn't
+        // persist, which is likely why HR edits weren't showing up anywhere downstream. Retry
+        // once without photo_base64 so the rest of the employee's data still saves.
+        async function hrSaveEmployeeRow({ id, payload, insert }) {
+            const run = p => insert
+                ? dbInstance.from('hr_employees').insert([p]).select('*')
+                : dbInstance.from('hr_employees').update(p).eq('id', id).select('*');
+            let result = await run(payload);
+            if (result.error && /photo_base64/i.test(result.error.message || '') && Object.prototype.hasOwnProperty.call(payload, 'photo_base64')) {
+                const { photo_base64, ...rest } = payload;
+                result = await run(rest);
+                if (!result.error) {
+                    alert('Saved — but the photo could not be stored because this database is missing the "photo_base64" column. Everything else was saved.\n\nAsk whoever manages Supabase to run:\nALTER TABLE hr_employees ADD COLUMN photo_base64 text;');
+                }
+            }
+            return result;
+        }
+
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
             if (!name) { alert('Full name is required.'); return; }
@@ -7269,7 +7200,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         const clash = hrEmployees.find(e => e.id !== hrEditingEmployeeId && (e.portal_email || '').toLowerCase() === payload.portal_email);
                         if (clash) { alert(`That login email is already linked to ${clash.full_name}. Each login can only be linked to one employee record.`); return; }
                     }
-                    const { data: updated, error: updateErr } = await dbInstance.from('hr_employees').update(payload).eq('id', hrEditingEmployeeId).select('*');
+                    const { data: updated, error: updateErr } = await hrSaveEmployeeRow({ id: hrEditingEmployeeId, payload, insert: false });
                     if (updateErr) { alert(`Save FAILED — nothing was persisted to the database.\n\nReason: ${updateErr.message}\n\nThis usually means the database table is missing a column this form expects — re-run the latest hr_schema.sql in Supabase and try again.`); return; }
                     hrVerifySavedFields(payload, updated && updated[0]);
                     await hrCreateOrSyncLogin(loginEmail, name, loginRole, loginPassword);
@@ -7279,7 +7210,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     if (payload.portal_email) {
                         const existing = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === payload.portal_email);
                         if (existing) {
-                            const { data: updated, error: updateErr } = await dbInstance.from('hr_employees').update(payload).eq('id', existing.id).select('*');
+                            const { data: updated, error: updateErr } = await hrSaveEmployeeRow({ id: existing.id, payload, insert: false });
                             if (updateErr) { alert(`Save FAILED — nothing was persisted to the database.\n\nReason: ${updateErr.message}\n\nThis usually means the database table is missing a column this form expects — re-run the latest hr_schema.sql in Supabase and try again.`); return; }
                             hrVerifySavedFields(payload, updated && updated[0]);
                             await hrCreateOrSyncLogin(loginEmail, name, loginRole, loginPassword);
@@ -7293,7 +7224,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                             return;
                         }
                     }
-                    const { data: created, error } = await dbInstance.from('hr_employees').insert([payload]).select('*');
+                    const { data: created, error } = await hrSaveEmployeeRow({ payload, insert: true });
                     if (error) { alert(`Save FAILED — employee was not created.\n\nReason: ${error.message}\n\nThis usually means the database table is missing a column this form expects — re-run the latest hr_schema.sql in Supabase and try again.`); return; }
                     if (created && created[0]) {
                         hrVerifySavedFields(payload, created[0]);
@@ -7557,8 +7488,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 if (rec.status === 'absent') return 'A';
                 if (rec.status === 'late') return 'L';
                 if (rec.status === 'on_leave') {
+                    // Unpaid leave gets its own code (UL) — it used to render identically to
+                    // Absent ('A'), making it impossible to tell "took approved unpaid leave"
+                    // apart from "didn't show up, nothing filed" on the grid.
                     const leave = hrLeaveRequests.find(r => r.employee_id === employee.id && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
-                    return (leave && leave.leave_type === 'Unpaid Leave') ? 'A' : 'PL';
+                    return (leave && leave.leave_type === 'Unpaid Leave') ? 'UL' : 'PL';
                 }
                 return 'P'; // present, half_day, wfh
             }
@@ -8307,7 +8241,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     if (rec.status === 'absent') { absentDays++; continue; }
                     if (rec.status === 'on_leave') {
                         const leave = hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
-                        if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
+                        // Unpaid-leave days still count toward payableDays here — leaveDeduction
+                        // below is the ONE place their pay gets removed. Excluding them from
+                        // payableDays *and* subtracting leaveDeduction for the same days was
+                        // deducting each unpaid-leave day's pay twice.
+                        if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; payableDays++; continue; }
                         paidLeaveDays++; payableDays++; continue;
                     }
                     if (rec.status === 'half_day') { payableDays += 0.5; continue; }
@@ -8441,12 +8379,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (!employee_id || !month) { alert('Pick an employee and month first.'); return; }
             const calc = hrCalculatePayrollForMonth(employee_id, month);
             // Basic is the actual EARNED/payable amount — proportional to real attendance,
-            // not the full monthly salary. Leave deduction covers unpaid-leave days on top
-            // of that (Absent days are already excluded from the earned amount itself).
+            // not the full monthly salary. Payable days include unpaid-leave days (their pay
+            // is removed exactly once, via leave_deduction below — not by excluding them here
+            // too). Absent/unmarked days are the only ones excluded from Basic itself.
             document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Payable: ${calc.payableDays} (Present ${calc.presentDays} + Paid Leave ${calc.paidLeaveDays}) · Unpaid Leave: ${calc.unpaidLeaveDays} · Absent/Unmarked: ${calc.absentDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Payable: ${calc.payableDays} (Present ${calc.presentDays} + Paid Leave ${calc.paidLeaveDays} + Unpaid Leave ${calc.unpaidLeaveDays}, deducted separately below) · Absent/Unmarked: ${calc.absentDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
             document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
@@ -8552,41 +8491,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return `Indian Rupee ${_numToWordsIndian(Math.abs(amount))} Only`;
         }
 
-        // Loads the black-text logo for the payslip PDF (the white "Logo-03" used in the app's
-        // own dark-themed header is invisible on the payslip's white background — this is the
-        // black-on-transparent version instead). Ship "Broken English Final Logo-01.png"
-        // alongside index.html the same way Logo-02/Logo-03 already are.
-        // Resolves to null (never rejects) if the file isn't reachable, so a missing asset
-        // never blocks a payslip from generating — the header just prints text-only.
-        // The source file is a print-resolution export (8000×3275px) — jsPDF embeds PNGs as
-        // raw uncompressed bitmap data, so adding it at full size produces a 100MB+ PDF. It's
-        // downscaled here to ~400px wide (comfortably sharp for a 34mm-wide print), re-encoded
-        // through canvas as PNG (keeps transparency), before ever reaching jsPDF.
+        // Black-text "Broken English" logo for the payslip PDF, embedded inline as a data URL
+        // rather than fetched at runtime. It used to be loaded via fetch('Broken English
+        // Final Logo-01.png'), which depends on that exact file being deployed next to
+        // index.html and on relative-path/CORS behavior of wherever this page is hosted from —
+        // any of that being off silently drops the logo with no visible error. Embedding it
+        // removes that whole failure class. Already downscaled to 400x164 (see the payslip PDF
+        // comment below for why: jsPDF embeds PNGs as raw uncompressed bitmap data, so the
+        // source file's native 8000x3275px would balloon a single payslip to 100MB+).
+        const PAYSLIP_LOGO = { dataUrl: 'data:image/png;base64,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', w: 400, h: 164 };
         function _loadPayslipLogo() {
-            return new Promise(resolve => {
-                fetch('Broken English Final Logo-01.png').then(r => {
-                    if (!r.ok) throw new Error('logo not found');
-                    return r.blob();
-                }).then(blob => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const img = new Image();
-                        img.onload = () => {
-                            const targetW = 400;
-                            const scale = Math.min(1, targetW / img.naturalWidth);
-                            const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
-                            const canvas = document.createElement('canvas');
-                            canvas.width = w; canvas.height = h;
-                            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                            resolve({ dataUrl: canvas.toDataURL('image/png'), w, h });
-                        };
-                        img.onerror = () => resolve(null);
-                        img.src = reader.result;
-                    };
-                    reader.onerror = () => resolve(null);
-                    reader.readAsDataURL(blob);
-                }).catch(() => resolve(null));
-            });
+            return Promise.resolve(PAYSLIP_LOGO);
         }
 
         // Payslip PDF — laid out to match the reference format supplied by the company
@@ -8613,9 +8528,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // doesn't store a separate disbursement date, so this is the last day of the month.
             const payDate = new Date(y, m, 0).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-            const grossEarnings = (p.basic||0) + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
-            const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
-            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
+            // "Basic Salary" on the payslip is the employee's actual saved salary (from HR's
+            // salary history / employee record) — not p.basic, which is hr_payroll's already
+            // attendance-prorated EARNED figure. Showing the real original salary and then an
+            // explicit "Attendance Adjustment" deduction for the gap makes the full path from
+            // contracted salary → net pay visible, instead of silently baking the proration
+            // into a pre-shrunk "Basic" line. Net Pay still reconciles to the exact same
+            // p.net_salary HR already saved — nothing about the actual paid amount changes.
+            const originalSalary = hrGetEffectiveSalary(p.employee_id, p.month);
+            const attendanceAdjustment = Math.round((originalSalary - (p.basic||0)) * 100) / 100;
+            const grossEarnings = originalSalary + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
+            const totalDeductions = Math.max(0, attendanceAdjustment) + (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
+            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions - Math.min(0, attendanceAdjustment));
             // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
             // a broken superscript-1. "Rs." is what actually prints correctly.
             const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -8695,9 +8619,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             y2 += 6;
             doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
 
-            const earnings = [['Basic', p.basic], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
+            const earnings = [['Basic Salary', originalSalary], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
             const deductions = [];
-            if (p.leave_deduction) deductions.push([`LOP${lopDays ? ` (${lopDays}d)` : ''}`, p.leave_deduction]);
+            if (p.leave_deduction) deductions.push([`Unpaid Leave${lopDays ? ` (${lopDays}d)` : ''}`, p.leave_deduction]);
+            if (attendanceAdjustment > 0.01) deductions.push(['Attendance Adjustment', attendanceAdjustment]);
+            else if (attendanceAdjustment < -0.01) earnings.push(['Attendance Adjustment', -attendanceAdjustment]);
             if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
             if (p.advances) deductions.push(['Advances', p.advances]);
             if (!deductions.length) deductions.push(['—', 0]);
