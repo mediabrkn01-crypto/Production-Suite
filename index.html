@@ -1482,6 +1482,17 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- My Details — read straight from hr_employees (the exact record HR edits),
+                     so anything HR saves shows up here automatically. Read-only: HR stays the
+                     single editor of this data, same as before. -->
+                <div class="card glass-card p-4 md:p-6 rounded-2xl max-w-2xl">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-1 flex items-center gap-2">
+                        <i data-lucide="id-card" class="w-4 h-4 text-white/70"></i> My Details
+                    </h3>
+                    <p class="text-[10px] text-[#4a5182] mb-3">Set by HR — updates here automatically whenever HR saves a change.</p>
+                    <div id="my-profile-details-body" class="divide-y divide-white/[0.05]"></div>
+                </div>
             </div>
 
             <!-- ====== MY LEAVE ====== -->
@@ -3002,6 +3013,7 @@
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
                 hrFetchAndApplyMyPhoto();
+                initMyProfileDetails();
             } else if (targetTab === 'hr' && activeRole === 'admin') {
                 document.getElementById('tab-content-hr').classList.remove('hidden');
                 initHRPanel();
@@ -8512,35 +8524,216 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             } catch (e) { alert('Could not delete payroll record: ' + e.message); }
         }
 
-        function downloadHRPayslip(id) {
+        // ---------- Number → words (Indian numbering: Crore/Lakh/Thousand) ----------
+        // Used for the "Amount In Words" line on the payslip.
+        function _numToWordsIndian(num) {
+            num = Math.round(num);
+            if (num === 0) return 'Zero';
+            const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+            const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+            const twoDigits = n => n < 20 ? ones[n] : tens[Math.floor(n/10)] + (n % 10 ? '-' + ones[n % 10] : '');
+            const threeDigits = n => {
+                let s = '';
+                if (n >= 100) { s += ones[Math.floor(n/100)] + ' Hundred'; n %= 100; if (n) s += ' '; }
+                if (n) s += twoDigits(n);
+                return s;
+            };
+            let n = num, parts = [];
+            const crore = Math.floor(n / 10000000); n %= 10000000;
+            const lakh = Math.floor(n / 100000); n %= 100000;
+            const thousand = Math.floor(n / 1000); n %= 1000;
+            if (crore) parts.push(threeDigits(crore) + ' Crore');
+            if (lakh) parts.push(twoDigits(lakh) + ' Lakh');
+            if (thousand) parts.push(twoDigits(thousand) + ' Thousand');
+            if (n) parts.push(threeDigits(n));
+            return parts.join(' ');
+        }
+        function amountInWordsINR(amount) {
+            return `Indian Rupee ${_numToWordsIndian(Math.abs(amount))} Only`;
+        }
+
+        // Loads the black-text logo for the payslip PDF (the white "Logo-03" used in the app's
+        // own dark-themed header is invisible on the payslip's white background — this is the
+        // black-on-transparent version instead). Ship "Broken English Final Logo-01.png"
+        // alongside index.html the same way Logo-02/Logo-03 already are.
+        // Resolves to null (never rejects) if the file isn't reachable, so a missing asset
+        // never blocks a payslip from generating — the header just prints text-only.
+        // The source file is a print-resolution export (8000×3275px) — jsPDF embeds PNGs as
+        // raw uncompressed bitmap data, so adding it at full size produces a 100MB+ PDF. It's
+        // downscaled here to ~400px wide (comfortably sharp for a 34mm-wide print), re-encoded
+        // through canvas as PNG (keeps transparency), before ever reaching jsPDF.
+        function _loadPayslipLogo() {
+            return new Promise(resolve => {
+                fetch('Broken English Final Logo-01.png').then(r => {
+                    if (!r.ok) throw new Error('logo not found');
+                    return r.blob();
+                }).then(blob => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const targetW = 400;
+                            const scale = Math.min(1, targetW / img.naturalWidth);
+                            const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+                            const canvas = document.createElement('canvas');
+                            canvas.width = w; canvas.height = h;
+                            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                            resolve({ dataUrl: canvas.toDataURL('image/png'), w, h });
+                        };
+                        img.onerror = () => resolve(null);
+                        img.src = reader.result;
+                    };
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                }).catch(() => resolve(null));
+            });
+        }
+
+        // Payslip PDF — laid out to match the reference format supplied by the company
+        // (company header w/ logo, Employee Summary + highlighted Net Pay box, Paid/LOP days,
+        // two-column Earnings/Deductions, Gross Earnings vs Total Deductions, Total Net Payable,
+        // amount in words). Every figure comes straight off the same hr_payroll row HR saved —
+        // nothing here is recalculated independently, so this can never drift from HR's numbers.
+        async function downloadHRPayslip(id) {
             const p = hrPayroll.find(x => x.id === id);
             if (!p) return;
             const e = hrEmployees.find(x => x.id === p.employee_id);
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            doc.setFontSize(16); doc.text('Payslip', 14, 18);
-            doc.setFontSize(10); doc.text(`Month: ${p.month}`, 14, 26);
-            doc.text(`Employee: ${e?.full_name || '—'}`, 14, 33);
-            doc.text(`Employee ID: ${e?.employee_id || '—'}`, 14, 39);
-            doc.text(`Department: ${e?.department || '—'}`, 14, 45);
-            doc.text(`Designation: ${e?.designation || '—'}`, 14, 51);
-            let y = 64;
-            const line = (label, val) => { doc.text(label, 14, y); doc.text('Rs. ' + Number(val||0).toLocaleString('en-IN'), 150, y, { align: 'right' }); y += 8; };
-            doc.setFontSize(11); doc.text('Earnings', 14, y); y += 8; doc.setFontSize(10);
-            line('Basic Salary', p.basic);
-            line('Allowances', p.allowances);
-            line('Overtime', p.overtime);
-            line('Bonuses', p.bonuses);
-            y += 2; doc.setFontSize(11); doc.text('Deductions', 14, y); y += 8; doc.setFontSize(10);
-            if (p.unpaid_leave_days) line(`Unpaid Leave (${p.unpaid_leave_days} day${p.unpaid_leave_days===1?'':'s'})`, p.leave_deduction);
-            else if (p.leave_deduction) line('Leave Deduction', p.leave_deduction);
-            line('Other Deductions', p.deductions);
-            line('Advances', p.advances);
-            y += 4;
-            doc.setFontSize(12); doc.setFont(undefined, 'bold');
-            doc.text('Net Salary', 14, y); doc.text('Rs. ' + Number(p.net_salary||0).toLocaleString('en-IN'), 150, y, { align: 'right' });
-            doc.setFont(undefined, 'normal'); y += 10;
-            doc.setFontSize(9); doc.setTextColor(120); doc.text(`Payment Status: ${p.payment_status}`, 14, y);
+            const pageW = doc.internal.pageSize.getWidth();
+            const marginX = 14;
+            const rightX = pageW - marginX;
+
+            const [y, m] = p.month.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            const lopDays = p.unpaid_leave_days || 0;
+            const paidDays = Math.max(0, daysInMonth - lopDays - (p.absent_days || 0));
+            // Standard "salary for the period, paid at period end" convention — hr_payroll
+            // doesn't store a separate disbursement date, so this is the last day of the month.
+            const payDate = new Date(y, m, 0).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            const grossEarnings = (p.basic||0) + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
+            const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
+            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
+            // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
+            // a broken superscript-1. "Rs." is what actually prints correctly.
+            const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const logo = await _loadPayslipLogo();
+            let headerY = 20;
+            if (logo) {
+                const logoW = 34, logoH = logoW * (logo.h / logo.w);
+                doc.addImage(logo.dataUrl, 'PNG', marginX, 12, logoW, logoH);
+                headerY = 12 + logoH + 7;
+            }
+            doc.setFontSize(15); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
+            doc.text('Broken English', marginX, headerY);
+            doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(120);
+            doc.text('Production Studio Network', marginX, headerY + 5);
+
+            doc.setFontSize(9); doc.setTextColor(120);
+            doc.text('Payslip For the Month', rightX, 18, { align: 'right' });
+            doc.setFontSize(12); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
+            doc.text(monthLabel, rightX, 24, { align: 'right' });
+            doc.setFont(undefined, 'normal');
+
+            doc.setDrawColor(225); doc.line(marginX, 32, rightX, 32);
+
+            // Employee Summary (left) + Net Pay box (right)
+            let sy = 42;
+            doc.setFontSize(9); doc.setTextColor(140);
+            doc.text('EMPLOYEE SUMMARY', marginX, sy);
+            sy += 7;
+            const summaryRow = (label, val) => {
+                doc.setFontSize(9.5); doc.setTextColor(120); doc.text(label, marginX, sy);
+                doc.setTextColor(20); doc.text(':', marginX + 34, sy); doc.text(String(val ?? '—'), marginX + 38, sy);
+                sy += 6.5;
+            };
+            summaryRow('Employee Name', e?.full_name || hrEmpName(p.employee_id));
+            summaryRow('Employee ID', e?.employee_id || '—');
+            summaryRow('Pay Period', monthLabel);
+            summaryRow('Pay Date', payDate);
+
+            // Paid Days / LOP Days are stacked (not side-by-side) — the reference PDF's values
+            // happen to be short single digits, but ours can run to a decimal like "28.5", which
+            // would collide with a neighboring "LOP Days" label if placed on the same line.
+            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = 36;
+            doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
+            doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
+            doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
+            doc.text(rupee(netPay), boxX + 9, boxY + 12);
+            doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(80, 140, 110);
+            doc.text('Total Net Pay', boxX + 9, boxY + 18);
+            doc.setDrawColor(200, 230, 215); doc.line(boxX + 4, boxY + 21, boxX + boxW - 4, boxY + 21);
+            doc.setFontSize(8.5); doc.setTextColor(60);
+            doc.text('Paid Days', boxX + 9, boxY + 26); doc.text(':', boxX + 34, boxY + 26); doc.text(String(paidDays), boxX + 38, boxY + 26);
+            doc.text('LOP Days', boxX + 9, boxY + 32); doc.text(':', boxX + 34, boxY + 32); doc.text(String(lopDays), boxX + 38, boxY + 32);
+
+            let y2 = Math.max(sy, boxY + boxH) + 6;
+            if (lopDays > 0) {
+                doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
+                doc.setFontSize(9); doc.setTextColor(120); doc.text('LOP', marginX, y2);
+                doc.text(':', marginX + 34, y2); doc.setTextColor(20);
+                doc.text(`${lopDays} day${lopDays===1?'':'s'} deduction on unpaid leave`, marginX + 38, y2);
+                y2 += 8;
+            }
+            doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 8;
+
+            // Two-column Earnings / Deductions table (16mm gutter between columns so a
+            // right-aligned earnings amount can never run into the deductions label)
+            const gutter = 16;
+            const colW = (rightX - marginX - gutter) / 2;
+            const earnCol = marginX, dedCol = marginX + colW + gutter;
+            const tableTopY = y2;
+            doc.setFontSize(8.5); doc.setTextColor(140); doc.setFont(undefined, 'bold');
+            doc.text('EARNINGS', earnCol, y2); doc.text('AMOUNT', earnCol + colW, y2, { align: 'right' });
+            doc.text('DEDUCTIONS', dedCol, y2); doc.text('AMOUNT', dedCol + colW, y2, { align: 'right' });
+            y2 += 3;
+            doc.setDrawColor(220);
+            doc.line(earnCol, y2, earnCol + colW, y2); doc.line(dedCol, y2, dedCol + colW, y2);
+            y2 += 6;
+            doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
+
+            const earnings = [['Basic', p.basic], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
+            const deductions = [];
+            if (p.leave_deduction) deductions.push([`LOP${lopDays ? ` (${lopDays}d)` : ''}`, p.leave_deduction]);
+            if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
+            if (p.advances) deductions.push(['Advances', p.advances]);
+            if (!deductions.length) deductions.push(['—', 0]);
+
+            const rowCount = Math.max(earnings.length, deductions.length);
+            for (let i = 0; i < rowCount; i++) {
+                const ry = y2 + i * 6.5;
+                if (earnings[i]) { doc.setTextColor(60); doc.text(earnings[i][0], earnCol, ry); doc.setTextColor(20); doc.text(rupee(earnings[i][1]), earnCol + colW, ry, { align: 'right' }); }
+                if (deductions[i]) { doc.setTextColor(60); doc.text(deductions[i][0], dedCol, ry); doc.setTextColor(20); doc.text(rupee(deductions[i][1]), dedCol + colW, ry, { align: 'right' }); }
+            }
+            y2 += rowCount * 6.5 + 3;
+            doc.setDrawColor(220); doc.line(earnCol, y2, earnCol + colW, y2); doc.line(dedCol, y2, dedCol + colW, y2);
+            y2 += 6;
+            doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(30);
+            doc.text('Gross Earnings', earnCol, y2); doc.text(rupee(grossEarnings), earnCol + colW, y2, { align: 'right' });
+            doc.text('Total Deductions', dedCol, y2); doc.text(rupee(totalDeductions), dedCol + colW, y2, { align: 'right' });
+            doc.setFont(undefined, 'normal');
+
+            y2 += 12;
+            doc.setFillColor(246, 247, 250); doc.rect(marginX, y2, rightX - marginX, 16, 'F');
+            doc.setFontSize(9.5); doc.setFont(undefined, 'bold'); doc.setTextColor(30);
+            doc.text('TOTAL NET PAYABLE', marginX + 4, y2 + 6.5);
+            doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+            doc.text('Gross Earnings - Total Deductions', marginX + 4, y2 + 12);
+            doc.setFillColor(230, 250, 240);
+            doc.rect(rightX - 42, y2 + 2, 38, 12, 'F');
+            doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
+            doc.text(rupee(netPay), rightX - 5, y2 + 9.5, { align: 'right' });
+
+            y2 += 26;
+            doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
+            doc.text(`Amount In Words : ${amountInWordsINR(netPay)}`, marginX, y2, { maxWidth: rightX - marginX });
+
+            doc.setFontSize(8); doc.setTextColor(160);
+            doc.text('-- This is a system-generated document. --', pageW / 2, 285, { align: 'center' });
+
             doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
         }
 
@@ -8626,6 +8819,36 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
         async function ensureHRDataLoaded() {
             if (!hrLoaded) { await loadHRData(); hrLoaded = true; }
+        }
+
+        // "My Details" card on the My Settings page — same hr_employees row and same
+        // hrProfileField() renderer HR's own Employee Profile uses, so this can never show
+        // anything other than exactly what HR has on file, and reflects it the moment HR saves.
+        async function initMyProfileDetails() {
+            await ensureHRDataLoaded();
+            const body = document.getElementById('my-profile-details-body');
+            if (!body) return;
+            const me = myHREmployeeRecord();
+            if (!me) {
+                body.innerHTML = '<p class="text-[#4a5182] text-xs py-2">No HR employee record is linked to your login yet — ask HR to link your portal email.</p>';
+                return;
+            }
+            const probationEnd = hrProbationEndDate(me);
+            body.innerHTML =
+                hrProfileField('Employee ID', me.employee_id) +
+                hrProfileField('Department', me.department) +
+                hrProfileField('Division', me.division) +
+                hrProfileField('Designation', me.designation) +
+                hrProfileField('Joining Date', me.joining_date) +
+                hrProfileField('Date of Birth', me.dob) +
+                hrProfileField('Phone', me.phone) +
+                hrProfileField('Portal Email', me.portal_email) +
+                hrProfileField('Manager (portal email)', me.manager_email) +
+                hrProfileField('Employment Status', me.employment_status) +
+                hrProfileField('Probation Period', me.probation_months ? `${me.probation_months} month(s)` : null) +
+                hrProfileField('Probation End Date', probationEnd) +
+                hrProfileField('Emergency Contact', [me.emergency_contact_name, me.emergency_contact_phone].filter(Boolean).join(' — '));
+            if (window.lucide) lucide.createIcons();
         }
 
         async function initMyLeave() {
