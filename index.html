@@ -575,6 +575,19 @@
                     <label class="hr-field-label">Roles (select one or more)</label>
                     <div id="hr-emp-roles-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
                 </div>
+                <div><label class="hr-field-label">Primary Role</label>
+                    <select id="hr-emp-primary-role" class="hr-select w-full" onchange="hrEmpPrimaryRole = this.value" disabled>
+                        <option value="">— select roles above first —</option>
+                    </select>
+                </div>
+                <div><label class="hr-field-label">Level</label>
+                    <select id="hr-emp-level" class="hr-select w-full">
+                        <option value="">—</option>
+                        <option value="Junior">Junior</option>
+                        <option value="Mid-Level">Mid-Level</option>
+                        <option value="Senior">Senior</option>
+                    </select>
+                </div>
                 <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full" oninput="updateHREmpProbationPreview()"></div>
                 <div><label class="hr-field-label">Employment Status</label>
                     <select id="hr-emp-status" class="hr-select w-full">
@@ -1647,7 +1660,7 @@
                         <div class="p-4 md:p-6 pb-0"><h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Today's Workforce</h3></div>
                         <table class="w-full text-sm text-left mt-2">
                             <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Department</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4">Work</th>
+                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Role</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4">Designation</th>
                             </tr></thead>
                             <tbody id="hr-dash-workforce-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
@@ -6619,6 +6632,30 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         function hrJoinRoles(rolesArray) {
             return (rolesArray || []).join(', ');
         }
+        // Seniority level — same no-new-column approach as Roles: the level is stored as a
+        // plain-text prefix on the PRIMARY role only (roles[0]), e.g. department =
+        // "Senior Editor, Cinematographer, Designer". Additional roles never carry a level.
+        const HR_LEVELS = ['Senior', 'Mid-Level', 'Junior'];
+        function hrStripLevel(roleStr) {
+            for (const lvl of HR_LEVELS) {
+                if (roleStr.startsWith(lvl + ' ')) return { level: lvl, role: roleStr.slice(lvl.length + 1) };
+            }
+            return { level: '', role: roleStr };
+        }
+        // Single source of truth for "what is this employee's role", used everywhere it's
+        // displayed (Employee Profile, HR Dashboard, Employee List, My Details, Reports) so
+        // they can never show something different from what HR actually saved.
+        function hrRoleInfo(e) {
+            const roles = hrParseRoles(e?.department);
+            if (!roles.length) return { level: '', primary: '', additional: [] };
+            const { level, role } = hrStripLevel(roles[0]);
+            return { level, primary: role, additional: roles.slice(1) };
+        }
+        function hrRoleDisplay(e) {
+            const info = hrRoleInfo(e);
+            if (!info.primary) return e?.designation || '—';
+            return (info.level ? info.level + ' ' : '') + info.primary;
+        }
         const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Unpaid Leave', 'Work From Home'];
         const HR_UNLIMITED_LEAVE_TYPES = ['Unpaid Leave']; // these show "—" for Allocated/Remaining instead of a number
         // Company's standard/default leave policy — auto-assigned to every new employee so HR
@@ -6989,7 +7026,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const checkIn = rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
                 return `<tr class="hover:bg-white/[0.02]">
                     <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 26)}<span>${e.full_name}</span></div></td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
                     <td class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${checkIn}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
@@ -7010,7 +7047,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // ---------- EMPLOYEES ----------
         // Roles chip picker for the Add/Edit Employee modal — options depend on the selected
         // Department (Production House / Education / Other), selection is multi-value.
+        // hrEmpPrimaryRole is which one of the selected roles is "primary" (gets the Level
+        // prefix and shows as the main Role everywhere) — defaults to whichever was picked
+        // first, HR can change it via the Primary Role dropdown.
         let hrEmpSelectedRoles = [];
+        let hrEmpPrimaryRole = '';
         function renderHREmpRoleChips() {
             const div = document.getElementById('hr-emp-division').value;
             const options = HR_ROLES[div] || [];
@@ -7025,11 +7066,29 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     return `<button type="button" onclick="hrToggleEmpRole('${r.replace(/'/g, "\\'")}')" class="hr-role-chip${on ? ' active' : ''}">${on ? '✓ ' : ''}${r}</button>`;
                   }).join('')
                 : '<p class="text-[10px] text-[#4a5182]">No preset roles for this department — use the Designation field for a title.</p>';
+            renderHREmpPrimaryRoleSelect();
         }
         function hrToggleEmpRole(role) {
             const i = hrEmpSelectedRoles.indexOf(role);
-            if (i === -1) hrEmpSelectedRoles.push(role); else hrEmpSelectedRoles.splice(i, 1);
+            if (i === -1) {
+                hrEmpSelectedRoles.push(role);
+                if (!hrEmpPrimaryRole) hrEmpPrimaryRole = role;
+            } else {
+                hrEmpSelectedRoles.splice(i, 1);
+                if (hrEmpPrimaryRole === role) hrEmpPrimaryRole = hrEmpSelectedRoles[0] || '';
+            }
             renderHREmpRoleChips();
+        }
+        function renderHREmpPrimaryRoleSelect() {
+            const sel = document.getElementById('hr-emp-primary-role');
+            if (!sel) return;
+            if (!hrEmpSelectedRoles.length) {
+                sel.innerHTML = '<option value="">— select roles above first —</option>';
+                sel.disabled = true;
+                return;
+            }
+            sel.disabled = false;
+            sel.innerHTML = hrEmpSelectedRoles.map(r => `<option value="${r}"${r === hrEmpPrimaryRole ? ' selected' : ''}>${r}</option>`).join('');
         }
 
         function openHREmployeeModal(id = null) {
@@ -7044,7 +7103,19 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-emp-id').value = e?.employee_id || '';
             document.getElementById('hr-emp-name').value = e?.full_name || '';
             document.getElementById('hr-emp-division').value = e?.division || 'production';
-            hrEmpSelectedRoles = hrParseRoles(e?.department);
+            // roles[0] may carry a "Senior "/"Mid-Level "/"Junior " prefix — that's the Level,
+            // stripped back off here so the chip for that role still matches correctly.
+            const rawRoles = hrParseRoles(e?.department);
+            if (rawRoles.length) {
+                const { level, role } = hrStripLevel(rawRoles[0]);
+                hrEmpSelectedRoles = [role, ...rawRoles.slice(1)];
+                hrEmpPrimaryRole = role;
+                document.getElementById('hr-emp-level').value = level;
+            } else {
+                hrEmpSelectedRoles = [];
+                hrEmpPrimaryRole = '';
+                document.getElementById('hr-emp-level').value = '';
+            }
             renderHREmpRoleChips();
             document.getElementById('hr-emp-designation').value = e?.designation || '';
             document.getElementById('hr-emp-joining').value = e?.joining_date || '';
@@ -7203,11 +7274,19 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const loginEmail = document.getElementById('hr-emp-email').value.trim().toLowerCase();
             const loginPassword = document.getElementById('hr-emp-login-password').value;
             const loginRole = document.getElementById('hr-emp-role').value;
+            // The Level applies only to the Primary Role, stored as a text prefix on that one
+            // entry — "Senior Editor, Cinematographer" — so it round-trips through the exact
+            // same hr_employees.department column Roles already use, no new column needed.
+            const empLevel = document.getElementById('hr-emp-level').value;
+            const otherRoles = hrEmpSelectedRoles.filter(r => r !== hrEmpPrimaryRole);
+            const rolesForSave = hrEmpPrimaryRole
+                ? [(empLevel ? `${empLevel} ${hrEmpPrimaryRole}` : hrEmpPrimaryRole), ...otherRoles]
+                : hrEmpSelectedRoles;
             const payload = {
                 employee_id: document.getElementById('hr-emp-id').value.trim(),
                 full_name: name,
                 division: document.getElementById('hr-emp-division').value,
-                department: hrJoinRoles(hrEmpSelectedRoles),
+                department: hrJoinRoles(rolesForSave),
                 designation: document.getElementById('hr-emp-designation').value.trim(),
                 joining_date,
                 employment_status: document.getElementById('hr-emp-status').value,
@@ -7347,7 +7426,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         </div>
                         <span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span>
                     </div>
-                    <p class="text-xs text-[#a5adcf]">${divisionLabel[e.division] || e.division} · ${e.designation || e.department || '—'}</p>
+                    <p class="text-xs text-[#a5adcf]">${divisionLabel[e.division] || e.division} · ${hrRoleDisplay(e)}</p>
+                    ${hrRoleInfo(e).additional.length ? `<p class="text-[10px] text-[#6b74a0]">+ ${hrRoleInfo(e).additional.join(', ')}</p>` : ''}
                     ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Panel Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : `<p class="text-[10px] text-[#4a5182]">No portal login linked</p>`}
                     <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
                         <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
@@ -7382,7 +7462,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (!e) return;
             document.getElementById('hr-profile-name').textContent = e.full_name;
             document.getElementById('hr-profile-avatar').innerHTML = hrAvatarHTML(e, 48);
-            document.getElementById('hr-profile-subtitle').textContent = e.designation || e.department || '—';
+            document.getElementById('hr-profile-subtitle').textContent = hrRoleDisplay(e);
             const tabs = ['personal','employment','salary','attendance','leave','payroll','documents','performance','schedule'];
             document.getElementById('hr-profile-tabs').innerHTML = tabs.map(t => `
                 <button onclick="switchHRProfileTab('${t}')" class="hr-subnav-btn ${hrProfileTab===t?'active':''}" style="text-transform:capitalize">${t}</button>
@@ -7394,7 +7474,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             } else if (hrProfileTab === 'employment') {
                 const probationEnd = hrProbationEndDate(e);
                 const divisionLabelMap = { education: 'Education', production: 'Production House', other: 'Other' };
-                body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Department', divisionLabelMap[e.division] || e.division) + hrProfileField('Roles', hrParseRoles(e.department).join(', ')) +
+                const roleInfo = hrRoleInfo(e);
+                body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Department', divisionLabelMap[e.division] || e.division) +
+                    hrProfileField('Role', roleInfo.primary ? ((roleInfo.level ? roleInfo.level + ' ' : '') + roleInfo.primary) : '—') +
+                    hrProfileField('Level', roleInfo.level || '—') +
+                    hrProfileField('Additional Roles', roleInfo.additional.length ? roleInfo.additional.join(', ') : '—') +
                     hrProfileField('Designation', e.designation) + hrProfileField('Joining Date', e.joining_date) + hrProfileField('Employment Status', e.employment_status) +
                     hrProfileField('Manager (portal email)', e.manager_email) + hrProfileField('Probation Period', e.probation_months ? `${e.probation_months} month(s)` : null) +
                     hrProfileField('Probation End Date', probationEnd);
@@ -8670,6 +8754,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 sy += 6.5;
             };
             summaryRow('Employee Name', e?.full_name || hrEmpName(p.employee_id));
+            summaryRow('Role', e ? hrRoleDisplay(e) : '—');
             summaryRow('Employee ID', e?.employee_id || '—');
             summaryRow('Pay Period', monthLabel);
             summaryRow('Pay Date', payDate);
@@ -8677,7 +8762,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
             // run to a decimal like "28.5", which would collide with a neighboring label if two
             // were placed on the same line.
-            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = 58;
+            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = 70;
             doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
             doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
             doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
@@ -8692,8 +8777,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             };
             statRow('Paid Days', paidDays, 0);
             statRow('Present Days', dayInfo.presentDays, 1);
-            statRow('Leave Days', dayInfo.paidLeaveDays, 2);
-            statRow('LOP Days', lopDays, 3);
+            statRow('Paid Leave', dayInfo.paidLeaveDays, 2);
+            statRow('Weekly Off', dayInfo.weeklyOffDays, 3);
+            statRow('Company Holidays', dayInfo.holidayDays, 4);
+            statRow('LOP Days', lopDays, 5);
 
             let y2 = Math.max(sy, boxY + boxH) + 6;
             if (lopDays > 0) {
@@ -8860,10 +8947,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
             const probationEnd = hrProbationEndDate(me);
             const myDivisionLabel = { education: 'Education', production: 'Production House', other: 'Other' }[me.division] || me.division;
+            const myRoleInfo = hrRoleInfo(me);
             body.innerHTML =
                 hrProfileField('Employee ID', me.employee_id) +
                 hrProfileField('Department', myDivisionLabel) +
-                hrProfileField('Roles', hrParseRoles(me.department).join(', ')) +
+                hrProfileField('Role', myRoleInfo.primary ? ((myRoleInfo.level ? myRoleInfo.level + ' ' : '') + myRoleInfo.primary) : '—') +
+                hrProfileField('Level', myRoleInfo.level || '—') +
+                hrProfileField('Additional Roles', myRoleInfo.additional.length ? myRoleInfo.additional.join(', ') : '—') +
                 hrProfileField('Designation', me.designation) +
                 hrProfileField('Joining Date', me.joining_date) +
                 hrProfileField('Date of Birth', me.dob) +
@@ -8977,7 +9067,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
                 return `<tr class="hover:bg-white/[0.02]">
                     <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.department || '—'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
                     <td class="py-2.5 px-4">${rec ? `<span class="hr-badge hr-badge-${rec.status}">${rec.status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
                 </tr>`;
