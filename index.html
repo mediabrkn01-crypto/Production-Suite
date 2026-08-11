@@ -3489,6 +3489,50 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return await uploadToGoogleDrive(file);
         }
 
+        // Uploads every reference file for a task into ONE shared Drive folder (same
+        // folderBatchId/finalizeFolder mechanism uploadFolderToDrive already uses for delivery
+        // uploads below) instead of each file becoming its own separate Drive upload. Returns
+        // both the folder link AND each individual file's own link — the per-file links are
+        // what let "Reference Files (N)" still list and download each file individually; the
+        // folder link is what "Open Folder" uses, and it's also where Drive's own native
+        // multi-select "Download" (a real, reliable ZIP — built server-side by Google, not by
+        // this page) lives, since a browser can't fetch() Drive file bytes cross-origin to
+        // build a ZIP itself (Drive's download endpoint doesn't send CORS headers for that).
+        async function uploadRefFilesGrouped(filesArray, folderName, onProgress) {
+            const folderBatchId = 'batch_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+            const totalBytes = filesArray.reduce((sum, f) => sum + f.size, 0) || 1;
+            let bytesDoneSoFar = 0;
+            const files = [];
+            for (const f of filesArray) {
+                const result = await uploadFileChunked(f, folderBatchId, folderName, (pctOfThisFile) => {
+                    const doneForThisFile = (pctOfThisFile / 100) * f.size;
+                    if (onProgress) onProgress(Math.round(((bytesDoneSoFar + doneForThisFile) / totalBytes) * 100));
+                });
+                files.push({ name: (result && result.fileName) || f.name, url: result && result.fileUrl });
+                bytesDoneSoFar += f.size;
+            }
+            let folderUrl = null;
+            try {
+                const finalizeResp = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'finalizeFolder', folderBatchId })
+                }).then(r => r.json());
+                if (finalizeResp.success) folderUrl = finalizeResp.folderUrl;
+            } catch (e) {
+                console.warn('Could not finalize the shared reference-files folder (files still uploaded individually fine):', e.message);
+            }
+            return { folderUrl, files };
+        }
+        // Encodes {folderUrl, files} into the same "name|url" ;; -joined text reference_file
+        // already stores — a leading "__folder__|<url>" entry carries the folder link, parsed
+        // back out by buildReferenceFileMarkup. No new database column needed.
+        function encodeRefFilesField(grouped) {
+            const parts = [];
+            if (grouped.folderUrl) parts.push(`__folder__|${grouped.folderUrl}`);
+            grouped.files.forEach(f => { if (f.url) parts.push(`${f.name}|${f.url}`); });
+            return parts.join(';;');
+        }
+
         async function createWorkAssignment() {
             const topic = document.getElementById('task-topic').value.trim();
             const type = document.getElementById('task-type').value;
@@ -3508,23 +3552,23 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             // before they can re-assign it. Regular creators are auto-approved.
             const assigneeIsSocial = empObj && empObj.role === 'social_media';
 
-            let refFileUrlsArray = [];
+            let finalRefFileUrl = '';
             if(taskRefFilesQueue.length > 0) {
                 const assignPanel = document.getElementById('admin-assignment-panel');
                 const originalBtn = assignPanel.querySelector('button[onclick="createWorkAssignment()"]');
-                
+
                 try {
                     originalBtn.disabled = true;
-                    // Sequentially loop, encode, and transmit multi-reference materials
-                    for (let i = 0; i < taskRefFilesQueue.length; i++) {
-                        originalBtn.innerHTML = `<span class="flex items-center gap-2 justify-center"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i> Ref ${i+1}/${taskRefFilesQueue.length} Uploading...</span>`;
+                    // All reference files for this task go into ONE shared Drive folder
+                    // (named after the task topic) instead of each becoming its own separate
+                    // Drive upload — see uploadRefFilesGrouped above.
+                    const grouped = await uploadRefFilesGrouped(taskRefFilesQueue, `${topic} - Reference Files`, (pct) => {
+                        originalBtn.innerHTML = `<span class="flex items-center gap-2 justify-center"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i> Uploading references ${pct}%...</span>`;
                         lucide.createIcons();
-                        
-                        const fileUrl = await uploadRefFile(taskRefFilesQueue[i]);
-                        refFileUrlsArray.push(fileUrl);
-                    }
+                    });
+                    finalRefFileUrl = encodeRefFilesField(grouped);
                 } catch(e) {
-                    alert('Reference file upload failed: ' + e.message); 
+                    alert('Reference file upload failed: ' + e.message);
                     originalBtn.disabled = false;
                     originalBtn.innerText = "Assign Work Project";
                     return;
@@ -3533,8 +3577,6 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     originalBtn.innerText = "Assign Work Project";
                 }
             }
-
-            const finalRefFileUrl = refFileUrlsArray.join(', ');
 
             const { error } = await dbInstance
                 .from('assignments')
@@ -4655,6 +4697,19 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // Always re-parses the task's current referenceFile string, so a file added after the
         // fact just appears inside the same folder next render — nothing extra to wire up.
         let _refFolderOpenState = {}; // { uid: true|false } — survives re-renders so an open folder doesn't snap shut on the next 4s poll
+
+        // Google Drive's download endpoint doesn't send CORS headers, so a browser can't
+        // fetch() the bytes to build a ZIP itself — see uploadRefFilesGrouped's comment. This
+        // is the closest thing to a direct download a plain <a> navigation can do: it skips
+        // Drive's preview page and goes straight to the file bytes (small/common file types),
+        // though Drive still shows its own "can't scan for viruses" interstitial for some
+        // larger files — that's Drive's own page at that point, not something this app renders.
+        function hrDriveDownloadUrl(url) {
+            if (!url) return url;
+            const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/) || url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/) || url.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+            return m ? `https://drive.google.com/uc?export=download&id=${m[1]}` : url;
+        }
+
         function _refFileLinkHtml(raw) {
             let label, url;
             if (raw.includes('|')) {
@@ -4671,10 +4726,38 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const styleClass = isDrive
                 ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/40'
                 : 'bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/40';
-            return `<a href="${url}" target="_blank" title="${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[220px]">
+            const viewLink = `<a href="${url}" target="_blank" title="${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border px-3 py-1.5 rounded-l font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[180px]">
                 ${icon} <span class="truncate">${shownName}</span>
             </a>`;
+            // Individual one-click download, separate from the "open/view" link above — a
+            // plain top-level navigation (not fetch()), so it isn't subject to the CORS block.
+            const downloadBtn = isFolder ? '' : `<a href="${hrDriveDownloadUrl(url)}" target="_blank" title="Download ${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border border-l-0 px-2 py-1.5 rounded-r transition-all duration-200 inline-flex items-center active:scale-95">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            </a>`;
+            return `<div class="inline-flex">${viewLink}${downloadBtn}</div>`;
         }
+
+        // Triggers each file's direct-download link one after another. This is NOT a single
+        // .zip — see the CORS note above for why a page can't build one from Drive links — it's
+        // the closest one-click equivalent: every file starts downloading without the user
+        // clicking each one individually. For a genuine single ZIP, "Open Folder" is the
+        // reliable path: Drive's own UI zips a multi-file selection server-side.
+        function downloadAllReferenceFiles(uid) {
+            const urls = (_refFolderFiles[uid] || []).map(f => f.url).filter(Boolean);
+            urls.forEach((url, i) => {
+                setTimeout(() => {
+                    const a = document.createElement('a');
+                    a.href = hrDriveDownloadUrl(url);
+                    a.target = '_blank';
+                    a.rel = 'noopener';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }, i * 600); // staggered — firing many downloads in the same tick trips popup blockers
+            });
+        }
+        let _refFolderFiles = {}; // { uid: [{name,url}] } — populated by buildReferenceFileMarkup, read by downloadAllReferenceFiles
+
         function buildReferenceFileMarkup(assetString, uid) {
             if (!assetString) return ''; // no reference files → no folder shown at all
             const rawLinks = assetString.includes(';;')
@@ -4682,22 +4765,41 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 : assetString.split(',').map(s => s.trim()).filter(Boolean);
             if (!rawLinks.length) return '';
 
-            if (rawLinks.length === 1) {
-                // A single reference file is just shown directly — grouping only makes sense
-                // once there's actually more than one to group.
-                return `<div class="flex flex-col gap-1.5">${_refFileLinkHtml(rawLinks[0])}</div>`;
+            // Pull the "__folder__|<url>" marker (if uploadRefFilesGrouped managed to create a
+            // shared Drive folder) out of the list — it's metadata, not a file to list/download.
+            let folderUrl = null;
+            const fileLinks = rawLinks.filter(raw => {
+                if (raw.startsWith('__folder__|')) { folderUrl = raw.slice('__folder__|'.length).trim(); return false; }
+                return true;
+            });
+            if (!fileLinks.length) return '';
+
+            _refFolderFiles[uid] = fileLinks.map(raw => {
+                const pipeIdx = raw.indexOf('|');
+                return pipeIdx === -1 ? { name: raw, url: raw } : { name: raw.slice(0, pipeIdx).trim(), url: raw.slice(pipeIdx + 1).trim() };
+            });
+
+            if (fileLinks.length === 1 && !folderUrl) {
+                // A single reference file with no folder is just shown directly — grouping
+                // only makes sense once there's actually more than one to group.
+                return `<div class="flex flex-col gap-1.5">${_refFileLinkHtml(fileLinks[0])}</div>`;
             }
 
             const isOpen = !!_refFolderOpenState[uid];
-            const filesHtml = rawLinks.map(_refFileLinkHtml).join('');
+            const filesHtml = fileLinks.map(_refFileLinkHtml).join('');
+            const openFolderBtn = folderUrl ? `<a href="${folderUrl}" target="_blank" title="Open the shared Drive folder — select-all + Download there gives a single ZIP" class="bg-transparent text-[#a5adcf] border border-white/[0.1] hover:border-orange-500/50 px-2.5 py-1 rounded font-semibold transition text-[10px] whitespace-nowrap inline-flex items-center gap-1"><i data-lucide="folder-open" class="w-3 h-3"></i> Open Folder</a>` : '';
+            const downloadAllBtn = `<button type="button" onclick="downloadAllReferenceFiles('${uid}')" title="Starts a download for every file below, one after another" class="bg-transparent text-[#a5adcf] border border-white/[0.1] hover:border-orange-500/50 px-2.5 py-1 rounded font-semibold transition text-[10px] whitespace-nowrap inline-flex items-center gap-1"><i data-lucide="download" class="w-3 h-3"></i> Download All</button>`;
             return `
                 <div>
                     <button type="button" onclick="toggleReferenceFolder('${uid}')" class="bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95">
                         <i data-lucide="${isOpen ? 'folder-open' : 'folder'}" class="w-3.5 h-3.5"></i>
-                        Reference Files (${rawLinks.length})
+                        Reference Files (${fileLinks.length})
                         <i data-lucide="chevron-${isOpen ? 'up' : 'down'}" class="w-3 h-3"></i>
                     </button>
-                    <div id="ref-folder-${uid}" class="flex flex-col gap-1.5 mt-1.5 pl-2 border-l-2 border-amber-500/20 ${isOpen ? '' : 'hidden'}">${filesHtml}</div>
+                    <div id="ref-folder-${uid}" class="flex flex-col gap-1.5 mt-1.5 pl-2 border-l-2 border-amber-500/20 ${isOpen ? '' : 'hidden'}">
+                        <div class="flex items-center gap-1.5 flex-wrap">${openFolderBtn}${downloadAllBtn}</div>
+                        ${filesHtml}
+                    </div>
                 </div>
             `;
         }
