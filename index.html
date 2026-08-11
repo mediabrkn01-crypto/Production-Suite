@@ -402,6 +402,23 @@
         .hr-badge-wfh { background:rgba(168,85,247,0.15); color:#c084fc; }
         .hr-badge-on_leave { background:rgba(250,204,21,0.15); color:#facc15; }
         .hr-badge-holiday { background:rgba(59,130,246,0.15); color:#60a5fa; }
+        /* Data-dense tables (the 31-day attendance grid, payroll, creator/department summaries)
+           are genuinely too wide to compress into a phone screen without losing the data —
+           every real app with this much tabular data (spreadsheets, banking apps, Notion,
+           Airtable) handles it the same way: the table scrolls horizontally WITHIN its own
+           card, the page itself never does. That part already worked; what didn't was that the
+           scrollbar was thin enough to be invisible on mobile, so a scrollable table looked
+           identical to a cut-off, broken one. This just makes the scroll affordance obvious. */
+        .overflow-x-auto { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.25) transparent; -webkit-overflow-scrolling: touch; }
+        .overflow-x-auto::-webkit-scrollbar { height: 7px; }
+        .overflow-x-auto::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px; }
+        .overflow-x-auto::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 999px; }
+        .overflow-x-auto::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+        @media (max-width: 768px) {
+            /* On mobile only, a scrollable card's OWN horizontal scrollbar is the one that
+               should ever show — the outer page must never grow a second one alongside it. */
+            body { overflow-x: hidden; }
+        }
         .hr-att-grid { border-collapse:collapse; font-size:11px; white-space:nowrap; }
         .hr-att-grid th, .hr-att-grid td { padding:6px 8px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.05); }
         .hr-att-grid th.hr-att-sticky, .hr-att-grid td.hr-att-sticky { position:sticky; left:0; background:#0d1120; z-index:2; text-align:left; box-shadow:2px 0 4px rgba(0,0,0,0.3); }
@@ -1133,8 +1150,8 @@
 
 
 
-            <div id="notif-panel" class="hidden fixed inset-0 z-[70] flex items-start justify-end p-4 pt-16" onclick="if(event.target===this)closeNotifPanel()">
-                <div class="w-full max-w-md bg-transparent border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden animate-item">
+            <div id="notif-panel" class="hidden fixed inset-0 z-[70] flex items-start justify-end p-4 pt-16 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeNotifPanel()">
+                <div class="w-full max-w-md bg-[#0b0d19] border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden animate-item">
                     <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
                         <h3 class="font-bold text-sm text-white flex items-center gap-2"><i data-lucide="bell" class="w-4 h-4 text-white/70"></i> Notifications</h3>
                         <button onclick="closeNotifPanel()" class="text-[#4a5182] hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -3822,12 +3839,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         return;
                     }
                 } else {
-                    // Multiple files → upload all into ONE folder, single folder link
+                    // Multiple files → upload all into ONE folder (same mechanism as reference
+                    // files, see uploadRefFilesGrouped) — keeps each file's own link too, not
+                    // just the folder's, so Delivery Output can show individual Download
+                    // buttons + Download All the same way Reference Files does.
                     submitBtn.innerText = `Uploading ${_uploadFiles.length} files into one folder...`;
                     try {
-                        const folderUrl = await uploadFolderToDrive(_uploadFiles, targetTask.topic);
-                        const label = `${targetTask.topic} (${_uploadFiles.length} files)`;
-                        finalLinksArray.push(`${label.replace(/\|/g, '-')}|${folderUrl}`);
+                        const grouped = await uploadRefFilesGrouped(_uploadFiles, `${targetTask.topic} - Delivery Output`, (pct) => {
+                            submitBtn.innerHTML = `<span class="flex items-center gap-2 justify-center"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i> Uploading ${pct}%...</span>`;
+                            lucide.createIcons();
+                        });
+                        const encoded = encodeRefFilesField(grouped);
+                        if (encoded) finalLinksArray.push(encoded);
                     } catch (uploadError) {
                         console.error("Drive Folder Upload Error: ", uploadError);
                         setUploadProgress(null);
@@ -4689,25 +4712,29 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return html;
         }
 
-        // Reference Files render as their OWN grouped "folder" card when there's more than
-        // one — a task with 10 reference files used to stack 10 separate buttons down the
-        // column (see buildMediaOutputMarkup above), which this replaces for Reference Files
-        // specifically. Delivery Output keeps using buildMediaOutputMarkup exactly as before —
-        // upload/delivery behavior is untouched, this only changes how references are DISPLAYED.
-        // Always re-parses the task's current referenceFile string, so a file added after the
-        // fact just appears inside the same folder next render — nothing extra to wire up.
+        // Reference Files AND Delivery Output both render through this same grouped "folder"
+        // card when there's more than one file — a task with 10 files used to stack 10
+        // separate buttons down the column (see buildMediaOutputMarkup above, kept only as a
+        // fallback for very old data). Upload behavior is untouched; this only changes DISPLAY.
+        // Always re-parses the task's current string, so a file added after the fact just
+        // appears inside the same folder next render — nothing extra to wire up.
         let _refFolderOpenState = {}; // { uid: true|false } — survives re-renders so an open folder doesn't snap shut on the next 4s poll
+        let _groupedFiles = {}; // { uid: [{name,url}] } — populated by buildGroupedFileMarkup, read by downloadAllGroupedFiles
 
         // Google Drive's download endpoint doesn't send CORS headers, so a browser can't
-        // fetch() the bytes to build a ZIP itself — see uploadRefFilesGrouped's comment. This
-        // is the closest thing to a direct download a plain <a> navigation can do: it skips
-        // Drive's preview page and goes straight to the file bytes (small/common file types),
-        // though Drive still shows its own "can't scan for viruses" interstitial for some
-        // larger files — that's Drive's own page at that point, not something this app renders.
+        // fetch() the bytes itself in the normal (CORS) mode a ZIP library needs — confirmed
+        // directly (not assumed): a fetch() against drive.google.com's download endpoint from
+        // this app's origin fails outright with a CORS error. A plain, un-scripted <a>
+        // navigation to the same URL isn't subject to that block, which is what both the
+        // individual Download buttons and the "Download All" fallback below use.
         function hrDriveDownloadUrl(url) {
             if (!url) return url;
             const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/) || url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/) || url.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
             return m ? `https://drive.google.com/uc?export=download&id=${m[1]}` : url;
+        }
+        function hrDriveFileId(url) {
+            const m = (url||'').match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/) || (url||'').match(/[?&]id=([a-zA-Z0-9_-]{10,})/) || (url||'').match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+            return m ? m[1] : null;
         }
 
         function _refFileLinkHtml(raw) {
@@ -4729,44 +4756,99 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const viewLink = `<a href="${url}" target="_blank" title="${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border px-3 py-1.5 rounded-l font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[180px]">
                 ${icon} <span class="truncate">${shownName}</span>
             </a>`;
-            // Individual one-click download, separate from the "open/view" link above — a
-            // plain top-level navigation (not fetch()), so it isn't subject to the CORS block.
-            const downloadBtn = isFolder ? '' : `<a href="${hrDriveDownloadUrl(url)}" target="_blank" title="Download ${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border border-l-0 px-2 py-1.5 rounded-r transition-all duration-200 inline-flex items-center active:scale-95">
+            // Individual one-click download, separate from the "open/view" link above.
+            // download + target="_blank" together: the download attribute is what makes a
+            // legitimate Drive file (server sends Content-Disposition: attachment) save
+            // straight to disk instead of opening a viewer tab; target="_blank" is a safety
+            // net for anything that DOESN'T come back as a real file (deleted file, no access,
+            // Drive shows its own interstitial page instead) — without it, that response would
+            // navigate this whole app away instead of just opening in a spare tab.
+            const downloadBtn = isFolder ? '' : `<a href="${hrDriveDownloadUrl(url)}" download target="_blank" rel="noopener" title="Download ${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border border-l-0 px-2 py-1.5 rounded-r transition-all duration-200 inline-flex items-center active:scale-95">
                 <i data-lucide="download" class="w-3.5 h-3.5"></i>
             </a>`;
             return `<div class="inline-flex">${viewLink}${downloadBtn}</div>`;
         }
 
-        // Triggers each file's direct-download link one after another. This is NOT a single
-        // .zip — see the CORS note above for why a page can't build one from Drive links — it's
-        // the closest one-click equivalent: every file starts downloading without the user
-        // clicking each one individually. For a genuine single ZIP, "Open Folder" is the
-        // reliable path: Drive's own UI zips a multi-file selection server-side.
-        function downloadAllReferenceFiles(uid) {
-            const urls = (_refFolderFiles[uid] || []).map(f => f.url).filter(Boolean);
-            urls.forEach((url, i) => {
+        // Fires every file's direct-download link, one at a time. Same download+target="_blank"
+        // reasoning as _refFileLinkHtml above. The stagger is mainly Drive/browser
+        // download-manager friendliness; if a browser does block some of these as unwanted
+        // popups, "Open Folder" (Drive's own multi-select download) is the reliable fallback —
+        // that note is already shown next to the Download All button itself.
+        function _downloadEachFileSequentially(files) {
+            files.forEach((f, i) => {
                 setTimeout(() => {
                     const a = document.createElement('a');
-                    a.href = hrDriveDownloadUrl(url);
+                    a.href = hrDriveDownloadUrl(f.url);
+                    a.download = f.name || '';
                     a.target = '_blank';
                     a.rel = 'noopener';
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
-                }, i * 600); // staggered — firing many downloads in the same tick trips popup blockers
+                }, i * 400);
             });
         }
-        let _refFolderFiles = {}; // { uid: [{name,url}] } — populated by buildReferenceFileMarkup, read by downloadAllReferenceFiles
 
-        function buildReferenceFileMarkup(assetString, uid) {
-            if (!assetString) return ''; // no reference files → no folder shown at all
+        // Attempts a REAL single .zip via the same Apps Script backend uploads already go
+        // through (GOOGLE_SCRIPT_URL) — Apps Script runs server-side on Google's own
+        // infrastructure, so it isn't subject to the browser CORS restriction above and CAN
+        // fetch + zip the files itself. This only works if that Apps Script project has a
+        // 'zipFiles' action added (see the project's setup notes) — if it doesn't recognize
+        // the action, errors, or simply doesn't answer within 20s, this quietly falls back to
+        // downloading each file individually instead. Nothing breaks either way.
+        async function downloadAllGroupedFiles(uid, zipBaseName) {
+            const files = (_groupedFiles[uid] || []).filter(f => f.url);
+            if (!files.length) { alert('No files to download.'); return; }
+            const btn = document.getElementById(`dlall-btn-${uid}`);
+            if (btn) btn.disabled = true;
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 20000);
+                let zipWorked = false;
+                try {
+                    const resp = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        signal: controller.signal,
+                        body: JSON.stringify({
+                            action: 'zipFiles',
+                            fileIds: files.map(f => hrDriveFileId(f.url)).filter(Boolean),
+                            zipName: (zipBaseName || 'files') + '.zip'
+                        })
+                    }).then(r => r.json());
+                    if (resp && resp.success && resp.zipBase64) {
+                        const byteChars = atob(resp.zipBase64);
+                        const bytes = new Uint8Array(byteChars.length);
+                        for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+                        const blob = new Blob([bytes], { type: 'application/zip' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url; a.download = (zipBaseName || 'files') + '.zip';
+                        document.body.appendChild(a); a.click(); a.remove();
+                        URL.revokeObjectURL(url);
+                        zipWorked = true;
+                    }
+                } catch (e) {
+                    console.warn('Server-side zip not available (this needs a "zipFiles" action added to the Apps Script backend) — downloading files individually instead:', e.message);
+                } finally {
+                    clearTimeout(timeout);
+                }
+                if (!zipWorked) _downloadEachFileSequentially(files);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+        // Back-compat name used by any old inline onclick markup still cached in a browser.
+        function downloadAllReferenceFiles(uid) { return downloadAllGroupedFiles(uid, 'Reference Files'); }
+
+        function buildGroupedFileMarkup(assetString, uid, label) {
+            if (!assetString) return ''; // nothing uploaded → no folder shown at all
             const rawLinks = assetString.includes(';;')
                 ? assetString.split(';;').map(s => s.trim()).filter(Boolean)
                 : assetString.split(',').map(s => s.trim()).filter(Boolean);
             if (!rawLinks.length) return '';
 
-            // Pull the "__folder__|<url>" marker (if uploadRefFilesGrouped managed to create a
-            // shared Drive folder) out of the list — it's metadata, not a file to list/download.
+            // Pull the "__folder__|<url>" marker (if the upload managed to create a shared
+            // Drive folder) out of the list — it's metadata, not a file to list/download.
             let folderUrl = null;
             const fileLinks = rawLinks.filter(raw => {
                 if (raw.startsWith('__folder__|')) { folderUrl = raw.slice('__folder__|'.length).trim(); return false; }
@@ -4774,26 +4856,26 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             });
             if (!fileLinks.length) return '';
 
-            _refFolderFiles[uid] = fileLinks.map(raw => {
+            _groupedFiles[uid] = fileLinks.map(raw => {
                 const pipeIdx = raw.indexOf('|');
                 return pipeIdx === -1 ? { name: raw, url: raw } : { name: raw.slice(0, pipeIdx).trim(), url: raw.slice(pipeIdx + 1).trim() };
             });
 
             if (fileLinks.length === 1 && !folderUrl) {
-                // A single reference file with no folder is just shown directly — grouping
-                // only makes sense once there's actually more than one to group.
+                // A single file with no folder is just shown directly — grouping only makes
+                // sense once there's actually more than one to group.
                 return `<div class="flex flex-col gap-1.5">${_refFileLinkHtml(fileLinks[0])}</div>`;
             }
 
             const isOpen = !!_refFolderOpenState[uid];
             const filesHtml = fileLinks.map(_refFileLinkHtml).join('');
-            const openFolderBtn = folderUrl ? `<a href="${folderUrl}" target="_blank" title="Open the shared Drive folder — select-all + Download there gives a single ZIP" class="bg-transparent text-[#a5adcf] border border-white/[0.1] hover:border-orange-500/50 px-2.5 py-1 rounded font-semibold transition text-[10px] whitespace-nowrap inline-flex items-center gap-1"><i data-lucide="folder-open" class="w-3 h-3"></i> Open Folder</a>` : '';
-            const downloadAllBtn = `<button type="button" onclick="downloadAllReferenceFiles('${uid}')" title="Starts a download for every file below, one after another" class="bg-transparent text-[#a5adcf] border border-white/[0.1] hover:border-orange-500/50 px-2.5 py-1 rounded font-semibold transition text-[10px] whitespace-nowrap inline-flex items-center gap-1"><i data-lucide="download" class="w-3 h-3"></i> Download All</button>`;
+            const openFolderBtn = folderUrl ? `<a href="${folderUrl}" target="_blank" title="Open the shared Drive folder — select-all + Download there also gives a single ZIP" class="bg-transparent text-[#a5adcf] border border-white/[0.1] hover:border-orange-500/50 px-2.5 py-1 rounded font-semibold transition text-[10px] whitespace-nowrap inline-flex items-center gap-1"><i data-lucide="folder-open" class="w-3 h-3"></i> Open Folder</a>` : '';
+            const downloadAllBtn = `<button id="dlall-btn-${uid}" type="button" onclick="downloadAllGroupedFiles('${uid}', '${(label||'files').replace(/'/g,"\\'")}')" title="Downloads a single ZIP if available, otherwise starts every file downloading individually" class="bg-transparent text-[#a5adcf] border border-white/[0.1] hover:border-orange-500/50 px-2.5 py-1 rounded font-semibold transition text-[10px] whitespace-nowrap inline-flex items-center gap-1 disabled:opacity-50"><i data-lucide="download" class="w-3 h-3"></i> Download All</button>`;
             return `
                 <div>
                     <button type="button" onclick="toggleReferenceFolder('${uid}')" class="bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95">
                         <i data-lucide="${isOpen ? 'folder-open' : 'folder'}" class="w-3.5 h-3.5"></i>
-                        Reference Files (${fileLinks.length})
+                        ${label} (${fileLinks.length})
                         <i data-lucide="chevron-${isOpen ? 'up' : 'down'}" class="w-3 h-3"></i>
                     </button>
                     <div id="ref-folder-${uid}" class="flex flex-col gap-1.5 mt-1.5 pl-2 border-l-2 border-amber-500/20 ${isOpen ? '' : 'hidden'}">
@@ -4803,6 +4885,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 </div>
             `;
         }
+        // Thin, label-fixed wrappers — kept so existing call sites read clearly.
+        function buildReferenceFileMarkup(assetString, uid) { return buildGroupedFileMarkup(assetString, uid, 'Reference Files'); }
+        function buildDeliveryOutputMarkup(assetString, uid) { return buildGroupedFileMarkup(assetString, uid, 'Delivery Output'); }
         function toggleReferenceFolder(uid) {
             _refFolderOpenState[uid] = !_refFolderOpenState[uid];
             const panel = document.getElementById('ref-folder-' + uid);
@@ -4905,7 +4990,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             renderHistoryPagination(allTasks.length);
 
             pageTasks.forEach(t => {
-                const delivery = buildMediaOutputMarkup(t.assetLink, t.topic);
+                const delivery = buildDeliveryOutputMarkup(t.assetLink, `${t.id}-hist`);
                 const managerCol = canManage ? `
                     <td class="py-3 px-4 text-center whitespace-nowrap">
                         <button onclick="historyReworkTask(${t.id})" class="text-orange-400 hover:text-orange-300 text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded border border-orange-500/30 hover:bg-orange-500/10 transition">↩ Rework</button>
@@ -5535,7 +5620,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     `;
                 }
 
-                const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
+                const outputLinkBtn = buildDeliveryOutputMarkup(t.assetLink, `${t.id}-o`);
                 const refFileBtnDesktop = buildReferenceFileMarkup(t.referenceFile, `${t.id}-d`);
 
                 // Employees see who assigned the work
