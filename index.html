@@ -454,7 +454,7 @@
         <div style="margin-bottom:10px" class="non-hr-nav-group">
             <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">MY WORKSPACE</div>
             <button onclick="switchTab('my-profile');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
-            <button onclick="switchTab('attendance');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance</button>
+            <button onclick="switchTab('my-attendance');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance</button>
         </div>
         <div class="hr-mode-only" style="margin-bottom:10px">
             <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">HR</div>
@@ -955,7 +955,7 @@
                     <button id="nav-my-profile" onclick="switchTab('my-profile')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile
                     </button>
-                    <button id="nav-attendance" onclick="switchTab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
+                    <button id="nav-my-attendance" onclick="switchTab('my-attendance')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance
                     </button>
                     <button id="nav-my-leave" onclick="switchTab('my-leave')" class="sidebar-link" style="width:100%;text-align:left">
@@ -1505,6 +1505,31 @@
                     </h3>
                     <p class="text-[10px] text-[#4a5182] mb-3">Set by HR — updates here automatically whenever HR saves a change.</p>
                     <div id="my-profile-details-body" class="divide-y divide-white/[0.05]"></div>
+                </div>
+            </div>
+
+            <!-- ====== MY ATTENDANCE (employee's own — never other employees') ====== -->
+            <div id="tab-content-my-attendance" class="space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">My Attendance</h1>
+                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Your own attendance record — present days, leave, weekly offs, holidays and LOP.</p>
+                    </div>
+                    <input id="my-att-month" type="month" class="hr-input" onchange="renderMyAttendance()">
+                </div>
+                <div id="my-att-stats" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+                <div class="card glass-card p-4 rounded-2xl" style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px">
+                    <span><b class="text-green-400">P</b> = Present</span>
+                    <span><b class="text-red-400">A</b> = Absent</span>
+                    <span><b class="text-yellow-400">L</b> = Late</span>
+                    <span><b class="text-blue-400">PL</b> = Paid Leave</span>
+                    <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
+                    <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
+                    <span><b class="text-purple-400">H</b> = Holiday</span>
+                </div>
+                <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Day-by-Day</h3>
+                    <div id="my-att-calendar" class="grid grid-cols-7 gap-1.5"></div>
                 </div>
             </div>
 
@@ -2695,6 +2720,7 @@
                     if (editingRosterIndex === null) renderSettingsRoster(); // skip if user is mid-edit
                     renderLogFeed();
                     checkForNewNotifications();
+                    checkForHRNotifications(); // throttled internally — not a query every 4s
                     if (activeRole === 'employee' || activeRole === 'manager') refreshAttendanceClockCard();
                     if (activeRole === 'employee' && !document.getElementById('tab-content-dashboard').classList.contains('hidden')) renderEmployeeNotificationBar();
                     if (false) {
@@ -3001,6 +3027,7 @@
             document.getElementById('tab-content-history').classList.add('hidden');
             document.getElementById('tab-content-my-profile').classList.add('hidden');
             document.getElementById('tab-content-hr').classList.add('hidden');
+            document.getElementById('tab-content-my-attendance').classList.add('hidden');
             document.getElementById('tab-content-my-leave').classList.add('hidden');
             document.getElementById('tab-content-my-docs').classList.add('hidden');
             document.getElementById('tab-content-my-payslips').classList.add('hidden');
@@ -3023,7 +3050,7 @@
                 initHistoryYearFilter();
                 renderHistoryTable();
             } else if (targetTab === 'attendance' && activeRole === 'admin') {
-                document.getElementById('nav-attendance').classList.add('active');
+                document.getElementById('nav-attendance')?.classList.add('active');
                 document.getElementById('tab-content-attendance').classList.remove('hidden');
                 populateAttendanceEmployeeFilter();
                 initAttendanceGridSelectors();
@@ -3043,6 +3070,10 @@
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
                 hrFetchAndApplyMyPhoto();
                 initMyProfileDetails();
+            } else if (targetTab === 'my-attendance') {
+                document.getElementById('nav-my-attendance')?.classList.add('active');
+                document.getElementById('tab-content-my-attendance').classList.remove('hidden');
+                initMyAttendance();
             } else if (targetTab === 'hr' && activeRole === 'admin') {
                 document.getElementById('tab-content-hr').classList.remove('hidden');
                 initHRPanel();
@@ -4616,6 +4647,75 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return html;
         }
 
+        // Reference Files render as their OWN grouped "folder" card when there's more than
+        // one — a task with 10 reference files used to stack 10 separate buttons down the
+        // column (see buildMediaOutputMarkup above), which this replaces for Reference Files
+        // specifically. Delivery Output keeps using buildMediaOutputMarkup exactly as before —
+        // upload/delivery behavior is untouched, this only changes how references are DISPLAYED.
+        // Always re-parses the task's current referenceFile string, so a file added after the
+        // fact just appears inside the same folder next render — nothing extra to wire up.
+        let _refFolderOpenState = {}; // { uid: true|false } — survives re-renders so an open folder doesn't snap shut on the next 4s poll
+        function _refFileLinkHtml(raw) {
+            let label, url;
+            if (raw.includes('|')) {
+                const pipeIdx = raw.indexOf('|');
+                label = raw.slice(0, pipeIdx).trim();
+                url = raw.slice(pipeIdx + 1).trim();
+            } else { url = raw; label = ''; }
+            const lowercaseAsset = url.toLowerCase();
+            const isFolder = lowercaseAsset.includes('/folders/');
+            const isDrive = lowercaseAsset.includes('drive.google.com') || lowercaseAsset.includes('docs.google.com');
+            let displayName = label || (isFolder ? 'Open Folder' : (isDrive ? 'Open Drive' : 'View Link'));
+            const shownName = displayName.length > 28 ? displayName.slice(0, 28) + '…' : displayName;
+            const icon = isFolder ? `<i data-lucide="folder-open" class="w-3.5 h-3.5"></i>` : `<i data-lucide="external-link" class="w-3.5 h-3.5"></i>`;
+            const styleClass = isDrive
+                ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/40'
+                : 'bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/40';
+            return `<a href="${url}" target="_blank" title="${displayName.replace(/"/g,'&quot;')}" class="${styleClass} border px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95 max-w-[220px]">
+                ${icon} <span class="truncate">${shownName}</span>
+            </a>`;
+        }
+        function buildReferenceFileMarkup(assetString, uid) {
+            if (!assetString) return ''; // no reference files → no folder shown at all
+            const rawLinks = assetString.includes(';;')
+                ? assetString.split(';;').map(s => s.trim()).filter(Boolean)
+                : assetString.split(',').map(s => s.trim()).filter(Boolean);
+            if (!rawLinks.length) return '';
+
+            if (rawLinks.length === 1) {
+                // A single reference file is just shown directly — grouping only makes sense
+                // once there's actually more than one to group.
+                return `<div class="flex flex-col gap-1.5">${_refFileLinkHtml(rawLinks[0])}</div>`;
+            }
+
+            const isOpen = !!_refFolderOpenState[uid];
+            const filesHtml = rawLinks.map(_refFileLinkHtml).join('');
+            return `
+                <div>
+                    <button type="button" onclick="toggleReferenceFolder('${uid}')" class="bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 px-3 py-1.5 rounded font-bold transition-all duration-200 inline-flex items-center gap-1.5 text-xs whitespace-nowrap active:scale-95">
+                        <i data-lucide="${isOpen ? 'folder-open' : 'folder'}" class="w-3.5 h-3.5"></i>
+                        Reference Files (${rawLinks.length})
+                        <i data-lucide="chevron-${isOpen ? 'up' : 'down'}" class="w-3 h-3"></i>
+                    </button>
+                    <div id="ref-folder-${uid}" class="flex flex-col gap-1.5 mt-1.5 pl-2 border-l-2 border-amber-500/20 ${isOpen ? '' : 'hidden'}">${filesHtml}</div>
+                </div>
+            `;
+        }
+        function toggleReferenceFolder(uid) {
+            _refFolderOpenState[uid] = !_refFolderOpenState[uid];
+            const panel = document.getElementById('ref-folder-' + uid);
+            if (!panel) return;
+            panel.classList.toggle('hidden');
+            const btn = panel.previousElementSibling;
+            if (btn) {
+                const folderIcon = btn.querySelector('[data-lucide="folder"], [data-lucide="folder-open"]');
+                const chevron = btn.querySelector('[data-lucide^="chevron-"]');
+                if (folderIcon) folderIcon.setAttribute('data-lucide', _refFolderOpenState[uid] ? 'folder-open' : 'folder');
+                if (chevron) chevron.setAttribute('data-lucide', _refFolderOpenState[uid] ? 'chevron-up' : 'chevron-down');
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
         // ============================================================
         // HISTORY TAB — completed work archive
         // ============================================================
@@ -5334,7 +5434,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 }
 
                 const outputLinkBtn = buildMediaOutputMarkup(t.assetLink, t.topic);
-                const refFileBtnDesktop = buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic);
+                const refFileBtnDesktop = buildReferenceFileMarkup(t.referenceFile, `${t.id}-d`);
 
                 // Employees see who assigned the work
                 const assignedByLine = (activeRole === 'employee' && t.assignedBy)
@@ -5388,7 +5488,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     ${t.referenceFile ? `
                     <div class="bg-transparent p-2.5 rounded-lg border border-blue-500/20">
                         <p class="text-blue-400 font-bold text-[10px] uppercase tracking-wide mb-1.5">Reference File from Manager:</p>
-                        ${buildMediaOutputMarkup(t.referenceFile, 'Reference_' + t.topic)}
+                        ${buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`)}
                     </div>` : ''}
                     <div class="bg-transparent p-2.5 rounded-lg border border-white/[0.06]/40 space-y-1">
                         <p class="text-[#6b74a0] font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
@@ -6174,7 +6274,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // ============================================================
         // NOTIFICATION ENGINE
         // ============================================================
-        let notifications = [];  // { id, type:'new'|'rework', topic, assignedTo, time }
+        let notifications = [];  // { id, type:'new'|'rework'|'payslip'|'leave_approved'|'leave_rejected', topic, assignedTo, time }
+        // Presentation + click-destination for each notification type, kept in one place so
+        // renderDashboardNotifFeed/renderNotifList can't drift apart on icon/label/behavior.
+        function notifMeta(n) {
+            switch (n.type) {
+                case 'rework': return { icon: 'refresh-cw', color: 'red', label: '🔄 Rework Required', onClick: null };
+                case 'payslip': return { icon: 'wallet', color: 'green', label: '💰 New Payslip Available', onClick: "switchTab('my-payslips');closeNotifPanel();" };
+                case 'leave_approved': return { icon: 'check-circle-2', color: 'green', label: '✅ Leave Approved', onClick: "switchTab('my-leave');closeNotifPanel();" };
+                case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "switchTab('my-leave');closeNotifPanel();" };
+                default: return { icon: 'plus-circle', color: 'orange', label: '🆕 New Task Assigned', onClick: null };
+            }
+        }
         let _readNotifIds = new Set();
 
         function loadNotifs() {
@@ -6258,6 +6369,12 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
+        // Maps notifMeta()'s generic color name to the actual Tailwind fragments used here.
+        const NOTIF_COLOR_CLASSES = {
+            orange: { bg: 'bg-orange-500/20', icon: 'text-white/70', title: 'text-orange-300' },
+            red: { bg: 'bg-red-500/20', icon: 'text-red-400', title: 'text-red-300' },
+            green: { bg: 'bg-green-500/20', icon: 'text-green-400', title: 'text-green-300' }
+        };
         function renderDashboardNotifFeed() {
             const feed = document.getElementById('dashboard-notif-feed');
             if (!feed) return;
@@ -6266,18 +6383,21 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 return;
             }
             feed.innerHTML = notifications.map(n => {
-                const isNew = n.type === 'new';
+                const meta = notifMeta(n);
+                const c = NOTIF_COLOR_CLASSES[meta.color] || NOTIF_COLOR_CLASSES.orange;
                 const timeAgo = notifTimeAgo(n.time);
-                return `<div class="flex items-start gap-3 px-4 py-3 border-b border-white/[0.06]/50 hover:bg-transparent/40 transition">
-                    <div class="w-8 h-8 rounded-full ${isNew ? 'bg-orange-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5">
-                        <i data-lucide="${isNew ? 'plus-circle' : 'refresh-cw'}" class="w-4 h-4 ${isNew ? 'text-white/70' : 'text-red-400'}"></i>
+                const rowClick = meta.onClick ? ` cursor-pointer` : '';
+                const rowOnClick = meta.onClick ? ` onclick="dismissNotif('${n.id}');${meta.onClick}"` : '';
+                return `<div class="flex items-start gap-3 px-4 py-3 border-b border-white/[0.06]/50 hover:bg-transparent/40 transition${rowClick}"${rowOnClick}>
+                    <div class="w-8 h-8 rounded-full ${c.bg} flex items-center justify-center shrink-0 mt-0.5">
+                        <i data-lucide="${meta.icon}" class="w-4 h-4 ${c.icon}"></i>
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-bold text-white">${isNew ? '🆕 New task assigned' : '🔄 Rework required'}</p>
+                        <p class="text-xs font-bold text-white">${meta.label}</p>
                         <p class="text-[11px] text-gray-300 truncate">${n.topic}</p>
                         <p class="text-[10px] text-[#4a5182] mt-0.5">${timeAgo}</p>
                     </div>
-                    <button onclick="dismissNotif('${n.id}')" class="text-gray-600 hover:text-red-400 p-1 shrink-0 transition"><i data-lucide="x" class="w-3 h-3"></i></button>
+                    <button onclick="event.stopPropagation();dismissNotif('${n.id}')" class="text-gray-600 hover:text-red-400 p-1 shrink-0 transition"><i data-lucide="x" class="w-3 h-3"></i></button>
                 </div>`;
             }).join('');
             lucide.createIcons();
@@ -6302,20 +6422,23 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 return;
             }
             list.innerHTML = notifications.map(n => {
-                const isNew = n.type === 'new';
+                const meta = notifMeta(n);
+                const c = NOTIF_COLOR_CLASSES[meta.color] || NOTIF_COLOR_CLASSES.orange;
                 const timeAgo = notifTimeAgo(n.time);
                 const assignedLine = n.assignedTo ? `<p class="text-[11px] text-[#6b74a0] mt-0.5">By: <span class="text-gray-200 font-semibold">${n.assignedTo}</span></p>` : '';
-                return `<div class="flex items-start gap-3 px-4 py-4 hover:bg-transparent transition">
-                    <div class="w-9 h-9 rounded-full ${isNew ? 'bg-orange-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5">
-                        <i data-lucide="${isNew ? 'plus-circle' : 'refresh-cw'}" class="w-4 h-4 ${isNew ? 'text-white/70' : 'text-red-400'}"></i>
+                const rowClick = meta.onClick ? ` cursor-pointer` : '';
+                const rowOnClick = meta.onClick ? ` onclick="dismissNotif('${n.id}');${meta.onClick}"` : '';
+                return `<div class="flex items-start gap-3 px-4 py-4 hover:bg-transparent transition${rowClick}"${rowOnClick}>
+                    <div class="w-9 h-9 rounded-full ${c.bg} flex items-center justify-center shrink-0 mt-0.5">
+                        <i data-lucide="${meta.icon}" class="w-4 h-4 ${c.icon}"></i>
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-bold ${isNew ? 'text-orange-300' : 'text-red-300'} mb-1">${isNew ? '🆕 New Task Assigned' : '🔄 Rework Required'}</p>
+                        <p class="text-xs font-bold ${c.title} mb-1">${meta.label}</p>
                         <p class="text-sm font-bold text-white leading-snug break-words">${n.topic}</p>
                         ${assignedLine}
                         <p class="text-[10px] text-[#4a5182] mt-1.5">${timeAgo}</p>
                     </div>
-                    <button onclick="dismissNotif('${n.id}')" title="Dismiss" class="text-gray-600 hover:text-red-400 p-1.5 shrink-0 transition rounded-lg hover:bg-red-500/10 mt-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="event.stopPropagation();dismissNotif('${n.id}')" title="Dismiss" class="text-gray-600 hover:text-red-400 p-1.5 shrink-0 transition rounded-lg hover:bg-red-500/10 mt-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                 </div>`;
             }).join('');
             lucide.createIcons();
@@ -6596,6 +6719,80 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (changed) saveKnownTasks();
         }
 
+        // ── PAYSLIP & LEAVE NOTIFICATIONS ──
+        // Same "poll shared data, diff against a per-device known-state" pattern as
+        // checkForNewNotifications() above (there's no way for HR's browser to push directly
+        // into an employee's — different device entirely) — except the "shared data" here is
+        // hrPayroll/hrLeaveRequests, which loadHRData() already scopes to just this employee for
+        // non-HR roles (see loadHRData's access-control notes), so these notifications can only
+        // ever be about the logged-in employee's own payslips/leave, never anyone else's.
+        let _lastKnownPayslipIds = new Set();
+        let _lastKnownLeaveStatuses = {};
+        let _hrNotifBaselineLoaded = false;
+        function loadHRNotifBaseline() {
+            if (_hrNotifBaselineLoaded) return;
+            try { _lastKnownPayslipIds = new Set(JSON.parse(localStorage.getItem(`be_known_payslips_${activeEmail}`) || '[]')); } catch(e) { _lastKnownPayslipIds = new Set(); }
+            try { _lastKnownLeaveStatuses = JSON.parse(localStorage.getItem(`be_known_leave_statuses_${activeEmail}`) || '{}'); } catch(e) { _lastKnownLeaveStatuses = {}; }
+            _hrNotifBaselineLoaded = true;
+        }
+        function saveHRNotifBaseline() {
+            localStorage.setItem(`be_known_payslips_${activeEmail}`, JSON.stringify([..._lastKnownPayslipIds]));
+            localStorage.setItem(`be_known_leave_statuses_${activeEmail}`, JSON.stringify(_lastKnownLeaveStatuses));
+        }
+        let _lastHRNotifPoll = 0;
+        async function checkForHRNotifications() {
+            if (!activeEmail || !activeUser) return;
+            // Throttled well below the 4s sync tick — this does a real Supabase round-trip
+            // (loadHRData), unlike the task check above which just reads already-loaded arrays.
+            const now = Date.now();
+            if (now - _lastHRNotifPoll < 20000) return;
+            _lastHRNotifPoll = now;
+
+            const hadPayslipBaseline = localStorage.getItem(`be_known_payslips_${activeEmail}`) !== null;
+            const hadLeaveBaseline = localStorage.getItem(`be_known_leave_statuses_${activeEmail}`) !== null;
+            loadHRNotifBaseline();
+
+            try { await loadHRData(); } catch (e) { return; }
+            const me = myHREmployeeRecord();
+            if (!me) return;
+
+            // New payslip: any published row for me not seen before. First-ever check on this
+            // device just records the baseline — otherwise every existing payslip would fire a
+            // notification at once the first time someone opens the app on a new device.
+            let changed = false;
+            hrPayroll.filter(p => p.employee_id === me.id && p.published === true).forEach(p => {
+                if (!_lastKnownPayslipIds.has(p.id)) {
+                    if (hadPayslipBaseline) {
+                        const monthLabel = (() => { try { const [y,m] = p.month.split('-').map(Number); return new Date(y, m-1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); } catch(e) { return p.month; } })();
+                        addNotif('payslip', `Your payslip for ${monthLabel} is now available.`, null, p.id);
+                        sendBrowserNotif('New Payslip Available', `Your payslip for ${monthLabel} is now available.`);
+                    }
+                    _lastKnownPayslipIds.add(p.id);
+                    changed = true;
+                }
+            });
+
+            // Leave approved/rejected: status transition on one of my own requests.
+            hrLeaveRequests.filter(r => r.employee_id === me.id).forEach(r => {
+                const prev = _lastKnownLeaveStatuses[r.id];
+                if (prev !== r.status) {
+                    if (hadLeaveBaseline && prev === 'pending' && (r.status === 'approved' || r.status === 'rejected')) {
+                        const dateLabel = r.start_date === r.end_date
+                            ? new Date(r.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long' })
+                            : `${r.start_date} to ${r.end_date}`;
+                        addNotif(r.status === 'approved' ? 'leave_approved' : 'leave_rejected',
+                            `Your leave request for ${dateLabel} has been ${r.status}.`, null, r.id);
+                        sendBrowserNotif(r.status === 'approved' ? 'Leave Approved' : 'Leave Rejected',
+                            `Your leave request for ${dateLabel} has been ${r.status}.`);
+                    }
+                    _lastKnownLeaveStatuses[r.id] = r.status;
+                    changed = true;
+                }
+            });
+
+            if (changed) saveHRNotifBaseline();
+        }
+
         // ── BROWSER PUSH NOTIFICATIONS ──
         async function requestBrowserNotifPermission() {
             if ('Notification' in window && Notification.permission === 'default') {
@@ -6747,20 +6944,29 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 // either migrating logins to Supabase Auth (so RLS can key off auth.uid()) or
                 // routing reads through a small server-side proxy that checks the session first
                 // — both are real architecture changes, not something this file alone can do.
+                // Same scoping applies to leave requests, leave balances, and attendance —
+                // not just payroll. A plain employee's browser only ever receives their own
+                // rows from any of these tables; managers/admin keep the full picture they
+                // need for the Team/HR views.
                 const isHRPrivileged = activeRole === 'admin' || activeRole === 'manager';
                 let payrollQuery = dbInstance.from('hr_payroll').select('*').order('month', { ascending: false });
+                let leaveReqQuery = dbInstance.from('hr_leave_requests').select('*').order('requested_at', { ascending: false });
+                let leaveBalQuery = dbInstance.from('hr_leave_balances').select('*');
+                let attQuery = dbInstance.from('hr_attendance').select('*');
                 if (!isHRPrivileged) {
                     const myLookup = await dbInstance.from('hr_employees').select('id').eq('portal_email', (activeEmail || '').toLowerCase()).limit(1);
                     const myEmpId = myLookup.data && myLookup.data[0] && myLookup.data[0].id;
-                    payrollQuery = myEmpId
-                        ? dbInstance.from('hr_payroll').select('*').eq('employee_id', myEmpId).eq('published', true).order('month', { ascending: false })
-                        : dbInstance.from('hr_payroll').select('*').eq('employee_id', '00000000-0000-0000-0000-000000000000'); // no linked record → nothing to fetch
+                    const NOBODY = '00000000-0000-0000-0000-000000000000'; // no linked record → nothing to fetch
+                    payrollQuery = dbInstance.from('hr_payroll').select('*').eq('employee_id', myEmpId || NOBODY).eq('published', true).order('month', { ascending: false });
+                    leaveReqQuery = dbInstance.from('hr_leave_requests').select('*').eq('employee_id', myEmpId || NOBODY).order('requested_at', { ascending: false });
+                    leaveBalQuery = dbInstance.from('hr_leave_balances').select('*').eq('employee_id', myEmpId || NOBODY);
+                    attQuery = dbInstance.from('hr_attendance').select('*').eq('employee_id', myEmpId || NOBODY);
                 }
                 const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, empDocs, settings] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
-                    dbInstance.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }),
-                    dbInstance.from('hr_leave_balances').select('*'),
-                    dbInstance.from('hr_attendance').select('*'),
+                    leaveReqQuery,
+                    leaveBalQuery,
+                    attQuery,
                     payrollQuery,
                     dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false }),
                     dbInstance.from('hr_job_openings').select('*').order('created_at', { ascending: false }),
@@ -6770,10 +6976,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_company_settings').select('*').limit(1)
                 ]);
-                // Fail CLOSED, not open: if the scoped query errored (e.g. 'published' column
-                // doesn't exist yet on this database), a non-HR user gets no payroll data rather
-                // than the unscoped fallback silently exposing everyone's.
-                if (pay.error && !isHRPrivileged) { pay.data = []; pay.error = null; }
+                // Fail CLOSED, not open: if a scoped query errored (e.g. 'published' column
+                // doesn't exist yet on this database), a non-HR user gets no data back from it
+                // rather than silently falling back to something unscoped and exposing everyone's.
+                if (!isHRPrivileged) {
+                    if (pay.error) { pay.data = []; pay.error = null; }
+                    if (leaveReq.error) { leaveReq.data = []; leaveReq.error = null; }
+                    if (leaveBal.error) { leaveBal.data = []; leaveBal.error = null; }
+                    if (att.error) { att.data = []; att.error = null; }
+                }
                 if (emp.error) missingTables.push('Employees (hr_employees)');
                 if (leaveReq.error) missingTables.push('Leave Requests (hr_leave_requests)');
                 if (leaveBal.error) missingTables.push('Leave Balances (hr_leave_balances)');
@@ -9318,6 +9529,58 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 hrProfileField('Probation Period', me.probation_months ? `${me.probation_months} month(s)` : null) +
                 hrProfileField('Probation End Date', probationEnd) +
                 hrProfileField('Emergency Contact', [me.emergency_contact_name, me.emergency_contact_phone].filter(Boolean).join(' — '));
+            if (window.lucide) lucide.createIcons();
+        }
+
+        // ---------- MY ATTENDANCE (employee's own — scoped to their own hr_employees record) ----------
+        // Reuses hrCalculatePayrollForMonth (day-count totals) and hrAttDayCode (per-day status)
+        // — the exact same functions HR's own attendance/payroll views use — so this can never
+        // disagree with what HR sees for the same person. loadHRData() already scopes
+        // hr_attendance/hr_leave_requests to just this employee for non-HR roles (see the
+        // access-control notes there), so there's no separate filtering needed here.
+        async function initMyAttendance() {
+            await ensureHRDataLoaded();
+            const monthInput = document.getElementById('my-att-month');
+            if (monthInput && !monthInput.value) monthInput.value = new Date().toISOString().slice(0, 7);
+            renderMyAttendance();
+        }
+        function renderMyAttendance() {
+            const me = myHREmployeeRecord();
+            const statsEl = document.getElementById('my-att-stats');
+            const calEl = document.getElementById('my-att-calendar');
+            if (!me) {
+                statsEl.innerHTML = '';
+                calEl.innerHTML = '<p class="text-[#4a5182] text-xs col-span-7">No HR employee record is linked to your login yet — ask HR to link your portal email.</p>';
+                return;
+            }
+            const month = document.getElementById('my-att-month').value || new Date().toISOString().slice(0, 7);
+            const calc = hrCalculatePayrollForMonth(me.id, month);
+            statsEl.innerHTML = [
+                { label: 'Present', num: calc.presentDays, color: '#4ade80' },
+                { label: 'Paid Leave', num: calc.paidLeaveDays, color: '#60a5fa' },
+                { label: 'Weekly Off', num: calc.weeklyOffDays, color: '#8890b5' },
+                { label: 'Company Holidays', num: calc.holidayDays, color: '#c084fc' },
+                { label: 'LOP / Absent', num: calc.lopDays, color: '#f87171' },
+                { label: 'Half Days', num: calc.halfDayDays, color: '#facc15' }
+            ].map(s => `<div class="hr-stat-card"><div class="num" style="color:${s.color}">${s.num}</div><div class="label">${s.label}</div></div>`).join('');
+
+            const [y, m] = month.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const firstDow = new Date(y, m - 1, 1).getDay();
+            const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const cells = dowLabels.map(d => `<div class="text-center text-[10px] text-[#4a5182] font-bold uppercase pb-1">${d}</div>`);
+            for (let i = 0; i < firstDow; i++) cells.push('<div></div>');
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${month}-${String(d).padStart(2,'0')}`;
+                const dow = new Date(y, m - 1, d).getDay();
+                const code = hrAttDayCode(me, dateStr, dow);
+                const cls = code ? `hr-att-cell-${code}` : 'hr-att-cell-blank';
+                cells.push(`<div class="rounded-lg border border-white/[0.05] p-1.5 text-center" style="min-height:44px">
+                    <div class="text-[10px] text-[#6b74a0]">${d}</div>
+                    <div class="text-xs font-bold ${cls}">${code || '—'}</div>
+                </div>`);
+            }
+            calEl.innerHTML = cells.join('');
             if (window.lucide) lucide.createIcons();
         }
 
