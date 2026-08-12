@@ -1102,6 +1102,9 @@
                     <button id="hrtree-att-reports" onclick="switchHRSubtab('att-reports')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="bar-chart-2" style="width:14px;height:14px"></i> Attendance Reports
                     </button>
+                    <button id="hrtree-workforce" onclick="switchHRSubtab('workforce')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="users-round" style="width:14px;height:14px"></i> Workforce Report
+                    </button>
 
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">LEAVE</div>
                     <button id="hrtree-leave" onclick="switchHRSubtab('leave')" class="sidebar-link" style="width:100%;text-align:left">
@@ -2064,6 +2067,54 @@
                         <div id="hr-att-monthly-report"></div>
                     </div>
                     <p class="text-[10px] text-[#4a5182]">All times are shown in local time. Averages are calculated based on present days only.</p>
+                </div>
+
+                <!-- ══ HR WORKFORCE REPORT — one complete view of every employee HR has ever
+                     created, regardless of department (Production, Education, or Other) or
+                     whether they've logged in. Source is hrEmployees, the master roster —
+                     never a subset. Attendance/percentage reuse hrCalculatePayrollForMonth,
+                     the same engine payroll itself uses, so this can never disagree with
+                     payroll about how many days someone was Present. ══ -->
+                <div id="hr-sub-workforce" class="space-y-4 hidden">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Workforce Report</h1>
+                            <p class="text-[#6b74a0] text-xs mt-1">Every employee HR has created — attendance, work activity and payroll, in one place.</p>
+                        </div>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <button onclick="shiftHRWorkforceMonth(-1)" class="hr-select" style="cursor:pointer;padding:8px 12px">‹</button>
+                            <input id="hr-workforce-month" type="month" class="hr-input" onchange="renderHRWorkforceReport()">
+                            <button onclick="shiftHRWorkforceMonth(1)" class="hr-select" style="cursor:pointer;padding:8px 12px">›</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="card glass-card p-4 rounded-2xl">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Attendance Overview</h3>
+                            <div id="hr-wf-chart-attendance" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap"></div>
+                        </div>
+                        <div class="card glass-card p-4 rounded-2xl">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Department Breakdown</h3>
+                            <div id="hr-wf-chart-dept" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap"></div>
+                        </div>
+                        <div class="card glass-card p-4 rounded-2xl">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Employee Activity (Production)</h3>
+                            <div id="hr-wf-chart-activity"></div>
+                        </div>
+                        <div class="card glass-card p-4 rounded-2xl">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Payroll Summary</h3>
+                            <div id="hr-wf-chart-payroll"></div>
+                        </div>
+                    </div>
+                    <div class="card glass-card p-4 rounded-2xl">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Monthly Attendance Trend <span class="text-[9px] text-[#4a5182] normal-case">· last 6 months, company-wide Attendance %</span></h3>
+                        <div id="hr-wf-chart-trend"></div>
+                    </div>
+
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <div id="hr-workforce-table" class="p-2"></div>
+                    </div>
+                    <p class="text-[10px] text-[#4a5182]">Attendance % = Present-family days ÷ Applicable Working Days (excludes Weekly Off, Holiday, Approved Leave and days before joining/not yet elapsed — none of those count as employee absence). All figures pulled live from existing HR/attendance/Academic/payroll data — nothing here is manually entered.</p>
                 </div>
 
                 <!-- HR: LEAVE REQUESTS -->
@@ -7635,7 +7686,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return (window._hrAttendanceLogsCache || []).find(l => (l.employee_email || '').toLowerCase() === employee.portal_email && l.log_date === dateStr);
         }
 
-        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','notifications','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','notifications','accounts'];
 
         function switchHRSubtab(tab) {
             hrCurrentSubtab = tab;
@@ -7652,6 +7703,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             else if (tab === 'designations') renderHRDesignations();
             else if (tab === 'attendance') renderHRAttendance();
             else if (tab === 'att-reports') renderHRMonthlyAttendance();
+            else if (tab === 'workforce') renderHRWorkforceReport();
             else if (tab === 'leave') renderHRLeaveRequests();
             else if (tab === 'leave-balance') renderHRLeaveBalances();
             else if (tab === 'leave-calendar') renderHRLeaveCalendar();
@@ -9925,17 +9977,30 @@ async function saveLeave(){
                 </div>
             `).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
 
-            // Attendance report — this month, reuse the monthly attendance calc
+            // Attendance report — this month. Reuses hrCalculatePayrollForMonth's day-bucketing
+            // (the SAME engine payroll itself uses) instead of a second, separate calculation
+            // that could silently drift out of sync with it. Correct percentage formula:
+            //   Applicable Working Days = days the employee was actually required to show up
+            //     (excludes Weekly Off, Holiday, Approved Leave, and days before joining/not
+            //     yet elapsed — none of those are "employee absence").
+            //   Attendance % = Present-family days ÷ Applicable Working Days.
+            // A day with genuinely no clock-in and no leave/holiday/weekly-off explanation
+            // falls through to "absent" inside hrCalculatePayrollForMonth (existing LOP rule),
+            // and DOES count against the percentage — that's the "no attendance on a working
+            // day" case the spec calls out.
             const month = new Date().toISOString().slice(0,7);
             const active2 = hrEmployees.filter(e => e.employment_status === 'active');
             const rows = active2.map(e => {
+                const p = hrCalculatePayrollForMonth(e.id, month);
+                const counts = { present: p.presentDays, absent: p.absentDays, late: 0, afternoon: 0, half_day: p.halfDayDays, wfh: 0, on_leave: p.paidLeaveDays + p.unpaidLeaveDays };
+                // presentDays already folds in late/afternoon/wfh (see hrCalculatePayrollForMonth's
+                // fallthrough) — split them back out here purely for this table's own columns,
+                // without changing what actually counts toward the percentage.
                 const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month));
-                const counts = { present:0, absent:0, late:0, afternoon:0, half_day:0, wfh:0, on_leave:0 };
-                recs.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
-                // 100% Attendance Rule: Late and Afternoon Login both count as Present — see
-                // HR_PRESENT_STATUSES, the one place that decision is made.
-                const presentCount = HR_PRESENT_STATUSES.reduce((sum, s) => sum + (counts[s] || 0), 0);
-                const pct = recs.length ? Math.round(presentCount / recs.length * 100) : null;
+                recs.forEach(r => { if (r.status === 'late') { counts.late++; counts.present--; } else if (r.status === 'afternoon') { counts.afternoon++; counts.present--; } else if (r.status === 'wfh') { counts.wfh++; counts.present--; } });
+                const applicableWorkingDays = p.presentDays + p.halfDayDays + p.absentDays;
+                const presentEquivalent = p.presentDays + p.halfDayDays * 0.5;
+                const pct = applicableWorkingDays > 0 ? Math.round(presentEquivalent / applicableWorkingDays * 100) : null;
                 return { name: e.full_name, counts, pct };
             });
             document.getElementById('hr-report-attendance').innerHTML = `
@@ -10098,6 +10163,244 @@ async function saveLeave(){
             const earnedBasic = Math.round(dailySalary * elapsedDays * 100) / 100;
             const leaveDeduction = Math.round(dailySalary * (lopDays + preJoiningDays) * 100) / 100;
             return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // HR WORKFORCE REPORT — company-wide, every employee HR has created, regardless
+        // of department or portal login. Everything below reads existing in-memory arrays
+        // (hrEmployees/hrAttendance/hrLeaveRequests/hrPayroll/assignmentsList) already
+        // loaded by loadHRData(), plus one bulk (not per-employee) read from the Academic
+        // Supabase project — nothing here is a second/duplicate data source.
+        // ══════════════════════════════════════════════════════════════════════════
+
+        // Lightweight inline-SVG chart helpers — no external charting library, matches this
+        // file's existing hand-rolled canvas/SVG chart style elsewhere.
+        function hrSvgDonut(segments, size) {
+            size = size || 108; const stroke = 15;
+            const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+            const R = (size - stroke) / 2, C = 2 * Math.PI * R;
+            let offset = 0, circles = '';
+            segments.forEach(seg => {
+                const len = seg.value / total * C;
+                if (len > 0) circles += `<circle cx="${size/2}" cy="${size/2}" r="${R}" fill="none" stroke="${seg.color}" stroke-width="${stroke}" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-offset}"/>`;
+                offset += len;
+            });
+            return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="transform:rotate(-90deg);flex-shrink:0"><circle cx="${size/2}" cy="${size/2}" r="${R}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="${stroke}"/>${circles}</svg>`;
+        }
+        function hrChartLegend(segments) {
+            return `<div style="display:flex;flex-direction:column;gap:6px;min-width:120px">${segments.map(s => `<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:#a5adcf"><span style="width:9px;height:9px;border-radius:3px;background:${s.color};display:inline-block;flex-shrink:0"></span>${s.label}<b style="color:#fff;margin-left:auto">${s.value}</b></div>`).join('')}</div>`;
+        }
+        function hrSvgBars(items, h) {
+            h = h || 140; const w = 100 * Math.max(items.length, 1) + 20;
+            const max = Math.max.apply(null, items.map(i => i.value).concat([1]));
+            const barW = Math.max(40, (w - 20) / items.length - 14);
+            const bars = items.map((it, i) => {
+                const bh = Math.max(2, (it.value / max) * (h - 34));
+                const x = 10 + i * (barW + 14);
+                const y = h - 22 - bh;
+                return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="4" fill="${it.color}"/><text x="${x+barW/2}" y="${h-6}" text-anchor="middle" font-size="9.5" fill="#a5adcf">${esc(it.label)}</text><text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="11" fill="#fff" font-weight="700">${it.value}</text>`;
+            }).join('');
+            return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMinYMid meet">${bars}</svg>`;
+        }
+        function hrSvgTrend(points, h) {
+            h = h || 140;
+            if (!points.length) return '<div class="text-center text-[#4a5182] text-xs py-8">No data.</div>';
+            const w = 620;
+            const max = Math.max.apply(null, points.map(p => p.value).concat([1]));
+            const stepX = (w - 40) / Math.max(points.length - 1, 1);
+            const coords = points.map((p, i) => ({ x: 20 + i * stepX, y: h - 26 - (p.value / max) * (h - 46) }));
+            const path = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+            const dots = coords.map((c, i) => `<circle cx="${c.x}" cy="${c.y}" r="3.2" fill="#ff6b06"/><text x="${c.x}" y="${c.y-9}" text-anchor="middle" font-size="9.5" fill="#fff">${points[i].value}%</text><text x="${c.x}" y="${h-8}" text-anchor="middle" font-size="9.5" fill="#a5adcf">${esc(points[i].label)}</text>`).join('');
+            return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMinYMid meet"><path d="${path}" fill="none" stroke="#ff6b06" stroke-width="2.2"/>${dots}</svg>`;
+        }
+
+        function shiftHRWorkforceMonth(delta) {
+            const input = document.getElementById('hr-workforce-month');
+            const [y, m] = (input.value || new Date().toISOString().slice(0, 7)).split('-').map(Number);
+            const d = new Date(y, m - 1 + delta, 1);
+            input.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            renderHRWorkforceReport();
+        }
+
+        // One employee's full row: attendance (via hrCalculatePayrollForMonth — same engine
+        // payroll uses), work activity (Production: assignmentsList; Education: the bulk
+        // acadDB maps passed in), and payroll (hrPayroll, already loaded).
+        function hrWorkforceRowFor(e, month, acadBatchesByName, acadTasksByName) {
+            const p = hrCalculatePayrollForMonth(e.id, month);
+            const applicableWorkingDays = p.presentDays + p.halfDayDays + p.absentDays;
+            const presentEquivalent = p.presentDays + p.halfDayDays * 0.5;
+            const pct = applicableWorkingDays > 0 ? Math.round(presentEquivalent / applicableWorkingDays * 100) : null;
+            const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month));
+            const lateCount = recs.filter(r => r.status === 'late').length;
+            const afternoonCount = recs.filter(r => r.status === 'afternoon').length;
+            const completedRecs = recs.filter(r => r.clock_in_time && r.clock_out_time);
+            const avgHours = completedRecs.length
+                ? completedRecs.reduce((s, r) => s + (new Date(r.clock_out_time) - new Date(r.clock_in_time)) / 3600000, 0) / completedRecs.length
+                : null;
+
+            const payrollRow = hrPayroll.find(pr => pr.employee_id === e.id && pr.month === month) || null;
+
+            let work = null;
+            if (e.division === 'production') {
+                const mine = assignmentsList.filter(t => t.assignedTo === e.full_name);
+                work = {
+                    kind: 'production',
+                    assigned: mine.length,
+                    completed: mine.filter(t => t.status === 'Completed').length,
+                    pending: mine.filter(t => t.status === 'Pending' || t.status === 'In Progress').length,
+                    rework: mine.filter(t => t.status === 'Rework Required').length,
+                    delivered: mine.filter(t => t.status === 'Completed' && t.assetLink).length
+                };
+            } else if (e.division === 'education') {
+                const batches = acadBatchesByName[e.full_name.trim().toLowerCase()] || [];
+                const tasks = acadTasksByName[e.full_name.trim().toLowerCase()] || [];
+                work = {
+                    kind: 'education',
+                    batches: batches.length,
+                    tasks: tasks.length,
+                    tasksPending: tasks.filter(t => t.status === 'pending').length
+                };
+            }
+
+            return { emp: e, pct, applicableWorkingDays, presentDays: p.presentDays, lateCount, afternoonCount,
+                      leaveDays: p.paidLeaveDays + p.unpaidLeaveDays, absentDays: p.absentDays, avgHours, payrollRow, work };
+        }
+
+        async function renderHRWorkforceReport() {
+            const monthInput = document.getElementById('hr-workforce-month');
+            if (monthInput && !monthInput.value) monthInput.value = new Date().toISOString().slice(0, 7);
+            const month = (monthInput && monthInput.value) || new Date().toISOString().slice(0, 7);
+            const tableEl = document.getElementById('hr-workforce-table');
+            if (tableEl) tableEl.innerHTML = '<div class="text-center text-[#4a5182] text-xs py-8">Loading workforce report…</div>';
+
+            // ONE bulk read of Academic data (not one query per Education employee) — matched
+            // back to hr_employees by name, same convention acadSyncTrainersFromHR uses.
+            let acadBatchesByName = {}, acadTasksByName = {};
+            try {
+                const { data: trainers } = await acadDB.from('trainers').select('id,name');
+                const nameById = {};
+                (trainers || []).forEach(t => { nameById[t.id] = (t.name || '').trim().toLowerCase(); });
+                const { data: batches } = await acadDB.from('batches').select('trainer_id');
+                (batches || []).forEach(b => {
+                    const key = nameById[b.trainer_id];
+                    if (key) (acadBatchesByName[key] = acadBatchesByName[key] || []).push(b);
+                });
+                const { data: assigns } = await acadDB.from('assignments').select('trainer_id,status');
+                (assigns || []).forEach(a => {
+                    const key = nameById[a.trainer_id];
+                    if (key) (acadTasksByName[key] = acadTasksByName[key] || []).push(a);
+                });
+            } catch (e) {
+                console.warn('Workforce report: Academic activity unavailable —', e.message);
+            }
+
+            // Master list — EVERY active employee HR has created, every department. Never
+            // filtered down to "only people who logged in" or "only one module".
+            const roster = hrEmployees.filter(e => e.employment_status === 'active');
+            const rows = roster.map(e => hrWorkforceRowFor(e, month, acadBatchesByName, acadTasksByName));
+
+            // ── Charts ──
+            const attTotals = rows.reduce((acc, r) => {
+                acc.present += r.presentDays; acc.late += r.lateCount; acc.afternoon += r.afternoonCount;
+                acc.leave += r.leaveDays; acc.absent += r.absentDays; return acc;
+            }, { present: 0, late: 0, afternoon: 0, leave: 0, absent: 0 });
+            const attSegs = [
+                { label: 'Present', value: Math.max(0, attTotals.present - attTotals.late - attTotals.afternoon), color: '#10b981' },
+                { label: 'Late', value: attTotals.late, color: '#facc15' },
+                { label: 'Afternoon Login', value: attTotals.afternoon, color: '#fb923c' },
+                { label: 'Leave', value: attTotals.leave, color: '#60a5fa' },
+                { label: 'Absent', value: attTotals.absent, color: '#ef4444' }
+            ];
+            const dchartEl = document.getElementById('hr-wf-chart-attendance');
+            if (dchartEl) dchartEl.innerHTML = hrSvgDonut(attSegs) + hrChartLegend(attSegs);
+
+            const deptCounts = { production: 0, education: 0, other: 0 };
+            roster.forEach(e => { deptCounts[e.division === 'production' ? 'production' : e.division === 'education' ? 'education' : 'other']++; });
+            const deptSegs = [
+                { label: 'Production House', value: deptCounts.production, color: '#8b5cf6' },
+                { label: 'Education', value: deptCounts.education, color: '#2dd4bf' },
+                { label: 'Other', value: deptCounts.other, color: '#6b7280' }
+            ];
+            const deptEl = document.getElementById('hr-wf-chart-dept');
+            if (deptEl) deptEl.innerHTML = hrSvgDonut(deptSegs) + hrChartLegend(deptSegs);
+
+            const prodRows = rows.filter(r => r.work && r.work.kind === 'production');
+            const activitySegs = [
+                { label: 'Assigned', value: prodRows.reduce((s, r) => s + r.work.assigned, 0), color: '#60a5fa' },
+                { label: 'Completed', value: prodRows.reduce((s, r) => s + r.work.completed, 0), color: '#10b981' },
+                { label: 'Pending', value: prodRows.reduce((s, r) => s + r.work.pending, 0), color: '#facc15' },
+                { label: 'Rework', value: prodRows.reduce((s, r) => s + r.work.rework, 0), color: '#ef4444' }
+            ];
+            const activityEl = document.getElementById('hr-wf-chart-activity');
+            if (activityEl) activityEl.innerHTML = prodRows.length ? hrSvgBars(activitySegs) : '<div class="text-center text-[#4a5182] text-xs py-8">No Production-division employees yet.</div>';
+
+            const payrollRows = rows.map(r => r.payrollRow).filter(Boolean);
+            const grossTotal = payrollRows.reduce((s, p) => s + (p.basic || 0) + (p.allowances || 0), 0);
+            const deductionTotal = payrollRows.reduce((s, p) => s + (p.deductions || 0) + (p.leave_deduction || 0), 0);
+            const netTotal = payrollRows.reduce((s, p) => s + (p.net_salary || 0), 0);
+            const payrollSegs = [
+                { label: 'Gross', value: Math.round(grossTotal), color: '#60a5fa' },
+                { label: 'Deductions', value: Math.round(deductionTotal), color: '#ef4444' },
+                { label: 'Net', value: Math.round(netTotal), color: '#10b981' }
+            ];
+            const payrollEl = document.getElementById('hr-wf-chart-payroll');
+            if (payrollEl) payrollEl.innerHTML = payrollRows.length ? hrSvgBars(payrollSegs) : '<div class="text-center text-[#4a5182] text-xs py-8">No payslips generated for this month yet.</div>';
+
+            // 6-month company-wide Attendance % trend
+            const trendPoints = [];
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(month + '-01'); d.setMonth(d.getMonth() - i);
+                const mStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                let sumApplicable = 0, sumPresentEq = 0;
+                roster.forEach(e => {
+                    const p = hrCalculatePayrollForMonth(e.id, mStr);
+                    sumApplicable += p.presentDays + p.halfDayDays + p.absentDays;
+                    sumPresentEq += p.presentDays + p.halfDayDays * 0.5;
+                });
+                trendPoints.push({ label: d.toLocaleDateString('en-IN', { month: 'short' }), value: sumApplicable > 0 ? Math.round(sumPresentEq / sumApplicable * 100) : 0 });
+            }
+            const trendEl = document.getElementById('hr-wf-chart-trend');
+            if (trendEl) trendEl.innerHTML = hrSvgTrend(trendPoints);
+
+            // ── Per-employee table ──
+            if (!tableEl) return;
+            const divisionLabel = { education: 'Education', production: 'Production House', other: 'Administration' };
+            tableEl.innerHTML = `
+                <table class="w-full text-xs text-left" style="min-width:1400px">
+                    <thead><tr class="text-[#6b74a0] text-[10px] uppercase tracking-wider border-b border-white/[0.06]">
+                        <th class="py-2 pr-3">Employee</th><th class="py-2 pr-3">Department</th><th class="py-2 pr-3">Designation</th><th class="py-2 pr-3">Joined</th><th class="py-2 pr-3">Status</th>
+                        <th class="py-2 pr-3">Present</th><th class="py-2 pr-3">Late</th><th class="py-2 pr-3">Afternoon</th><th class="py-2 pr-3">Leave</th><th class="py-2 pr-3">Absent</th><th class="py-2 pr-3">Attendance %</th><th class="py-2 pr-3">Avg Hrs</th>
+                        <th class="py-2 pr-3">Work Activity</th>
+                        <th class="py-2 pr-3">Net Salary</th><th class="py-2 pr-3">Payslip</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-white/[0.05]">
+                        ${rows.map(r => {
+                            const e = r.emp;
+                            const workText = !r.work ? '—'
+                                : r.work.kind === 'production' ? `${r.work.assigned} assigned · ${r.work.completed} done · ${r.work.pending} pending · ${r.work.rework} rework`
+                                : `${r.work.batches} batches · ${r.work.tasks} tasks (${r.work.tasksPending} pending)`;
+                            const pctColor = r.pct === null ? 'text-[#4a5182]' : r.pct >= 90 ? 'text-green-400' : r.pct >= 75 ? 'text-yellow-400' : 'text-red-400';
+                            return `<tr>
+                                <td class="py-2 pr-3 text-white flex items-center gap-2">${hrAvatarHTML(e, 22)}${esc(e.full_name)}</td>
+                                <td class="py-2 pr-3">${divisionLabel[e.division] || e.division || '—'}</td>
+                                <td class="py-2 pr-3">${esc(hrRoleDisplay(e))}</td>
+                                <td class="py-2 pr-3">${e.joining_date || '—'}</td>
+                                <td class="py-2 pr-3"><span class="hr-badge ${e.employment_status==='active'?'hr-badge-active':'hr-badge-inactive'}">${esc(e.employment_status||'—')}</span></td>
+                                <td class="py-2 pr-3">${r.presentDays}</td>
+                                <td class="py-2 pr-3">${r.lateCount}</td>
+                                <td class="py-2 pr-3">${r.afternoonCount}</td>
+                                <td class="py-2 pr-3">${r.leaveDays}</td>
+                                <td class="py-2 pr-3">${r.absentDays}</td>
+                                <td class="py-2 pr-3 font-bold ${pctColor}">${r.pct === null ? '—' : r.pct + '%'}</td>
+                                <td class="py-2 pr-3">${r.avgHours === null ? '—' : r.avgHours.toFixed(1) + 'h'}</td>
+                                <td class="py-2 pr-3 text-[#a5adcf]">${workText}</td>
+                                <td class="py-2 pr-3">${r.payrollRow ? '₹' + (r.payrollRow.net_salary || 0).toLocaleString('en-IN') : '—'}</td>
+                                <td class="py-2 pr-3">${r.payrollRow ? (r.payrollRow.published ? '<span class="hr-badge hr-badge-active">Sent</span>' : '<span class="hr-badge hr-badge-pending">Draft</span>') : '<span class="text-[#4a5182]">Not generated</span>'}</td>
+                            </tr>`;
+                        }).join('') || `<tr><td colspan="15" class="py-6 text-center text-[#4a5182]">No employees in HR yet.</td></tr>`}
+                    </tbody>
+                </table>`;
+            if (window.lucide) lucide.createIcons();
         }
 
         // ---------- PROBATION ----------
