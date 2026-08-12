@@ -986,6 +986,15 @@
                     </button>
                 </div>
 
+                <!-- ACADEMIC MODULE — only shown once checkAcademicAccess() confirms this
+                     employee's HR record is Education division with an Academic role -->
+                <div id="nav-group-academic" style="margin-bottom:14px" class="non-hr-nav-group hidden">
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">ACADEMIC</div>
+                    <button onclick="openAcademicModule()" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="graduation-cap" style="width:14px;height:14px"></i> Academic Module
+                    </button>
+                </div>
+
                 <!-- MANAGER -->
                 <div id="nav-group-manager" style="margin-bottom:14px" class="manager-only non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MANAGER</div>
@@ -2239,6 +2248,12 @@
         // INTERACTIVE GOOGLE APPS SCRIPT WEB APP ROUTER
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFOBXoFwQgm0JupcSJ5yxSExVWPfZiieypPUJPHkamIaxEXO44V-5z3XxuQ32HbdiV/exec";
 
+        // Where the separate Academic module (academics.html) is deployed. Update this to the
+        // real, full URL once you know exactly where it's hosted (it lives on a different
+        // domain than this app, so a plain relative path won't resolve correctly — e.g.
+        // "https://amailtosreekanth-cpu.github.io/be-command-center/academics.html").
+        const ACADEMIC_MODULE_URL = "academics.html"; // ← REPLACE with the real full URL before shipping
+
         // ── Google Sheets live sync ──────────────────────────────────
         // Silently pushes a row to the named sheet tab.
         // action: 'syncTask' | 'syncAttendance' | 'syncLog' | 'syncMonthlyReport'
@@ -2869,6 +2884,9 @@
             // HR-saved photo (from the employee's linked HR record) takes priority over the
             // legacy chat-avatar upload above, everywhere the person's own avatar is shown.
             hrFetchAndApplyMyPhoto();
+            // Reveals the Academic Module sidebar link if — and only if — HR has this
+            // employee's record set to the Education division.
+            checkAcademicAccess();
 
             const loginScreen = document.getElementById('portal-login-screen');
             loginScreen.classList.add('hidden');
@@ -7380,6 +7398,52 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             } catch (e) {
                 console.warn('Could not load HR-saved profile photo:', e.message);
             }
+        }
+
+        // ── Academic Module access (HR-driven, no separate account) ──────────────────
+        // An employee gets Academic access purely from their existing HR record: HR puts
+        // them in the Education division with an Academic role (Academic Head / Academic
+        // Trainer / Academic Counselor) — nothing else to configure, no second account to
+        // create. This mirrors the exact lookup hrFetchAndApplyMyPhoto already uses above.
+        let _academicAccessRole = null; // null = no access; else 'academic_head' | 'trainer'
+        async function checkAcademicAccess() {
+            _academicAccessRole = null;
+            const navGroup = document.getElementById('nav-group-academic');
+            if (navGroup) navGroup.classList.add('hidden');
+            if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
+            try {
+                let { data, error } = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
+                if (error) { console.warn('Academic access check failed:', error.message); return; }
+                if (!data || !data[0]) {
+                    const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
+                    if (!byName.error && byName.data && byName.data[0]) data = byName.data;
+                }
+                if (!data || !data[0]) return; // no linked HR record — no academic access, silently
+                const rec = data[0];
+                if (rec.division !== 'education') return; // not Education dept — no academic access
+                const roles = hrParseRoles(rec.department);
+                const isHead = roles.some(r => hrStripLevel(r).role === 'Academic Head');
+                _academicAccessRole = isHead ? 'academic_head' : 'trainer'; // Academic Trainer / Academic Counselor both get trainer-level access
+                if (navGroup) navGroup.classList.remove('hidden');
+            } catch (e) {
+                console.warn('Academic access check error:', e.message);
+            }
+        }
+        // Hands the already-authenticated session off to academics.html. No second login —
+        // academics.html re-verifies this same hr_employees record itself (via its own
+        // read of this Supabase project) rather than trusting the role claimed here, so this
+        // token is only ever used to say WHO is asking, never to grant access on its own.
+        function openAcademicModule() {
+            if (!_academicAccessRole) { alert('Your account does not have Academic Module access.'); return; }
+            // academics.html lives on a different domain, so localStorage can't carry the
+            // handoff (browsers never share storage across origins) — identity travels as a
+            // URL parameter instead. This is NOT an authorization token: academics.html
+            // ignores any role/access claim and re-checks this email against the live HR
+            // record itself before granting anything, exactly as the same-origin version did.
+            const url = ACADEMIC_MODULE_URL
+                + '?e=' + encodeURIComponent(activeEmail || '')
+                + '&n=' + encodeURIComponent(activeUser || '');
+            window.open(url, '_blank', 'noopener');
         }
 
         // Converts a Google Drive "share" link (file/d/ID/view, ?id=ID, /open?id=ID, etc.)
