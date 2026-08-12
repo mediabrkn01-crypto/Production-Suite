@@ -970,6 +970,17 @@
                     </button>
                 </div>
 
+                <!-- ACADEMIC — only shown once checkAcademicAccess() confirms this employee's
+                     HR record is Education division with an Academic role. Replaces PIPELINE
+                     as their primary workspace (that group is hidden for them at the same
+                     time this one is revealed — see checkAcademicAccess()). -->
+                <div id="nav-group-academic" style="margin-bottom:14px" class="non-hr-nav-group hidden">
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">ACADEMIC</div>
+                    <button id="nav-academic" onclick="switchTab('academic')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="graduation-cap" style="width:14px;height:14px"></i> Academic Timeline
+                    </button>
+                </div>
+
                 <!-- MY WORKSPACE (every role) -->
                 <div id="nav-group-workspace" style="margin-bottom:14px" class="non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MY WORKSPACE</div>
@@ -987,15 +998,6 @@
                     </button>
                     <button id="nav-my-payslips" onclick="switchTab('my-payslips')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips
-                    </button>
-                </div>
-
-                <!-- ACADEMIC MODULE — only shown once checkAcademicAccess() confirms this
-                     employee's HR record is Education division with an Academic role -->
-                <div id="nav-group-academic" style="margin-bottom:14px" class="non-hr-nav-group hidden">
-                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">ACADEMIC</div>
-                    <button onclick="openAcademicModule()" class="sidebar-link" style="width:100%;text-align:left">
-                        <i data-lucide="graduation-cap" style="width:14px;height:14px"></i> Academic Module
                     </button>
                 </div>
 
@@ -1209,6 +1211,21 @@
                         <i data-lucide="log-out" class="w-4 h-4"></i> Out
                     </button>
                 </div>
+            </div>
+
+            <!-- ACADEMIC TIMELINE — Education-division employees land here instead of the
+                 Pipeline Matrix. Embeds the existing academics.html as-is (same functionality,
+                 same SSO handoff used by the sidebar link before) rather than reimplementing
+                 any of it here — this is routing, not a rebuild. -->
+            <div id="tab-content-academic" class="space-y-6 hidden" style="height:calc(100vh - 40px)">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Academic Timeline</h1>
+                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Batches, sessions, attendance and academic tasks — live from the Academic Module.</p>
+                    </div>
+                    <a href="#" onclick="openAcademicModule();return false" class="text-[10px] text-[#a5adcf] hover:text-white uppercase tracking-wider flex items-center gap-1"><i data-lucide="external-link" style="width:12px;height:12px"></i> Open in new tab</a>
+                </div>
+                <iframe id="academic-module-iframe" style="width:100%;height:100%;min-height:600px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:#050505" src="about:blank"></iframe>
             </div>
 
             <div id="tab-content-dashboard" class="space-y-6">
@@ -3081,6 +3098,7 @@
             }
 
             document.getElementById('tab-content-dashboard').classList.add('hidden');
+            document.getElementById('tab-content-academic').classList.add('hidden');
             document.getElementById('tab-content-attendance').classList.add('hidden');
             document.getElementById('tab-content-settings').classList.add('hidden');
             document.getElementById('tab-content-reports').classList.add('hidden');
@@ -3099,11 +3117,15 @@
             document.getElementById('employee-notification-banner').classList.add('hidden');
 
             if(targetTab === 'dashboard') {
-                document.getElementById('nav-dashboard').classList.add('active');
+                document.getElementById('nav-dashboard')?.classList.add('active');
                 document.getElementById('tab-content-dashboard').classList.remove('hidden');
                 if (activeRole === 'employee' || activeRole === 'social_media') {
                     renderEmployeeNotificationBar();
                 }
+            } else if (targetTab === 'academic') {
+                document.getElementById('nav-academic')?.classList.add('active');
+                document.getElementById('tab-content-academic').classList.remove('hidden');
+                loadAcademicModuleIframe();
             } else if (targetTab === 'history') {
                 document.getElementById('nav-history').classList.add('active');
                 document.getElementById('tab-content-history').classList.remove('hidden');
@@ -7410,10 +7432,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // Trainer / Academic Counselor) — nothing else to configure, no second account to
         // create. This mirrors the exact lookup hrFetchAndApplyMyPhoto already uses above.
         let _academicAccessRole = null; // null = no access; else 'academic_head' | 'trainer'
+        // Called once, right after login. Reads this employee's own HR record (Department is
+        // the single source of truth — HR never has to separately "assign" an Academic
+        // dashboard) and, for Education-division staff, swaps their default workspace from
+        // the Production Pipeline to the Academic Timeline: hides PIPELINE, reveals ACADEMIC,
+        // and switches the landing tab. Everyone else's Pipeline workflow is untouched.
         async function checkAcademicAccess() {
             _academicAccessRole = null;
             const navGroup = document.getElementById('nav-group-academic');
+            const pipelineGroup = document.getElementById('nav-group-pipeline');
             if (navGroup) navGroup.classList.add('hidden');
+            if (pipelineGroup) pipelineGroup.classList.remove('hidden'); // default: everyone sees Pipeline
             if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
             try {
                 let { data, error } = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
@@ -7424,14 +7453,32 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 }
                 if (!data || !data[0]) return; // no linked HR record — no academic access, silently
                 const rec = data[0];
+                // Show the employee's real HR title next to their name (e.g. "Academic Head" /
+                // "Senior Video Editor") instead of the generic system-role label, wherever
+                // that record was found — applies to every employee, not just Education.
+                const roleLabelEl = document.getElementById('sidebar-user-role');
+                if (roleLabelEl && hrRoleDisplay(rec) !== '—') roleLabelEl.textContent = hrRoleDisplay(rec);
                 if (rec.division !== 'education') return; // not Education dept — no academic access
                 const roles = hrParseRoles(rec.department);
                 const isHead = roles.some(r => hrStripLevel(r).role === 'Academic Head');
                 _academicAccessRole = isHead ? 'academic_head' : 'trainer'; // Academic Trainer / Academic Counselor both get trainer-level access
                 if (navGroup) navGroup.classList.remove('hidden');
+                if (pipelineGroup) pipelineGroup.classList.add('hidden'); // Academic staff: Pipeline isn't their workspace
+                switchTab('academic'); // land here instead of the Pipeline Matrix default
             } catch (e) {
                 console.warn('Academic access check error:', e.message);
             }
+        }
+        // Loads the embedded Academic Timeline iframe once per session (switching tabs back
+        // and forth afterward just shows/hides it — reloading would lose whatever the person
+        // was doing inside academics.html).
+        function loadAcademicModuleIframe() {
+            const frame = document.getElementById('academic-module-iframe');
+            if (!frame || frame.dataset.loaded === '1') return;
+            frame.src = ACADEMIC_MODULE_URL
+                + '?e=' + encodeURIComponent(activeEmail || '')
+                + '&n=' + encodeURIComponent(activeUser || '');
+            frame.dataset.loaded = '1';
         }
         // Hands the already-authenticated session off to academics.html. No second login —
         // academics.html re-verifies this same hr_employees record itself (via its own
