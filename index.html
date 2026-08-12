@@ -1196,6 +1196,21 @@
                     </button>
                 </div>
 
+                <!-- PERSISTENT CLOCK IN/OUT — lives in the sidebar (outside every tab-content-*
+                     div) so it's visible and identical regardless of which tab/module is open:
+                     Pipeline, HR, or Academic all see this same control. Same handleClockIn()/
+                     handleClockOut() as the Pipeline dashboard's own card (untouched, still
+                     there) — this is a second view onto the one attendance record, kept in
+                     sync by refreshAttendanceClockCard() updating both together. -->
+                <div id="sidebar-clock-card" class="hidden" style="margin:0 0 10px;padding:9px 10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <div style="min-width:0">
+                        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#808a9d;font-weight:700">Attendance</div>
+                        <div id="sidebar-attendance-status" style="font-size:10px;color:#808a9d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Checking…</div>
+                    </div>
+                    <button id="sidebar-clockin-btn" onclick="handleClockIn()" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-size:10px;font-weight:700;padding:5px 10px;border-radius:6px;white-space:nowrap;cursor:pointer;text-transform:uppercase">Clock In</button>
+                    <button id="sidebar-clockout-btn" onclick="handleClockOut()" class="hidden" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#f87171;font-size:10px;font-weight:700;padding:5px 10px;border-radius:6px;white-space:nowrap;cursor:pointer;text-transform:uppercase">Clock Out</button>
+                </div>
+
                 <!-- Logout — admin only -->
                 <!-- Logout: shown for non-admin users only (employees see logout; admin manages sessions via account switcher) -->
                 <button id="sidebar-logout-btn" onclick="logoutPortal()" class="employee-only" style="width:100%;display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;font-weight:500;color:#ef4444;background:transparent;border:none;cursor:pointer;transition:color 0.15s" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#ef4444'">
@@ -1344,7 +1359,7 @@
                     <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Academic trainer roster.</p>
                 </div>
                 <div class="acadx-section">
-                    <h2>Trainers <button onclick="openModal('trainer')" class="role-head-only hidden">+ Add Trainer</button></h2>
+                    <h2>Trainers/Coaches <span class="acadx-tag" style="background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border-color:rgba(255,255,255,.12)">Synced from HR</span></h2>
                     <table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
                         <tbody id="trainerTable"></tbody></table>
                 </div>
@@ -1370,8 +1385,27 @@
             <div id="tab-content-acad-attendance" class="space-y-6 hidden">
                 <div>
                     <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Attendance</h1>
-                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Team leave visibility for the Academic department. Clock in/out from the sidebar above — same attendance record used everywhere in this app.</p>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee attendance and student attendance, in one place. Clock in/out from the sidebar — same attendance record used everywhere in this app.</p>
                 </div>
+
+                <!-- EMPLOYEE ATTENDANCE — Academic Head/Class Coordinator/Coaches, sourced
+                     from the SAME hr_attendance data HR's own Attendance tab reads (dbInstance,
+                     not acadDB) — one attendance record per person, no separate Academic copy. -->
+                <div class="acadx-section">
+                    <h2>Employee Attendance <span class="acadx-tag">Today · Education Team</span></h2>
+                    <table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Clock In</th></tr></thead>
+                        <tbody id="acadEmpAttendance"><tr><td colspan="4" class="acadx-loading">Loading…</td></tr></tbody></table>
+                </div>
+
+                <!-- STUDENT ATTENDANCE — quick access to the same batch → session → mark
+                     flow already used from Live Batches (openAtt/saveAtt), so there's one
+                     marking mechanism, just reachable from two convenient places. -->
+                <div class="acadx-section">
+                    <h2>Student Attendance <span class="acadx-tag">By Batch</span></h2>
+                    <div class="acadx-mhint" style="margin-bottom:10px">Select a batch to mark or review a session's attendance.</div>
+                    <div id="acadStudentAttendanceBatches" class="acadx-loading">Loading…</div>
+                </div>
+
                 <div class="acadx-section" id="leaveShared">
                     <h2>Leave &amp; Attendance <span class="acadx-tag">Academic Team</span></h2>
                     <div class="acadx-lv-note">Visible to the whole Academic team. This is separate from the main HR Leave approval flow (see My Leave in Workspace) — this is quick self-service visibility for who's out today among trainers.</div>
@@ -3144,7 +3178,8 @@
                 document.getElementById('admin-download-wrapper')?.classList.remove('hidden');
                 document.getElementById('admin-download-logs-btn')?.classList.remove('hidden');
                 document.getElementById('employee-notification-banner')?.classList.add('hidden');
-                document.getElementById('attendance-clock-card')?.classList.add('hidden');
+                document.getElementById('attendance-clock-card')?.classList.add('hidden'); // unchanged — admin never saw the Pipeline dashboard card
+                refreshAttendanceClockCard(); // NEW: still populates the persistent sidebar widget, so HR/admin gets Clock In too (req: available to everyone)
             } else if (activeRole === 'manager') {
                 document.getElementById('admin-assignment-panel')?.classList.remove('hidden');
                 document.getElementById('th-actions')?.classList.add('hidden');
@@ -4364,30 +4399,44 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return attendanceLogs.find(r => r.employee_email === activeEmail && r.log_date === today) || null;
         }
 
+        // Updates BOTH clock-in surfaces from the one attendance record: the original card
+        // on the Pipeline dashboard (untouched, same as before) and the persistent sidebar
+        // widget (visible on every tab, including Academic — see #sidebar-clock-card) — same
+        // record, same design language, so "Clock In" behaves identically everywhere.
         function refreshAttendanceClockCard() {
             myActiveAttendanceRecord = findMyOpenAttendanceRecord();
 
-            const statusText = document.getElementById('attendance-status-text');
-            const clockInBtn = document.getElementById('attendance-clockin-btn');
-            const clockOutBtn = document.getElementById('attendance-clockout-btn');
-            if (!statusText || !clockInBtn || !clockOutBtn) return;
-
-            if (!myActiveAttendanceRecord) {
-                statusText.innerHTML = `You haven't clocked in today.`;
-                clockInBtn.classList.remove('hidden');
-                clockOutBtn.classList.add('hidden');
-            } else if (myActiveAttendanceRecord.log_in_time && !myActiveAttendanceRecord.log_out_time) {
-                const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                statusText.innerHTML = `Clocked in at <span class="text-emerald-400 font-bold">${inTime}</span>. Don't forget to clock out!`;
-                clockInBtn.classList.add('hidden');
-                clockOutBtn.classList.remove('hidden');
-            } else {
-                const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const outTime = new Date(myActiveAttendanceRecord.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                statusText.innerHTML = `Completed today: <span class="text-white font-bold">${inTime} → ${outTime}</span>.`;
-                clockInBtn.classList.add('hidden');
-                clockOutBtn.classList.add('hidden');
-            }
+            const apply = (statusEl, inBtn, outBtn) => {
+                if (!statusEl || !inBtn || !outBtn) return;
+                if (!myActiveAttendanceRecord) {
+                    statusEl.innerHTML = `You haven't clocked in today.`;
+                    inBtn.classList.remove('hidden');
+                    outBtn.classList.add('hidden');
+                } else if (myActiveAttendanceRecord.log_in_time && !myActiveAttendanceRecord.log_out_time) {
+                    const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    statusEl.innerHTML = `Clocked in at <span class="text-emerald-400 font-bold">${inTime}</span>. Don't forget to clock out!`;
+                    inBtn.classList.add('hidden');
+                    outBtn.classList.remove('hidden');
+                } else {
+                    const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const outTime = new Date(myActiveAttendanceRecord.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    statusEl.innerHTML = `Completed today: <span class="text-white font-bold">${inTime} → ${outTime}</span>.`;
+                    inBtn.classList.add('hidden');
+                    outBtn.classList.add('hidden');
+                }
+            };
+            apply(
+                document.getElementById('attendance-status-text'),
+                document.getElementById('attendance-clockin-btn'),
+                document.getElementById('attendance-clockout-btn')
+            );
+            const sidebarCard = document.getElementById('sidebar-clock-card');
+            if (sidebarCard) sidebarCard.classList.remove('hidden');
+            apply(
+                document.getElementById('sidebar-attendance-status'),
+                document.getElementById('sidebar-clockin-btn'),
+                document.getElementById('sidebar-clockout-btn')
+            );
         }
 
         async function handleClockIn() {
@@ -7295,7 +7344,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // that broke photo uploads earlier. One field, read/written everywhere consistently.
         const HR_ROLES = {
             production: ['Editor', 'Designer', 'Cinematographer', 'Photographer', 'Video Editor', 'Colorist', 'VFX & Motion Graphics Artist', 'Production Coordinator'],
-            education: ['Academic Counselor', 'Academic Head', 'Academic Trainer'],
+            education: ['Academic Head', 'Class Coordinator', 'Coaches'], // exactly these 3 — Academic Head & Class Coordinator have identical management access, Coaches see only their own assigned work (see checkAcademicAccess)
             other: [] // Administration/HR/etc. — no preset chips, Designation field covers the title
         };
         function hrParseRoles(departmentStr) {
@@ -7648,8 +7697,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 if (roleLabelEl && hrRoleDisplay(rec) !== '—') roleLabelEl.textContent = hrRoleDisplay(rec);
                 if (rec.division !== 'education') return; // not Education dept — no academic access
                 const roles = hrParseRoles(rec.department);
-                const isHead = roles.some(r => hrStripLevel(r).role === 'Academic Head');
-                _academicAccessRole = isHead ? 'academic_head' : 'trainer'; // Academic Trainer / Academic Counselor both get trainer-level access
+                // Academic Head and Class Coordinator are the SAME power level throughout this
+                // module (see the isHead checks below) — only Coaches get the reduced,
+                // view-your-own-assignments tier.
+                const isHead = roles.some(r => { const x = hrStripLevel(r).role; return x === 'Academic Head' || x === 'Class Coordinator'; });
+                _academicAccessRole = isHead
+                    ? (roles.some(r => hrStripLevel(r).role === 'Class Coordinator') ? 'class_coordinator' : 'academic_head')
+                    : 'trainer'; // "Coaches" in the UI — kept as 'trainer' internally, matches the data model / academics.html this was ported from
                 if (navGroup) navGroup.classList.remove('hidden');
                 if (pipelineGroup) pipelineGroup.classList.add('hidden'); // Academic staff: Pipeline isn't their workspace
                 // Feeds the ported academics.html engine below (loadLive/loadHeadView/etc. all
@@ -7667,8 +7721,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // loading, just without a login screen to dismiss or a second sidebar to reveal
         // (this app's own sidebar/switchTab already handles that, see checkAcademicAccess).
         async function acadBoot() {
-            const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
-            const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
+            const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head' || currentUser.role === 'class_coordinator';
+            const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head' || currentUser.role === 'class_coordinator';
             document.querySelectorAll('.role-head-only').forEach(el => isHead ? el.classList.remove('hidden') : el.remove());
             document.querySelectorAll('.role-trainer-only').forEach(el => el.classList.toggle('hidden', !isTrainerCapable));
             document.querySelectorAll('.role-nontrainer-only').forEach(el => el.classList.toggle('hidden', isTrainerCapable));
@@ -7679,6 +7733,47 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             await loadStats();
             loadLeave();
             await loadAcadDashboard();
+            await acadLoadEmployeeAttendance();
+            acadRenderStudentAttendanceBatches();
+        }
+        // EMPLOYEE ATTENDANCE half of the merged Attendance tab — reads the SAME
+        // hr_attendance table (dbInstance, the main app's own project) HR's own Attendance
+        // tab reads, scoped to Education-division employees. No separate Academic
+        // attendance record; this is a filtered view onto the one central table.
+        async function acadLoadEmployeeAttendance() {
+            const tbody = document.getElementById('acadEmpAttendance');
+            if (!tbody || typeof dbInstance === 'undefined' || !dbInstance) return;
+            try {
+                const { data: emps } = await dbInstance.from('hr_employees').select('id,full_name,department,employment_status').eq('division', 'education');
+                const today = todayDateStr();
+                const ids = (emps || []).map(e => e.id);
+                let attRows = [];
+                if (ids.length) {
+                    const { data } = await dbInstance.from('hr_attendance').select('*').eq('att_date', today).in('employee_id', ids);
+                    attRows = data || [];
+                }
+                const attByEmp = new Map(attRows.map(a => [a.employee_id, a]));
+                tbody.innerHTML = (emps || []).map(e => {
+                    const att = attByEmp.get(e.id);
+                    const status = att ? att.status : 'not marked';
+                    const clockIn = att && att.clock_in_time ? new Date(att.clock_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+                    return `<tr><td>${esc(e.full_name)}</td><td>${esc(hrRoleDisplay(e))}</td><td><span class="acadx-badge ${status === 'present' ? 'acadx-b-active' : 'acadx-b-inactive'}">${esc(status)}</span></td><td>${clockIn}</td></tr>`;
+                }).join('') || '<tr><td colspan="4" class="acadx-empty">No Education-division employees yet.</td></tr>';
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="4" class="acadx-empty">Could not load attendance.</td></tr>';
+                console.warn('acadLoadEmployeeAttendance failed:', e.message);
+            }
+        }
+        // STUDENT ATTENDANCE half — same batches loadLive() already fetched into
+        // window._liveBatches, same openAtt()/saveAtt() marking flow Live Batches uses.
+        // One marking mechanism, reachable from either tab — not a second one.
+        function acadRenderStudentAttendanceBatches() {
+            const el = document.getElementById('acadStudentAttendanceBatches');
+            if (!el) return;
+            const batches = window._liveBatches || [];
+            el.innerHTML = batches.length
+                ? batches.map((b, i) => `<div class="acadx-dash-row"><span>${esc(b.name)}${b.elite ? ' · 1:1' : ' · ' + (b.students ? b.students.length : 0) + ' students'}</span><button class="acadx-act-btn" onclick="openAtt(${i})">Mark Attendance</button></div>`).join('')
+                : '<div class="acadx-empty">No active batches.</div>';
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -7691,14 +7786,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // this app already has its own auth and its own attendance system.
         // ══════════════════════════════════════════════════════════════════════
 function requireHeadAccess(){
-  if (!currentUser || (currentUser.role !== 'founder' && currentUser.role !== 'academic_head')) {
+  if (!currentUser || (currentUser.role !== 'founder' && currentUser.role !== 'academic_head' && currentUser.role !== 'class_coordinator')) {
     alert('Access denied. Only the Founder or Academic Head can do this.');
     return false;
   }
   return true;
 }
 async function loadLive(){
-  const isHead=currentUser.role==='founder'||currentUser.role==='academic_head';
+  const isHead=currentUser.role==='founder'||currentUser.role==='academic_head'||currentUser.role==='class_coordinator';
   const {data:studs}=await acadDB.from('students').select('id,uin,name,contact,batch_name,trainer_name,programme,status,planned_end_date,source_counsellor,enrolled_date');
   let rows=(studs||[]).filter(s=>s.name);
   if(!isHead){const me=(currentUser.name||'').toLowerCase();rows=rows.filter(s=>(s.trainer_name||'').toLowerCase()===me);}
@@ -7791,8 +7886,8 @@ async function saveAtt(){
   document.getElementById('modalAtt').classList.remove('on');
 }
 async function loadAcadDashboard(){
-  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
-  const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
+  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head' || currentUser.role === 'class_coordinator';
+  const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head' || currentUser.role === 'class_coordinator';
   const countRows = (sel) => {
     const rows = document.querySelectorAll(sel);
     if (rows.length === 1 && rows[0].querySelector('.acadx-empty')) return 0;
@@ -7854,16 +7949,44 @@ async function loadStats(){
 // Trainers table is visible to everyone (read-only for trainers, +Add/Delete for Head via
 // the role-head-only class already on those controls) — split out so it can be populated
 // on its own for a plain Trainer login, not just as part of the Head bundle below.
+// Trainers/Coaches are HR's data, not Academic's — this list is auto-synced from
+// hr_employees (Education division) every time the module boots (see
+// acadSyncTrainersFromHR), so there's nothing to add/edit/delete here. Read-only.
 async function loadTrainersTable(){
-  // The per-row Delete button stays visible to everyone (same pattern as the rest of this
-  // file) — deleteTrainer() itself calls requireHeadAccess() and blocks non-Head users at
-  // the actual point of the write, same runtime guard already used for openModal() etc.
-  const { data: trainers } = await acadDB.from('trainers').select('*').order('created_at');
+  await acadSyncTrainersFromHR();
+  const { data: trainers } = await acadDB.from('trainers').select('*').order('name');
   document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => `
-    <tr><td>${t.name}</td><td>${t.type}</td>
-    <td><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td>
-    <td><button class="acadx-act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>
-  `).join('') || '<tr><td colspan="4" class="acadx-empty">No trainers yet</td></tr>';
+    <tr><td>${t.name}</td><td>${t.type==='pt'?'Part-time':'Full-time'}</td>
+    <td><span class="acadx-badge ${t.status==='active'?'acadx-b-active':'acadx-b-inactive'}">${t.status}</span></td>
+    <td class="acadx-empty" style="padding:0;text-align:left">Managed by HR</td></tr>
+  `).join('') || '<tr><td colspan="4" class="acadx-empty">No Education-division employees yet — add one in HR → Employees.</td></tr>';
+}
+// The bridge that makes "HR adds a Coach → immediately selectable in Academic" true
+// without a second, manually-maintained trainer database: every Education-division
+// hr_employees row is mirrored into acadDB's own `trainers` table (upsert by name), which
+// is what batches/tasks/sessions actually foreign-key against. HR's data is always the
+// source of truth — this only keeps the mirror in sync, it never writes back to HR.
+async function acadSyncTrainersFromHR(){
+  if (typeof dbInstance === 'undefined' || !dbInstance) return;
+  try {
+    const { data: eduEmployees, error } = await dbInstance.from('hr_employees').select('full_name,employment_status').eq('division', 'education');
+    if (error || !eduEmployees) return;
+    const { data: existingTrainers } = await acadDB.from('trainers').select('id,name');
+    const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
+    for (const emp of eduEmployees) {
+      if (!emp.full_name) continue;
+      const key = emp.full_name.trim().toLowerCase();
+      const status = emp.employment_status === 'active' ? 'active' : 'inactive';
+      const existing = existingByName.get(key);
+      if (existing) {
+        await acadDB.from('trainers').update({ status }).eq('id', existing.id);
+      } else {
+        await acadDB.from('trainers').insert({ name: emp.full_name.trim(), type: 'ft', status });
+      }
+    }
+  } catch (e) {
+    console.warn('Trainer sync from HR failed:', e.message);
+  }
 }
 async function loadHeadView(){
   await loadTrainersTable();
