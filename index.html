@@ -620,7 +620,11 @@
                 <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
                     <p class="hr-field-label" style="margin-bottom:8px">Login & System Access</p>
                 </div>
-                <div><label class="hr-field-label">Login Email</label><input id="hr-emp-email" placeholder="used to sign in to the panel" class="hr-input w-full"></div>
+                <div id="hr-emp-academic-hint" class="sm:col-span-2 hidden" style="background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#5eead4;margin-bottom:2px">
+                    <i data-lucide="graduation-cap" style="width:13px;height:13px;display:inline;vertical-align:-2px"></i>
+                    Education-division employees need a Login Email + Password below to sign in — that's also what opens the Academic Module for them automatically. No separate Academic account needed.
+                </div>
+                <div><label class="hr-field-label">Login Email</label><input id="hr-emp-email" placeholder="used to sign in to the panel" oninput="updateHREmpAcademicHint()" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Password</label><input id="hr-emp-login-password" type="password" placeholder="leave blank to keep existing" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Role</label>
                     <select id="hr-emp-role" class="hr-select w-full">
@@ -7613,6 +7617,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                   }).join('')
                 : '<p class="text-[10px] text-[#4a5182]">No preset roles for this department — use the Designation field for a title.</p>';
             renderHREmpPrimaryRoleSelect();
+            updateHREmpAcademicHint();
+        }
+        // Shows a nudge in the Add/Edit Employee modal when this is an Education-division
+        // employee who doesn't yet have a login email typed in — that login is the ONLY
+        // thing standing between "added to HR" and "can open the Academic Module".
+        function updateHREmpAcademicHint() {
+            const hint = document.getElementById('hr-emp-academic-hint');
+            if (!hint) return;
+            const div = document.getElementById('hr-emp-division')?.value;
+            const email = document.getElementById('hr-emp-email')?.value.trim();
+            hint.classList.toggle('hidden', !(div === 'education' && !email));
         }
         function hrToggleEmpRole(role) {
             const i = hrEmpSelectedRoles.indexOf(role);
@@ -7688,6 +7703,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('hr-emp-payment-cycle').value = e?.payment_cycle || 'monthly';
             document.getElementById('hr-emp-probation-months').value = e?.probation_months || '';
             updateHREmpProbationPreview();
+            updateHREmpAcademicHint(); // re-check now that hr-emp-email above actually has its final value
             document.getElementById('hr-employee-modal').classList.remove('hidden');
             document.getElementById('hr-employee-modal').classList.add('flex');
         }
@@ -7974,7 +7990,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     </div>
                     <p class="text-xs text-[#a5adcf]">${divisionLabel[e.division] || e.division} · ${hrRoleDisplay(e)}</p>
                     ${hrRoleInfo(e).additional.length ? `<p class="text-[10px] text-[#6b74a0]">+ ${hrRoleInfo(e).additional.join(', ')}</p>` : ''}
-                    ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Panel Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : `<p class="text-[10px] text-[#4a5182]">No portal login linked</p>`}
+                    ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Panel Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : (e.division === 'education' ? `<p class="text-[10px] text-amber-400">⚠ No login set — can't access Academic Module yet</p>` : `<p class="text-[10px] text-[#4a5182]">No portal login linked</p>`)}
                     <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
                         <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
                         <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
