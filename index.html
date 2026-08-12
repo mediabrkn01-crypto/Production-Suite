@@ -1196,21 +1196,6 @@
                     </button>
                 </div>
 
-                <!-- PERSISTENT CLOCK IN/OUT — lives in the sidebar (outside every tab-content-*
-                     div) so it's visible and identical regardless of which tab/module is open:
-                     Pipeline, HR, or Academic all see this same control. Same handleClockIn()/
-                     handleClockOut() as the Pipeline dashboard's own card (untouched, still
-                     there) — this is a second view onto the one attendance record, kept in
-                     sync by refreshAttendanceClockCard() updating both together. -->
-                <div id="sidebar-clock-card" class="hidden" style="margin:0 0 10px;padding:9px 10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;gap:8px">
-                    <div style="min-width:0">
-                        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#808a9d;font-weight:700">Attendance</div>
-                        <div id="sidebar-attendance-status" style="font-size:10px;color:#808a9d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Checking…</div>
-                    </div>
-                    <button id="sidebar-clockin-btn" onclick="handleClockIn()" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-size:10px;font-weight:700;padding:5px 10px;border-radius:6px;white-space:nowrap;cursor:pointer;text-transform:uppercase">Clock In</button>
-                    <button id="sidebar-clockout-btn" onclick="handleClockOut()" class="hidden" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#f87171;font-size:10px;font-weight:700;padding:5px 10px;border-radius:6px;white-space:nowrap;cursor:pointer;text-transform:uppercase">Clock Out</button>
-                </div>
-
                 <!-- Logout — admin only -->
                 <!-- Logout: shown for non-admin users only (employees see logout; admin manages sessions via account switcher) -->
                 <button id="sidebar-logout-btn" onclick="logoutPortal()" class="employee-only" style="width:100%;display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;font-weight:500;color:#ef4444;background:transparent;border:none;cursor:pointer;transition:color 0.15s" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#ef4444'">
@@ -1302,6 +1287,21 @@
                     <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Academic Dashboard</h1>
                     <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Today's schedule, live batches and pending work at a glance.</p>
                 </div>
+                <!-- Same central attendance record as Pipeline's own clock card and HR's —
+                     one source of truth (attendanceLogs / hr_attendance), three places it's
+                     shown, kept in sync by refreshAttendanceClockCard(). Living in the
+                     Dashboard content area (not the sidebar) so it can never sit next to
+                     Sign Out and risk an accidental click. -->
+                <div class="acadx-section" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px 20px">
+                    <div>
+                        <div class="acadx-tag" style="margin-bottom:6px;display:inline-block">Attendance</div>
+                        <div id="acad-attendance-status-text" style="font-size:13px;color:#F2F2F0">Checking today's status...</div>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button id="acad-attendance-clockin-btn" onclick="handleClockIn()" class="acadx-lv-apply" style="background:linear-gradient(135deg,#10b981,#059669)">Clock In</button>
+                        <button id="acad-attendance-clockout-btn" onclick="handleClockOut()" class="acadx-lv-apply hidden" style="background:linear-gradient(135deg,#ef4444,#dc2626)">Clock Out</button>
+                    </div>
+                </div>
                 <div class="acadx-dash-grid" id="dashSummary"><div class="acadx-card"><div class="lbl">Loading</div><div class="val">…</div></div></div>
                 <div class="acadx-dash-grid">
                     <div class="acadx-section acadx-dash-card"><h3>Today's Schedule</h3><div id="dashToday" class="acadx-loading">Loading…</div></div>
@@ -1385,39 +1385,29 @@
             <div id="tab-content-acad-attendance" class="space-y-6 hidden">
                 <div>
                     <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Attendance</h1>
-                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee attendance and student attendance, in one place. Clock in/out from the sidebar — same attendance record used everywhere in this app.</p>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Student attendance for your batches. Leave applications live under My Workspace → My Leave — not duplicated here.</p>
                 </div>
 
-                <!-- EMPLOYEE ATTENDANCE — Academic Head/Class Coordinator/Coaches, sourced
-                     from the SAME hr_attendance data HR's own Attendance tab reads (dbInstance,
-                     not acadDB) — one attendance record per person, no separate Academic copy. -->
-                <div class="acadx-section">
-                    <h2>Employee Attendance <span class="acadx-tag">Today · Education Team</span></h2>
-                    <table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Clock In</th></tr></thead>
-                        <tbody id="acadEmpAttendance"><tr><td colspan="4" class="acadx-loading">Loading…</td></tr></tbody></table>
-                </div>
-
-                <!-- STUDENT ATTENDANCE — quick access to the same batch → session → mark
-                     flow already used from Live Batches (openAtt/saveAtt), so there's one
-                     marking mechanism, just reachable from two convenient places. -->
+                <!-- STUDENT ATTENDANCE — the main focus of this tab. Quick access to the same
+                     batch → session → mark flow already used from Live Batches (openAtt/
+                     saveAtt), so there's one marking mechanism, just reachable from two
+                     convenient places, not a second one. -->
                 <div class="acadx-section">
                     <h2>Student Attendance <span class="acadx-tag">By Batch</span></h2>
                     <div class="acadx-mhint" style="margin-bottom:10px">Select a batch to mark or review a session's attendance.</div>
                     <div id="acadStudentAttendanceBatches" class="acadx-loading">Loading…</div>
                 </div>
 
-                <div class="acadx-section" id="leaveShared">
-                    <h2>Leave &amp; Attendance <span class="acadx-tag">Academic Team</span></h2>
-                    <div class="acadx-lv-note">Visible to the whole Academic team. This is separate from the main HR Leave approval flow (see My Leave in Workspace) — this is quick self-service visibility for who's out today among trainers.</div>
-                    <div class="acadx-subhead" style="margin:4px 0 10px">On leave today</div>
-                    <div id="onLeaveToday" class="acadx-loading">Loading…</div>
-                    <div class="acadx-subhead" style="margin:18px 0 10px">Apply your own leave</div>
-                    <div class="acadx-lv-row">
-                        <label class="acadx-lv-field"><span>From</span><input id="lv_from" type="date"/></label>
-                        <label class="acadx-lv-field"><span>To</span><input id="lv_to" type="date"/></label>
-                        <label class="acadx-lv-field acadx-lv-grow"><span>Reason</span><input id="lv_reason" placeholder="Optional"/></label>
-                        <button class="acadx-lv-apply" onclick="saveLeave()">Apply</button>
-                    </div>
+                <!-- EMPLOYEE ATTENDANCE — Academic Head / Class Coordinator ONLY (Coaches use
+                     My Attendance under Workspace for their own record and never see anyone
+                     else's — role-head-only hard-removes this for Coaches, see acadBoot).
+                     Sourced from the SAME hr_attendance data HR's own Attendance tab reads
+                     (dbInstance, not acadDB) — one attendance record per person, no separate
+                     Academic copy. -->
+                <div class="acadx-section role-head-only hidden">
+                    <h2>Employee Attendance <span class="acadx-tag">Today · Education Team</span></h2>
+                    <table><thead><tr><th>Name</th><th>Designation</th><th>Status</th><th>Clock In</th><th>Clock Out</th></tr></thead>
+                        <tbody id="acadEmpAttendance"><tr><td colspan="5" class="acadx-loading">Loading…</td></tr></tbody></table>
                 </div>
             </div>
 
@@ -1773,7 +1763,7 @@
                 <div class="card glass-card p-4 rounded-2xl" style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px">
                     <span><b class="text-green-400">P</b> = Present</span>
                     <span><b class="text-red-400">A</b> = Absent</span>
-                    <span><b class="text-yellow-400">L</b> = Late</span>
+                    <span><b class="text-yellow-400">L</b> = Late</span><span><b class="text-orange-400">AL</b> = Afternoon Login</span>
                     <span><b class="text-blue-400">PL</b> = Paid Leave</span>
                     <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
                     <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
@@ -1907,6 +1897,28 @@
 
                 <!-- HR: DASHBOARD -->
                 <div id="hr-sub-dashboard" class="space-y-6">
+                    <!-- Clock-In is for everyone, HR included (req: available everywhere, same
+                         design/behavior) — same attendanceLogs/hr_attendance record as
+                         Pipeline's card and Academic's card, kept in sync by
+                         refreshAttendanceClockCard(). Admin previously had no clock-in UI at
+                         all since they don't land on the Pipeline dashboard; this is that fix. -->
+                    <div class="card p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2.5 rounded-lg bg-orange-500/10 text-white/70 shrink-0"><i data-lucide="clock-4" class="w-5 h-5"></i></div>
+                            <div>
+                                <p class="text-xs font-bold text-white uppercase tracking-wider">Attendance</p>
+                                <p id="hr-attendance-status-text" class="text-[11px] text-[#6b74a0] mt-0.5">Checking today's status...</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="text-xs font-bold px-4 py-2 rounded-md uppercase tracking-wide flex items-center gap-1.5 cursor-pointer transition" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-family:Inter,sans-serif">
+                                <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
+                            </button>
+                            <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
+                                <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
+                            </button>
+                        </div>
+                    </div>
                     <div>
                         <h3 class="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">HR Overview</h3>
                         <div id="hr-dash-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
@@ -2041,7 +2053,7 @@
                     <div class="card glass-card p-3 rounded-2xl" style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px">
                         <span><b class="text-green-400">P</b> = Present</span>
                         <span><b class="text-red-400">A</b> = Absent</span>
-                        <span><b class="text-yellow-400">L</b> = Late</span>
+                        <span><b class="text-yellow-400">L</b> = Late</span><span><b class="text-orange-400">AL</b> = Afternoon Login</span>
                         <span><b class="text-blue-400">PL</b> = Paid Leave</span>
                         <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
                         <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
@@ -4425,17 +4437,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     outBtn.classList.add('hidden');
                 }
             };
+            // Three surfaces, one record: Pipeline dashboard (Production), Academic dashboard,
+            // HR dashboard — same design, same behavior, same underlying attendanceLogs row.
             apply(
                 document.getElementById('attendance-status-text'),
                 document.getElementById('attendance-clockin-btn'),
                 document.getElementById('attendance-clockout-btn')
             );
-            const sidebarCard = document.getElementById('sidebar-clock-card');
-            if (sidebarCard) sidebarCard.classList.remove('hidden');
             apply(
-                document.getElementById('sidebar-attendance-status'),
-                document.getElementById('sidebar-clockin-btn'),
-                document.getElementById('sidebar-clockout-btn')
+                document.getElementById('acad-attendance-status-text'),
+                document.getElementById('acad-attendance-clockin-btn'),
+                document.getElementById('acad-attendance-clockout-btn')
+            );
+            apply(
+                document.getElementById('hr-attendance-status-text'),
+                document.getElementById('hr-attendance-clockin-btn'),
+                document.getElementById('hr-attendance-clockout-btn')
             );
         }
 
@@ -4492,12 +4509,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const existingRes = await dbInstance.from('hr_attendance').select('*').eq('employee_id', emp.id).eq('att_date', dateStr).limit(1);
                 const existing = existingRes.data && existingRes.data[0];
                 if (kind === 'in') {
+                    // Late/Afternoon-login is auto-detected from the actual clock-in time —
+                    // never manually guessed — and still means Present (see HR_PRESENT_STATUSES
+                    // and hrAttStatusLabel: it always reads "Present · ...", never bare "Late").
+                    const computedStatus = hrComputeClockInStatus(whenIso);
                     if (existing) {
                         // Don't flip an explicit Holiday marking to Present just because someone logged in.
-                        const nextStatus = existing.status === 'holiday' ? 'holiday' : 'present';
+                        const nextStatus = existing.status === 'holiday' ? 'holiday' : computedStatus;
                         await dbInstance.from('hr_attendance').update({ status: nextStatus, clock_in_time: whenIso }).eq('id', existing.id);
                     } else {
-                        await dbInstance.from('hr_attendance').insert([{ employee_id: emp.id, att_date: dateStr, status: 'present', clock_in_time: whenIso }]);
+                        await dbInstance.from('hr_attendance').insert([{ employee_id: emp.id, att_date: dateStr, status: computedStatus, clock_in_time: whenIso }]);
                     }
                 } else if (kind === 'out' && existing) {
                     // Update the same day's record only — never create a second attendance entry on clock-out.
@@ -7400,7 +7421,36 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             try { await dbInstance.from('hr_leave_balances').insert(rows); }
             catch (e) { console.warn('Could not seed default leave balances:', e.message); }
         }
-        const HR_ATT_STATUSES = ['present', 'absent', 'late', 'half_day', 'wfh', 'on_leave', 'holiday'];
+        const HR_ATT_STATUSES = ['present', 'absent', 'late', 'afternoon', 'half_day', 'wfh', 'on_leave', 'holiday'];
+        // ── Late / Afternoon-login auto-detection ──────────────────────────────────
+        // Single source of truth for the two time cutoffs, so HR only ever edits one place.
+        const HR_LATE_AFTER_HOUR = 9.5;      // after 9:30 AM = Late (still Present)
+        const HR_AFTERNOON_AFTER_HOUR = 13;  // after 1:00 PM = Present · Afternoon Login
+        // Given a clock-in ISO timestamp, returns which of present/late/afternoon it counts
+        // as. Called once, at the moment of clock-in (hrSyncClockToAttendance below) — the
+        // status is auto-computed, never manually guessed, and then just stored/read like
+        // any other status everywhere else in this file.
+        function hrComputeClockInStatus(whenIso) {
+            const d = new Date(whenIso);
+            const hour = d.getHours() + d.getMinutes() / 60;
+            if (hour > HR_AFTERNOON_AFTER_HOUR) return 'afternoon';
+            if (hour > HR_LATE_AFTER_HOUR) return 'late';
+            return 'present';
+        }
+        // Single source of truth for how a status reads on screen — "Late"/"Afternoon" alone
+        // could look like a synonym for absent; every display should say "Present · X" so
+        // it's unambiguous that the employee IS present, just later than the ideal time.
+        function hrAttStatusLabel(status) {
+            return ({
+                present: 'Present', late: 'Present · Late', afternoon: 'Present · Afternoon Login',
+                half_day: 'Present · Half Day', wfh: 'Present · WFH', absent: 'Absent',
+                on_leave: 'Leave', holiday: 'Holiday'
+            })[status] || 'Not Marked';
+        }
+        // Which stored statuses count as "Present" for any percentage/summary calculation —
+        // one array everyone reads, so "does Late count as Present" can never drift out of
+        // sync between the dashboard tile, reports, and Academic's Employee Attendance view.
+        const HR_PRESENT_STATUSES = ['present', 'late', 'afternoon', 'half_day', 'wfh'];
 
         let hrEmployees = [];
         let hrLeaveRequests = [];
@@ -7731,15 +7781,19 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (isTrainerCapable) await loadTrainerView();
             await loadLive();
             await loadStats();
-            loadLeave();
+            // Leave application/balance/approval intentionally NOT loaded here anymore —
+            // that's My Workspace → My Leave now, not duplicated inside Academic (see the
+            // Attendance tab's HTML comment). loadLeave()/saveLeave() are unused dead code
+            // left in place only because the "Log a Session" flow doesn't touch them.
             await loadAcadDashboard();
-            await acadLoadEmployeeAttendance();
+            if (isHead) await acadLoadEmployeeAttendance(); // Coaches never see this — role-head-only hard-removes the section itself too
             acadRenderStudentAttendanceBatches();
         }
-        // EMPLOYEE ATTENDANCE half of the merged Attendance tab — reads the SAME
+        // EMPLOYEE ATTENDANCE half of the Attendance tab — Academic Head/Class Coordinator
+        // ONLY (acadBoot only calls this when isHead, and the section itself is
+        // role-head-only so a Coach never even has the table in the DOM). Reads the SAME
         // hr_attendance table (dbInstance, the main app's own project) HR's own Attendance
-        // tab reads, scoped to Education-division employees. No separate Academic
-        // attendance record; this is a filtered view onto the one central table.
+        // tab reads, scoped to Education-division employees. No separate Academic record.
         async function acadLoadEmployeeAttendance() {
             const tbody = document.getElementById('acadEmpAttendance');
             if (!tbody || typeof dbInstance === 'undefined' || !dbInstance) return;
@@ -7755,12 +7809,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const attByEmp = new Map(attRows.map(a => [a.employee_id, a]));
                 tbody.innerHTML = (emps || []).map(e => {
                     const att = attByEmp.get(e.id);
-                    const status = att ? att.status : 'not marked';
+                    const status = att ? att.status : null;
+                    const label = status ? hrAttStatusLabel(status) : 'Not Marked';
+                    const isPresentFamily = status && HR_PRESENT_STATUSES.includes(status);
                     const clockIn = att && att.clock_in_time ? new Date(att.clock_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
-                    return `<tr><td>${esc(e.full_name)}</td><td>${esc(hrRoleDisplay(e))}</td><td><span class="acadx-badge ${status === 'present' ? 'acadx-b-active' : 'acadx-b-inactive'}">${esc(status)}</span></td><td>${clockIn}</td></tr>`;
-                }).join('') || '<tr><td colspan="4" class="acadx-empty">No Education-division employees yet.</td></tr>';
+                    const clockOut = att && att.clock_out_time ? new Date(att.clock_out_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+                    return `<tr><td>${esc(e.full_name)}</td><td>${esc(hrRoleDisplay(e))}</td><td><span class="acadx-badge ${isPresentFamily ? 'acadx-b-active' : 'acadx-b-inactive'}">${esc(label)}</span></td><td>${clockIn}</td><td>${clockOut}</td></tr>`;
+                }).join('') || '<tr><td colspan="5" class="acadx-empty">No Education-division employees yet.</td></tr>';
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="4" class="acadx-empty">Could not load attendance.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="acadx-empty">Could not load attendance.</td></tr>';
                 console.warn('acadLoadEmployeeAttendance failed:', e.message);
             }
         }
@@ -8558,7 +8615,7 @@ async function saveLeave(){
             const thisMonth = now.getMonth(), thisYear = now.getFullYear();
             const newThisMonth = hrEmployees.filter(e => e.joining_date && new Date(e.joining_date).getMonth() === thisMonth && new Date(e.joining_date).getFullYear() === thisYear).length;
             const todayStr = now.toISOString().slice(0,10);
-            const manuallyMarkedPresentIds = new Set(hrAttendance.filter(a => a.att_date === todayStr && ['present','late','half_day','wfh'].includes(a.status)).map(a => a.employee_id));
+            const manuallyMarkedPresentIds = new Set(hrAttendance.filter(a => a.att_date === todayStr && HR_PRESENT_STATUSES.includes(a.status)).map(a => a.employee_id));
             const portalPresentIds = new Set(hrEmployees.filter(e => hrPortalLogFor(e, todayStr)).map(e => e.id));
             const todayPresent = new Set([...manuallyMarkedPresentIds, ...portalPresentIds]).size;
             const onLeaveToday = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr).length;
@@ -9223,6 +9280,7 @@ async function saveLeave(){
                 if (rec.status === 'holiday') return 'H';
                 if (rec.status === 'absent') return 'A';
                 if (rec.status === 'late') return 'L';
+                if (rec.status === 'afternoon') return 'AL'; // Present · Afternoon Login (still counts as Present — see HR_PRESENT_STATUSES)
                 if (rec.status === 'on_leave') {
                     // Unpaid leave gets its own code (UL) — it used to render identically to
                     // Absent ('A'), making it impossible to tell "took approved unpaid leave"
@@ -9872,17 +9930,21 @@ async function saveLeave(){
             const active2 = hrEmployees.filter(e => e.employment_status === 'active');
             const rows = active2.map(e => {
                 const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month));
-                const counts = { present:0, absent:0, late:0, half_day:0, wfh:0, on_leave:0 };
+                const counts = { present:0, absent:0, late:0, afternoon:0, half_day:0, wfh:0, on_leave:0 };
                 recs.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
-                return { name: e.full_name, counts };
+                // 100% Attendance Rule: Late and Afternoon Login both count as Present — see
+                // HR_PRESENT_STATUSES, the one place that decision is made.
+                const presentCount = HR_PRESENT_STATUSES.reduce((sum, s) => sum + (counts[s] || 0), 0);
+                const pct = recs.length ? Math.round(presentCount / recs.length * 100) : null;
+                return { name: e.full_name, counts, pct };
             });
             document.getElementById('hr-report-attendance').innerHTML = `
                 <table class="w-full text-sm text-left">
                     <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                        <th class="py-2 pr-4">Employee</th><th class="py-2 pr-4">Present</th><th class="py-2 pr-4">Absent</th><th class="py-2 pr-4">Late</th><th class="py-2 pr-4">Half Day</th><th class="py-2 pr-4">WFH</th><th class="py-2 pr-4">On Leave</th>
+                        <th class="py-2 pr-4">Employee</th><th class="py-2 pr-4">Present</th><th class="py-2 pr-4">Absent</th><th class="py-2 pr-4">Late</th><th class="py-2 pr-4">Afternoon</th><th class="py-2 pr-4">Half Day</th><th class="py-2 pr-4">WFH</th><th class="py-2 pr-4">On Leave</th><th class="py-2 pr-4">Attendance %</th>
                     </tr></thead>
                     <tbody class="divide-y divide-white/[0.05]">
-                        ${rows.map(r => `<tr><td class="py-2 pr-4 text-white">${r.name}</td><td class="py-2 pr-4">${r.counts.present}</td><td class="py-2 pr-4">${r.counts.absent}</td><td class="py-2 pr-4">${r.counts.late}</td><td class="py-2 pr-4">${r.counts.half_day}</td><td class="py-2 pr-4">${r.counts.wfh}</td><td class="py-2 pr-4">${r.counts.on_leave}</td></tr>`).join('') || `<tr><td colspan="7" class="py-4 text-center text-[#4a5182] text-xs">No data.</td></tr>`}
+                        ${rows.map(r => `<tr><td class="py-2 pr-4 text-white">${r.name}</td><td class="py-2 pr-4">${r.counts.present}</td><td class="py-2 pr-4">${r.counts.absent}</td><td class="py-2 pr-4">${r.counts.late}</td><td class="py-2 pr-4">${r.counts.afternoon}</td><td class="py-2 pr-4">${r.counts.half_day}</td><td class="py-2 pr-4">${r.counts.wfh}</td><td class="py-2 pr-4">${r.counts.on_leave}</td><td class="py-2 pr-4 font-bold ${r.pct===null?'text-[#4a5182]':r.pct>=90?'text-green-400':r.pct>=75?'text-yellow-400':'text-red-400'}">${r.pct===null?'—':r.pct+'%'}</td></tr>`).join('') || `<tr><td colspan="9" class="py-4 text-center text-[#4a5182] text-xs">No data.</td></tr>`}
                     </tbody>
                 </table>`;
         }
@@ -11019,7 +11081,7 @@ async function saveLeave(){
             await ensureHRDataLoaded();
             const team = myTeamMembers();
             const todayStr = new Date().toISOString().slice(0,10);
-            const present = team.filter(e => hrAttendance.some(a => a.employee_id === e.id && a.att_date === todayStr && ['present','late','half_day','wfh'].includes(a.status))).length;
+            const present = team.filter(e => hrAttendance.some(a => a.employee_id === e.id && a.att_date === todayStr && HR_PRESENT_STATUSES.includes(a.status))).length;
             const onLeave = team.filter(e => hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr)).length;
             const pendingLeave = hrLeaveRequests.filter(r => team.some(e => e.id === r.employee_id) && r.status === 'pending').length;
             document.getElementById('team-stats').innerHTML = [
