@@ -7593,17 +7593,27 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     if (leaveBal.error) { leaveBal.data = []; leaveBal.error = null; }
                     if (att.error) { att.data = []; att.error = null; }
                 }
-                if (emp.error) missingTables.push('Employees (hr_employees)');
-                if (leaveReq.error) missingTables.push('Leave Requests (hr_leave_requests)');
-                if (leaveBal.error) missingTables.push('Leave Balances (hr_leave_balances)');
-                if (att.error) missingTables.push('Attendance (hr_attendance)');
-                if (pay.error) missingTables.push('Payroll (hr_payroll)');
-                if (jobs.error) missingTables.push('Job Openings (hr_job_openings)');
-                if (applicants.error) missingTables.push('Applicants (hr_applicants)');
-                if (salHist.error) missingTables.push('Salary History (hr_salary_history)');
-                if (holidays.error) missingTables.push('Holidays (hr_holidays)');
-                if (empDocs.error) missingTables.push('Employee Documents (hr_employee_documents)');
-                if (settings.error) missingTables.push('Company Settings (hr_company_settings)');
+                // A table only counts as genuinely "missing/unreachable" if it errored AND no
+                // usable rows came back with it. Supabase can return a non-null .error
+                // alongside real .data on the same response (seen live: this banner claiming
+                // Employees was missing while the Employees count and Today's Workforce table
+                // were both showing real rows on the very same page) — treating any truthy
+                // .error as fatal, regardless of .data, was a false-positive generator.
+                const hasRows = (r) => r && r.data && r.data.length > 0;
+                if (emp.error && !hasRows(emp)) missingTables.push('Employees (hr_employees)');
+                if (leaveReq.error && !hasRows(leaveReq)) missingTables.push('Leave Requests (hr_leave_requests)');
+                if (leaveBal.error && !hasRows(leaveBal)) missingTables.push('Leave Balances (hr_leave_balances)');
+                if (att.error && !hasRows(att)) missingTables.push('Attendance (hr_attendance)');
+                if (pay.error && !hasRows(pay)) missingTables.push('Payroll (hr_payroll)');
+                if (jobs.error && !hasRows(jobs)) missingTables.push('Job Openings (hr_job_openings)');
+                if (applicants.error && !hasRows(applicants)) missingTables.push('Applicants (hr_applicants)');
+                if (salHist.error && !hasRows(salHist)) missingTables.push('Salary History (hr_salary_history)');
+                if (holidays.error && !hasRows(holidays)) missingTables.push('Holidays (hr_holidays)');
+                if (empDocs.error && !hasRows(empDocs)) missingTables.push('Employee Documents (hr_employee_documents)');
+                // Company Settings is a single-row config table (limit(1)) — an empty result is
+                // its NORMAL "not configured yet" state, not a sign the table is missing, so it
+                // only counts as missing if there's an error AND literally no row at all.
+                if (settings.error && !(settings.data && settings.data.length)) missingTables.push('Company Settings (hr_company_settings)');
                 if (missingTables.length) {
                     hrTablesMissing = true;
                     console.warn('HR tables missing/unreachable in Supabase:', missingTables.join(', '), emp.error, leaveReq.error, leaveBal.error, att.error, pay.error, jobs.error, applicants.error, salHist.error, holidays.error, empDocs.error, settings.error);
