@@ -1452,6 +1452,10 @@
         // column only — hr.html doesn't run the Pipeline module, so unlike index.html this
         // is fetched fresh (and lightly) right before it's needed, not kept live in memory.
         let assignmentsList = [];
+        // Login-account roster (user_roster) — used for the Supervisor→HR auto-sync in
+        // loadHRData() and to show each employee's linked login account. Populated by
+        // loadHRData() itself now (see its Promise.all), not kept live like index.html does.
+        let userRoster = [];
 
 // ── hrSendAnnouncement (orig line 7417) ──
         async function hrSendAnnouncement() {
@@ -1551,7 +1555,7 @@
                     leaveBalQuery = dbInstance.from('hr_leave_balances').select('*').eq('employee_id', myEmpId || NOBODY);
                     attQuery = dbInstance.from('hr_attendance').select('*').eq('employee_id', myEmpId || NOBODY);
                 }
-                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, empDocs, settings] = await Promise.all([
+                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, empDocs, settings, roster] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
                     leaveReqQuery,
                     leaveBalQuery,
@@ -1563,7 +1567,12 @@
                     dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
                     dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
-                    dbInstance.from('hr_company_settings').select('*').limit(1)
+                    dbInstance.from('hr_company_settings').select('*').limit(1),
+                    // Login-account roster — hr.html doesn't run the Pipeline module, so unlike
+                    // index.html (which keeps this live from its own boot query) this is fetched
+                    // fresh here. Used for the Supervisor→HR auto-sync below and to show each
+                    // employee's linked login account.
+                    dbInstance.from('user_roster').select('*')
                 ]);
                 // A newer loadHRData() call has started since this one began — its results
                 // will apply instead; discard these now-stale ones rather than overwrite.
@@ -1642,6 +1651,7 @@
                 hrHolidays = holidays.data || [];
                 hrEmployeeDocuments = empDocs.data || [];
                 hrCompanySettings = (settings.data && settings.data[0]) || { weekly_off_sunday: true, weekly_off_saturday: false };
+                if (!roster.error) userRoster = roster.data || [];
                 // Existing portal check-in/out history (from the Attendance Log feature) —
                 // used to show real check-in times and infer "present" for HR employees linked by portal email.
                 window._hrAttendanceLogsCache = attLogs.data || [];
