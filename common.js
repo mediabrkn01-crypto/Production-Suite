@@ -22,6 +22,12 @@
 //     identically regardless of which loader populated them.
 // ══════════════════════════════════════════════════════════════════════════
 
+// Small generic HTML-escape helper — used by Academic (index.html) and now also by
+// hr.html's rendering code. Safe to also exist in index.html's own script (a `function`
+// declaration re-declaring the same name doesn't throw, unlike let/const) — both are
+// identical, whichever loads is fine.
+function esc(s){return String(s??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
+
 // ---------- Supabase clients ----------
 const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
