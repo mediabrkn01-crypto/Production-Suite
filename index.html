@@ -534,6 +534,7 @@
         <div style="margin-bottom:10px" class="non-hr-nav-group">
             <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:6px;font-weight:600">MY WORKSPACE</div>
             <button onclick="switchTab('my-profile');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
+            <button onclick="switchTab('announcements');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements <span id="announcements-badge-mobile" class="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded" style="background:rgba(255,107,6,0.2);color:#ff6b06;display:none"></span></button>
             <button onclick="switchTab('my-attendance');closeMobileSidebar()" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance</button>
         </div>
         <div class="hr-mode-only" style="margin-bottom:10px">
@@ -743,6 +744,10 @@
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MY WORKSPACE</div>
                     <button id="nav-my-profile" onclick="switchTab('my-profile')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile
+                    </button>
+                    <button id="nav-announcements" onclick="switchTab('announcements')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements
+                        <span id="announcements-badge-sidebar" class="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded" style="background:rgba(255,107,6,0.2);color:#ff6b06;display:none"></span>
                     </button>
                     <button id="nav-my-attendance" onclick="switchTab('my-attendance')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance
@@ -1433,6 +1438,30 @@
                         </tr></thead>
                         <tbody id="my-payslips-rows" class="divide-y divide-white/[0.05]"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- ====== ANNOUNCEMENTS (separate from Notifications — persistent HR communications) ====== -->
+            <div id="tab-content-announcements" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Announcements</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Messages sent by HR to the whole company.</p>
+                </div>
+                <div id="announcements-list" class="space-y-3"></div>
+            </div>
+
+            <!-- Announcement detail overlay — read full message, marks as read on open -->
+            <div id="announcement-detail-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                <div class="card glass-card rounded-2xl p-5 md:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+                    <div class="flex items-start justify-between gap-3 mb-3">
+                        <div class="min-w-0">
+                            <span id="announcement-detail-category" class="hidden text-[9px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded px-1.5 py-0.5"></span>
+                            <h2 id="announcement-detail-title" class="text-lg font-bold text-white mt-1 break-words"></h2>
+                            <p id="announcement-detail-meta" class="text-[11px] text-[#6b74a0] mt-1"></p>
+                        </div>
+                        <button onclick="closeAnnouncementDetail()" class="text-gray-500 hover:text-white p-1 shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <p id="announcement-detail-body" class="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words"></p>
                 </div>
             </div>
 
@@ -2556,6 +2585,7 @@
             document.getElementById('tab-content-reports').classList.add('hidden');
             document.getElementById('tab-content-history').classList.add('hidden');
             document.getElementById('tab-content-my-profile').classList.add('hidden');
+            document.getElementById('tab-content-announcements').classList.add('hidden');
             // tab-content-hr no longer exists here — HR moved to hr/index.html (see the
             // 'hr' branch below, which now redirects instead of un-hiding an in-page tab).
             document.getElementById('tab-content-my-attendance').classList.add('hidden');
@@ -2608,6 +2638,10 @@
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
                 hrFetchAndApplyMyPhoto();
                 initMyProfileDetails();
+            } else if (targetTab === 'announcements') {
+                document.getElementById('nav-announcements')?.classList.add('active');
+                document.getElementById('tab-content-announcements').classList.remove('hidden');
+                if (typeof renderEmployeeAnnouncementsList === 'function') renderEmployeeAnnouncementsList();
             } else if (targetTab === 'my-attendance') {
                 document.getElementById('nav-my-attendance')?.classList.add('active');
                 document.getElementById('tab-content-my-attendance').classList.remove('hidden');

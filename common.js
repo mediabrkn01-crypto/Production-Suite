@@ -467,6 +467,83 @@ async function loadMyHRData() {
             if (typeof renderHRAnnouncementsSentList === 'function' && document.getElementById('hr-announcements-sent-list')) {
                 renderHRAnnouncementsSentList();
             }
+            renderAnnouncementBadge();
+            if (document.getElementById('tab-content-announcements') && !document.getElementById('tab-content-announcements').classList.contains('hidden')) {
+                renderEmployeeAnnouncementsList();
+            }
+        }
+
+        // Announcement read-state is entirely server-side (hr_announcement_reads), unlike the
+        // bell's local dismiss-tracking — so "unread" is always computed live, never stale.
+        function getUnreadAnnouncementIds() {
+            if (!activeEmail) return [];
+            const myEmail = activeEmail.toLowerCase();
+            const readIds = new Set(hrAnnouncementReads.filter(r => (r.employee_email || '').toLowerCase() === myEmail).map(r => String(r.announcement_id)));
+            return hrAnnouncements.filter(a => !readIds.has(String(a.id))).map(a => a.id);
+        }
+
+        function renderAnnouncementBadge() {
+            const n = getUnreadAnnouncementIds().length;
+            [document.getElementById('announcements-badge-sidebar'), document.getElementById('announcements-badge-mobile')].forEach(b => {
+                if (!b) return;
+                b.textContent = n > 99 ? '99+' : n;
+                b.style.display = n > 0 ? 'inline-block' : 'none';
+            });
+        }
+
+        // Employee-facing Announcements tab — deliberately separate from the notification
+        // bell (see checkForHRNotifications, which no longer calls addNotif for these): these
+        // are persistent HR communications an employee should be able to browse and re-read,
+        // not a transient alert that gets dismissed and disappears.
+        function renderEmployeeAnnouncementsList() {
+            const el = document.getElementById('announcements-list');
+            if (!el) return;
+            if (_announcementsTableMissing) {
+                el.innerHTML = `<p class="text-center text-red-300 text-xs py-8">Announcements aren't available right now — ask your admin to check the Supabase setup.</p>`;
+                return;
+            }
+            if (!hrAnnouncements.length) {
+                el.innerHTML = `<p class="text-center text-[#4a5182] text-xs italic py-10">No announcements yet.</p>`;
+                return;
+            }
+            const unreadIds = new Set(getUnreadAnnouncementIds().map(String));
+            el.innerHTML = hrAnnouncements.map(a => {
+                const isUnread = unreadIds.has(String(a.id));
+                const dateLabel = new Date(a.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                const excerpt = (a.message || '').slice(0, 140) + ((a.message || '').length > 140 ? '…' : '');
+                return `<div onclick="openAnnouncementDetail('${a.id}')" class="card glass-card rounded-2xl p-4 cursor-pointer transition hover:border-orange-500/30 ${isUnread ? 'border-l-2 border-l-orange-500' : ''}" style="border-left-width:${isUnread ? '3px' : '1px'}">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap mb-1">
+                                <i data-lucide="megaphone" class="w-3.5 h-3.5 text-orange-400 shrink-0"></i>
+                                <h3 class="text-sm font-bold text-white break-words">${a.title}</h3>
+                                ${a.category ? `<span class="text-[9px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded px-1.5 py-0.5 shrink-0">${a.category}</span>` : ''}
+                                ${isUnread ? `<span class="text-[9px] font-bold uppercase tracking-wide text-white bg-orange-500 rounded-full px-2 py-0.5 shrink-0">New</span>` : ''}
+                            </div>
+                            <p class="text-xs text-gray-400 break-words">${excerpt}</p>
+                            <p class="text-[10px] text-[#4a5182] mt-1.5">${dateLabel}</p>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function openAnnouncementDetail(id) {
+            const a = hrAnnouncements.find(x => String(x.id) === String(id));
+            if (!a) return;
+            const catEl = document.getElementById('announcement-detail-category');
+            if (catEl) { catEl.textContent = a.category || ''; catEl.classList.toggle('hidden', !a.category); }
+            const dateLabel = new Date(a.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            document.getElementById('announcement-detail-title').textContent = a.title;
+            document.getElementById('announcement-detail-meta').textContent = `Sent ${dateLabel}${a.created_by ? ' · ' + a.created_by : ''}`;
+            document.getElementById('announcement-detail-body').textContent = a.message || '';
+            document.getElementById('announcement-detail-modal').classList.remove('hidden');
+            markAnnouncementRead(a.id); // updates the badge + list itself once persisted (see renderAnnouncementBadgeExtra)
+        }
+
+        function closeAnnouncementDetail() {
+            document.getElementById('announcement-detail-modal')?.classList.add('hidden');
         }
 
 // ── markAnnouncementRead (orig line 7443) ──
@@ -496,15 +573,16 @@ async function loadMyHRData() {
             loadHRNotifBaseline();
 
             // Company announcements: not gated on having an hr_employees record — everyone
-            // logged in should get these, even before HR data resolves.
+            // logged in should get these, even before HR data resolves. Deliberately NOT added
+            // to the notification bell (addNotif) — Announcements are their own persistent tab
+            // now (see renderEmployeeAnnouncementsList), not a dismiss-and-disappear alert. A
+            // native OS push is still fine here since that's outside the in-app Notifications list.
             let changed = false;
             try {
                 await loadAnnouncements();
                 hrAnnouncements.forEach(a => {
                     if (!_lastKnownAnnouncementIds.has(a.id)) {
                         if (hadAnnouncementBaseline) {
-                            const excerpt = a.category ? `${a.title} (${a.category})` : a.title;
-                            addNotif('announcement', excerpt, null, a.id);
                             sendBrowserNotif('📢 ' + a.title, a.message || '');
                         }
                         _lastKnownAnnouncementIds.add(a.id);
