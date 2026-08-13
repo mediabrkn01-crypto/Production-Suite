@@ -2311,9 +2311,35 @@
                     </div>
                 </div>
 
-                <!-- HR: NOTIFICATIONS -->
+                <!-- HR: NOTIFICATIONS & ANNOUNCEMENTS -->
                 <div id="hr-sub-notifications" class="space-y-4 hidden">
                     <h1 class="text-xl font-bold tracking-tight">HR Notifications</h1>
+
+                    <div class="card glass-card p-4 rounded-2xl space-y-3">
+                        <h2 class="text-sm font-bold tracking-tight flex items-center gap-2"><i data-lucide="megaphone" class="w-4 h-4 text-orange-400"></i> Employee Announcement</h2>
+                        <p class="text-[11px] text-[#6b74a0]">Sent to every active employee instantly — appears in their notification bell, no refresh needed.</p>
+                        <div id="hr-announcements-missing-banner" class="hidden text-[11px] text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                            Announcements tables not found in Supabase (<code>hr_announcements</code> / <code>hr_announcement_reads</code>). Ask your developer to run the schema in <code>hr-announcements-schema.sql</code> to enable this feature.
+                        </div>
+                        <input id="ann-title-input" type="text" placeholder="Title (e.g. Company Celebration)" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                        <textarea id="ann-message-input" rows="3" placeholder="Message..." class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500"></textarea>
+                        <input id="ann-category-input" type="text" placeholder="Category (optional — e.g. Event, Policy, Holiday)" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
+                        <button id="ann-send-btn" onclick="hrSendAnnouncement()" class="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider brand-gradient text-white flex items-center gap-2"><i data-lucide="send" class="w-3.5 h-3.5"></i> Send</button>
+                    </div>
+
+                    <div class="card glass-card p-4 rounded-2xl">
+                        <h2 class="text-sm font-bold tracking-tight mb-3">Sent Announcements</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead><tr class="text-left text-[#6b74a0] uppercase tracking-wide text-[10px] border-b border-white/[0.06]">
+                                    <th class="py-2 pr-3">Announcement</th><th class="py-2 pr-3">Sent</th><th class="py-2 pr-3">Recipients</th><th class="py-2 pr-3">Read</th>
+                                </tr></thead>
+                                <tbody id="hr-announcements-sent-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <h2 class="text-sm font-bold tracking-tight pt-2">System Notifications</h2>
                     <div id="hr-notifications-list" class="space-y-2"></div>
                 </div>
             </div>
@@ -3291,6 +3317,7 @@
             loadNotifs();            loadKnownTasks();
             renderNotifBadges();
             renderDashboardNotifFeed();
+            loadAnnouncements().catch(e => console.warn('Could not load announcements:', e.message));
 
             requestBrowserNotifPermission();
 
@@ -4003,9 +4030,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // ── MINIMIZE: hide modal, upload keeps running ──
         function minimizeDeliveryModal() {
             _deliveryMinimized = true;
-            // Hide the modal overlay
+            // Hide the modal overlay. NOTE: the modal is opened via an inline
+            // style.display='flex' (see employeeHandleStatusChange), and an inline
+            // style always wins over a class rule — classList.add('hidden') alone
+            // does NOT hide it. Must clear the inline style too.
             const modal = document.getElementById('asset-delivery-modal');
             modal.classList.add('hidden');
+            modal.style.display = 'none';
             // Show a small toast so user knows upload is still running in background
             // Brief toast using the call-toast element
             const _ct = document.getElementById('call-toast');
@@ -4015,6 +4046,20 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 _ct.classList.remove('hidden');
                 setTimeout(() => _ct.classList.add('hidden'), 3500);
             }
+        }
+
+        // ── RESTORE: bring the modal back while upload is still running/minimized ──
+        // Triggered by clicking the mirrored progress indicator in the Status Engine column.
+        function restoreDeliveryModal() {
+            if (!_deliveryUploadTaskId) return;
+            _deliveryMinimized = false;
+            const modal = document.getElementById('asset-delivery-modal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+            // The modal's own progress bar (#upload-progress-wrap/bar/pct) was kept
+            // up to date the whole time by setUploadProgress(), so it already reflects
+            // current % — nothing else to sync here.
+            if (window.lucide) lucide.createIcons();
         }
 
         // ── STATUS CELL HELPER ──
@@ -4034,12 +4079,21 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (pct === null || pct === undefined) {
                 const task = assignmentsList.find(t => t.id == _deliveryUploadTaskId);
                 if (task) cell.innerHTML = _buildStatusCellHtml(task);
+                // Completion notification — the modal was minimized, so the user
+                // has no other way of knowing the background upload finished.
+                const _ct = document.getElementById('call-toast');
+                const _ctt = document.getElementById('call-toast-text');
+                if (_ct && _ctt) {
+                    _ctt.textContent = 'Background upload complete — deliverable submitted.';
+                    _ct.classList.remove('hidden');
+                    setTimeout(() => _ct.classList.add('hidden'), 4000);
+                }
                 _deliveryMinimized = false;
                 _deliveryUploadTaskId = null;
             } else {
                 const p = Math.min(100, Math.round(pct));
                 cell.innerHTML = `
-                    <div class="space-y-1 min-w-[90px]">
+                    <div class="space-y-1 min-w-[90px] cursor-pointer" onclick="restoreDeliveryModal()" title="Click to reopen upload window">
                         <div class="flex justify-between text-[9px] font-bold">
                             <span class="text-white/70 uppercase tracking-wide">Uploading</span>
                             <span class="text-orange-300">${p}%</span>
@@ -4225,8 +4279,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             submitBtn.disabled = false;
             submitBtn.innerText = "Deploy Work Package";
             
-            // Auto-close: hide modal whether minimized or not (already hidden if minimized)
-            document.getElementById('asset-delivery-modal').classList.add('hidden');
+            // Auto-close: hide modal whether minimized or not (already hidden if minimized).
+            // Must also clear the inline display:flex set on open, or the modal stays visible.
+            const _admDone = document.getElementById('asset-delivery-modal');
+            _admDone.classList.add('hidden');
+            _admDone.style.display = 'none';
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
@@ -6862,6 +6919,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 case 'payslip': return { icon: 'wallet', color: 'green', label: '💰 New Payslip Available', onClick: "switchTab('my-payslips');closeNotifPanel();" };
                 case 'leave_approved': return { icon: 'check-circle-2', color: 'green', label: '✅ Leave Approved', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "switchTab('my-leave');closeNotifPanel();" };
+                case 'announcement': return { icon: 'megaphone', color: 'orange', label: '📢 Company Announcement', onClick: null };
                 default: return { icon: 'plus-circle', color: 'orange', label: '🆕 New Task Assigned', onClick: null };
             }
         }
@@ -6907,6 +6965,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
         function dismissAllNotifs() {
+            notifications.filter(n => n.type === 'announcement').forEach(n => markAnnouncementRead(n.id.replace('announcement_', '')));
             notifications.forEach(n => _readNotifIds.add(n.id));
             notifications = [];
             saveNotifs();
@@ -6915,6 +6974,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             renderNotifList();
         }
         function dismissNotif(id) {
+            const dismissed = notifications.find(n => n.id === id);
+            if (dismissed && dismissed.type === 'announcement') markAnnouncementRead(id.replace('announcement_', ''));
             _readNotifIds.add(id);
             notifications = notifications.filter(n => n.id !== id);
             saveNotifs();
@@ -7307,17 +7368,107 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // ever be about the logged-in employee's own payslips/leave, never anyone else's.
         let _lastKnownPayslipIds = new Set();
         let _lastKnownLeaveStatuses = {};
+        let _lastKnownAnnouncementIds = new Set();
         let _hrNotifBaselineLoaded = false;
         function loadHRNotifBaseline() {
             if (_hrNotifBaselineLoaded) return;
             try { _lastKnownPayslipIds = new Set(JSON.parse(localStorage.getItem(`be_known_payslips_${activeEmail}`) || '[]')); } catch(e) { _lastKnownPayslipIds = new Set(); }
             try { _lastKnownLeaveStatuses = JSON.parse(localStorage.getItem(`be_known_leave_statuses_${activeEmail}`) || '{}'); } catch(e) { _lastKnownLeaveStatuses = {}; }
+            try { _lastKnownAnnouncementIds = new Set(JSON.parse(localStorage.getItem(`be_known_announcements_${activeEmail}`) || '[]')); } catch(e) { _lastKnownAnnouncementIds = new Set(); }
             _hrNotifBaselineLoaded = true;
         }
         function saveHRNotifBaseline() {
             localStorage.setItem(`be_known_payslips_${activeEmail}`, JSON.stringify([..._lastKnownPayslipIds]));
             localStorage.setItem(`be_known_leave_statuses_${activeEmail}`, JSON.stringify(_lastKnownLeaveStatuses));
+            localStorage.setItem(`be_known_announcements_${activeEmail}`, JSON.stringify([..._lastKnownAnnouncementIds]));
         }
+        // ── EMPLOYEE ANNOUNCEMENTS (HR → all employees) ─────────────────────────
+        // Backed by hr_announcements / hr_announcement_reads in the same Supabase project
+        // as every other HR table — no separate data system. Delivery/badge reuse the
+        // existing notification bell (addNotif/dismissNotif) via checkForHRNotifications();
+        // read-tracking is durable in the DB so HR's sent-list survives across sessions/devices.
+        let hrAnnouncements = [];
+        let hrAnnouncementReads = [];
+        let _announcementsTableMissing = false;
+
+        async function loadAnnouncements() {
+            const [annRes, readsRes] = await Promise.all([
+                dbInstance.from('hr_announcements').select('*').order('created_at', { ascending: false }),
+                dbInstance.from('hr_announcement_reads').select('*')
+            ]);
+            const hasRows = (r) => r && r.data && r.data.length > 0;
+            _announcementsTableMissing = !!(annRes.error && !hasRows(annRes));
+            if (!_announcementsTableMissing) hrAnnouncements = annRes.data || [];
+            if (!(readsRes.error && !hasRows(readsRes))) hrAnnouncementReads = readsRes.data || [];
+            const banner = document.getElementById('hr-announcements-missing-banner');
+            if (banner) banner.classList.toggle('hidden', !_announcementsTableMissing);
+            renderAnnouncementBadgeExtra();
+        }
+
+        // The corner/sidebar/mobile badges already count `notifications` (bell items).
+        // This just keeps hr-notif-badge-style "unread announcements" visible even before
+        // the periodic poll turns a new row into a bell notification.
+        function renderAnnouncementBadgeExtra() {
+            if (typeof renderHRAnnouncementsSentList === 'function' && document.getElementById('hr-announcements-sent-list')) {
+                renderHRAnnouncementsSentList();
+            }
+        }
+
+        async function hrSendAnnouncement() {
+            const titleEl = document.getElementById('ann-title-input');
+            const msgEl = document.getElementById('ann-message-input');
+            const catEl = document.getElementById('ann-category-input');
+            const title = (titleEl?.value || '').trim();
+            const message = (msgEl?.value || '').trim();
+            const category = (catEl?.value || '').trim() || null;
+            if (!title || !message) { alert('Please enter both a title and a message.'); return; }
+            const btn = document.getElementById('ann-send-btn');
+            if (btn) { btn.disabled = true; btn.innerText = 'Sending...'; }
+            const { error } = await dbInstance.from('hr_announcements').insert({
+                title, message, category, created_by: activeUser || activeEmail, created_at: new Date().toISOString()
+            });
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="send" class="w-3.5 h-3.5"></i> Send'; if (window.lucide) lucide.createIcons(); }
+            if (error) {
+                alert('Could not send announcement: ' + error.message + (error.message?.includes('does not exist') ? '\n\nRun hr-announcements-schema.sql in Supabase first.' : ''));
+                return;
+            }
+            if (titleEl) titleEl.value = '';
+            if (msgEl) msgEl.value = '';
+            if (catEl) catEl.value = '';
+            await loadAnnouncements();
+            await pushLogEntry(`HR sent announcement to all employees: "${title}"`);
+        }
+
+        // Idempotent — safe to call even if this employee already has a read row for it.
+        async function markAnnouncementRead(announcementId) {
+            if (!announcementId || !activeEmail) return;
+            const already = hrAnnouncementReads.some(r => String(r.announcement_id) === String(announcementId) && (r.employee_email || '').toLowerCase() === activeEmail.toLowerCase());
+            if (already) return;
+            const readRow = { announcement_id: announcementId, employee_email: activeEmail, read_at: new Date().toISOString() };
+            hrAnnouncementReads.push(readRow); // optimistic, so HR's count updates immediately for this session
+            const { error } = await dbInstance.from('hr_announcement_reads').insert(readRow);
+            if (error) console.warn('Could not persist announcement read receipt:', error.message);
+            renderAnnouncementBadgeExtra();
+        }
+
+        function renderHRAnnouncementsSentList() {
+            const el = document.getElementById('hr-announcements-sent-list');
+            if (!el) return;
+            if (_announcementsTableMissing) { el.innerHTML = `<tr><td colspan="4" class="py-3 text-red-300 text-xs">Announcements tables not found — see banner above.</td></tr>`; return; }
+            if (!hrAnnouncements.length) { el.innerHTML = `<tr><td colspan="4" class="py-3 text-[#4a5182] text-xs italic">No announcements sent yet.</td></tr>`; return; }
+            const totalEmployees = hrEmployees.filter(e => e.employment_status === 'active').length || '—';
+            el.innerHTML = hrAnnouncements.map(a => {
+                const readCount = hrAnnouncementReads.filter(r => String(r.announcement_id) === String(a.id)).length;
+                const dateStr = new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                return `<tr class="border-b border-white/[0.04]">
+                    <td class="py-2 pr-3"><span class="font-bold text-white">${a.title}</span>${a.category ? ` <span class="text-[9px] text-[#6b74a0] uppercase">· ${a.category}</span>` : ''}</td>
+                    <td class="py-2 pr-3 text-[#6b74a0]">${dateStr}</td>
+                    <td class="py-2 pr-3 text-[#6b74a0]">${totalEmployees}</td>
+                    <td class="py-2 pr-3 text-[#6b74a0]">${readCount}/${totalEmployees}</td>
+                </tr>`;
+            }).join('');
+        }
+
         let _lastHRNotifPoll = 0;
         async function checkForHRNotifications() {
             if (!activeEmail || !activeUser) return;
@@ -7329,16 +7480,34 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             const hadPayslipBaseline = localStorage.getItem(`be_known_payslips_${activeEmail}`) !== null;
             const hadLeaveBaseline = localStorage.getItem(`be_known_leave_statuses_${activeEmail}`) !== null;
+            const hadAnnouncementBaseline = localStorage.getItem(`be_known_announcements_${activeEmail}`) !== null;
             loadHRNotifBaseline();
 
-            try { await loadHRData(); } catch (e) { return; }
+            // Company announcements: not gated on having an hr_employees record — everyone
+            // logged in should get these, even before HR data resolves.
+            let changed = false;
+            try {
+                await loadAnnouncements();
+                hrAnnouncements.forEach(a => {
+                    if (!_lastKnownAnnouncementIds.has(a.id)) {
+                        if (hadAnnouncementBaseline) {
+                            const excerpt = a.category ? `${a.title} (${a.category})` : a.title;
+                            addNotif('announcement', excerpt, null, a.id);
+                            sendBrowserNotif('📢 ' + a.title, a.message || '');
+                        }
+                        _lastKnownAnnouncementIds.add(a.id);
+                        changed = true;
+                    }
+                });
+            } catch (e) { /* announcements table may not exist yet — don't block the rest */ }
+
+            try { await loadHRData(); } catch (e) { if (changed) saveHRNotifBaseline(); return; }
             const me = myHREmployeeRecord();
-            if (!me) return;
+            if (!me) { if (changed) saveHRNotifBaseline(); return; }
 
             // New payslip: any published row for me not seen before. First-ever check on this
             // device just records the baseline — otherwise every existing payslip would fire a
             // notification at once the first time someone opens the app on a new device.
-            let changed = false;
             hrPayroll.filter(p => p.employee_id === me.id && p.published === true).forEach(p => {
                 if (!_lastKnownPayslipIds.has(p.id)) {
                     if (hadPayslipBaseline) {
@@ -7473,20 +7642,22 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             catch (e) { console.warn('Could not seed default leave balances:', e.message); }
         }
         const HR_ATT_STATUSES = ['present', 'absent', 'late', 'afternoon', 'half_day', 'wfh', 'on_leave', 'holiday'];
-        // ── Late / Afternoon-login auto-detection ──────────────────────────────────
-        // Single source of truth for the two time cutoffs, so HR only ever edits one place.
-        const HR_LATE_AFTER_HOUR = 9.5;      // after 9:30 AM = Late (still Present)
-        const HR_AFTERNOON_AFTER_HOUR = 13;  // after 1:00 PM = Present · Afternoon Login
-        // Given a clock-in ISO timestamp, returns which of present/late/afternoon it counts
-        // as. Called once, at the moment of clock-in (hrSyncClockToAttendance below) — the
-        // status is auto-computed, never manually guessed, and then just stored/read like
-        // any other status everywhere else in this file.
+        // ── Late auto-detection ─────────────────────────────────────────────────────
+        // Single cutoff, single source of truth: clock in at/before this hour → Present;
+        // after it → Present + Late. Simplified to exactly this 2-state model per spec
+        // ("clock-in before 1PM → Present, after 1PM → Present + Late" — no intermediate
+        // tier). 'afternoon' stays a valid, supported status value everywhere it's already
+        // used (HR_PRESENT_STATUSES, hrAttStatusLabel, the attendance grid's AL code, manual
+        // status dropdowns) in case it's ever set manually or appears in older records — this
+        // function itself just never auto-produces it anymore.
+        const HR_LATE_AFTER_HOUR = 13; // after 1:00 PM = Present · Late
+        // Given a clock-in ISO timestamp, returns 'present' or 'late'. Called once, at the
+        // moment of clock-in (hrSyncClockToAttendance below) — the status is auto-computed,
+        // never manually guessed, and then just stored/read like any other status.
         function hrComputeClockInStatus(whenIso) {
             const d = new Date(whenIso);
             const hour = d.getHours() + d.getMinutes() / 60;
-            if (hour > HR_AFTERNOON_AFTER_HOUR) return 'afternoon';
-            if (hour > HR_LATE_AFTER_HOUR) return 'late';
-            return 'present';
+            return hour > HR_LATE_AFTER_HOUR ? 'late' : 'present';
         }
         // Single source of truth for how a status reads on screen — "Late"/"Afternoon" alone
         // could look like a synonym for absent; every display should say "Present · X" so
@@ -7519,6 +7690,16 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         let hrTablesMissing = false;
         let hrEditingEmployeeId = null;
         let hrCurrentSubtab = 'dashboard';
+        // loadHRData() is called from ~35 places (after saving an employee, marking
+        // attendance, clocking in, switching subtabs, etc.) — it's realistic for two calls
+        // to be in flight at once, and network timing means they don't always resolve in the
+        // order they started. Without this guard, an OLDER call that happens to finish LAST
+        // could overwrite a NEWER call's correct data/banner with its own stale results —
+        // exactly the "banner says Employees is missing while Employees data is visibly
+        // rendering" contradiction seen live. Only the most-recently-STARTED call is ever
+        // allowed to write to hrEmployees/hrTablesMissing/the banner; anything superseded
+        // before it finishes silently discards its own results instead of applying them.
+        let _hrLoadSeq = 0;
 
         async function initHRPanel() {
             if (!hrLoaded) {
@@ -7534,6 +7715,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
 
         async function loadHRData() {
+            const myLoadToken = ++_hrLoadSeq; // see _hrLoadSeq declaration above
             hrTablesMissing = false;
             const missingTables = [];
             try {
@@ -7584,6 +7766,38 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_company_settings').select('*').limit(1)
                 ]);
+                // A newer loadHRData() call has started since this one began — its results
+                // will apply instead; discard these now-stale ones rather than overwrite.
+                if (myLoadToken !== _hrLoadSeq) return;
+                // 12 simultaneous queries in one Promise.all can exceed a Supabase free-tier
+                // project's concurrent-connection/rate limit — when that happens, a handful
+                // fail unpredictably (different ones each load), which is exactly what made
+                // the missing-tables list look inconsistent between page loads. Retry ONLY the
+                // ones that actually errored, one at a time (not in parallel, so this retry
+                // pass can't trigger the same limit again) before concluding anything is
+                // genuinely missing.
+                const retryableQueries = {
+                    'hr_employees': () => dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
+                    'hr_job_openings': () => dbInstance.from('hr_job_openings').select('*').order('created_at', { ascending: false }),
+                    'hr_applicants': () => dbInstance.from('hr_applicants').select('*').order('created_at', { ascending: false }),
+                    'hr_salary_history': () => dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
+                    'hr_holidays': () => dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
+                    'hr_employee_documents': () => dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
+                    'hr_company_settings': () => dbInstance.from('hr_company_settings').select('*').limit(1)
+                };
+                const retryTargets = [
+                    ['hr_employees', emp], ['hr_job_openings', jobs], ['hr_applicants', applicants],
+                    ['hr_salary_history', salHist], ['hr_holidays', holidays], ['hr_employee_documents', empDocs],
+                    ['hr_company_settings', settings]
+                ].filter(([, r]) => r && r.error);
+                for (const [tableName, result] of retryTargets) {
+                    try {
+                        await new Promise(r => setTimeout(r, 250)); // brief stagger, not a burst
+                        const retried = await retryableQueries[tableName]();
+                        if (!retried.error) { result.data = retried.data; result.error = null; }
+                    } catch (_) { /* keep the original error — genuinely unreachable */ }
+                }
+                if (myLoadToken !== _hrLoadSeq) return; // re-check — the retry pass above awaited too
                 // Fail CLOSED, not open: if a scoped query errored (e.g. 'published' column
                 // doesn't exist yet on this database), a non-HR user gets no data back from it
                 // rather than silently falling back to something unscoped and exposing everyone's.
@@ -7680,6 +7894,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 missingTables.push('(load failed: ' + e.message + ')');
                 console.warn('HR data load failed — have the HR tables been created in Supabase? See hr_schema.sql', e.message);
             }
+            // Same staleness guard as above, re-checked here since the self-heal step just
+            // above this also awaits — enough time for a newer call to have started and
+            // finished in the meantime.
+            if (myLoadToken !== _hrLoadSeq) return;
             const banner = document.getElementById('hr-tables-missing-banner');
             const bannerText = document.getElementById('hr-tables-missing-text');
             if (banner) {
@@ -7723,7 +7941,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             else if (tab === 'holidays') renderHRHolidays();
             else if (tab === 'recruitment') renderHRRecruitment();
             else if (tab === 'hr-reports') renderHRReports();
-            else if (tab === 'notifications') renderHRNotifications();
+            else if (tab === 'notifications') { renderHRNotifications(); renderHRAnnouncementsSentList(); }
             else if (tab === 'accounts') { editingRosterIndex = null; renderSettingsRoster(); }
             if (window.lucide) lucide.createIcons();
         }
@@ -9374,9 +9592,18 @@ async function saveLeave(){
                     const dow = new Date(y, m - 1, d).getDay();
                     return { day: d, dow, code: hrAttDayCode(e, dateStr, dow) };
                 });
-                const present = codes.filter(c => c.code === 'P' || c.code === 'PL').length;
-                const absent = codes.filter(c => c.code === 'A').length;
-                const late = codes.filter(c => c.code === 'L').length;
+                // Present/Absent figures come from hrCalculatePayrollForMonth — the SAME
+                // centralized engine the Workforce Report and payroll itself use — instead of
+                // a separate count derived from the calendar's own codes, so this grid can
+                // never show a different percentage than those other pages for the same
+                // month. Late/Afternoon-Login are shown as their own informational count too,
+                // but they're already folded INTO Present here (matching "Present + Late still
+                // counts as Present") — Paid Leave is correctly excluded from both, not
+                // counted as Present (it wasn't a working day at all).
+                const p = hrCalculatePayrollForMonth(e.id, month);
+                const present = p.presentDays;
+                const absent = p.absentDays;
+                const late = codes.filter(c => c.code === 'L' || c.code === 'AL').length;
                 const recs = hrAttendance.filter(a => a.employee_id === e.id && a.att_date.startsWith(month) && a.clock_in_time && a.clock_out_time);
                 let avgHours = '—', avgIn = '—', avgOut = '—';
                 if (recs.length) {
@@ -9390,30 +9617,36 @@ async function saveLeave(){
                 return { emp: e, codes, present, absent, late, avgHours, avgIn, avgOut };
             });
 
-            // Daily aggregate rows
-            const dailyPresent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (['P','PL'].includes(r.codes[i].code) ? 1 : 0), 0));
+            // Daily aggregate rows — 'PL'/'UL' (leave) and 'WO'/'H' are correctly excluded
+            // from the Present-family bucket (they weren't a working day at all, per the
+            // centralized rule), matching hrCalculatePayrollForMonth's own categorization.
+            const dailyPresent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (['P','L','AL'].includes(r.codes[i].code) ? 1 : 0), 0));
             const dailyAbsent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (r.codes[i].code === 'A' ? 1 : 0), 0));
-            const dailyLate = dayNums.map((d, i) => empRows.reduce((s, r) => s + (r.codes[i].code === 'L' ? 1 : 0), 0));
+            const dailyLate = dayNums.map((d, i) => empRows.reduce((s, r) => s + (['L','AL'].includes(r.codes[i].code) ? 1 : 0), 0));
             const dailyPct = dayNums.map((d, i) => {
-                const marked = empRows.filter(r => r.codes[i].code && !['WO','H'].includes(r.codes[i].code));
+                const marked = empRows.filter(r => ['P','A','L','AL'].includes(r.codes[i].code)); // WO/H/PL/UL excluded — not applicable working days
                 if (!marked.length) return '—';
-                const present = marked.filter(r => ['P','PL','L'].includes(r.codes[i].code)).length;
+                const present = marked.filter(r => ['P','L','AL'].includes(r.codes[i].code)).length;
                 return Math.round((present / marked.length) * 100) + '%';
             });
 
-            // Top summary stat cards
+            // Top summary stat cards — present already includes Late/Afternoon-Login (see
+            // hrCalculatePayrollForMonth above), so the denominator is present+absent only;
+            // adding totalLateDays again would double-count the same days. Present % and
+            // Absent % correctly sum to 100; Late is shown as its own informational count,
+            // a subset of Present, not a third category competing for the same 100%.
             const totalPresentDays = empRows.reduce((s, r) => s + r.present, 0);
             const totalAbsentDays = empRows.reduce((s, r) => s + r.absent, 0);
             const totalLateDays = empRows.reduce((s, r) => s + r.late, 0);
-            const totalMarked = totalPresentDays + totalAbsentDays + totalLateDays;
+            const totalApplicable = totalPresentDays + totalAbsentDays;
             const allHourRecs = empRows.filter(r => r.avgHours !== '—');
             const overallAvgHours = allHourRecs.length ? (allHourRecs.reduce((s,r) => s + parseFloat(r.avgHours), 0) / allHourRecs.length) : 0;
             const workDays = dayNums.filter(d => { const dow = new Date(y, m-1, d).getDay(); return !hrIsWeeklyOff(dow); }).length;
             document.getElementById('hr-att-report-stats').innerHTML = [
                 { label: 'Total Employees', num: active.length },
-                { label: 'Present Days', num: totalPresentDays + (totalMarked ? ` (${Math.round(totalPresentDays/totalMarked*100)}%)` : '') },
-                { label: 'Absent Days', num: totalAbsentDays + (totalMarked ? ` (${Math.round(totalAbsentDays/totalMarked*100)}%)` : '') },
-                { label: 'Late Days', num: totalLateDays + (totalMarked ? ` (${Math.round(totalLateDays/totalMarked*100)}%)` : '') },
+                { label: 'Present Days', num: totalPresentDays + (totalApplicable ? ` (${Math.round(totalPresentDays/totalApplicable*100)}%)` : '') },
+                { label: 'Absent Days', num: totalAbsentDays + (totalApplicable ? ` (${Math.round(totalAbsentDays/totalApplicable*100)}%)` : '') },
+                { label: 'Late Days', num: totalLateDays + ' (of Present)' },
                 { label: 'Avg Work Hours', num: overallAvgHours ? overallAvgHours.toFixed(2).replace(/\.00$/,'') + 'h' : '—' },
                 { label: 'Total Work Days', num: workDays }
             ].map(s => `<div class="hr-stat-card"><div class="num" style="font-size:16px">${s.num}</div><div class="label">${s.label}</div></div>`).join('');
