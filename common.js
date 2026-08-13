@@ -141,14 +141,18 @@ async function loadMyHRData() {
             myHRDataLoaded = true;
             return;
         }
-        const [att, leaveReq, leaveBal, pay, salHist, hol, settings] = await Promise.all([
+        const [att, leaveReq, leaveBal, pay, salHist, hol, settings, attLogs] = await Promise.all([
             dbInstance.from('hr_attendance').select('*').eq('employee_id', me.id),
             dbInstance.from('hr_leave_requests').select('*').eq('employee_id', me.id).order('requested_at', { ascending: false }),
             dbInstance.from('hr_leave_balances').select('*').eq('employee_id', me.id),
             dbInstance.from('hr_payroll').select('*').eq('employee_id', me.id).eq('published', true).order('month', { ascending: false }),
             dbInstance.from('hr_salary_history').select('*').eq('employee_id', me.id).order('effective_date', { ascending: false }),
             dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
-            dbInstance.from('hr_company_settings').select('*').limit(1)
+            dbInstance.from('hr_company_settings').select('*').limit(1),
+            // Own raw clock-in log — hrAttDayCode/hrCalculatePayrollForMonth's fallback (via
+            // hrPortalLogFor) needs this populated here too, not just from hr.html's loader, or
+            // My Attendance can show a gap the same sync failure already fixed elsewhere.
+            dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail.trim().toLowerCase())
         ]);
         hrEmployees = [me]; // scoped: self-service views only ever need myHREmployeeRecord()'s own row
         hrAttendance = att.data || [];
@@ -158,6 +162,7 @@ async function loadMyHRData() {
         hrSalaryHistory = salHist.data || [];
         hrHolidays = hol.data || [];
         if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
+        if (!attLogs.error) window._hrAttendanceLogsCache = attLogs.data || [];
     } catch (e) {
         console.warn('loadMyHRData failed:', e.message);
     } finally {
@@ -169,9 +174,24 @@ async function loadMyHRData() {
 // ── hrSyncClockToAttendance (orig line 4611) ──
         async function hrSyncClockToAttendance(email, kind, whenIso) {
             try {
-                const empRes = await dbInstance.from('hr_employees').select('id').eq('portal_email', (email || '').toLowerCase()).limit(1);
-                const emp = empRes.data && empRes.data[0];
-                if (!emp) return; // no linked HR employee record yet — nothing to sync into
+                const cleanEmail = (email || '').toLowerCase().trim();
+                const empRes = await dbInstance.from('hr_employees').select('id').eq('portal_email', cleanEmail).limit(1);
+                let emp = empRes.data && empRes.data[0];
+                if (!emp) {
+                    // No HR record linked by email — try matching by name instead, same fallback
+                    // hrFetchAndApplyMyPhoto() already uses, so a clock-in from someone whose HR
+                    // record predates having a portal_email set still gets synced instead of
+                    // silently vanishing (this was the actual cause of "Present on the clock-in
+                    // screen, missing from the HR Attendance Report").
+                    if (typeof activeUser !== 'undefined' && activeUser) {
+                        const byName = await dbInstance.from('hr_employees').select('id').eq('full_name', activeUser).limit(1);
+                        emp = byName.data && byName.data[0];
+                    }
+                }
+                if (!emp) {
+                    console.warn(`HR attendance sync: no hr_employees record found for "${email}" — clock-${kind} at ${whenIso} was NOT written to hr_attendance. Link this login to an HR employee record (portal_email) to fix.`);
+                    return;
+                }
                 const dateStr = todayDateStr();
                 const existingRes = await dbInstance.from('hr_attendance').select('*').eq('employee_id', emp.id).eq('att_date', dateStr).limit(1);
                 const existing = existingRes.data && existingRes.data[0];
@@ -739,6 +759,14 @@ async function acadSyncTrainersFromHR(){
             if (employee.joining_date && dateStr < employee.joining_date) return null; // before joining — blank
             if (hrIsHoliday(dateStr)) return 'H';
             const rec = hrAttendance.find(a => a.employee_id === employee.id && a.att_date === dateStr);
+            if (!rec) {
+                // No hr_attendance row for this date — before assuming unmarked, check the raw
+                // clock-in log directly (same source the Dashboard's "Today's Workforce"/"Present
+                // Today" already trust). Covers a sync that failed or hasn't caught up yet, so
+                // the Report can't disagree with what the employee's own clock-in screen shows.
+                const portalLog = hrPortalLogFor(employee, dateStr);
+                if (portalLog && portalLog.log_in_time) return hrComputeClockInStatus(portalLog.log_in_time) === 'late' ? 'L' : 'P';
+            }
             if (rec) {
                 if (rec.status === 'holiday') return 'H';
                 if (rec.status === 'absent') return 'A';
@@ -819,6 +847,13 @@ async function acadSyncTrainersFromHR(){
                 const dow = new Date(y, m - 1, d).getDay();
                 if (hrIsHoliday(dateStr)) { holidayDays++; continue; }
                 const rec = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === dateStr);
+                // Same fallback as hrAttDayCode: a day with no hr_attendance row but a real
+                // clock-in log counts as Present, not Absent/LOP — a failed/lagging sync must
+                // never cost an employee pay for a day they actually worked.
+                if (!rec) {
+                    const portalLog = hrPortalLogFor(employee, dateStr);
+                    if (portalLog && portalLog.log_in_time) { presentDays++; continue; }
+                }
                 if (rec) {
                     if (rec.status === 'holiday') { holidayDays++; continue; }
                     if (rec.status === 'absent') { absentDays++; continue; }
@@ -1039,4 +1074,114 @@ async function acadSyncTrainersFromHR(){
                     <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
+        }
+
+// ── Clock In/Out engine + activity log — genuinely shared: index.html AND hr.html both
+// have their own Clock In/Clock Out card, and hr.html's Announcements feature also needs
+// pushLogEntry. Pipeline-only side effects (Google Sheets sync, the ledger engine) are
+// guarded with typeof checks so this works standalone on hr.html, which doesn't load them.
+        let attendanceLogs = [];
+        let myActiveAttendanceRecord = null;
+
+        async function pushLogEntry(text) {
+            const now = new Date();
+            const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            await dbInstance.from('system_logs').insert([{ time: ts, text }]);
+            if (typeof syncLogToSheet === 'function') syncLogToSheet(ts, text); // Pipeline-only, push to Sheets silently
+        }
+
+        function todayDateStr() {
+            return new Date().toISOString().slice(0, 10);
+        }
+
+        function findMyOpenAttendanceRecord() {
+            const today = todayDateStr();
+            return attendanceLogs.find(r => r.employee_email === activeEmail && r.log_date === today) || null;
+        }
+
+        // Updates every Clock In/Out card present on the current page — Pipeline dashboard,
+        // Academic dashboard, HR dashboard — from the one attendance record. Each lookup is
+        // null-safe, so this works fine on a page that only has one (or none) of the three.
+        function refreshAttendanceClockCard() {
+            myActiveAttendanceRecord = findMyOpenAttendanceRecord();
+
+            const apply = (statusEl, inBtn, outBtn) => {
+                if (!statusEl || !inBtn || !outBtn) return;
+                if (!myActiveAttendanceRecord) {
+                    statusEl.innerHTML = `You haven't clocked in today.`;
+                    inBtn.classList.remove('hidden');
+                    outBtn.classList.add('hidden');
+                } else if (myActiveAttendanceRecord.log_in_time && !myActiveAttendanceRecord.log_out_time) {
+                    const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    statusEl.innerHTML = `Clocked in at <span class="text-emerald-400 font-bold">${inTime}</span>. Don't forget to clock out!`;
+                    inBtn.classList.add('hidden');
+                    outBtn.classList.remove('hidden');
+                } else {
+                    const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const outTime = new Date(myActiveAttendanceRecord.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    statusEl.innerHTML = `Completed today: <span class="text-white font-bold">${inTime} → ${outTime}</span>.`;
+                    inBtn.classList.add('hidden');
+                    outBtn.classList.add('hidden');
+                }
+            };
+            apply(
+                document.getElementById('attendance-status-text'),
+                document.getElementById('attendance-clockin-btn'),
+                document.getElementById('attendance-clockout-btn')
+            );
+            apply(
+                document.getElementById('acad-attendance-status-text'),
+                document.getElementById('acad-attendance-clockin-btn'),
+                document.getElementById('acad-attendance-clockout-btn')
+            );
+            apply(
+                document.getElementById('hr-attendance-status-text'),
+                document.getElementById('hr-attendance-clockin-btn'),
+                document.getElementById('hr-attendance-clockout-btn')
+            );
+        }
+
+        async function handleClockIn() {
+            const existing = findMyOpenAttendanceRecord();
+            if (existing) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
+
+            const nowIso = new Date().toISOString();
+            const { data, error } = await dbInstance.from('attendance_logs').insert([{
+                employee_email: activeEmail,
+                employee_name: activeUser,
+                log_date: todayDateStr(),
+                log_in_time: nowIso,
+                log_out_time: null
+            }]).select();
+
+            if (error) { alert('Could not record clock in: ' + error.message); return; }
+            if (data && data[0]) attendanceLogs = attendanceLogs.concat(data);
+
+            await hrSyncClockToAttendance(activeEmail, 'in', nowIso);
+            await pushLogEntry(`${activeUser} clocked IN at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+            refreshAttendanceClockCard();
+            if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
+            if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
+            if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
+        }
+
+        async function handleClockOut() {
+            const existing = findMyOpenAttendanceRecord();
+            if (!existing || existing.log_out_time) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
+
+            const nowIso = new Date().toISOString();
+            const { error } = await dbInstance
+                .from('attendance_logs')
+                .update({ log_out_time: nowIso })
+                .eq('id', existing.id);
+
+            if (error) { alert('Could not record clock out: ' + error.message); return; }
+            existing.log_out_time = nowIso;
+
+            await hrSyncClockToAttendance(activeEmail, 'out', nowIso);
+            await pushLogEntry(`${activeUser} clocked OUT at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+            refreshAttendanceClockCard();
+            if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
+            if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
+            if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
         }

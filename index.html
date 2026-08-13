@@ -1920,8 +1920,8 @@
         let assignmentsList = [];
         let internalLogs = [];
         let loadedTaskIdsSnapshot = [];
-        let attendanceLogs = [];
-        let myActiveAttendanceRecord = null;
+        // [moved to shared/common.js: original lines 1923-1923]
+        // [moved to shared/common.js: original lines 1924-1924]
         
         // Accumulative state variables for multiple file tracking queues
         let deliveryFilesQueue = [];
@@ -3641,111 +3641,25 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
-        async function pushLogEntry(text) {
-            const now = new Date();
-            const ts = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            await dbInstance.from('system_logs').insert([{ time: ts, text }]);
-            syncLogToSheet(ts, text); // push to Sheets silently
-        }
+        // [moved to shared/common.js: original lines 3644-3649]
 
         // ============================================================
         // ATTENDANCE ENGINE — clock in / clock out + admin log
         // ============================================================
 
-        function todayDateStr() {
-            return new Date().toISOString().slice(0, 10);
-        }
+        // [moved to shared/common.js: original lines 3655-3657]
 
-        function findMyOpenAttendanceRecord() {
-            const today = todayDateStr();
-            return attendanceLogs.find(r => r.employee_email === activeEmail && r.log_date === today) || null;
-        }
+        // [moved to shared/common.js: original lines 3659-3662]
 
         // Updates BOTH clock-in surfaces from the one attendance record: the original card
         // on the Pipeline dashboard (untouched, same as before) and the persistent sidebar
         // widget (visible on every tab, including Academic — see #sidebar-clock-card) — same
         // record, same design language, so "Clock In" behaves identically everywhere.
-        function refreshAttendanceClockCard() {
-            myActiveAttendanceRecord = findMyOpenAttendanceRecord();
+        // [moved to shared/common.js: original lines 3668-3707]
 
-            const apply = (statusEl, inBtn, outBtn) => {
-                if (!statusEl || !inBtn || !outBtn) return;
-                if (!myActiveAttendanceRecord) {
-                    statusEl.innerHTML = `You haven't clocked in today.`;
-                    inBtn.classList.remove('hidden');
-                    outBtn.classList.add('hidden');
-                } else if (myActiveAttendanceRecord.log_in_time && !myActiveAttendanceRecord.log_out_time) {
-                    const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    statusEl.innerHTML = `Clocked in at <span class="text-emerald-400 font-bold">${inTime}</span>. Don't forget to clock out!`;
-                    inBtn.classList.add('hidden');
-                    outBtn.classList.remove('hidden');
-                } else {
-                    const inTime = new Date(myActiveAttendanceRecord.log_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const outTime = new Date(myActiveAttendanceRecord.log_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    statusEl.innerHTML = `Completed today: <span class="text-white font-bold">${inTime} → ${outTime}</span>.`;
-                    inBtn.classList.add('hidden');
-                    outBtn.classList.add('hidden');
-                }
-            };
-            // Three surfaces, one record: Pipeline dashboard (Production), Academic dashboard,
-            // HR dashboard — same design, same behavior, same underlying attendanceLogs row.
-            apply(
-                document.getElementById('attendance-status-text'),
-                document.getElementById('attendance-clockin-btn'),
-                document.getElementById('attendance-clockout-btn')
-            );
-            apply(
-                document.getElementById('acad-attendance-status-text'),
-                document.getElementById('acad-attendance-clockin-btn'),
-                document.getElementById('acad-attendance-clockout-btn')
-            );
-            apply(
-                document.getElementById('hr-attendance-status-text'),
-                document.getElementById('hr-attendance-clockin-btn'),
-                document.getElementById('hr-attendance-clockout-btn')
-            );
-        }
+        // [moved to shared/common.js: original lines 3709-3729]
 
-        async function handleClockIn() {
-            const existing = findMyOpenAttendanceRecord();
-            if (existing) { await syncLedgerEngine(false); return; }
-
-            const nowIso = new Date().toISOString();
-            const { error } = await dbInstance.from('attendance_logs').insert([{
-                employee_email: activeEmail,
-                employee_name: activeUser,
-                log_date: todayDateStr(),
-                log_in_time: nowIso,
-                log_out_time: null
-            }]);
-
-            if (error) { alert('Could not record clock in: ' + error.message); return; }
-
-            await hrSyncClockToAttendance(activeEmail, 'in', nowIso);
-            await pushLogEntry(`${activeUser} clocked IN at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-            await syncLedgerEngine(false);
-            syncAttendanceToSheet();
-            syncMonthlyReportToSheet();
-        }
-
-        async function handleClockOut() {
-            const existing = findMyOpenAttendanceRecord();
-            if (!existing || existing.log_out_time) { await syncLedgerEngine(false); return; }
-
-            const nowIso = new Date().toISOString();
-            const { error } = await dbInstance
-                .from('attendance_logs')
-                .update({ log_out_time: nowIso })
-                .eq('id', existing.id);
-
-            if (error) { alert('Could not record clock out: ' + error.message); return; }
-
-            await hrSyncClockToAttendance(activeEmail, 'out', nowIso);
-            await pushLogEntry(`${activeUser} clocked OUT at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-            await syncLedgerEngine(false);
-            syncAttendanceToSheet();
-            syncMonthlyReportToSheet();
-        }
+        // [moved to shared/common.js: original lines 3731-3748]
 
         // Bridges the existing Clock In/Clock Out (attendance_logs) straight into the HR
         // Attendance module (hr_attendance) — same employee record, same day, one row.
