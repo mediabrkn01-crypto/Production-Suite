@@ -141,10 +141,26 @@ async function loadMyHRData() {
             myHRDataLoaded = true;
             return;
         }
+        // Managers additionally get their direct reports — via a SERVER-SIDE scoped query
+        // (eq('manager_email', ...)), never a full-roster fetch filtered client-side. Plain
+        // employees never trigger this at all, so they still only ever pull their own row.
+        let teamMembers = [];
+        if (activeRole === 'manager') {
+            const teamRes = await dbInstance.from('hr_employees').select('*').eq('manager_email', activeEmail.trim().toLowerCase());
+            // Defensive: only ever include reports in the same division as the manager — a
+            // stray/incorrect manager_email on someone in the other department must never
+            // surface them in "My Team", even if HR data entry made that mistake.
+            teamMembers = (teamRes.data || []).filter(t => t.id !== me.id && t.division === me.division);
+        }
+        const teamIds = [me.id, ...teamMembers.map(t => t.id)];
+        const scopeAttLeave = q => teamIds.length > 1 ? q.in('employee_id', teamIds) : q.eq('employee_id', me.id);
+
         const [att, leaveReq, leaveBal, pay, salHist, hol, settings, attLogs] = await Promise.all([
-            dbInstance.from('hr_attendance').select('*').eq('employee_id', me.id),
-            dbInstance.from('hr_leave_requests').select('*').eq('employee_id', me.id).order('requested_at', { ascending: false }),
-            dbInstance.from('hr_leave_balances').select('*').eq('employee_id', me.id),
+            scopeAttLeave(dbInstance.from('hr_attendance').select('*')),
+            scopeAttLeave(dbInstance.from('hr_leave_requests').select('*')).order('requested_at', { ascending: false }),
+            scopeAttLeave(dbInstance.from('hr_leave_balances').select('*')),
+            // Payroll/salary history stay self-only regardless of role — a manager's "My Team"
+            // view never shows pay data, so their reports' salaries have no reason to be fetched.
             dbInstance.from('hr_payroll').select('*').eq('employee_id', me.id).eq('published', true).order('month', { ascending: false }),
             dbInstance.from('hr_salary_history').select('*').eq('employee_id', me.id).order('effective_date', { ascending: false }),
             dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
@@ -154,7 +170,7 @@ async function loadMyHRData() {
             // My Attendance can show a gap the same sync failure already fixed elsewhere.
             dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail.trim().toLowerCase())
         ]);
-        hrEmployees = [me]; // scoped: self-service views only ever need myHREmployeeRecord()'s own row
+        hrEmployees = [me, ...teamMembers]; // self-service views only ever need myHREmployeeRecord()'s own row + (for managers) their team
         hrAttendance = att.data || [];
         hrLeaveRequests = leaveReq.data || [];
         hrLeaveBalances = leaveBal.data || [];
