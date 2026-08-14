@@ -615,9 +615,25 @@
             </div>
 
             <div style="flex-shrink:0;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);margin-top:8px">
-                <div style="font-size:10px;color:#6b74a0;padding:0 8px 8px">
-                    <span id="hr-active-user-display" style="color:#e6e9f5;font-weight:700"></span><br>
-                    <span id="hr-active-role-display"></span>
+                <!-- Account switcher — same pattern/location as the main Pipeline app's sidebar -->
+                <div style="position:relative">
+                    <div id="account-switcher-panel" class="hidden" style="position:absolute;bottom:100%;left:0;width:100%;margin-bottom:8px;background:rgba(10,14,23,0.98);border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 20px 40px rgba(0,0,0,0.8);overflow:hidden;z-index:30">
+                        <div style="padding:8px 12px;font-size:10px;color:#808a9d;text-transform:uppercase;font-weight:700;letter-spacing:0.08em;border-bottom:1px solid rgba(255,255,255,0.06)">Switch Account</div>
+                        <div id="account-switcher-list" class="max-h-48 overflow-y-auto"></div>
+                        <a href="index.html" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:11px;color:rgba(255,255,255,0.6);border-top:1px solid rgba(255,255,255,0.06);background:transparent;cursor:pointer;transition:background 0.15s;text-decoration:none" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background='transparent'">
+                            <i data-lucide="plus-circle" style="width:13px;height:13px"></i> Add another account
+                        </a>
+                    </div>
+                    <button id="account-switcher-trigger" onclick="toggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,0.8);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(255,107,6,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06"></div>
+                            <div>
+                                <div id="hr-active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9"></div>
+                                <div id="hr-active-role-display" style="font-size:9px;color:#808a9d"></div>
+                            </div>
+                        </div>
+                        <i data-lucide="chevrons-up-down" style="width:13px;height:13px;color:#808a9d"></i>
+                    </button>
                 </div>
                 <a href="index.html" class="sidebar-link" style="width:100%;text-align:left;display:block;text-decoration:none">
                     <i data-lucide="arrow-left" style="width:14px;height:14px"></i> Back to Pipeline
@@ -675,6 +691,14 @@
                             <span id="hr-dash-pending-banner-text" class="text-xs text-white/90"></span>
                         </div>
                         <button onclick="switchHRSubtab('leave')" class="text-xs font-bold px-3 py-1.5 rounded-lg uppercase tracking-wide shrink-0" style="background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.4);color:#ffb877">Review Requests</button>
+                    </div>
+
+                    <!-- Birthday alert — only shown when someone active has a birthday today.
+                         Uses the same colored-accent card language as the overview tiles
+                         (var(--pink)), not a full popup — HR just needs it to be obvious. -->
+                    <div id="hr-dash-birthday-banner" class="hidden rounded-2xl p-4 flex items-center gap-3" style="background:linear-gradient(90deg,rgba(236,72,153,0.14),rgba(124,58,237,0.05));border:1px solid rgba(236,72,153,0.3)">
+                        <div class="text-2xl shrink-0">🎉</div>
+                        <div id="hr-dash-birthday-text" class="text-xs text-white/90"></div>
                     </div>
 
                     <!-- Clock-In is for everyone, HR included (req: available everywhere, same
@@ -1866,6 +1890,22 @@
                 if (pendingLeave > 0) {
                     document.getElementById('hr-dash-pending-banner-text').textContent =
                         `Heads up! ${pendingLeave} leave request${pendingLeave === 1 ? ' is' : 's are'} pending approval.`;
+                }
+            }
+
+            // ── Birthday alert — every active employee whose dob matches today (month/day
+            // only, see getTodaysBirthdays in shared/common.js) — nothing hardcoded, works for
+            // whoever it happens to be. ──
+            const bdayEl = document.getElementById('hr-dash-birthday-banner');
+            if (bdayEl && typeof getTodaysBirthdays === 'function') {
+                const todaysBdays = getTodaysBirthdays();
+                bdayEl.classList.toggle('hidden', todaysBdays.length === 0);
+                if (todaysBdays.length > 0) {
+                    const names = todaysBdays.map(e => e.full_name).join(', ');
+                    document.getElementById('hr-dash-birthday-text').innerHTML =
+                        todaysBdays.length === 1
+                            ? `<span class="font-bold text-white">${names}</span> has a birthday today! 🎂`
+                            : `Birthdays today: <span class="font-bold text-white">${names}</span> 🎂`;
                 }
             }
 
@@ -4263,13 +4303,21 @@
             URL.revokeObjectURL(url);
         }
 
+        function renderHRSidebarIdentity() {
+            const userEl = document.getElementById('hr-active-user-display');
+            const roleEl = document.getElementById('hr-active-role-display');
+            const avatarEl = document.getElementById('sidebar-user-avatar');
+            if (userEl) userEl.textContent = activeUser || '';
+            if (roleEl) roleEl.textContent = (activeRole || '') + ' scope';
+            if (avatarEl) avatarEl.textContent = (activeUser || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();
+        }
+
         (function bootHRPage() {
             if (!activeUser || activeRole !== 'admin') {
                 window.location.href = 'index.html';
                 return;
             }
-            document.getElementById('hr-active-user-display').textContent = activeUser;
-            document.getElementById('hr-active-role-display').textContent = activeRole + ' scope';
+            renderHRSidebarIdentity();
             initHRPanel();
             if (window.lucide) lucide.createIcons();
         })();

@@ -595,6 +595,8 @@ async function loadMyHRData() {
             const me = myHREmployeeRecord();
             if (!me) { if (changed) saveHRNotifBaseline(); return; }
 
+            checkAndShowBirthdayPopup(me);
+
             // New payslip: any published row for me not seen before. First-ever check on this
             // device just records the baseline — otherwise every existing payslip would fire a
             // notification at once the first time someone opens the app on a new device.
@@ -1262,4 +1264,236 @@ async function acadSyncTrainersFromHR(){
             if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
             if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
             if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
+        }
+
+// ── ACCOUNT SWITCHER — instant switch between saved logins on this device. Genuinely
+// shared: hr.html previously had none of this at all. index.html declares its OWN
+// (identical-looking) versions of toggleAccountSwitcher/renderAccountSwitcherList/
+// switchToAccount further down its script — since these are all plain `function`
+// declarations (not let/const), index.html's later declaration simply wins there, so
+// this doesn't change index.html's existing behavior at all. hr.html has no such
+// override, so it gets exactly this version. Accounts are only ever ones THIS device
+// has actually logged into before (be_saved_accounts) — never a directory of every
+// account that exists — so this can't expose anything the current user isn't already
+// authorized to use. ──
+        function getSavedAccounts() {
+            try {
+                const raw = localStorage.getItem('be_saved_accounts');
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveAccountForSwitching(name, role, email, pass) {
+            let accounts = getSavedAccounts();
+            accounts = accounts.filter(a => a.email.toLowerCase() !== email.toLowerCase());
+            accounts.push({ name, role, email, pass });
+            localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
+        }
+
+        function removeSavedAccount(email) {
+            let accounts = getSavedAccounts();
+            accounts = accounts.filter(a => a.email.toLowerCase() !== email.toLowerCase());
+            localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
+            renderAccountSwitcherList();
+        }
+
+        function jsStringLiteral(str) {
+            return "'" + String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+        }
+
+        function escapeChatHtml(str) {
+            const div = document.createElement('div');
+            div.innerText = str || '';
+            return div.innerHTML;
+        }
+
+        function toggleAccountSwitcher() {
+            const desktopPanel = document.getElementById('account-switcher-panel');
+            const mobilePanel = document.getElementById('account-switcher-panel-mobile'); // may not exist — hr.html has no separate mobile panel
+            if (!desktopPanel) return;
+            const isOpening = desktopPanel.classList.contains('hidden') && (!mobilePanel || mobilePanel.classList.contains('hidden'));
+
+            desktopPanel.classList.add('hidden');
+            mobilePanel?.classList.add('hidden');
+
+            if (isOpening) {
+                renderAccountSwitcherList();
+                if (mobilePanel && window.innerWidth < 768) {
+                    mobilePanel.classList.remove('hidden');
+                } else {
+                    desktopPanel.classList.remove('hidden');
+                }
+            }
+        }
+
+        function closeAccountSwitcher() {
+            document.getElementById('account-switcher-panel')?.classList.add('hidden');
+            document.getElementById('account-switcher-panel-mobile')?.classList.add('hidden');
+        }
+
+        function renderAccountSwitcherList() {
+            const accounts = getSavedAccounts();
+            const targets = [
+                document.getElementById('account-switcher-list'),
+                document.getElementById('account-switcher-list-mobile')
+            ];
+
+            targets.forEach(list => {
+                if (!list) return;
+                list.innerHTML = '';
+
+                if (accounts.length === 0) {
+                    list.innerHTML = `<p class="px-3 py-3 text-[11px] text-[#4a5182] italic">No saved accounts yet.</p>`;
+                    return;
+                }
+
+                accounts.forEach(acc => {
+                    const isCurrent = acc.email.toLowerCase() === (activeEmail || '').toLowerCase();
+                    const initials = acc.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+                    const emailLiteral = jsStringLiteral(acc.email);
+                    list.innerHTML += `
+                        <div class="flex items-center gap-2 px-3 py-2 hover:bg-transparent transition-colors ${isCurrent ? 'bg-transparent/60' : ''}">
+                            <button onclick="switchToAccount(${emailLiteral})" class="flex items-center gap-2.5 flex-1 text-left min-w-0">
+                                <div class="w-7 h-7 rounded-full bg-transparent flex items-center justify-center text-gray-300 font-bold text-[10px] shrink-0">${initials}</div>
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-white truncate">${escapeChatHtml(acc.name)} ${isCurrent ? '<span class="text-emerald-400">(current)</span>' : ''}</p>
+                                    <p class="text-[10px] text-[#4a5182] truncate">${acc.role}</p>
+                                </div>
+                            </button>
+                            <button onclick="removeSavedAccount(${emailLiteral})" title="Remove saved account" class="text-[#4a5182] hover:text-red-400 p-1 shrink-0">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    `;
+                });
+            });
+
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function switchToAccount(email) {
+            const accounts = getSavedAccounts();
+            const target = accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+            if (!target) return;
+
+            if (target.email.toLowerCase() === (activeEmail || '').toLowerCase()) {
+                closeAccountSwitcher();
+                return;
+            }
+
+            activeUser = target.name;
+            activeRole = target.role;
+            activeEmail = target.email;
+
+            localStorage.setItem('be_active_user', activeUser);
+            localStorage.setItem('be_active_role', activeRole);
+            localStorage.setItem('be_active_email', activeEmail);
+
+            closeAccountSwitcher();
+            if (typeof pushLogEntry === 'function') pushLogEntry(`${activeUser} (${activeRole}) switched into session on this device.`);
+
+            if (typeof launchSession === 'function') {
+                // index.html (Pipeline) — full boot + role-based landing, same as it always did.
+                launchSession();
+                if (typeof switchTab === 'function') {
+                    if (activeRole === 'admin') switchTab('hr');
+                    else if (activeRole === 'manager') switchTab('team');
+                    else switchTab('dashboard');
+                }
+            } else {
+                // hr.html — no Pipeline boot to call. Switching TO an admin account just
+                // re-renders this page with the new identity's data; switching to anything
+                // else can't stay here (this page is admin-only — see bootHRPage), so send
+                // them to the app that can actually show their role.
+                if (typeof renderHRSidebarIdentity === 'function') renderHRSidebarIdentity();
+                if (activeRole === 'admin' && typeof initHRPanel === 'function') {
+                    hrLoaded = false;
+                    initHRPanel();
+                } else {
+                    window.location.href = 'index.html';
+                }
+            }
+        }
+
+        function startAddAccountFlow() {
+            closeAccountSwitcher();
+            if (typeof document !== 'undefined' && document.getElementById('portal-login-screen')) {
+                // index.html only — hr.html has no login screen of its own; its "Add another
+                // account" link goes straight to index.html instead (see the sidebar markup).
+                const screen = document.getElementById('portal-login-screen');
+                document.getElementById('portal-user-input').value = '';
+                document.getElementById('portal-password-input').value = '';
+                document.getElementById('portal-heading-text').innerText = 'Add Another Account';
+                document.getElementById('portal-subheading-text').classList.remove('hidden');
+                document.getElementById('portal-cancel-add-btn').classList.remove('hidden');
+                screen.classList.remove('hidden');
+                screen.style.display = 'flex';
+                window.scrollTo(0, 0);
+                setTimeout(() => document.getElementById('portal-user-input').focus(), 100);
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            const desktopPanel = document.getElementById('account-switcher-panel');
+            if (!desktopPanel) return;
+            const mobilePanel = document.getElementById('account-switcher-panel-mobile');
+            const clickedInsideSwitcher = e.target.closest('#account-switcher-panel, #account-switcher-trigger, #account-switcher-trigger-mobile, #account-switcher-panel-mobile');
+            if (!clickedInsideSwitcher) {
+                desktopPanel.classList.add('hidden');
+                mobilePanel?.classList.add('hidden');
+            }
+        });
+
+// ── BIRTHDAY CELEBRATION — month/day only, never the birth year; works for every
+// employee automatically off the existing hr_employees.dob field, nothing hardcoded. ──
+        function isBirthdayToday(dobStr) {
+            if (!dobStr) return false;
+            const d = new Date(dobStr);
+            if (isNaN(d)) return false;
+            const now = new Date();
+            return d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+        }
+
+        // Every active employee whose dob matches today — used by the HR Dashboard alert.
+        function getTodaysBirthdays() {
+            return hrEmployees.filter(e => e.employment_status === 'active' && isBirthdayToday(e.dob));
+        }
+
+        // Employee-side popup — once per person per calendar day, persisted in localStorage
+        // so it survives reloads/re-polls within the same day rather than a session flag that
+        // would just re-show on every refresh.
+        function checkAndShowBirthdayPopup(me) {
+            if (!me || !isBirthdayToday(me.dob) || !document.getElementById('birthday-popup-overlay')) return;
+            const today = new Date().toISOString().slice(0, 10);
+            const key = `be_birthday_shown_${(activeEmail || '').toLowerCase()}_${today}`;
+            if (localStorage.getItem(key)) return;
+            localStorage.setItem(key, '1');
+            showBirthdayPopup(me.full_name || activeUser || 'there');
+        }
+
+        function showBirthdayPopup(name) {
+            const overlay = document.getElementById('birthday-popup-overlay');
+            if (!overlay) return;
+            const firstName = String(name).trim().split(' ')[0];
+            document.getElementById('birthday-popup-name-suffix').textContent = firstName ? ',' : '';
+            document.getElementById('birthday-popup-name').textContent = firstName || '';
+            const confettiEl = document.getElementById('birthday-confetti');
+            if (confettiEl) {
+                const pieces = ['🎉','🎈','🎊','✨','🎂'];
+                confettiEl.innerHTML = Array.from({ length: 16 }).map(() => {
+                    const left = Math.round(Math.random() * 100);
+                    const delay = (Math.random() * 0.6).toFixed(2);
+                    const dur = (2 + Math.random() * 1.2).toFixed(2);
+                    const emoji = pieces[Math.floor(Math.random() * pieces.length)];
+                    return `<span class="confetti-piece" style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s">${emoji}</span>`;
+                }).join('');
+            }
+            overlay.classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function closeBirthdayPopup() {
+            document.getElementById('birthday-popup-overlay')?.classList.add('hidden');
         }
