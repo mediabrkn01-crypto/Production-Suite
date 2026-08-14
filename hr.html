@@ -635,9 +635,6 @@
                         <i data-lucide="chevrons-up-down" style="width:13px;height:13px;color:#808a9d"></i>
                     </button>
                 </div>
-                <a href="index.html" class="sidebar-link" style="width:100%;text-align:left;display:block;text-decoration:none">
-                    <i data-lucide="arrow-left" style="width:14px;height:14px"></i> Back to Pipeline
-                </a>
                 <button onclick="logoutFromHR()" class="sidebar-link" style="width:100%;text-align:left">
                     <i data-lucide="log-out" style="width:14px;height:14px"></i> Logout
                 </button>
@@ -844,6 +841,14 @@
                         <input id="hr-att-date" type="date" class="hr-input" onchange="renderHRAttendance()">
                         <button onclick="setHRAttDateToday()" class="hr-select" style="cursor:pointer">Today</button>
                         <span class="text-[11px] text-[#6b74a0]">Mark daily status per employee. Portal check-in/out data is used automatically for employees who log in.</span>
+                    </div>
+                    <!-- Present ÷ Applicable Employees for the selected date — see
+                         hrComputeAttendancePctForDate() in shared/common.js. Updates immediately
+                         whenever a status is set below (setHRAttendanceStatus re-renders this). -->
+                    <div class="grid grid-cols-3 gap-4 max-w-lg">
+                        <div class="hr-stat-card"><div class="num" id="hr-att-day-pct">—</div><div class="label">Attendance %</div></div>
+                        <div class="hr-stat-card"><div class="num" id="hr-att-day-present">0</div><div class="label">Present</div></div>
+                        <div class="hr-stat-card"><div class="num" id="hr-att-day-applicable">0</div><div class="label">Applicable Employees</div></div>
                     </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
@@ -1909,17 +1914,19 @@
                 }
             }
 
-            // ── Attendance widget: progress bar + "workforce marked" donut ──
-            // (todayPresent already counts anyone with an explicit hr_attendance status OR a
-            // raw clock-in log — same union the stat tile below uses, so these can't disagree.)
-            const markedPct = active > 0 ? Math.round((todayPresent / active) * 100) : 0;
+            // ── Attendance widget: progress bar + "workforce marked" donut — sourced from
+            // hrComputeAttendancePctForDate(), the single shared formula (Present ÷ Applicable,
+            // Applicable = active employees minus anyone on weekly-off/holiday today), so this
+            // can never disagree with the daily Attendance page or the Monthly Report. ──
+            const todayAtt = hrComputeAttendancePctForDate(todayStr);
+            const markedPct = todayAtt.pct ?? 0;
             const progressEl = document.getElementById('hr-dash-att-progress');
             if (progressEl) progressEl.style.width = markedPct + '%';
             const donut = document.getElementById('hr-dash-att-donut');
             const CIRC = 138.2; // 2 * PI * r(22)
             if (donut) donut.setAttribute('stroke-dashoffset', String(CIRC - (CIRC * markedPct / 100)));
-            const donutPct = document.getElementById('hr-dash-att-donut-pct'); if (donutPct) donutPct.textContent = markedPct + '%';
-            const donutLabel = document.getElementById('hr-dash-att-donut-label'); if (donutLabel) donutLabel.textContent = `${todayPresent} of ${active} employees`;
+            const donutPct = document.getElementById('hr-dash-att-donut-pct'); if (donutPct) donutPct.textContent = todayAtt.pct === null ? '—' : markedPct + '%';
+            const donutLabel = document.getElementById('hr-dash-att-donut-label'); if (donutLabel) donutLabel.textContent = todayAtt.applicable > 0 ? `${todayAtt.present} of ${todayAtt.applicable} employees` : 'Everyone is off today';
 
             // ── Overview tiles — same numbers as before, restyled as colored icon-boxes.
             // Colors are drawn from the existing --purple/--blue/--amber/--pink/--cyan palette
@@ -2540,6 +2547,15 @@
         function renderHRAttendance() {
             const date = document.getElementById('hr-att-date').value;
             const active = hrEmployees.filter(e => e.employment_status === 'active');
+
+            const dayAtt = hrComputeAttendancePctForDate(date);
+            const pctEl = document.getElementById('hr-att-day-pct');
+            const presentEl = document.getElementById('hr-att-day-present');
+            const applicableEl = document.getElementById('hr-att-day-applicable');
+            if (pctEl) pctEl.textContent = dayAtt.pct === null ? '—' : dayAtt.pct + '%';
+            if (presentEl) presentEl.textContent = dayAtt.present;
+            if (applicableEl) applicableEl.textContent = dayAtt.applicable;
+
             document.getElementById('hr-attendance-rows').innerHTML = active.length ? active.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === date);
                 const portalLog = e.portal_email ? (window._hrAttendanceLogsCache || []).find(l => (l.employee_email||'').toLowerCase() === e.portal_email && l.log_date === date) : null;
@@ -2581,6 +2597,7 @@
         function renderHRMonthlyAttendance() {
             const month = document.getElementById('hr-att-month').value;
             if (!month) return;
+            const todayStr = new Date().toISOString().slice(0,10);
             const [y, m] = month.split('-').map(Number);
             const daysInMonth = new Date(y, m, 0).getDate();
             const dayNums = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -2625,11 +2642,16 @@
             const dailyPresent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (['P','L','AL'].includes(r.codes[i].code) ? 1 : 0), 0));
             const dailyAbsent = dayNums.map((d, i) => empRows.reduce((s, r) => s + (r.codes[i].code === 'A' ? 1 : 0), 0));
             const dailyLate = dayNums.map((d, i) => empRows.reduce((s, r) => s + (['L','AL'].includes(r.codes[i].code) ? 1 : 0), 0));
-            const dailyPct = dayNums.map((d, i) => {
-                const marked = empRows.filter(r => ['P','A','L','AL'].includes(r.codes[i].code)); // WO/H/PL/UL excluded — not applicable working days
-                if (!marked.length) return '—';
-                const present = marked.filter(r => ['P','L','AL'].includes(r.codes[i].code)).length;
-                return Math.round((present / marked.length) * 100) + '%';
+            // Same centralized formula as the Dashboard donut and the daily Attendance page
+            // (hrComputeAttendancePctForDate) — every active, already-joined employee counts
+            // toward the denominator for a given day (whether or not anyone's gotten around to
+            // marking them yet), minus weekly-off/holiday; a future date has no applicable
+            // employees yet evaluated, so it's correctly '—' rather than a misleading 0%/100%.
+            const dailyPct = dayNums.map(d => {
+                const dateStr = `${month}-${String(d).padStart(2,'0')}`;
+                if (dateStr > todayStr) return '—';
+                const { applicable, present } = hrComputeAttendancePctForDate(dateStr);
+                return applicable > 0 ? Math.round((present / applicable) * 100) + '%' : '—';
             });
 
             // Top summary stat cards — present already includes Late/Afternoon-Login (see

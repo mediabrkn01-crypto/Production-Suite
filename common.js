@@ -889,6 +889,41 @@ async function acadSyncTrainersFromHR(){
             return hrHolidays.some(h => h.holiday_date === dateStr);
         }
 
+        // ── SINGLE source of truth for "attendance %" on any one date — used by the HR
+        // Dashboard's workforce-marked donut, the daily Attendance page's summary card, and
+        // the Monthly Attendance Overview's per-day row, so none of them can ever disagree.
+        //   Applicable = active employees, already joined by this date, MINUS anyone on a
+        //     configured weekly-off or company holiday for this specific date (so those days
+        //     never drag the percentage down — they're excluded from both sides of the ratio,
+        //     not counted as absent).
+        //   Present = employees in Applicable who currently have a Present-family
+        //     hr_attendance status (see HR_PRESENT_STATUSES) OR a raw clock-in log for this
+        //     date, counted as a Set of employee ids — so even if two attendance rows existed
+        //     for the same person/date, they'd still only ever count once.
+        //   Everyone else in Applicable (marked Absent, on leave, or simply never marked at
+        //     all) counts toward the denominator but not the numerator — an employee nobody
+        //     has gotten around to marking yet is not silently dropped from the calculation.
+        function hrComputeAttendancePctForDate(dateStr) {
+            const dow = new Date(dateStr + 'T00:00:00').getDay();
+            const applicable = hrEmployees.filter(e =>
+                e.employment_status === 'active' &&
+                (!e.joining_date || dateStr >= e.joining_date) &&
+                !hrIsWeeklyOff(dow) &&
+                !hrIsHoliday(dateStr)
+            );
+            const presentIds = new Set();
+            applicable.forEach(e => {
+                const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === dateStr);
+                const isPresent = rec ? HR_PRESENT_STATUSES.includes(rec.status) : !!hrPortalLogFor(e, dateStr);
+                if (isPresent) presentIds.add(e.id);
+            });
+            return {
+                applicable: applicable.length,
+                present: presentIds.size,
+                pct: applicable.length > 0 ? Math.round((presentIds.size / applicable.length) * 100) : null
+            };
+        }
+
 // ── hrCalculatePayrollForMonth (orig line 10345) ──
         function hrCalculatePayrollForMonth(employeeId, monthStr) {
             const [y, m] = monthStr.split('-').map(Number);
