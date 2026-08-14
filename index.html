@@ -740,7 +740,7 @@
                     <button id="nav-acad-live" onclick="switchTab('acad-live')" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="radio" style="width:14px;height:14px"></i> Live Batches</button>
                     <button id="nav-acad-mybatches" onclick="switchTab('acad-mybatches')" class="sidebar-link role-trainer-only hidden" style="width:100%;text-align:left"><i data-lucide="book-open" style="width:14px;height:14px"></i> My Batches</button>
                     <button id="nav-acad-courses" onclick="switchTab('acad-courses')" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="graduation-cap" style="width:14px;height:14px"></i> Courses</button>
-                    <button id="nav-acad-trainers" onclick="switchTab('acad-trainers')" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="users" style="width:14px;height:14px"></i> Trainers</button>
+                    <button id="nav-acad-trainers" onclick="switchTab('acad-trainers')" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="users" style="width:14px;height:14px"></i> Coaches</button>
                     <button id="nav-acad-tasks" onclick="switchTab('acad-tasks')" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
                     <button id="nav-acad-attendance" onclick="switchTab('acad-attendance')" class="sidebar-link" style="width:100%;text-align:left"><i data-lucide="clock" style="width:14px;height:14px"></i> Attendance</button>
                     <button id="nav-acad-logs" onclick="switchTab('acad-logs')" class="sidebar-link role-trainer-only hidden" style="width:100%;text-align:left"><i data-lucide="notebook" style="width:14px;height:14px"></i> Logs</button>
@@ -767,6 +767,9 @@
                     </button>
                     <button id="nav-my-payslips" onclick="switchTab('my-payslips')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips
+                    </button>
+                    <button id="nav-team-members" onclick="switchTab('team-members')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members
                     </button>
                 </div>
 
@@ -974,13 +977,25 @@
 
             <div id="tab-content-acad-trainers" class="space-y-6 hidden">
                 <div>
-                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Trainers</h1>
-                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Academic trainer roster.</p>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Coaches</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Academic coach roster.</p>
                 </div>
-                <div class="acadx-section">
-                    <h2>Trainers/Coaches <span class="acadx-tag" style="background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border-color:rgba(255,255,255,.12)">Synced from HR</span></h2>
+                <!-- Full roster — Academic Head / Class Coordinator only. Coaches are a
+                     mid-level role, not management, so they don't get the complete team list;
+                     see #acad-team-leave-section below for what they see instead. -->
+                <div class="acadx-section role-head-only hidden">
+                    <h2>Coaches <span class="acadx-tag" style="background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border-color:rgba(255,255,255,.12)">Synced from HR</span></h2>
                     <table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
                         <tbody id="trainerTable"></tbody></table>
+                </div>
+                <!-- Coach-level view: no full roster — just who on the Education team is
+                     currently on approved leave, so a Coach knows who's unavailable before
+                     picking up work, without seeing the full employee directory. -->
+                <div id="acad-team-leave-section" class="hidden">
+                    <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">Team Members — On Leave</h3>
+                        <div id="acad-team-leave-list" class="space-y-2"></div>
+                    </div>
                 </div>
             </div>
 
@@ -1445,6 +1460,19 @@
                         </tr></thead>
                         <tbody id="my-payslips-rows" class="divide-y divide-white/[0.05]"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- ====== TEAM MEMBERS — department-scoped leave visibility, NOT the full
+                 employee directory (that stays Manager/Head-only, see My Team / HR). ====== -->
+            <div id="tab-content-team-members" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Team Members</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">See who on your team is currently on approved leave.</p>
+                </div>
+                <div class="card glass-card p-4 md:p-6 rounded-2xl">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-3">On Leave Today</h3>
+                    <div id="team-members-leave-list" class="space-y-2"></div>
                 </div>
             </div>
 
@@ -2248,6 +2276,10 @@
                 const { data: users, error: errU } = await dbInstance.from('user_roster').select('*');
                 if (!errU && users) {
                     userRoster = users;
+                    // Academic employees must never appear in Production's task-assignment
+                    // dropdown — refreshed (throttled) before the dropdown rebuilds so the
+                    // filter is never working off a stale/empty cache.
+                    if (typeof refreshAcademicEmailsCache === 'function') await refreshAcademicEmailsCache();
                     populateDropdownSelectors();
                 } else if (errU) {
                     console.error('[BE] user_roster fetch error:', errU);
@@ -2609,6 +2641,7 @@
             document.getElementById('tab-content-history').classList.add('hidden');
             document.getElementById('tab-content-my-profile').classList.add('hidden');
             document.getElementById('tab-content-announcements').classList.add('hidden');
+            document.getElementById('tab-content-team-members').classList.add('hidden');
             // tab-content-hr no longer exists here — HR moved to hr/index.html (see the
             // 'hr' branch below, which now redirects instead of un-hiding an in-page tab).
             document.getElementById('tab-content-my-attendance').classList.add('hidden');
@@ -2665,6 +2698,10 @@
                 document.getElementById('nav-announcements')?.classList.add('active');
                 document.getElementById('tab-content-announcements').classList.remove('hidden');
                 if (typeof renderEmployeeAnnouncementsList === 'function') renderEmployeeAnnouncementsList();
+            } else if (targetTab === 'team-members') {
+                document.getElementById('nav-team-members')?.classList.add('active');
+                document.getElementById('tab-content-team-members').classList.remove('hidden');
+                if (typeof renderDeptOnLeaveWidget === 'function') renderDeptOnLeaveWidget('team-members-leave-list');
             } else if (targetTab === 'my-attendance') {
                 document.getElementById('nav-my-attendance')?.classList.add('active');
                 document.getElementById('tab-content-my-attendance').classList.remove('hidden');
@@ -2899,8 +2936,11 @@
             if (document.activeElement === empDropdown) return;
             const prevVal = empDropdown.value;
             empDropdown.innerHTML = '<option value="">-- Select Employee --</option>';
-            const assignable = userRoster.filter(u => u.role !== 'admin');
-            const list = assignable.length > 0 ? assignable : userRoster;
+            // Academic employees must never show up in Production's assignment list — see
+            // refreshAcademicEmailsCache() in shared/common.js (department separation).
+            const isAcademic = u => (typeof _academicPortalEmails !== 'undefined') && _academicPortalEmails.has((u.email || '').toLowerCase());
+            const assignable = userRoster.filter(u => u.role !== 'admin' && !isAcademic(u));
+            const list = assignable.length > 0 ? assignable : userRoster.filter(u => !isAcademic(u));
             list.forEach(u => {
                 empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.role})</option>`;
             });
@@ -6463,6 +6503,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.querySelectorAll('.role-head-only').forEach(el => isHead ? el.classList.remove('hidden') : el.remove());
             document.querySelectorAll('.role-trainer-only').forEach(el => el.classList.toggle('hidden', !isTrainerCapable));
             document.querySelectorAll('.role-nontrainer-only').forEach(el => el.classList.toggle('hidden', isTrainerCapable));
+            // Coaches don't get the full roster (role-head-only removes it above) — show the
+            // department-scoped "who's on leave" widget instead of an empty page.
+            const teamLeaveSection = document.getElementById('acad-team-leave-section');
+            if (teamLeaveSection) {
+                teamLeaveSection.classList.toggle('hidden', isHead);
+                if (!isHead && typeof renderDeptOnLeaveWidget === 'function') renderDeptOnLeaveWidget('acad-team-leave-list');
+            }
             if (isHead) await loadHeadView(); // also loads Trainers table + Courses
             else { await loadTrainersTable(); await loadCourses(); }
             if (isTrainerCapable) await loadTrainerView();
@@ -6648,7 +6695,7 @@ async function loadAcadDashboard(){
       const pendingCount = Array.from(document.querySelectorAll('#myTasks tr')).filter(r => r.children[3] && /pending|in.progress/i.test(r.children[3].textContent)).length;
       tiles.push({ lbl: 'Pending Tasks', val: pendingCount });
     }
-    if (isHead) tiles.push({ lbl: 'Trainers', val: countRows('#trainerTable tr') }, { lbl: 'Assigned Tasks', val: countRows('#assignTable tr') });
+    if (isHead) tiles.push({ lbl: 'Coaches', val: countRows('#trainerTable tr') }, { lbl: 'Assigned Tasks', val: countRows('#assignTable tr') });
     document.getElementById('dashSummary').innerHTML = tiles.map(t => `<div class="acadx-card"><div class="lbl">${t.lbl}</div><div class="val">${t.val}</div></div>`).join('');
 
     document.getElementById('dashToday').innerHTML = activeBatches.length
@@ -6683,7 +6730,7 @@ async function loadStats(){
   const { data: students } = await acadDB.from('students').select('*');
   const { data: sessions } = await acadDB.from('sessions').select('*').eq('status','completed');
   document.getElementById('statgrid').innerHTML = `
-    <div class="acadx-card"><div class="lbl">Active Trainers</div><div class="val">${trainers?.length||0}</div></div>
+    <div class="acadx-card"><div class="lbl">Active Coaches</div><div class="val">${trainers?.length||0}</div></div>
     <div class="acadx-card"><div class="lbl">Total Batches</div><div class="val">${batches?.length||0}</div></div>
     <div class="acadx-card"><div class="lbl">Total Students</div><div class="val">${students?.length||0}</div></div>
     <div class="acadx-card"><div class="lbl">Sessions Completed</div><div class="val">${sessions?.length||0}</div></div>
@@ -6699,7 +6746,12 @@ async function loadStats(){
 async function loadTrainersTable(){
   await acadSyncTrainersFromHR();
   const { data: trainers } = await acadDB.from('trainers').select('*').order('name');
-  document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => `
+  // trainerTable no longer exists in the DOM for Coaches (its wrapping .acadx-section is
+  // role-head-only, hard-removed by acadBoot) — the sync above still needs to run for
+  // everyone, but there's nothing to render into for a non-Head viewer.
+  const tbody = document.getElementById('trainerTable');
+  if (!tbody) return;
+  tbody.innerHTML = (trainers||[]).map(t => `
     <tr><td>${t.name}</td><td>${t.type==='pt'?'Part-time':'Full-time'}</td>
     <td><span class="acadx-badge ${t.status==='active'?'acadx-b-active':'acadx-b-inactive'}">${t.status}</span></td>
     <td class="acadx-empty" style="padding:0;text-align:left">Managed by HR</td></tr>

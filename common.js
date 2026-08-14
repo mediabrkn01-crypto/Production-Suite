@@ -116,6 +116,120 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
         // sync between the dashboard tile, reports, and Academic's Employee Attendance view.
         const HR_PRESENT_STATUSES = ['present', 'late', 'afternoon', 'half_day', 'wfh'];
 
+// ---------- Department separation: Academic must never leak into the Production
+// Pipeline, and vice versa. The task-assignment dropdown (populateDropdownSelectors in
+// index.html) is built from user_roster, which carries login ROLE (employee/manager/
+// admin/social_media) but not DIVISION — an Academic person with portal access would
+// otherwise show up there indistinguishably from a Production one. This is a minimal,
+// cached lookup (just portal_email + division, nothing else) so that dropdown can filter
+// them out without needing a full, unscoped employee fetch on every render. ----------
+let _academicPortalEmails = new Set();
+let _lastAcademicEmailsFetch = 0;
+async function refreshAcademicEmailsCache() {
+    const now = Date.now();
+    if (now - _lastAcademicEmailsFetch < 60000) return; // throttled — this is a slow-changing list
+    _lastAcademicEmailsFetch = now;
+    try {
+        const { data, error } = await dbInstance.from('hr_employees').select('portal_email').eq('division', 'education');
+        if (!error && data) {
+            _academicPortalEmails = new Set(data.map(e => (e.portal_email || '').toLowerCase()).filter(Boolean));
+        }
+    } catch (e) { /* leave the previous cache in place rather than blanking it on a transient error */ }
+}
+
+// ---------- Department-scoped "who's on leave" widget (Team Members section) ----------
+// Deliberately NOT the full employee directory — Coaches/regular employees don't get that
+// (see role-head-only on the Coaches roster, and Manager-only on My Team). This is a
+// narrow, purpose-built query: just enough fields to show a name, photo, and leave dates
+// for people in the SAME division as the viewer, restricted to currently-APPROVED leave
+// only (never pending/rejected) — scoped at the query itself, not filtered client-side
+// from a bigger fetch.
+async function fetchDeptOnLeaveToday() {
+    const me = myHREmployeeRecord();
+    if (!me || !me.division) return [];
+    try {
+        const { data: deptEmployees, error: e1 } = await dbInstance.from('hr_employees')
+            .select('id,full_name,photo_base64,photo_url,division')
+            .eq('division', me.division)
+            .eq('employment_status', 'active');
+        if (e1 || !deptEmployees || !deptEmployees.length) return [];
+        const ids = deptEmployees.map(e => e.id);
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: leaves, error: e2 } = await dbInstance.from('hr_leave_requests')
+            .select('*')
+            .eq('status', 'approved')
+            .lte('start_date', today)
+            .gte('end_date', today)
+            .in('employee_id', ids);
+        if (e2 || !leaves) return [];
+        const byId = {}; deptEmployees.forEach(e => { byId[e.id] = e; });
+        return leaves.map(l => ({ employee: byId[l.employee_id], leave: l })).filter(x => x.employee);
+    } catch (e) {
+        console.warn('fetchDeptOnLeaveToday failed:', e.message);
+        return [];
+    }
+}
+
+async function renderDeptOnLeaveWidget(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const rows = await fetchDeptOnLeaveToday();
+    if (!rows.length) {
+        el.innerHTML = `<p class="text-[#4a5182] text-xs italic py-3 text-center">No one on your team is on leave today.</p>`;
+        return;
+    }
+    el.innerHTML = rows.map(({ employee, leave }) => `
+        <div class="flex items-center gap-3 p-3 rounded-xl" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+            ${hrAvatarHTML(employee, 36)}
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-bold text-white truncate">${employee.full_name}</div>
+                <div class="text-[11px] text-[#6b74a0]">${leave.start_date} → ${leave.end_date}</div>
+            </div>
+            <span class="hr-badge hr-badge-on_leave shrink-0">On Leave</span>
+        </div>
+    `).join('');
+}
+
+// Team-leave notifications: a division-mate's leave just became approved. Fires into the
+// SAME bell as everything else (payslip/leave-status), deduped per leave-request id so it
+// only ever announces once, not on every poll tick.
+let _lastKnownDeptLeaveIds = new Set();
+function loadDeptLeaveNotifBaseline() {
+    try { _lastKnownDeptLeaveIds = new Set(JSON.parse(localStorage.getItem(`be_known_dept_leaves_${activeEmail}`) || '[]')); }
+    catch (e) { _lastKnownDeptLeaveIds = new Set(); }
+}
+function saveDeptLeaveNotifBaseline() {
+    localStorage.setItem(`be_known_dept_leaves_${activeEmail}`, JSON.stringify([..._lastKnownDeptLeaveIds]));
+}
+async function checkDeptLeaveNotifications() {
+    const me = myHREmployeeRecord();
+    if (!me || !me.division) return;
+    const hadBaseline = localStorage.getItem(`be_known_dept_leaves_${activeEmail}`) !== null;
+    loadDeptLeaveNotifBaseline();
+    try {
+        const { data: deptEmployees } = await dbInstance.from('hr_employees')
+            .select('id,full_name').eq('division', me.division).eq('employment_status', 'active');
+        if (!deptEmployees || !deptEmployees.length) return;
+        const ids = deptEmployees.map(e => e.id);
+        const byId = {}; deptEmployees.forEach(e => { byId[e.id] = e; });
+        const { data: leaves } = await dbInstance.from('hr_leave_requests').select('*').eq('status', 'approved').in('employee_id', ids);
+        if (!leaves) return;
+        let changed = false;
+        leaves.forEach(l => {
+            if (l.employee_id === me.id) return; // don't notify me about my own leave — that's the existing leave_approved notif
+            if (!_lastKnownDeptLeaveIds.has(l.id)) {
+                if (hadBaseline) {
+                    const who = byId[l.employee_id]?.full_name || 'A team member';
+                    addNotif('team_leave', `${who} is on leave from ${l.start_date} to ${l.end_date}.`, null, l.id);
+                }
+                _lastKnownDeptLeaveIds.add(l.id);
+                changed = true;
+            }
+        });
+        if (changed) saveDeptLeaveNotifBaseline();
+    } catch (e) { /* non-critical — skip this tick */ }
+}
+
 // ---------- loadMyHRData(): lightweight, self-scoped loader ----------
 // Fetches ONLY the current employee's own rows — never the full company roster,
 // applicants, or other employees' salary history/documents. Used by the My
@@ -255,6 +369,7 @@ async function loadMyHRData() {
                 case 'leave_approved': return { icon: 'check-circle-2', color: 'green', label: '✅ Leave Approved', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'announcement': return { icon: 'megaphone', color: 'orange', label: '📢 Company Announcement', onClick: null };
+                case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: null };
                 default: return { icon: 'plus-circle', color: 'orange', label: '🆕 New Task Assigned', onClick: null };
             }
         }
@@ -612,6 +727,7 @@ async function loadMyHRData() {
             if (!me) { if (changed) saveHRNotifBaseline(); return; }
 
             checkAndShowBirthdayPopup(me);
+            checkDeptLeaveNotifications();
 
             // New payslip: any published row for me not seen before. First-ever check on this
             // device just records the baseline — otherwise every existing payslip would fire a
