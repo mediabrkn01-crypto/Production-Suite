@@ -629,6 +629,29 @@
         </aside>
 
         <main class="flex-1 overflow-y-auto" style="padding:20px 24px">
+            <!-- Top bar — search is cosmetic (filters nothing yet), bell reuses the existing
+                 HR notification count, avatar reuses the existing session name/role. -->
+            <div class="flex items-center justify-between gap-4 mb-5">
+                <div class="relative flex-1 max-w-xs hidden sm:block">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b74a0]"></i>
+                    <input id="hr-topbar-search" type="text" placeholder="Search employees, departments..." onclick="switchHRSubtab('employees')" readonly class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl pl-9 pr-12 py-2 text-xs text-white placeholder:text-[#6b74a0] cursor-pointer" style="pointer-events:auto">
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-[#4a5182] border border-white/[0.08] rounded px-1.5 py-0.5">⌘K</span>
+                </div>
+                <div class="flex items-center gap-3 ml-auto">
+                    <button onclick="switchHRSubtab('notifications')" class="relative w-9 h-9 rounded-xl flex items-center justify-center text-white/70 hover:text-white transition" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border)">
+                        <i data-lucide="bell" class="w-4 h-4"></i>
+                        <span id="hr-topbar-notif-badge" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center px-1" style="background:linear-gradient(135deg,var(--brand-1),var(--brand-3))"></span>
+                    </button>
+                    <div class="flex items-center gap-2 pl-2 border-l border-white/[0.06]">
+                        <div id="hr-topbar-avatar" class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style="background:linear-gradient(135deg,var(--brand-1),var(--brand-3))"></div>
+                        <div class="hidden md:block leading-tight">
+                            <div id="hr-topbar-name" class="text-xs font-bold text-white"></div>
+                            <div id="hr-topbar-role" class="text-[10px] text-[#6b74a0]"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ====== HR WORKSPACE TAB ====== -->
             <div id="tab-content-hr" class="space-y-6">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -638,35 +661,65 @@
                     </div>
                 </div>
 
-                <div id="hr-tables-missing-banner" class="hidden" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px">
+                <div id="hr-tables-missing-banner" class="hidden" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:14px;padding:14px 18px;align-items:center;gap:10px">
                     <i data-lucide="alert-triangle" class="w-5 h-5 text-red-400 flex-shrink-0"></i>
                     <div id="hr-tables-missing-text" style="font-size:12px;color:#fca5a5"></div>
                 </div>
 
                 <!-- HR: DASHBOARD -->
                 <div id="hr-sub-dashboard" class="space-y-6">
+                    <!-- "Heads up" banner — only shown when there's something to act on -->
+                    <div id="hr-dash-pending-banner" class="hidden rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style="background:linear-gradient(90deg,rgba(255,107,6,0.12),rgba(255,5,82,0.05));border:1px solid rgba(255,107,6,0.25)">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-orange-400 shrink-0"></i>
+                            <span id="hr-dash-pending-banner-text" class="text-xs text-white/90"></span>
+                        </div>
+                        <button onclick="switchHRSubtab('leave')" class="text-xs font-bold px-3 py-1.5 rounded-lg uppercase tracking-wide shrink-0" style="background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.4);color:#ffb877">Review Requests</button>
+                    </div>
+
                     <!-- Clock-In is for everyone, HR included (req: available everywhere, same
                          design/behavior) — same attendanceLogs/hr_attendance record as
                          Pipeline's card and Academic's card, kept in sync by
                          refreshAttendanceClockCard(). Admin previously had no clock-in UI at
-                         all since they don't land on the Pipeline dashboard; this is that fix. -->
-                    <div class="card p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div class="flex items-center gap-3">
-                            <div class="p-2.5 rounded-lg bg-orange-500/10 text-white/70 shrink-0"><i data-lucide="clock-4" class="w-5 h-5"></i></div>
-                            <div>
+                         all since they don't land on the Pipeline dashboard; this is that fix.
+                         The donut is a separate, company-wide metric (% of active employees
+                         marked today) — not the same thing as this card's own clock status. -->
+                    <div class="card p-4 md:p-5 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <div class="p-2.5 rounded-lg shrink-0" style="background:rgba(124,58,237,0.15);color:var(--purple)"><i data-lucide="clock-4" class="w-5 h-5"></i></div>
+                            <div class="min-w-0 flex-1">
                                 <p class="text-xs font-bold text-white uppercase tracking-wider">Attendance</p>
                                 <p id="hr-attendance-status-text" class="text-[11px] text-[#6b74a0] mt-0.5">Checking today's status...</p>
+                                <div class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-2 max-w-xs">
+                                    <div id="hr-dash-att-progress" class="h-full rounded-full transition-all duration-500" style="width:0%;background:linear-gradient(90deg,var(--brand-3),var(--brand-1))"></div>
+                                </div>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="text-xs font-bold px-4 py-2 rounded-md uppercase tracking-wide flex items-center gap-1.5 cursor-pointer transition" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-family:Inter,sans-serif">
-                                <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
-                            </button>
-                            <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
-                                <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
-                            </button>
+                        <div class="flex items-center gap-4 shrink-0">
+                            <div class="flex items-center gap-2">
+                                <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="text-xs font-bold px-4 py-2 rounded-md uppercase tracking-wide flex items-center gap-1.5 cursor-pointer transition" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-family:Inter,sans-serif">
+                                    <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
+                                </button>
+                                <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
+                                    <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-3 pl-4 border-l border-white/[0.06]">
+                                <svg width="52" height="52" viewBox="0 0 52 52" class="shrink-0">
+                                    <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5"></circle>
+                                    <circle id="hr-dash-att-donut" cx="26" cy="26" r="22" fill="none" stroke="url(#hrDashDonutGrad)" stroke-width="5" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2" transform="rotate(-90 26 26)"></circle>
+                                    <defs><linearGradient id="hrDashDonutGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="var(--brand-1)"/><stop offset="100%" stop-color="var(--brand-3)"/></linearGradient></defs>
+                                    <text id="hr-dash-att-donut-pct" x="26" y="30" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">—</text>
+                                </svg>
+                                <div>
+                                    <div class="text-xs font-bold text-white">Workforce Marked</div>
+                                    <div id="hr-dash-att-donut-label" class="text-[11px] text-[#6b74a0]">—</div>
+                                </div>
+                            </div>
+                            <button onclick="switchHRSubtab('attendance')" class="hidden md:flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg shrink-0" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);color:#c7cbe0">View Attendance <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
                         </div>
                     </div>
+
                     <div>
                         <h3 class="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">HR Overview</h3>
                         <div id="hr-dash-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
@@ -696,10 +749,13 @@
                     </div>
 
                     <div class="card glass-card rounded-2xl overflow-x-auto">
-                        <div class="p-4 md:p-6 pb-0"><h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Today's Workforce</h3></div>
+                        <div class="p-4 md:p-6 pb-0 flex items-center justify-between">
+                            <h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Today's Workforce</h3>
+                            <button onclick="switchHRSubtab('employees')" class="text-xs font-bold px-3 py-1.5 rounded-lg" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);color:#c7cbe0">View All Employees</button>
+                        </div>
                         <table class="w-full text-sm text-left mt-2">
                             <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Role</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4">Designation</th>
+                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Role</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4">Designation</th><th class="py-3 px-4"></th>
                             </tr></thead>
                             <tbody id="hr-dash-workforce-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
@@ -1711,6 +1767,13 @@
             const bannerText = document.getElementById('hr-tables-missing-text');
             if (banner) {
                 banner.classList.toggle('hidden', !hrTablesMissing);
+                // The class alone isn't enough — this div has display:flex baked into its
+                // inline style (needed to lay out its icon+text+row), and an inline style
+                // always wins over a class rule, so .hidden{display:none} never actually took
+                // effect: this banner has been visually present (empty) on every HR page load
+                // regardless of hrTablesMissing. Setting the inline style explicitly is the
+                // only reliable fix (same pattern as the upload-modal minimize bug).
+                banner.style.display = hrTablesMissing ? 'flex' : 'none';
                 if (bannerText && hrTablesMissing) {
                     bannerText.innerHTML = `<strong>Some HR tables are missing or unreachable in Supabase:</strong> ${missingTables.join(', ')}. Those sections will stay empty until <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:4px">hr_schema.sql</code> is (re-)run in your Supabase project's SQL editor. Everything else on this page is live.`;
                 }
@@ -1783,17 +1846,59 @@
             const lateToday = hrAttendance.filter(a => a.att_date === todayStr && a.status === 'late').length;
             const pendingPayroll = hrPayroll.filter(p => p.payment_status === 'pending').length;
 
+            // ── Top bar: session identity + notification count (reuses hrComputeNotifications,
+            // the same source the sidebar's HR Notifications badge already uses) ──
+            const topAvatar = document.getElementById('hr-topbar-avatar');
+            if (topAvatar) topAvatar.textContent = (activeUser || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();
+            const topName = document.getElementById('hr-topbar-name'); if (topName) topName.textContent = activeUser || '';
+            const topRole = document.getElementById('hr-topbar-role'); if (topRole) topRole.textContent = activeRole ? activeRole.charAt(0).toUpperCase() + activeRole.slice(1) : '';
+            const topBadge = document.getElementById('hr-topbar-notif-badge');
+            if (topBadge && typeof hrComputeNotifications === 'function') {
+                const n = hrComputeNotifications().filter(x => x.type === 'action').length;
+                topBadge.textContent = n > 99 ? '99+' : n;
+                topBadge.style.display = n > 0 ? 'flex' : 'none';
+            }
+
+            // ── "Heads up" banner — pending leave only, the single most actionable item here ──
+            const bannerEl = document.getElementById('hr-dash-pending-banner');
+            if (bannerEl) {
+                bannerEl.classList.toggle('hidden', pendingLeave === 0);
+                if (pendingLeave > 0) {
+                    document.getElementById('hr-dash-pending-banner-text').textContent =
+                        `Heads up! ${pendingLeave} leave request${pendingLeave === 1 ? ' is' : 's are'} pending approval.`;
+                }
+            }
+
+            // ── Attendance widget: progress bar + "workforce marked" donut ──
+            // (todayPresent already counts anyone with an explicit hr_attendance status OR a
+            // raw clock-in log — same union the stat tile below uses, so these can't disagree.)
+            const markedPct = active > 0 ? Math.round((todayPresent / active) * 100) : 0;
+            const progressEl = document.getElementById('hr-dash-att-progress');
+            if (progressEl) progressEl.style.width = markedPct + '%';
+            const donut = document.getElementById('hr-dash-att-donut');
+            const CIRC = 138.2; // 2 * PI * r(22)
+            if (donut) donut.setAttribute('stroke-dashoffset', String(CIRC - (CIRC * markedPct / 100)));
+            const donutPct = document.getElementById('hr-dash-att-donut-pct'); if (donutPct) donutPct.textContent = markedPct + '%';
+            const donutLabel = document.getElementById('hr-dash-att-donut-label'); if (donutLabel) donutLabel.textContent = `${todayPresent} of ${active} employees`;
+
+            // ── Overview tiles — same numbers as before, restyled as colored icon-boxes.
+            // Colors are drawn from the existing --purple/--blue/--amber/--pink/--cyan palette
+            // already declared in :root above; no new colors introduced. ──
             const stats = [
-                { label: 'Total Employees', num: total },
-                { label: 'Present Today', num: todayPresent },
-                { label: 'On Leave', num: onLeaveToday },
-                { label: 'New Employees', num: newThisMonth },
-                { label: 'Pending Leave Requests', num: pendingLeave },
-                { label: 'Pending Payroll', num: pendingPayroll }
+                { label: 'Total Employees', sub: 'Across all departments', num: total, icon: 'users', color: 'var(--blue)' },
+                { label: 'Present Today', sub: 'Marked attendance', num: todayPresent, icon: 'user-check', color: 'var(--green)' },
+                { label: 'On Leave', sub: 'Enjoying time off', num: onLeaveToday, icon: 'palmtree', color: 'var(--amber)' },
+                { label: 'New Employees', sub: 'This month', num: newThisMonth, icon: 'user-plus', color: 'var(--purple)' },
+                { label: 'Pending Leave Requests', sub: 'Requires approval', num: pendingLeave, icon: 'calendar-clock', color: 'var(--cyan)' },
+                { label: 'Pending Payroll', sub: 'This payroll cycle', num: pendingPayroll, icon: 'wallet', color: 'var(--pink)' }
             ];
             document.getElementById('hr-dash-stats').innerHTML = stats.map(s => `
-                <div class="hr-stat-card"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>
+                <div class="hr-stat-card" style="display:flex;align-items:flex-start;gap:12px">
+                    <div style="background:color-mix(in srgb, ${s.color} 16%, transparent);color:${s.color};border-radius:10px;padding:9px;flex-shrink:0"><i data-lucide="${s.icon}" style="width:18px;height:18px"></i></div>
+                    <div style="min-width:0"><div class="num">${s.num}</div><div class="label" style="text-transform:none;letter-spacing:normal;font-size:11px;color:#c7cbe0;font-weight:600">${s.label}</div><div style="font-size:10px;color:#6b74a0;margin-top:1px">${s.sub}</div></div>
+                </div>
             `).join('');
+            if (window.lucide) lucide.createIcons();
 
             const pendingRows = hrLeaveRequests.filter(r => r.status === 'pending').slice(0, 8);
             document.getElementById('hr-dash-pending-leave').innerHTML = pendingRows.length ? pendingRows.map(r => `
@@ -1832,8 +1937,9 @@
                     <td class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${checkIn}</td>
                     <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                    <td class="py-2.5 px-4 text-right"><button onclick="openHREmployeeProfile('${e.id}')" title="View profile" class="text-[#6b74a0] hover:text-white p-1 rounded"><i data-lucide="more-vertical" class="w-4 h-4"></i></button></td>
                 </tr>`;
-            }).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
+            }).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
         }
 
 // ── hrNextOccurrence (orig line 8961) ──
