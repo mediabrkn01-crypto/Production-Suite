@@ -926,6 +926,10 @@ async function acadSyncTrainersFromHR(){
         pt_available_days: emp.pt_available_days || null,
         pt_time_start: emp.pt_time_start || null,
         pt_time_end: emp.pt_time_end || null,
+        // Lets academics.html's own leave/availability lookups match a trainer row reliably
+        // (leaves.username is the person's login — an email when they signed in via the
+        // Media Suite SSO bridge) instead of a fuzzy name match.
+        portal_email: emp.portal_email || null,
       };
       const existing = existingByName.get(key);
       if (existing) {

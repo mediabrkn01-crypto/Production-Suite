@@ -32,3 +32,8 @@ alter table trainers add column if not exists pt_time_end text;
 alter table batches add column if not exists expected_completion_date date;
 alter table batches add column if not exists notes text;
 create unique index if not exists batches_name_unique on batches (lower(name));
+
+-- ============ Phase 2 addition — Academic Dashboard redesign ============
+-- Run in the ACADEMIC project (baazubvfsrpmbfmrzumw). Safe to re-run the whole file again;
+-- every statement above is already idempotent.
+alter table trainers add column if not exists portal_email text;         -- mirrored from hr_employees, lets leaves.username (an email when signed in via the Media Suite) match a trainer reliably for On Leave / availability lookups
