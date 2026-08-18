@@ -903,7 +903,11 @@ async function loadMyHRData() {
 async function acadSyncTrainersFromHR(){
   if (typeof dbInstance === 'undefined' || !dbInstance) return;
   try {
-    const { data: eduEmployees, error } = await dbInstance.from('hr_employees').select('full_name,employment_status').eq('division', 'education');
+    // select('*') rather than an explicit column list — on an acadDB/hr_employees database
+    // where the newer Coach-scheduling columns haven't been added yet (see
+    // coach-scheduling-schema.sql), naming them here would make the WHOLE query fail; select('*')
+    // degrades gracefully instead, the same pattern hrFetchAndApplyMyPhoto already uses.
+    const { data: eduEmployees, error } = await dbInstance.from('hr_employees').select('*').eq('division', 'education');
     if (error || !eduEmployees) return;
     const { data: existingTrainers } = await acadDB.from('trainers').select('id,name');
     const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
@@ -911,11 +915,23 @@ async function acadSyncTrainersFromHR(){
       if (!emp.full_name) continue;
       const key = emp.full_name.trim().toLowerCase();
       const status = emp.employment_status === 'active' ? 'active' : 'inactive';
+      // Coach scheduling fields, mirrored straight from the HR record — HR (via Add/Edit
+      // Employee) is the single source of truth for these; this sync only ever reads FROM
+      // hr_employees and writes INTO acadDB.trainers, never the other direction.
+      const coachFields = {
+        type: emp.employment_type === 'part_time' ? 'pt' : 'ft',
+        teachable_courses: emp.teachable_courses || null,
+        pt_max_classes_per_day: emp.pt_max_classes_per_day || null,
+        pt_max_hours: emp.pt_max_hours || null,
+        pt_available_days: emp.pt_available_days || null,
+        pt_time_start: emp.pt_time_start || null,
+        pt_time_end: emp.pt_time_end || null,
+      };
       const existing = existingByName.get(key);
       if (existing) {
-        await acadDB.from('trainers').update({ status }).eq('id', existing.id);
+        await acadDB.from('trainers').update({ status, ...coachFields }).eq('id', existing.id);
       } else {
-        await acadDB.from('trainers').insert({ name: emp.full_name.trim(), type: 'ft', status });
+        await acadDB.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields });
       }
     }
   } catch (e) {

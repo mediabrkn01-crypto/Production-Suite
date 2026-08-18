@@ -1235,6 +1235,36 @@
                     <label class="hr-field-label">Roles (select one or more)</label>
                     <div id="hr-emp-roles-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
                 </div>
+                <!-- Coach scheduling fields — Education department only. Courses come from the
+                     existing Academic Courses table (acadDB), never hardcoded here. -->
+                <div id="hr-emp-coach-section" class="sm:col-span-2 hidden" style="display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:12px;background:rgba(255,255,255,0.02)">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="hr-field-label">Employment Type</label>
+                            <select id="hr-emp-employment-type" class="hr-select w-full" onchange="renderHREmpPartTimeFields()">
+                                <option value="">— select —</option>
+                                <option value="full_time">Full-Time</option>
+                                <option value="part_time">Part-Time</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="hr-field-label">Courses They Can Teach</label>
+                        <div id="hr-emp-courses-chips" style="display:flex;flex-wrap:wrap;gap:6px">
+                            <span class="text-[11px] text-[#4a5182] italic">Loading courses…</span>
+                        </div>
+                    </div>
+                    <div id="hr-emp-parttime-fields" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="hr-field-label">Max Classes / Day</label><input id="hr-emp-pt-max-classes" type="number" min="1" class="hr-input w-full" placeholder="e.g. 2"></div>
+                        <div><label class="hr-field-label">Max Working Hours / Day</label><input id="hr-emp-pt-max-hours" type="number" min="0" step="0.5" class="hr-input w-full" placeholder="e.g. 3"></div>
+                        <div class="sm:col-span-2"><label class="hr-field-label">Available Days</label>
+                            <div id="hr-emp-pt-days-chips" style="display:flex;flex-wrap:wrap;gap:6px">
+                                ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => `<button type="button" onclick="hrTogglePtDay('${d}')" class="hr-role-chip" data-day="${d}">${d}</button>`).join('')}
+                            </div>
+                        </div>
+                        <div><label class="hr-field-label">Available From</label><input id="hr-emp-pt-time-start" type="time" class="hr-input w-full"></div>
+                        <div><label class="hr-field-label">Available Until</label><input id="hr-emp-pt-time-end" type="time" class="hr-input w-full"></div>
+                    </div>
+                </div>
                 <div><label class="hr-field-label">Primary Role</label>
                     <select id="hr-emp-primary-role" class="hr-select w-full" onchange="hrEmpPrimaryRole = this.value" disabled>
                         <option value="">— select roles above first —</option>
@@ -2019,6 +2049,64 @@
                 : '<p class="text-[10px] text-[#4a5182]">No preset roles for this department — use the Designation field for a title.</p>';
             renderHREmpPrimaryRoleSelect();
             updateHREmpAcademicHint();
+            renderHREmpCoachSection();
+        }
+
+        // ── Coach scheduling fields (Employment Type, Courses, Part-Time config) —
+        // Education department only. Courses are fetched live from the existing Academic
+        // Courses table (acadDB) every time this section becomes visible, never hardcoded. ──
+        let hrEmpSelectedCourses = [];
+        let hrEmpSelectedPtDays = [];
+        let _hrEmpCourseRows = [];
+
+        async function renderHREmpCoachSection() {
+            const div = document.getElementById('hr-emp-division')?.value;
+            const section = document.getElementById('hr-emp-coach-section');
+            if (!section) return;
+            const show = div === 'education';
+            section.classList.toggle('hidden', !show);
+            if (!show) return;
+            if (!_hrEmpCourseRows.length) {
+                try {
+                    const { data, error } = await acadDB.from('courses').select('*').order('name');
+                    if (!error && data) _hrEmpCourseRows = data;
+                } catch (e) { console.warn('Could not load Academic courses for Coach assignment:', e.message); }
+            }
+            renderHREmpCourseChips();
+        }
+
+        function renderHREmpCourseChips() {
+            const container = document.getElementById('hr-emp-courses-chips');
+            if (!container) return;
+            const activeCourses = _hrEmpCourseRows.filter(c => c.active !== false);
+            container.innerHTML = activeCourses.length
+                ? activeCourses.map(c => {
+                    const on = hrEmpSelectedCourses.includes(c.name);
+                    return `<button type="button" onclick="hrToggleEmpCourse(${jsStringLiteral(c.name)})" class="hr-role-chip${on ? ' active' : ''}">${on ? '✓ ' : ''}${c.name}</button>`;
+                }).join('')
+                : '<p class="text-[10px] text-[#4a5182]">No courses set up yet — add one in the Academic module\'s Courses tab first.</p>';
+        }
+
+        function hrToggleEmpCourse(name) {
+            hrEmpSelectedCourses = hrEmpSelectedCourses.includes(name)
+                ? hrEmpSelectedCourses.filter(c => c !== name)
+                : [...hrEmpSelectedCourses, name];
+            renderHREmpCourseChips();
+        }
+
+        function renderHREmpPartTimeFields() {
+            const type = document.getElementById('hr-emp-employment-type')?.value;
+            const fields = document.getElementById('hr-emp-parttime-fields');
+            if (fields) fields.classList.toggle('hidden', type !== 'part_time');
+        }
+
+        function hrTogglePtDay(day) {
+            hrEmpSelectedPtDays = hrEmpSelectedPtDays.includes(day)
+                ? hrEmpSelectedPtDays.filter(d => d !== day)
+                : [...hrEmpSelectedPtDays, day];
+            document.querySelectorAll('#hr-emp-pt-days-chips [data-day]').forEach(btn => {
+                btn.classList.toggle('active', hrEmpSelectedPtDays.includes(btn.dataset.day));
+            });
         }
 
 // ── updateHREmpAcademicHint (orig line 8999) ──
@@ -2082,6 +2170,19 @@
                 hrEmpPrimaryRole = '';
                 document.getElementById('hr-emp-level').value = '';
             }
+            // Coach scheduling fields — populated before renderHREmpCoachSection() (called
+            // inside renderHREmpRoleChips below) so the chips/inputs reflect them immediately.
+            document.getElementById('hr-emp-employment-type').value = e?.employment_type || '';
+            hrEmpSelectedCourses = e?.teachable_courses ? e.teachable_courses.split(',').map(s => s.trim()).filter(Boolean) : [];
+            hrEmpSelectedPtDays = e?.pt_available_days ? e.pt_available_days.split(',').map(s => s.trim()).filter(Boolean) : [];
+            document.getElementById('hr-emp-pt-max-classes').value = e?.pt_max_classes_per_day || '';
+            document.getElementById('hr-emp-pt-max-hours').value = e?.pt_max_hours || '';
+            document.getElementById('hr-emp-pt-time-start').value = e?.pt_time_start || '';
+            document.getElementById('hr-emp-pt-time-end').value = e?.pt_time_end || '';
+            renderHREmpPartTimeFields();
+            document.querySelectorAll('#hr-emp-pt-days-chips [data-day]').forEach(btn => {
+                btn.classList.toggle('active', hrEmpSelectedPtDays.includes(btn.dataset.day));
+            });
             renderHREmpRoleChips();
             document.getElementById('hr-emp-designation').value = e?.designation || '';
             document.getElementById('hr-emp-joining').value = e?.joining_date || '';
@@ -2274,7 +2375,17 @@
                 access_attendance: document.getElementById('hr-emp-access-attendance').checked,
                 access_leave: document.getElementById('hr-emp-access-leave').checked,
                 access_payroll: document.getElementById('hr-emp-access-payroll').checked,
-                access_documents: document.getElementById('hr-emp-access-documents').checked
+                access_documents: document.getElementById('hr-emp-access-documents').checked,
+                // Coach scheduling fields — only meaningful for division === 'education', but
+                // saved unconditionally as whatever the (hidden, for other departments) fields
+                // currently hold, i.e. blank/empty for everyone else.
+                employment_type: document.getElementById('hr-emp-employment-type').value || null,
+                teachable_courses: hrEmpSelectedCourses.join(', '),
+                pt_max_classes_per_day: parseInt(document.getElementById('hr-emp-pt-max-classes').value) || null,
+                pt_max_hours: parseFloat(document.getElementById('hr-emp-pt-max-hours').value) || null,
+                pt_available_days: hrEmpSelectedPtDays.join(', '),
+                pt_time_start: document.getElementById('hr-emp-pt-time-start').value || null,
+                pt_time_end: document.getElementById('hr-emp-pt-time-end').value || null
             };
             try {
                 if (hrEditingEmployeeId) {
@@ -2453,7 +2564,19 @@
                     hrProfileField('Additional Roles', roleInfo.additional.length ? roleInfo.additional.join(', ') : '—') +
                     hrProfileField('Designation', e.designation) + hrProfileField('Joining Date', e.joining_date) + hrProfileField('Employment Status', e.employment_status) +
                     hrProfileField('Manager (portal email)', e.manager_email) + hrProfileField('Probation Period', e.probation_months ? `${e.probation_months} month(s)` : null) +
-                    hrProfileField('Probation End Date', probationEnd);
+                    hrProfileField('Probation End Date', probationEnd) +
+                    // Coach scheduling fields — only meaningful (and only ever populated) for
+                    // Education-division employees; blank/absent for everyone else.
+                    (e.division === 'education' ? (
+                        hrProfileField('Coaching Employment Type', e.employment_type === 'part_time' ? 'Part-Time' : e.employment_type === 'full_time' ? 'Full-Time' : null) +
+                        hrProfileField('Courses They Can Teach', e.teachable_courses) +
+                        (e.employment_type === 'part_time' ? (
+                            hrProfileField('Max Classes / Day', e.pt_max_classes_per_day) +
+                            hrProfileField('Max Working Hours / Day', e.pt_max_hours) +
+                            hrProfileField('Available Days', e.pt_available_days) +
+                            hrProfileField('Available Time', (e.pt_time_start && e.pt_time_end) ? `${e.pt_time_start} – ${e.pt_time_end}` : null)
+                        ) : '')
+                    ) : '');
             } else if (hrProfileTab === 'salary') {
                 const history = hrSalaryHistory.filter(s => s.employee_id === e.id).sort((a,b) => b.effective_date.localeCompare(a.effective_date));
                 body.innerHTML = `
