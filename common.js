@@ -75,7 +75,13 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
         const HR_ROLES = {
             production: ['Editor', 'Designer', 'Cinematographer', 'Photographer', 'Video Editor', 'Colorist', 'VFX & Motion Graphics Artist', 'Production Coordinator'],
             education: ['Academic Head', 'Class Coordinator', 'Coaches'], // exactly these 3 — Academic Head & Class Coordinator have identical management access, Coaches see only their own assigned work (see checkAcademicAccess)
-            other: [] // Administration/HR/etc. — no preset chips, Designation field covers the title
+            // Department-specific role sets — the Add Employee form picks this list based on
+            // whichever Department is selected (see hr-emp-division/renderHREmpRoleChips), so
+            // HR only ever sees HR roles, Accounts only sees Accounts roles, etc. "Intern" is
+            // included as an available option, not a requirement — nothing forces it to be used.
+            hr: ['HR Manager', 'HR Executive', 'HR Intern'],
+            accounts: ['Accounts Manager', 'Accounts Executive', 'Accounts Intern'],
+            other: [] // Administration/etc. — no preset chips, Designation field covers the title
         };
         function hrParseRoles(departmentStr) {
             return (departmentStr || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -1168,7 +1174,7 @@ async function acadSyncTrainersFromHR(){
                 return;
             }
             const probationEnd = hrProbationEndDate(me);
-            const myDivisionLabel = { education: 'Education', production: 'Production House', other: 'Other' }[me.division] || me.division;
+            const myDivisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Other' }[me.division] || me.division;
             const myRoleInfo = hrRoleInfo(me);
             body.innerHTML =
                 hrProfileField('Employee ID', me.employee_id) +
