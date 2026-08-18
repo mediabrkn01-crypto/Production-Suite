@@ -970,10 +970,52 @@ async function loadStats(){
 // Trainers table is visible to everyone (read-only for trainers, +Add/Delete for Head via
 // the role-head-only class already on those controls) — split out so it can be populated
 // on its own for a plain Trainer login, not just as part of the Head bundle below.
+// HR → Academic employee sync — HR (Add/Edit Employee, Department = Education) is the
+// single source of truth; this only ever reads hr_employees and writes into this project's
+// own trainers table, never the reverse. This is a LOCAL port of shared/common.js's
+// acadSyncTrainersFromHR(): that shared copy references index.html's own client variable
+// names (dbInstance/acadDB) and is only ever called from index.html's now-unreachable
+// embedded Academic tabs — since academics.html is a standalone file with its own client
+// variables (mediaHrDB/sb) and doesn't load common.js, that shared copy silently never ran
+// for the app everyone actually uses. This port is the fix: same logic, this file's own
+// variables, called from boot() below so every Academic session re-syncs on load.
+async function acadSyncTrainersFromHRLocal(){
+  if (typeof mediaHrDB === 'undefined' || !mediaHrDB) return;
+  try {
+    const { data: eduEmployees, error } = await mediaHrDB.from('hr_employees').select('*').eq('division', 'education');
+    if (error || !eduEmployees) return;
+    const { data: existingTrainers } = await sb.from('trainers').select('id,name');
+    const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
+    for (const emp of eduEmployees) {
+      if (!emp.full_name) continue;
+      const key = emp.full_name.trim().toLowerCase();
+      const status = emp.employment_status === 'active' ? 'active' : 'inactive';
+      const coachFields = {
+        type: emp.employment_type === 'part_time' ? 'pt' : 'ft',
+        teachable_courses: emp.teachable_courses || null,
+        pt_max_classes_per_day: emp.pt_max_classes_per_day || null,
+        pt_max_hours: emp.pt_max_hours || null,
+        pt_available_days: emp.pt_available_days || null,
+        pt_time_start: emp.pt_time_start || null,
+        pt_time_end: emp.pt_time_end || null,
+        portal_email: emp.portal_email || null,
+      };
+      const existing = existingByName.get(key);
+      if (existing) {
+        await sb.from('trainers').update({ status, ...coachFields }).eq('id', existing.id);
+      } else {
+        await sb.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields });
+      }
+    }
+  } catch (e) {
+    console.warn('Trainer sync from HR failed:', e.message);
+  }
+}
 async function loadTrainersTable(){
   // The per-row Delete button stays visible to everyone (same pattern as the rest of this
   // file) — deleteTrainer() itself calls requireHeadAccess() and blocks non-Head users at
   // the actual point of the write, same runtime guard already used for openModal() etc.
+  await acadSyncTrainersFromHRLocal();
   const { data: trainers } = await sb.from('trainers').select('*').order('created_at');
   document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => `
     <tr><td>${t.name}</td><td>${t.type}</td>
