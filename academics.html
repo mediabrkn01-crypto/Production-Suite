@@ -280,6 +280,8 @@ details[open] .rawsum::before{content:'▾ '}
     <input id="m_b_cap" type="number" placeholder="Max students"/>
   </div>
   <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Batch start date — first class day (not enrolment date)</span><input id="m_b_start" type="date"/></label>
+  <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Expected completion date</span><input id="m_b_completion" type="date"/></label>
+  <textarea id="m_b_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
   <div class="mhint">Start below capacity if you like — you can add more students anytime via Edit.</div>
   <div class="subhead" style="margin:10px 0 8px">Add registered students (unassigned)</div>
   <div id="m_b_students" class="pick-list"><div class="mhint" style="padding:8px">Pick a course above to see students registered for it.</div></div>
@@ -290,6 +292,8 @@ details[open] .rawsum::before{content:'▾ '}
   <h3 id="be_title">Edit Batch</h3>
   <select id="be_trainer"></select>
   <input id="be_cap" type="number" placeholder="Max students (capacity)"/>
+  <label class="lv-field lv-grow" style="margin-bottom:6px;margin-top:6px"><span>Expected completion date</span><input id="be_completion" type="date"/></label>
+  <textarea id="be_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
   <div class="subhead" style="margin:12px 0 8px">Students in this batch</div>
   <div id="be_current" class="pick-list"></div>
   <div class="subhead" style="margin:12px 0 8px">Add unassigned students</div>
@@ -771,11 +775,36 @@ async function loadTrainerView(){
   window._myTrainerId = myTrainer.id;
 }
 
+let _allActiveTrainers = [];
 async function populateTrainerSelects(){
   const { data: trainers } = await sb.from('trainers').select('*').eq('status','active');
-  const opts = (trainers||[]).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  _allActiveTrainers = trainers || [];
+  const opts = _allActiveTrainers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
   document.getElementById('m_b_trainer').innerHTML = opts;
   document.getElementById('m_a_trainer').innerHTML = opts;
+}
+
+// Smart Coach matching (course qualification) — teachable_courses is synced onto this same
+// trainers row by the HR side (acadSyncTrainersFromHR, in the Media Suite's shared/common.js)
+// every time HR saves a Coach's profile; this file only ever reads it. A trainer with NO
+// teachable_courses set at all is treated as "not yet configured", not "can't teach
+// anything" — they still show up (labeled), so existing Coaches added before this field
+// existed don't suddenly vanish from every batch.
+function trainersQualifiedFor(courseName, selectedId) {
+  if (!courseName) return _allActiveTrainers;
+  return _allActiveTrainers.filter(t => {
+    const courses = (t.teachable_courses || '').split(',').map(s => s.trim()).filter(Boolean);
+    return !courses.length || courses.includes(courseName) || t.id === selectedId;
+  });
+}
+function renderTrainerOptions(selectEl, list, selectedId) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '<option value="">— trainer —</option>' + list.map(t =>
+    `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${t.name}${(t.teachable_courses||'').trim() ? '' : ' (courses not set)'}</option>`
+  ).join('');
+}
+function refreshBatchTrainerOptionsForCourse(courseName, selectedId) {
+  renderTrainerOptions(document.getElementById('m_b_trainer'), trainersQualifiedFor(courseName, selectedId), selectedId);
 }
 
 function openModal(type){
@@ -933,6 +962,7 @@ function typeChanged(){
   document.querySelectorAll('#m_b_days .dchip').forEach(ch=>ch.classList.toggle('on',def.includes(ch.dataset.d)));
   if(c.mc_day!=null)mc.value=c.mc_day;
   loadBatchPool(c.name);
+  refreshBatchTrainerOptionsForCourse(c.name, document.getElementById('m_b_trainer').value);
 }
 /* ── unassigned-student helpers (assign registered students to batches) ── */
 async function unassignedStudents(courseName){
@@ -961,9 +991,11 @@ async function openBatchEdit(id){
   const {data:b}=await sb.from('batches').select('*').eq('id',id).single();
   if(!b)return;_editBatch=b;
   document.getElementById('be_title').textContent='Edit Batch · '+b.name;
-  const {data:trs}=await sb.from('trainers').select('id,name').eq('status','active');
-  document.getElementById('be_trainer').innerHTML='<option value="">— trainer —</option>'+(trs||[]).map(t=>'<option value="'+t.id+'"'+(t.id===b.trainer_id?' selected':'')+'>'+esc(t.name)+'</option>').join('');
+  if(!_allActiveTrainers.length) await populateTrainerSelects();
+  renderTrainerOptions(document.getElementById('be_trainer'), trainersQualifiedFor(b.programme, b.trainer_id), b.trainer_id);
   document.getElementById('be_cap').value=b.capacity||'';
+  document.getElementById('be_completion').value=b.expected_completion_date||'';
+  document.getElementById('be_notes').value=b.notes||'';
   const {data:cur}=await sb.from('students').select('*').eq('batch_id',id);
   document.getElementById('be_current').innerHTML=(cur&&cur.length)?cur.map(s=>'<label class="pick-row"><input type="checkbox" checked value="'+s.id+'"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+(s.preferred_slot?'<span class="pm">'+esc(s.preferred_slot)+'</span>':'')+'</label>').join(''):'<div class="mhint" style="padding:8px">No students in this batch yet.</div>';
   let pool=await unassignedStudents(b.programme||null);
@@ -977,7 +1009,9 @@ async function saveBatchEdit(){
   const trainer_id=trSel.value||null;
   const trainer_name=trSel.value?((trSel.options[trSel.selectedIndex]||{}).text||null):null;
   const capacity=parseInt(document.getElementById('be_cap').value)||null;
-  await sb.from('batches').update({trainer_id,trainer_name,capacity}).eq('id',b.id);
+  const expected_completion_date=document.getElementById('be_completion').value||null;
+  const notes=document.getElementById('be_notes').value.trim()||null;
+  await sb.from('batches').update({trainer_id,trainer_name,capacity,expected_completion_date,notes}).eq('id',b.id);
   const removeIds=[...document.querySelectorAll('#be_current input:not(:checked)')].map(x=>x.value);
   const addIds=[...document.querySelectorAll('#be_pool input:checked')].map(x=>x.value);
   if(removeIds.length)await sb.from('students').update({batch_id:null,batch_name:'Unassigned'}).in('id',removeIds);
@@ -998,18 +1032,25 @@ async function saveBatch(){
   const sessions_total=parseInt(document.getElementById('m_b_sessions').value)||(c?c.sessions_total:null)||null;
   const capacity=parseInt(document.getElementById('m_b_cap').value)||(c?c.max_students:null)||null;
   const start_date=document.getElementById('m_b_start').value||null;
+  const expected_completion_date=document.getElementById('m_b_completion').value||null;
+  const notes=document.getElementById('m_b_notes').value.trim()||null;
   if(!name){alert('Batch needs a name.');return;}
   if(!course_id){alert('Pick a course. Define one in the Courses section first.');return;}
   if(!days.length){alert('Pick at least one class day.');return;}
+  // Every batch needs a unique name — it's how the batch gets identified everywhere else
+  // (Coach profile, Sales visibility, reports), so a silent duplicate would be genuinely
+  // ambiguous, not just untidy.
+  const {data:dupe}=await sb.from('batches').select('id').ilike('name',name).limit(1);
+  if(dupe&&dupe.length){alert(`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
   const day_pattern=days.join(', ')+(mc?` · MC ${mc}`:'');
   const trainerSel=document.getElementById('m_b_trainer');
   const trainer_name=trainerSel.value?((trainerSel.options[trainerSel.selectedIndex]||{}).text||null):null;
-  const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, sessions_total, capacity, start_date, batch_type:(c?(c.code||c.name):null), status:'active' };
+  const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active' };
   const {data:newBatch,error}=await sb.from('batches').insert(rec).select().single();
   if(error){alert('Save failed: '+error.message);return;}
   const picked=[...document.querySelectorAll('#m_b_students input:checked')].map(x=>x.value);
   if(picked.length)await assignStudents(picked,newBatch);
-  closeModal('batch'); document.getElementById('m_b_name').value=''; document.getElementById('m_b_time').value=''; document.getElementById('m_b_start').value='';
+  closeModal('batch'); document.getElementById('m_b_name').value=''; document.getElementById('m_b_time').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value='';
   document.querySelectorAll('#m_b_days .dchip.on').forEach(x=>x.classList.remove('on'));
   document.getElementById('m_b_students').innerHTML='';
   await loadHeadView(); await loadStats(); await loadLive();
@@ -1340,7 +1381,9 @@ async function tryMediaSSO(){
     if(!rec || rec.division!=='education')return false; /* not Education dept — no academic access */
     const roles=(rec.department||'').split(',').map(x=>x.trim()).filter(Boolean);
     const stripLevel=r=>r.replace(/^(Senior|Mid-Level|Junior)\s+/,'');
-    const isHead=roles.some(r=>stripLevel(r)==='Academic Head');
+    // Class Coordinator has identical management access to Academic Head — same rule
+    // already established on the HR/index.html side (checkAcademicAccess, HR_ROLES.education).
+    const isHead=roles.some(r=>{const x=stripLevel(r);return x==='Academic Head'||x==='Class Coordinator';});
     currentUser={username:s.email,name:rec.full_name||s.name,role:isHead?'academic_head':'trainer'};
     _authSource='media';
     window._mediaEmployeeId=rec.id; // used by clock in/out to sync into the Media Suite's own hr_attendance table

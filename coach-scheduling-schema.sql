@@ -25,3 +25,10 @@ alter table trainers add column if not exists pt_time_end text;
 -- Note: trainers.type already exists ('ft'/'pt') from the original schema — HR's
 -- employment_type ('full_time'/'part_time') is mapped onto it by acadSyncTrainersFromHR(),
 -- no new column needed for that one.
+
+-- Batch Management fields (academics.html) — Expected Completion Date + Notes, and a
+-- uniqueness constraint on batch name (the app already checks for a duplicate before
+-- inserting; this is the database-level backstop for the same rule).
+alter table batches add column if not exists expected_completion_date date;
+alter table batches add column if not exists notes text;
+create unique index if not exists batches_name_unique on batches (lower(name));

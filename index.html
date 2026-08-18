@@ -6473,23 +6473,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const roleLabelEl = document.getElementById('sidebar-user-role');
                 if (roleLabelEl && hrRoleDisplay(rec) !== '—') roleLabelEl.textContent = hrRoleDisplay(rec);
                 if (rec.division !== 'education') return; // not Education dept — no academic access
-                const roles = hrParseRoles(rec.department);
-                // Academic Head and Class Coordinator are the SAME power level throughout this
-                // module (see the isHead checks below) — only Coaches get the reduced,
-                // view-your-own-assignments tier.
-                const isHead = roles.some(r => { const x = hrStripLevel(r).role; return x === 'Academic Head' || x === 'Class Coordinator'; });
-                _academicAccessRole = isHead
-                    ? (roles.some(r => hrStripLevel(r).role === 'Class Coordinator') ? 'class_coordinator' : 'academic_head')
-                    : 'trainer'; // "Coaches" in the UI — kept as 'trainer' internally, matches the data model / academics.html this was ported from
-                if (navGroup) navGroup.classList.remove('hidden');
-                if (pipelineGroup) pipelineGroup.classList.add('hidden'); // Academic staff: Pipeline isn't their workspace
-                // Feeds the ported academics.html engine below (loadLive/loadHeadView/etc. all
-                // read `currentUser` exactly as they did in that file — this is the ONE bridge
-                // variable between this app's own auth and that code, so none of its internals
-                // needed rewriting for the switch from iframe to native tabs).
-                currentUser = { name: activeUser, username: activeEmail, role: _academicAccessRole };
-                await acadBoot();
-                switchTab('acad-dashboard'); // land here instead of the Pipeline Matrix default
+                // Academic now lives in its own real app (academics.html) — same pattern as the
+                // HR redirect (switchTab's 'hr' branch → hr.html). The embedded Academic tabs
+                // below (acadBoot/switchTab('acad-dashboard')) are no longer used for this —
+                // left in place rather than deleted outright, but never reached from here.
+                // academics.html's own SSO bridge (tryMediaSSO) expects exactly these two
+                // params and re-verifies the division/role itself against this same
+                // hr_employees table — this redirect is a handoff, not a trust decision.
+                window.location.href = 'academics.html?e=' + encodeURIComponent(activeEmail) + '&n=' + encodeURIComponent(activeUser);
             } catch (e) {
                 console.warn('Academic access check error:', e.message);
             }
@@ -6811,11 +6802,35 @@ async function loadTrainerView(){
   window._myTrainerId = myTrainer.id;
 }
 
+let _allActiveTrainers = [];
 async function populateTrainerSelects(){
   const { data: trainers } = await acadDB.from('trainers').select('*').eq('status','active');
-  const opts = (trainers||[]).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  _allActiveTrainers = trainers || [];
+  const opts = _allActiveTrainers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
   document.getElementById('m_b_trainer').innerHTML = opts;
   document.getElementById('m_a_trainer').innerHTML = opts;
+}
+
+// Smart Coach matching (course qualification only, for now — date/time/leave/capacity
+// checks are a later phase). A trainer with NO teachable_courses set at all is treated as
+// "not yet configured", not "can't teach anything" — they still show up, so existing
+// Coaches added before this feature existed don't suddenly vanish from every batch. A
+// trainer WITH a non-empty list is only shown if the selected course is actually in it.
+function trainersQualifiedFor(courseName, selectedId) {
+  if (!courseName) return _allActiveTrainers;
+  return _allActiveTrainers.filter(t => {
+    const courses = (t.teachable_courses || '').split(',').map(s => s.trim()).filter(Boolean);
+    return !courses.length || courses.includes(courseName) || t.id === selectedId;
+  });
+}
+function renderTrainerOptions(selectEl, list, selectedId) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '<option value="">— trainer —</option>' + list.map(t =>
+    `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${t.name}${(t.teachable_courses||'').trim() ? '' : ' (courses not set)'}</option>`
+  ).join('');
+}
+function refreshBatchTrainerOptionsForCourse(courseName, selectedId) {
+  renderTrainerOptions(document.getElementById('m_b_trainer'), trainersQualifiedFor(courseName, selectedId), selectedId);
 }
 
 function openModal(type){
