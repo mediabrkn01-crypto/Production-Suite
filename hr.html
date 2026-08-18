@@ -2535,11 +2535,26 @@
             const date = document.getElementById('hr-att-date').value;
             const existing = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === date);
             try {
+                let saved;
                 if (existing) {
-                    await dbInstance.from('hr_attendance').update({ status }).eq('id', existing.id);
+                    saved = await dbInstance.from('hr_attendance').update({ status }).eq('id', existing.id).select();
                 } else {
-                    await dbInstance.from('hr_attendance').insert([{ employee_id: employeeId, att_date: date, status }]);
+                    saved = await dbInstance.from('hr_attendance').insert([{ employee_id: employeeId, att_date: date, status }]).select();
                 }
+                // Never assume a write worked — this was the other half of "the status appears
+                // to reset": if the update matched zero rows or Supabase rejected it, the code
+                // used to reload anyway and silently re-render the UNCHANGED old value, which
+                // looks identical to "I picked a status and it reset itself." Now it says so.
+                if (saved.error) { alert('Could not save attendance status: ' + saved.error.message); return; }
+                if (!saved.data || !saved.data.length) { alert('Attendance status was not saved — no matching record was found to update. Please refresh and try again.'); return; }
+                // Apply the DB-confirmed row directly rather than trusting a fresh reload to
+                // reflect it immediately — the database is still the source of truth (this row
+                // IS what Supabase just confirmed writing), just without a second round-trip
+                // race between this save and whatever loadHRData() below might overlap with.
+                const savedRow = saved.data[0];
+                const idx = hrAttendance.findIndex(a => a.id === savedRow.id);
+                if (idx >= 0) hrAttendance[idx] = savedRow; else hrAttendance.push(savedRow);
+                renderHRAttendance();
                 await loadHRData();
                 renderHRAttendance();
             } catch (e) { alert('Could not update attendance: ' + e.message); }

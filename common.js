@@ -337,8 +337,14 @@ async function loadMyHRData() {
                     // and hrAttStatusLabel: it always reads "Present · ...", never bare "Late").
                     const computedStatus = hrComputeClockInStatus(whenIso);
                     if (existing) {
-                        // Don't flip an explicit Holiday marking to Present just because someone logged in.
-                        const nextStatus = existing.status === 'holiday' ? 'holiday' : computedStatus;
+                        // Don't let an automatic clock-in silently overwrite a status HR set on
+                        // purpose. This was the actual cause of "HR marks someone On Leave and it
+                        // resets itself" — a clock-in event for that date (the employee's own,
+                        // unaware they'd been marked out; or a stale/replayed sync) would flip
+                        // 'on_leave' straight back to 'present'/'late' with no visible HR action
+                        // to explain it. Holiday got this protection before; On Leave needs it too.
+                        const HR_PROTECTED_FROM_AUTO_CLOCKIN = ['holiday', 'on_leave'];
+                        const nextStatus = HR_PROTECTED_FROM_AUTO_CLOCKIN.includes(existing.status) ? existing.status : computedStatus;
                         await dbInstance.from('hr_attendance').update({ status: nextStatus, clock_in_time: whenIso }).eq('id', existing.id);
                     } else {
                         await dbInstance.from('hr_attendance').insert([{ employee_id: emp.id, att_date: dateStr, status: computedStatus, clock_in_time: whenIso }]);
