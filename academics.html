@@ -1416,7 +1416,9 @@ async function loadTeamTab(){
 // constraint as the hard backstop, not just a UI check. Fixed hourly slots, 9am–5pm,
 // matching the reference design's own displayed columns.
 // ============================================================================
-const AVAIL_HOURS = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00'];
+// Full 24-hour timeline (00:00–23:00), not just a 9–5 window — a Trainer/Coach may
+// genuinely be available for an early-morning or late-evening batch.
+const AVAIL_HOURS = Array.from({length:24}, (_,h) => String(h).padStart(2,'0')+':00');
 function _availSlotLabel(h){ const hr=parseInt(h,10); const end=(hr+1)%24; const fmt=x=>{const h12=((x+11)%12)+1; return h12+(x<12?'AM':'PM');}; return fmt(hr)+'–'+fmt(end); }
 let _availTrainers = [], _availSlotsForDate = [], _availOnLeaveIds = new Set();
 let _assignSlotCtx = null; // { trainerId, trainerName, date, start }
@@ -1469,7 +1471,13 @@ async function renderAvailabilityGrid(){
     wrap.innerHTML = `<table><thead><tr><th>Coach</th>${AVAIL_HOURS.map(h=>`<th>${_availSlotLabel(h)}</th>`).join('')}</tr></thead><tbody>
       ${_availTrainers.map(t=>{
         const onLeave = _availOnLeaveIds.has(t.id);
-        return `<tr><td>${esc(t.name)}${onLeave?' <span class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25);font-size:8px">ON LEAVE</span>':''}</td>${
+        // Daily class count — same cap confirmAssignSlot() enforces (pt_max_classes_per_day,
+        // default 5) — shown here so the Head can see "3/5" before even opening the assign
+        // modal, not just get blocked after picking a batch.
+        const dailyCap = t.pt_max_classes_per_day || 5;
+        const bookedToday = _availSlotsForDate.filter(s=>String(s.trainer_id)===String(t.id) && s.status==='booked').length;
+        const atCap = bookedToday >= dailyCap;
+        return `<tr><td>${esc(t.name)} <span style="color:var(--tx3);font-size:10px">${bookedToday}/${dailyCap}${atCap?' · limit reached':''}</span>${onLeave?' <span class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25);font-size:8px">ON LEAVE</span>':''}</td>${
           AVAIL_HOURS.map(h=>{
             const slot = _availSlotsForDate.find(s=>String(s.trainer_id)===String(t.id) && s.start_time===h);
             let bg='rgba(255,255,255,.04)', label='', clickable=false;
@@ -1541,6 +1549,18 @@ async function confirmAssignSlot(){
     // stale if another Head/tab booked it in the meantime.
     const { data: fresh } = await sb.from('trainer_slots').select('*').eq('trainer_id', trainerId).eq('slot_date', date).eq('start_time', start).maybeSingle();
     if (!fresh || fresh.status !== 'available') { alert('This slot is no longer open — someone else may have just booked it. Refresh and try again.'); document.getElementById('modalAssignSlot').classList.remove('on'); renderAvailabilityGrid(); return; }
+    // Daily class cap — defaults to 5, or the trainer's own configured
+    // pt_max_classes_per_day (set by HR on the employee record) when present. Counts
+    // existing BOOKED slots for this trainer on this date, not counting the one being
+    // assigned right now, so "5/5, limit reached" only blocks a genuine 6th class.
+    const capTrainer = _availTrainers.find(x=>String(x.id)===String(trainerId));
+    const dailyCap = (capTrainer && capTrainer.pt_max_classes_per_day) || 5;
+    const { data: todaysBooked } = await sb.from('trainer_slots').select('id').eq('trainer_id', trainerId).eq('slot_date', date).eq('status','booked');
+    const bookedCount = (todaysBooked||[]).length;
+    if (bookedCount >= dailyCap) {
+      alert(`${capTrainer?capTrainer.name:'This coach'} already has ${bookedCount}/${dailyCap} classes booked on ${date} — daily limit reached. Pick a different date or coach.`);
+      return;
+    }
     const { error } = await sb.from('trainer_slots').update({ status:'booked', batch_id: batchId }).eq('id', fresh.id);
     if (error) { alert('Could not assign: '+error.message); return; }
     // Keep the batch's own trainer_id/trainer_name in sync (same fields Live Batches/
