@@ -60,3 +60,10 @@ create table if not exists trainer_slots (
 );
 create index if not exists trainer_slots_date_idx on trainer_slots (slot_date);
 create index if not exists trainer_slots_trainer_idx on trainer_slots (trainer_id);
+
+-- No new table for student attendance — an `attendance` table (student_uin/batch_name/
+-- session_num/session_date/status/marked_by), already independent of employee attendance,
+-- already existed from before this phase (see openAtt()/saveAtt() in academics.html, on the
+-- Batches tab). Reusing it, not duplicating it, is the correct fix — see the app-code commit
+-- for what actually needed to change (propagating the newly assigned trainer onto the
+-- batch's students so they show up there).

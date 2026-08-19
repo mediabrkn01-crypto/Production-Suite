@@ -1527,13 +1527,23 @@ async function confirmAssignSlot(){
     if (!fresh || fresh.status !== 'available') { alert('This slot is no longer open — someone else may have just booked it. Refresh and try again.'); document.getElementById('modalAssignSlot').classList.remove('on'); renderAvailabilityGrid(); return; }
     const { error } = await sb.from('trainer_slots').update({ status:'booked', batch_id: batchId }).eq('id', fresh.id);
     if (error) { alert('Could not assign: '+error.message); return; }
-    // Keep the batch's own trainer_id/trainer_name in sync too, same fields the rest of
-    // this app (Live Batches, dashboard, reports) already reads.
+    // Keep the batch's own trainer_id/trainer_name in sync (same fields Live Batches/
+    // dashboard/reports already read) — always overwrite, not just on first assignment,
+    // since a Head re-assigning a batch to a different trainer via this same flow should
+    // actually take effect, not silently no-op because someone was already assigned.
     const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
-    await sb.from('batches').update({ trainer_id: trainerId, trainer_name: t?t.name:null }).eq('id', batchId).is('trainer_id', null);
+    const trainerName = t ? t.name : null;
+    await sb.from('batches').update({ trainer_id: trainerId, trainer_name: trainerName }).eq('id', batchId);
+    // Propagate onto the batch's own students too — this is what actually makes them show
+    // up under the newly assigned trainer's "My Batches"/attendance view: that existing
+    // system (openAtt/saveAtt on the Batches tab) groups students by their OWN trainer_name
+    // field, not by batches.trainer_id, so this assignment would otherwise be invisible to
+    // the trainer despite the batch itself being correctly updated above.
+    await sb.from('students').update({ trainer_name: trainerName }).eq('batch_id', batchId);
     document.getElementById('modalAssignSlot').classList.remove('on');
     _assignSlotCtx = null;
     renderAvailabilityGrid();
+    if (typeof loadLive === 'function') loadLive();
   }catch(e){ alert('Could not assign: '+e.message); }
 }
 
