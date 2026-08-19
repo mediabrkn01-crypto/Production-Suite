@@ -2440,6 +2440,19 @@
             loginScreen.classList.add('hidden');
             loginScreen.style.display = ''; // reset any forced display
             document.getElementById('main-application-frame').classList.remove('opacity-0', 'pointer-events-none');
+
+            // Deep-link support — lets other pages in the same app (academics.html's My
+            // Workspace links, for example) land the user on a specific tab here instead of
+            // just the Pipeline Matrix home, so jumping between department workspaces for a
+            // shared feature (My Profile, My Documents, My Payslips, Team Members) feels
+            // like moving inside one app rather than "go home and click around again."
+            try {
+                const deepLinkTab = new URLSearchParams(location.search).get('tab');
+                if (deepLinkTab && document.getElementById('tab-content-' + deepLinkTab)) {
+                    switchTab(deepLinkTab);
+                    history.replaceState(null, '', location.pathname);
+                }
+            } catch (_) {}
             
             document.getElementById('active-user-display').innerHTML = `User: <span class="text-white/70 font-bold text-xs">${activeUser}</span>`;
             document.getElementById('active-user-display-mobile').innerHTML = `User: <span class="text-white/70 font-bold">${activeUser}</span> (${activeRole})`;

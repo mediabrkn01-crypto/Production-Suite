@@ -3,12 +3,17 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<link rel="icon" type="image/png" href="brand/logo-full.png"/>
-<link rel="manifest" href="manifest.webmanifest"/>
-<meta name="theme-color" content="#050408"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+<!-- Same favicon/branding/PWA tags as index.html and hr.html, byte-for-byte — this file
+     previously pointed at brand/logo-full.png, icons/apple-touch-icon.png, and
+     manifest.webmanifest, none of which exist anywhere in this repo (leftover from a
+     different project layout), which is why the tab icon never loaded. -->
+<link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BE Studio">
+<meta name="theme-color" content="#0b0d19">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="Broken English Final Logo-02 (1).png">
 <title>BROKEN ENGLISH · ACADEMIC</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -171,7 +176,7 @@ details[open] .rawsum::before{content:'▾ '}
 
 <div id="login">
   <div class="lbox">
-    <img src="brand/logo-mark.png" alt="Broken English"/>
+    <img src="Broken English Final Logo-03.png" alt="Broken English"/>
     <h1>Academics Portal</h1>
     <p>Founder / Academic Head / Trainer</p>
     <input id="lu" placeholder="Username"/>
@@ -207,9 +212,22 @@ details[open] .rawsum::before{content:'▾ '}
       </div>
       <div style="margin-bottom:14px">
         <div class="nav-section-title">MY WORKSPACE</div>
+        <!-- Same common employee items as index.html's My Workspace group (My Profile,
+             Announcements, My Documents, My Payslips, Team Members) — that functionality
+             lives in one place (index.html) rather than being rebuilt a second time here
+             (see "do not duplicate HR system"), so these hand off to it via the shared
+             SSO session, landing directly on the right tab (see index.html's ?tab= deep-link
+             support) instead of just its home screen. Same labels, icons, and position as
+             the reference shell — only the destination differs from a same-page switchTab(). -->
+        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('my-profile')"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
+        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('announcements')"><i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-attendance" onclick="acadSwitchTab('attendance')"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance &amp; Leave</button>
+        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('my-docs')"><i data-lucide="folder" style="width:14px;height:14px"></i> My Documents</button>
+        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('my-payslips')"><i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips</button>
+        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('team-members')"><i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members</button>
+        <!-- Academic-specific personal items, appended after the common set. -->
         <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-mybatches" onclick="acadSwitchTab('mybatches')"><i data-lucide="book-marked" style="width:14px;height:14px"></i> My Batches</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-tasks" onclick="acadSwitchTab('tasks')"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-attendance" onclick="acadSwitchTab('attendance')"><i data-lucide="clock" style="width:14px;height:14px"></i> Attendance</button>
         <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-logs" onclick="acadSwitchTab('logs')"><i data-lucide="notebook" style="width:14px;height:14px"></i> Logs</button>
       </div>
     </div>
@@ -628,20 +646,33 @@ async function doLogin(){
   boot();
 }
 
+// Both SSO sources reach academics.html via a same-tab window.location.href navigation
+// (checkAcademicAccess() in index.html, and the legacy `roles`-table login below) — never
+// window.open(), so there is no separate tab to "close" on sign-out. Logout is therefore
+// identical for every path: clear every session this file knows about, then land back on
+// the one real login screen (index.html), same as HR/Pipeline's own logoutPortal().
+// Common "My Workspace" items shared with index.html (My Profile, Announcements, My
+// Documents, My Payslips, Team Members) hand off there instead of being rebuilt a second
+// time here — same session (the redirect that brought this user here never cleared
+// index.html's own be_active_user/role/email), so this lands them straight on the right
+// tab via index.html's own ?tab= deep-link support, not just its home screen.
+function acadGoToMediaSuiteTab(tab){
+  if(_authSource !== 'media'){
+    alert('This is part of the Media Suite, which this login isn\'t linked to. Ask HR to set your portal email so Media Suite features are available here too.');
+    return;
+  }
+  location.href = 'index.html?tab=' + encodeURIComponent(tab);
+}
 function logout(){
   try{localStorage.removeItem('be_session');}catch(_){}
   try{localStorage.removeItem('be_media_academic_session');}catch(_){}
+  // Also clear index.html's own real login session (be_active_user/role/email) — otherwise
+  // logging out from Academic would leave the Media Suite silently still signed in, which
+  // fails "logout must fully clear the session everywhere."
+  try{localStorage.removeItem('be_active_user');}catch(_){}
+  try{localStorage.removeItem('be_active_role');}catch(_){}
+  try{localStorage.removeItem('be_active_email');}catch(_){}
   currentUser = null;
-  if(_authSource==='media'){
-    /* opened as its own tab from the Media Suite — there's no separate "home" page
-       here to send them to, so just close this tab and land back on the Suite tab. */
-    window.close();
-    /* some browsers refuse to close a tab that wasn't purely script-opened; if we're
-       still here a moment later, fall back to a clear message instead of silence. */
-    setTimeout(()=>{ if(!document.hidden) alert('Signed out. You can close this tab and return to the Media Suite.'); }, 300);
-    return;
-  }
-  /* sign-out always lands back at the one real login screen */
   location.href='index.html';
 }
 /* Adjusts the "← Command Center" link once we know which app authenticated this
@@ -781,8 +812,9 @@ async function boot(){
   document.getElementById('acad-user-avatar').textContent = initials || '?';
   document.getElementById('acad-role-badge').textContent = roleLabel;
   document.getElementById('acad-date-text').textContent = new Date().toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
-  document.getElementById('acad-logout-label').textContent = (_authSource==='media') ? 'Close Tab' : 'Log Out';
-  document.getElementById('acad-backlink-btn').style.display = (_authSource==='media') ? 'inline-flex' : 'none';
+  // Same-tab navigation either way (see logout()) — no "close tab" special case needed.
+  document.getElementById('acad-logout-label').textContent = 'Log Out';
+  document.getElementById('acad-backlink-btn').style.display = 'inline-flex';
 
   const { isHead, isTrainerCapable, isRestricted } = applyAcadRoleGates();
 
