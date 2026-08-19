@@ -344,7 +344,8 @@ details[open] .rawsum::before{content:'▾ '}
 
       <div class="acad-tab" id="tab-acad-trainers">
         <div class="section">
-          <h2>Trainers <button onclick="openModal('trainer')" class="role-head-only hidden">+ Add Trainer</button></h2>
+          <h2>Trainers</h2>
+          <div class="lv-note">Synced automatically from HR (Department = Education) — the Academic module never creates or edits employee records directly. To add, remove, or change a Trainer/Coach, use HR → Employees.</div>
           <table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="trainerTable"></tbody></table>
         </div>
@@ -550,14 +551,6 @@ details[open] .rawsum::before{content:'▾ '}
       </div>
     </div>
 </div>
-
-<div class="modal-bg" id="modalTrainer"><div class="modal">
-  <h3>Add Trainer</h3>
-  <input id="m_t_name" placeholder="Trainer name"/>
-  <select id="m_t_type"><option value="ft">Full-time</option><option value="pt">Part-time</option></select>
-  <div class="mhint">Work hours (full-time) and weekly available time slots (part-time) are set in <b>Admin Panel → Identity &amp; Team → Trainers</b>.</div>
-  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('trainer')">Cancel</button><button class="btn-save" onclick="saveTrainer()">Save</button></div>
-</div></div>
 
 <div class="modal-bg" id="modalBatch"><div class="modal" style="width:440px">
   <h3>Create Batch</h3>
@@ -1720,16 +1713,6 @@ function openModal(type){
 }
 function closeModal(type){ document.getElementById('modal'+cap(type)).classList.remove('on'); }
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
-
-async function saveTrainer(){
-  if (!requireHeadAccess()) return;
-  const name = document.getElementById('m_t_name').value.trim();
-  const type = document.getElementById('m_t_type').value;
-  if(!name) return;
-  await sb.from('trainers').insert({ name, type, added_by: currentUser.name });
-  closeModal('trainer'); document.getElementById('m_t_name').value='';
-  await loadHeadView(); await loadStats();
-}
 
 /* ── Delete guard: type the word DELETE to confirm (prevents accidental deletes) ── */
 function confirmDelete(what,name){
