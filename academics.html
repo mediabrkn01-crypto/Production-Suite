@@ -1197,7 +1197,7 @@ async function acadSyncTrainersFromHRLocal(){
   try {
     const { data: eduEmployees, error } = await mediaHrDB.from('hr_employees').select('*').eq('division', 'education');
     if (error || !eduEmployees) return;
-    const { data: existingTrainers } = await sb.from('trainers').select('id,name');
+    const { data: existingTrainers } = await sb.from('trainers').select('id,name,status');
     const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
     for (const emp of eduEmployees) {
       if (!emp.full_name) continue;
@@ -1219,6 +1219,19 @@ async function acadSyncTrainersFromHRLocal(){
       } else {
         await sb.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields });
       }
+    }
+    // Prune the other direction too: a trainers row that doesn't match ANY current
+    // HR Education employee shouldn't keep showing up as a real Coach — e.g. a row from
+    // the manual "Add Trainer" form that used to exist here (removed — see git history),
+    // or someone HR moved out of Education. Marked inactive rather than deleted, so it
+    // doesn't break a foreign key from an existing batch/session and stays reversible if
+    // it turns out to be a real person HR re-adds later — but it drops out of every
+    // "active" view (Overview tiles, Coach Availability grid, Coaches list) immediately,
+    // same as any other inactive trainer already does.
+    const eduNames = new Set(eduEmployees.filter(e => e.full_name).map(e => e.full_name.trim().toLowerCase()));
+    const orphaned = (existingTrainers || []).filter(t => t.status !== 'inactive' && !eduNames.has(String(t.name).trim().toLowerCase()));
+    for (const o of orphaned) {
+      await sb.from('trainers').update({ status: 'inactive' }).eq('id', o.id);
     }
   } catch (e) {
     console.warn('Trainer sync from HR failed:', e.message);
