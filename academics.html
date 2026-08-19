@@ -661,7 +661,11 @@ function acadGoToMediaSuiteTab(tab){
     alert('This is part of the Media Suite, which this login isn\'t linked to. Ask HR to set your portal email so Media Suite features are available here too.');
     return;
   }
-  location.href = 'index.html?tab=' + encodeURIComponent(tab);
+  // index.html has no session-resume of its own (every fresh load shows its password
+  // login screen) — so carry the identity across the same way academics.html's own
+  // tryMediaSSO() bridge already works in the other direction: index.html re-verifies
+  // this email against its own user_roster before trusting it, never blindly.
+  location.href = 'index.html?e=' + encodeURIComponent(currentUser.username) + '&n=' + encodeURIComponent(currentUser.name) + '&tab=' + encodeURIComponent(tab);
 }
 function logout(){
   try{localStorage.removeItem('be_session');}catch(_){}

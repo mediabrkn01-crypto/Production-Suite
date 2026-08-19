@@ -2432,9 +2432,19 @@
             // HR-saved photo (from the employee's linked HR record) takes priority over the
             // legacy chat-avatar upload above, everywhere the person's own avatar is shown.
             hrFetchAndApplyMyPhoto();
+
+            // Captured ONCE, before any async work below, and threaded through explicitly
+            // rather than re-reading location.search later — checkAcademicAccess() is async
+            // and un-awaited-by-callers elsewhere, so a second read after an await could see
+            // a URL that's already been scrubbed by the deep-link handler further down,
+            // wrongly concluding no deep link was requested and redirecting away regardless.
+            const deepLinkTab = new URLSearchParams(location.search).get('tab');
+
             // Reveals the Academic Module sidebar link if — and only if — HR has this
-            // employee's record set to the Education division.
-            checkAcademicAccess();
+            // employee's record set to the Education division. Awaited (unlike the old
+            // fire-and-forget call) so its redirect-or-not decision is fully resolved before
+            // anything below touches the URL or reveals the app frame.
+            await checkAcademicAccess(deepLinkTab);
 
             const loginScreen = document.getElementById('portal-login-screen');
             loginScreen.classList.add('hidden');
@@ -2447,7 +2457,6 @@
             // shared feature (My Profile, My Documents, My Payslips, Team Members) feels
             // like moving inside one app rather than "go home and click around again."
             try {
-                const deepLinkTab = new URLSearchParams(location.search).get('tab');
                 if (deepLinkTab && document.getElementById('tab-content-' + deepLinkTab)) {
                     switchTab(deepLinkTab);
                     history.replaceState(null, '', location.pathname);
@@ -2565,9 +2574,16 @@
 
             // Land on the role-appropriate home screen.
             // HR (admin) -> HR Dashboard | Manager -> Manager (Team) Dashboard | Employee -> Pipeline (My Work)
+            // Skipped entirely when a deep link already placed the user on a specific tab
+            // (see above) — this ran unconditionally before, silently overwriting whatever
+            // tab the deep-link handler had just switched to, which is exactly why arriving
+            // via academics.html's My Workspace links (My Profile, etc.) always bounced back
+            // to the Pipeline Matrix instead of the requested tab.
             if (!window._hrLandingDone) {
                 window._hrLandingDone = true;
-                if (activeRole === 'admin') switchTab('hr');
+                if (deepLinkTab && document.getElementById('tab-content-' + deepLinkTab)) {
+                    // already on the deep-linked tab — leave it alone
+                } else if (activeRole === 'admin') switchTab('hr');
                 else if (activeRole === 'manager') switchTab('team');
                 else switchTab('dashboard');
             }
@@ -6464,7 +6480,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // dashboard) and, for Education-division staff, swaps their default workspace from
         // the Production Pipeline to the Academic Timeline: hides PIPELINE, reveals ACADEMIC,
         // and switches the landing tab. Everyone else's Pipeline workflow is untouched.
-        async function checkAcademicAccess() {
+        async function checkAcademicAccess(deepLinkTab) {
             _academicAccessRole = null;
             const navGroup = document.getElementById('nav-group-academic');
             const pipelineGroup = document.getElementById('nav-group-pipeline');
@@ -6493,7 +6509,20 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 // academics.html's own SSO bridge (tryMediaSSO) expects exactly these two
                 // params and re-verifies the division/role itself against this same
                 // hr_employees table — this redirect is a handoff, not a trust decision.
-                window.location.href = 'academics.html?e=' + encodeURIComponent(activeEmail) + '&n=' + encodeURIComponent(activeUser);
+                //
+                // Exception: academics.html's My Workspace links (My Profile, My Documents,
+                // My Payslips, Team Members, Announcements) send the user here on purpose,
+                // via ?tab=<name>, to use a feature that only lives in this app. Redirecting
+                // them straight back to academics.html on arrival made every one of those
+                // links a dead bounce — click My Profile, land back on the Academic
+                // dashboard, no visible change, indistinguishable from being logged out. The
+                // session itself was always fine; this redirect was just overriding the
+                // user's explicit request every single time. Only skip the redirect for that
+                // one case — an ordinary visit to index.html still sends an Academic user to
+                // their real workspace exactly as before.
+                if (!deepLinkTab) {
+                    window.location.href = 'academics.html?e=' + encodeURIComponent(activeEmail) + '&n=' + encodeURIComponent(activeUser);
+                }
             } catch (e) {
                 console.warn('Academic access check error:', e.message);
             }
@@ -7915,5 +7944,42 @@ async function saveLeave(){
   <div class="acadx-modal-actions"><button class="acadx-btn-cancel" onclick="closeModal('att')">Cancel</button><button class="acadx-btn-save" onclick="saveAtt()">Save Attendance</button></div>
 </div></div>
 
+<script>
+// SSO bridge FROM academics.html's My Workspace links (My Profile, My Documents,
+// My Payslips, Team Members, Announcements) — this app has no session-resume mechanism
+// at all (be_active_user/role/email are only ever written, never read back on load;
+// every fresh page load shows the password login screen, confirmed by inspecting
+// handlePortalLogin/launchSession above), so without this, every one of those links would
+// force the user to re-enter their password just to view a Media Suite tab — indistinguishable
+// from being logged out, which is exactly the bug this fixes.
+//
+// Trust model mirrors academics.html's own tryMediaSSO() (the reverse direction, already
+// shipped): the email arrives via URL, but is never trusted blindly — it's matched against
+// user_roster server-side-equivalent (a real select, not a client-side assumption) before
+// any session state is set, same as a normal login would resolve a user's role. If no
+// matching user_roster row exists (this employee has no Media Suite login of their own,
+// only an Academic/HR record), this silently falls through to the normal password login
+// screen — never auto-logs in someone we can't actually verify.
+(async function trySSOFromAcademic(){
+  try {
+    const qp = new URLSearchParams(location.search);
+    const e = qp.get('e');
+    if (!e) return; // no handoff in progress — normal login screen proceeds as-is
+    if (typeof dbInstance === 'undefined' || !dbInstance) return;
+    const { data: users, error } = await dbInstance.from('user_roster').select('*');
+    if (error || !users) return;
+    const found = users.find(u => (u.email || '').trim().toLowerCase() === e.trim().toLowerCase());
+    if (!found) return; // not a Media Suite login — let them sign in manually as usual
+    activeUser = found.name;
+    activeRole = found.role || 'employee';
+    activeEmail = found.email;
+    localStorage.setItem('be_active_user', activeUser);
+    localStorage.setItem('be_active_role', activeRole);
+    localStorage.setItem('be_active_email', activeEmail);
+    saveAccountForSwitching(activeUser, activeRole, activeEmail, found.pass || '');
+    await launchSession(); // also runs checkAcademicAccess() and the ?tab= deep-link handler
+  } catch (_) { /* fall through to the normal login screen on any failure */ }
+})();
+</script>
 </body>
 </html>
