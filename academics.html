@@ -464,23 +464,52 @@ details[open] .rawsum::before{content:'▾ '}
 
       <!-- Coach Availability — list + drill-down (coach → assigned batches → batch detail),
            all internal (view-stack inside this one tab, no page navigation). -->
+      <!-- Availability — real per-date, per-hour slot grid backed by trainer_slots (one row
+           per trainer per hour per date; booking a slot is updating that same row, so a
+           double-booking is structurally impossible, backed by a DB unique constraint too,
+           not just a UI check). Trainer role: toggle your own availability. Head role: see
+           every coach's grid for the day and assign a batch into any open (green) slot. -->
       <div class="acad-tab" id="tab-acad-availability">
-        <div id="availView-list">
-          <div class="section">
-            <h2>Coach Availability</h2>
-            <table><thead><tr><th>Coach</th><th>Type</th><th>Status</th><th>Available Days</th><th>Hours</th><th>Assigned Batches</th></tr></thead>
-              <tbody id="availList"></tbody></table>
+        <div class="section">
+          <h2>
+            Availability
+            <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:400">
+              <button class="act-btn" onclick="availShiftDate(-1)">‹</button>
+              <input type="date" id="availDate" style="width:auto" onchange="renderAvailabilityGrid()"/>
+              <button class="act-btn" onclick="availShiftDate(1)">›</button>
+            </span>
+          </h2>
+          <div class="lv-note" style="display:flex;gap:14px;flex-wrap:wrap">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--green);margin-right:5px"></span>Available</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--brand-3);margin-right:5px"></span>Booked</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:rgba(255,255,255,.06);margin-right:5px"></span>Not set / out of hours</span>
           </div>
+          <div id="availGridWrap" class="loading" style="margin-top:14px;overflow-x:auto">Loading…</div>
         </div>
-        <div id="availView-coach" style="display:none">
-          <div class="crumb"><a onclick="availShowList()">Coach Availability</a><span class="sep">/</span><span class="here" id="availCoachCrumb">—</span></div>
-          <div class="section" id="availCoachDetail"></div>
-        </div>
-        <div id="availView-batch" style="display:none">
-          <div class="crumb"><a onclick="availShowList()">Coach Availability</a><span class="sep">/</span><a onclick="availBackToCoach()" id="availBatchCrumbCoach">Coach</a><span class="sep">/</span><span class="here" id="availBatchCrumb">—</span></div>
-          <div class="section" id="availBatchDetail"></div>
+        <!-- Trainer-only: toggle your own slots for the selected date (role-gated below). -->
+        <div class="section role-trainer-only" id="availMyToggleSection">
+          <h2>My Slots for This Date</h2>
+          <div class="lv-note">Click a slot to mark yourself available. Click again to remove it. Booked slots (already assigned to a batch) can't be removed here — ask the Academic Head to reassign first.</div>
+          <div id="availMyToggleGrid" class="loading" style="margin-top:10px">Loading…</div>
         </div>
       </div>
+
+      <!-- Assign-a-class modal — Batch → Trainer → Slot is already chosen by the time this
+           opens (the Head clicks a specific open cell in the grid above); this just confirms
+           which batch fills it. -->
+      <div class="modal-bg" id="modalAssignSlot"><div class="modal">
+        <h3>Assign Class</h3>
+        <div class="stu-grid" style="margin-bottom:14px">
+          <div class="k">Coach</div><div class="v" id="assignSlotCoach">—</div>
+          <div class="k">Date</div><div class="v" id="assignSlotDate">—</div>
+          <div class="k">Time</div><div class="v" id="assignSlotTime">—</div>
+        </div>
+        <select id="assignSlotBatch"><option value="">— Select batch —</option></select>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="document.getElementById('modalAssignSlot').classList.remove('on')">Cancel</button>
+          <button class="btn-save" onclick="confirmAssignSlot()">Assign</button>
+        </div>
+      </div></div>
 
       <!-- Classes — today's + upcoming sessions across all batches, drawn from `sessions`. -->
       <div class="acad-tab" id="tab-acad-classes">
@@ -1363,112 +1392,149 @@ async function loadTeamTab(){
 }
 
 // ============================================================================
-// Coach Availability — list of coaches with their availability fields, drilling
-// down into a coach detail (their info + assigned batches) and from there into a
-// batch detail. All three views live inside the one #tab-acad-availability panel
-// and are toggled by hand (no page navigation, no separate route) — matching the
-// "Coach Availability → coach → Assigned Batches → batch → Back" flow.
+// Availability — real per-date, per-hour slot grid backed by the trainer_slots table
+// (one row per trainer per hour per date). Trainers create rows to mark themselves
+// available; the Academic Head "books" a slot by updating that SAME row (status +
+// batch_id) — assignment is never a second, separate record, so a slot can't be
+// double-booked by construction, backed by a DB unique(trainer_id,slot_date,start_time)
+// constraint as the hard backstop, not just a UI check. Fixed hourly slots, 9am–5pm,
+// matching the reference design's own displayed columns.
 // ============================================================================
-let _availTrainers = [], _availBatches = [];
-function availShowList(){
-  document.getElementById('availView-list').style.display = '';
-  document.getElementById('availView-coach').style.display = 'none';
-  document.getElementById('availView-batch').style.display = 'none';
+const AVAIL_HOURS = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00'];
+function _availSlotLabel(h){ const hr=parseInt(h,10); const end=(hr+1)%24; const fmt=x=>{const h12=((x+11)%12)+1; return h12+(x<12?'AM':'PM');}; return fmt(hr)+'–'+fmt(end); }
+let _availTrainers = [], _availSlotsForDate = [], _availOnLeaveIds = new Set();
+let _assignSlotCtx = null; // { trainerId, trainerName, date, start }
+
+function availShiftDate(delta){
+  const el = document.getElementById('availDate');
+  const d = new Date(el.value || new Date().toISOString().slice(0,10));
+  d.setDate(d.getDate()+delta);
+  el.value = d.toISOString().slice(0,10);
+  renderAvailabilityGrid();
 }
-function availShowCoach(trainerId){
-  const t = _availTrainers.find(x => String(x.id) === String(trainerId));
-  if (!t) return;
-  document.getElementById('availView-list').style.display = 'none';
-  document.getElementById('availView-batch').style.display = 'none';
-  document.getElementById('availView-coach').style.display = '';
-  document.getElementById('availCoachCrumb').textContent = t.name;
-  const days = (t.pt_available_days || '').trim();
-  const hours = (t.pt_time_start && t.pt_time_end) ? `${t.pt_time_start}–${t.pt_time_end}` : '';
-  const courses = (t.teachable_courses || '').split(',').map(s => s.trim()).filter(Boolean);
-  const myBatches = _availBatches.filter(b => String(b.trainer_id) === String(t.id));
-  const onLeave = _availOnLeaveIds.has(t.id);
-  document.getElementById('availCoachDetail').innerHTML = `
-    <h2>${esc(t.name)} <span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${esc(t.status||'—')}</span>${onLeave?' <span class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)">On Leave (HR-approved today)</span>':''}</h2>
-    ${onLeave?'<div class="warn-box"><b>On approved leave today.</b> Do not assign this coach to a class until their leave ends — check HR Leave Management for the exact return date.</div>':''}
-    <div class="stu-grid">
-      <div class="k">Type</div><div class="v">${t.type==='pt'?'Part-Time':'Full-Time'}</div>
-      <div class="k">Available Days</div><div class="v">${esc(days) || '—'}</div>
-      <div class="k">Hours</div><div class="v">${esc(hours) || '—'}</div>
-      <div class="k">Max Classes/Day</div><div class="v">${t.pt_max_classes_per_day ?? '—'}</div>
-      <div class="k">Max Hours</div><div class="v">${t.pt_max_hours ?? '—'}</div>
-      <div class="k">Teachable Courses</div><div class="v">${courses.length ? courses.map(esc).join(', ') : '—'}</div>
-    </div>
-    <div class="subhead">Assigned Batches (${myBatches.length})</div>
-    ${myBatches.length ? `<table><thead><tr><th>Batch</th><th>Status</th><th>Start</th><th>Expected Completion</th></tr></thead><tbody>
-      ${myBatches.map(b => `<tr class="clickable" onclick="availShowBatch('${b.id}','${t.id}')"><td>${esc(b.name)}</td><td><span class="badge ${b.status==='active'?'b-active':'b-inactive'}">${esc(b.status)}</span></td><td>${b.start_date||'—'}</td><td>${b.expected_completion_date||'—'}</td></tr>`).join('')}
-    </tbody></table>` : `<div class="empty">No batches currently assigned to this coach.</div>`}
-  `;
-}
-function availBackToCoach(){
-  const trainerId = document.getElementById('availBatchCrumbCoach').dataset.trainerId;
-  if (trainerId) availShowCoach(trainerId);
-}
-function availShowBatch(batchId, trainerId){
-  const b = _availBatches.find(x => String(x.id) === String(batchId));
-  if (!b) return;
-  const t = _availTrainers.find(x => String(x.id) === String(trainerId));
-  document.getElementById('availView-coach').style.display = 'none';
-  document.getElementById('availView-batch').style.display = '';
-  document.getElementById('availBatchCrumb').textContent = b.name;
-  const crumbCoach = document.getElementById('availBatchCrumbCoach');
-  crumbCoach.textContent = t ? t.name : 'Coach';
-  crumbCoach.dataset.trainerId = trainerId;
-  document.getElementById('availBatchDetail').innerHTML = `
-    <h2>${esc(b.name)} <span class="badge ${b.status==='active'?'b-active':'b-inactive'}">${esc(b.status)}</span></h2>
-    <div class="stu-grid">
-      <div class="k">Coach</div><div class="v">${esc(b.trainer_name||'—')}</div>
-      <div class="k">Course</div><div class="v">${esc(b.programme||b.course_id||'—')}</div>
-      <div class="k">Day Pattern</div><div class="v">${esc(b.day_pattern||'—')}</div>
-      <div class="k">Time Slot</div><div class="v">${esc(b.time_slot||'—')}</div>
-      <div class="k">Capacity</div><div class="v">${b.capacity ?? '—'}</div>
-      <div class="k">Start Date</div><div class="v">${b.start_date||'—'}</div>
-      <div class="k">Expected Completion</div><div class="v">${b.expected_completion_date||'—'}</div>
-      <div class="k">Notes</div><div class="v">${esc(b.notes||'—')}</div>
-    </div>
-  `;
-}
-let _availOnLeaveIds = new Set();
+
 async function loadAvailabilityTab(){
+  const dateEl = document.getElementById('availDate');
+  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0,10);
+  await renderAvailabilityGrid();
+}
+
+// Refetches trainers + this date's slots + today's approved-leave set, then renders both
+// the Head's all-coaches overview grid and (if this user is a coach) their own toggle grid.
+async function renderAvailabilityGrid(){
+  const wrap = document.getElementById('availGridWrap');
+  const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
+  if (!wrap) return;
+  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
   try{
-    const today = new Date().toISOString().slice(0,10);
-    const [{data:trainers},{data:batches},{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
-      sb.from('trainers').select('*'),
-      sb.from('batches').select('*'),
-      // Same hr_leave_requests source as the Overview dashboard — one leave system, not two.
-      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',today).gte('end_date',today),
+    const [{data:trainers},{data:slots},{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
+      sb.from('trainers').select('*').eq('status','active'),
+      sb.from('trainer_slots').select('*').eq('slot_date', date),
+      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',date).gte('end_date',date),
       mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
     ]);
-    _availTrainers = (trainers||[]).filter(t=>t.status==='active' || t.status==null);
-    _availBatches = batches||[];
+    _availTrainers = trainers||[];
+    _availSlotsForDate = slots||[];
     const empById = new Map((hrEmployees||[]).map(e=>[e.id,e]));
-    const onLeaveEmails = new Set((approvedLeaves||[]).map(l=>{ const e=empById.get(l.employee_id); return e && (e.portal_email||'').toLowerCase(); }).filter(Boolean));
-    const onLeaveNames = new Set((approvedLeaves||[]).map(l=>{ const e=empById.get(l.employee_id); return e && (e.full_name||'').toLowerCase(); }).filter(Boolean));
-    _availOnLeaveIds = new Set(_availTrainers.filter(t =>
-      (t.portal_email && onLeaveEmails.has(t.portal_email.toLowerCase())) ||
-      (!t.portal_email && t.name && onLeaveNames.has(t.name.toLowerCase()))
-    ).map(t=>t.id));
-    const busyIds = new Set(_availBatches.filter(b=>b.status==='active').map(b=>b.trainer_id).filter(Boolean));
-    document.getElementById('availList').innerHTML = _availTrainers.length ? _availTrainers.map(t=>{
-      const mine = _availBatches.filter(b=>String(b.trainer_id)===String(t.id));
-      const onLeave = _availOnLeaveIds.has(t.id);
-      const available = !busyIds.has(t.id) && !onLeave;
-      const label = onLeave ? 'On Leave (HR)' : (available ? 'Available' : 'Assigned');
-      return `<tr class="clickable" onclick="availShowCoach('${t.id}')">
-        <td>${esc(t.name)}</td>
-        <td>${t.type==='pt'?'Part-Time':'Full-Time'}</td>
-        <td><span class="badge ${available?'b-active':'b-inactive'}">${label}</span></td>
-        <td>${esc(t.pt_available_days||'—')}</td>
-        <td>${t.pt_time_start&&t.pt_time_end?esc(t.pt_time_start+'–'+t.pt_time_end):'—'}</td>
-        <td>${mine.length}</td>
-      </tr>`;
-    }).join('') : '<tr><td colspan="6" class="empty">No coaches yet.</td></tr>';
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-  }catch(e){ console.warn('Coach Availability failed to load:', e.message); }
+    const onLeaveEmails = new Set((approvedLeaves||[]).map(l=>{const e=empById.get(l.employee_id);return e&&(e.portal_email||'').toLowerCase();}).filter(Boolean));
+    _availOnLeaveIds = new Set(_availTrainers.filter(t=>t.portal_email && onLeaveEmails.has(t.portal_email.toLowerCase())).map(t=>t.id));
+
+    if (!_availTrainers.length) { wrap.innerHTML = '<div class="empty">No coaches yet.</div>'; renderMyAvailabilityToggle(date); return; }
+
+    // Resolve batch names for booked slots BEFORE rendering (trainer_slots only stores
+    // batch_id) — one lookup, one render, rather than drafting the table twice.
+    const batchIds = [...new Set(_availSlotsForDate.filter(s=>s.batch_id).map(s=>s.batch_id))];
+    if (batchIds.length) {
+      const { data: batches } = await sb.from('batches').select('id,name').in('id', batchIds);
+      const nameById = new Map((batches||[]).map(b=>[b.id,b.name]));
+      _availSlotsForDate.forEach(s=>{ if (s.batch_id) s._batchName = nameById.get(s.batch_id); });
+    }
+
+    wrap.innerHTML = `<table><thead><tr><th>Coach</th>${AVAIL_HOURS.map(h=>`<th>${_availSlotLabel(h)}</th>`).join('')}</tr></thead><tbody>
+      ${_availTrainers.map(t=>{
+        const onLeave = _availOnLeaveIds.has(t.id);
+        return `<tr><td>${esc(t.name)}${onLeave?' <span class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25);font-size:8px">ON LEAVE</span>':''}</td>${
+          AVAIL_HOURS.map(h=>{
+            const slot = _availSlotsForDate.find(s=>String(s.trainer_id)===String(t.id) && s.start_time===h);
+            let bg='rgba(255,255,255,.04)', label='', clickable=false;
+            if (onLeave) { bg='rgba(245,158,11,.15)'; label='Leave'; }
+            else if (slot && slot.status==='booked') { bg='rgba(255,5,82,.18)'; label=slot._batchName||'Booked'; }
+            else if (slot && slot.status==='available') { bg='rgba(16,185,129,.18)'; label='Open'; clickable = isHead; }
+            return `<td style="background:${bg};text-align:center;font-size:10px;padding:6px;${clickable?'cursor:pointer':''}" ${clickable?`onclick="openAssignSlot('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','${date}','${h}')"`:''} title="${esc(label)}">${esc(label)}</td>`;
+          }).join('')
+        }</tr>`;
+      }).join('')}
+    </tbody></table>`;
+  }catch(e){ wrap.innerHTML = '<div class="empty">Could not load availability: '+esc(e.message)+'</div>'; }
+  renderMyAvailabilityToggle(date);
+}
+
+// Trainer's own toggle row — only meaningful for a coach viewing their own date; a Head
+// with no linked trainer row just sees nothing here (role-trainer-only hides the section
+// entirely for non-coach roles anyway, see applyAcadRoleGates).
+async function renderMyAvailabilityToggle(date){
+  const grid = document.getElementById('availMyToggleGrid');
+  if (!grid) return;
+  const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
+  if (!me) { grid.innerHTML = '<div class="empty">No coach profile linked to your login yet — ask HR to link your portal email.</div>'; return; }
+  grid.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${AVAIL_HOURS.map(h=>{
+    const slot = _availSlotsForDate.find(s=>String(s.trainer_id)===String(me.id) && s.start_time===h);
+    const booked = slot && slot.status==='booked';
+    const available = slot && slot.status==='available';
+    const bg = booked ? 'rgba(255,5,82,.18)' : (available ? 'rgba(16,185,129,.18)' : 'rgba(255,255,255,.04)');
+    const border = booked ? 'rgba(255,5,82,.3)' : (available ? 'rgba(16,185,129,.3)' : 'var(--bd)');
+    return `<button class="act-btn" style="background:${bg};border-color:${border};min-width:90px" ${booked?'disabled':''} onclick="toggleMySlot('${me.id}','${date}','${h}')">
+      ${_availSlotLabel(h)}<br>${booked?('Booked'+(slot._batchName?': '+esc(slot._batchName):'')):(available?'Available (click to remove)':'Click to add')}
+    </button>`;
+  }).join('')}</div>`;
+}
+async function toggleMySlot(trainerId, date, start){
+  const existing = _availSlotsForDate.find(s=>String(s.trainer_id)===String(trainerId) && s.start_time===start);
+  if (existing && existing.status==='booked') { alert('This slot is already booked to a batch — ask the Academic Head to reassign it first.'); return; }
+  try{
+    if (existing) await sb.from('trainer_slots').delete().eq('id', existing.id);
+    else {
+      const end = String((parseInt(start,10)+1)%24).padStart(2,'0')+':00';
+      await sb.from('trainer_slots').insert({ trainer_id: trainerId, slot_date: date, start_time: start, end_time: end, status: 'available' });
+    }
+  }catch(e){ alert('Could not update availability: '+e.message); return; }
+  renderAvailabilityGrid();
+}
+
+// Head clicks an open (green) cell → confirm which batch fills it. Conflict prevention:
+// the slot must still exist as an unbooked 'available' row (re-checked at write time, not
+// just trusted from the last render) — if someone else booked it a moment ago, this fails
+// loudly instead of silently double-booking.
+async function openAssignSlot(trainerId, trainerName, date, start){
+  _assignSlotCtx = { trainerId, trainerName, date, start };
+  document.getElementById('assignSlotCoach').textContent = trainerName;
+  document.getElementById('assignSlotDate').textContent = date;
+  document.getElementById('assignSlotTime').textContent = _availSlotLabel(start);
+  const { data: batches } = await sb.from('batches').select('id,name,status').eq('status','active').order('name');
+  const sel = document.getElementById('assignSlotBatch');
+  sel.innerHTML = '<option value="">— Select batch —</option>' + (batches||[]).map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  document.getElementById('modalAssignSlot').classList.add('on');
+}
+async function confirmAssignSlot(){
+  if (!_assignSlotCtx) return;
+  const batchId = document.getElementById('assignSlotBatch').value;
+  if (!batchId) { alert('Pick a batch first.'); return; }
+  const { trainerId, date, start } = _assignSlotCtx;
+  try{
+    // Re-fetch the specific slot right before writing — the grid's cached copy could be
+    // stale if another Head/tab booked it in the meantime.
+    const { data: fresh } = await sb.from('trainer_slots').select('*').eq('trainer_id', trainerId).eq('slot_date', date).eq('start_time', start).maybeSingle();
+    if (!fresh || fresh.status !== 'available') { alert('This slot is no longer open — someone else may have just booked it. Refresh and try again.'); document.getElementById('modalAssignSlot').classList.remove('on'); renderAvailabilityGrid(); return; }
+    const { error } = await sb.from('trainer_slots').update({ status:'booked', batch_id: batchId }).eq('id', fresh.id);
+    if (error) { alert('Could not assign: '+error.message); return; }
+    // Keep the batch's own trainer_id/trainer_name in sync too, same fields the rest of
+    // this app (Live Batches, dashboard, reports) already reads.
+    const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
+    await sb.from('batches').update({ trainer_id: trainerId, trainer_name: t?t.name:null }).eq('id', batchId).is('trainer_id', null);
+    document.getElementById('modalAssignSlot').classList.remove('on');
+    _assignSlotCtx = null;
+    renderAvailabilityGrid();
+  }catch(e){ alert('Could not assign: '+e.message); }
 }
 
 // ============================================================================

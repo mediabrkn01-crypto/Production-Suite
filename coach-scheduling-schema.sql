@@ -37,3 +37,26 @@ create unique index if not exists batches_name_unique on batches (lower(name));
 -- Run in the ACADEMIC project (baazubvfsrpmbfmrzumw). Safe to re-run the whole file again;
 -- every statement above is already idempotent.
 alter table trainers add column if not exists portal_email text;         -- mirrored from hr_employees, lets leaves.username (an email when signed in via the Media Suite) match a trainer reliably for On Leave / availability lookups
+
+-- ============ Phase 3 — Real time-slot scheduling (Trainer Availability + Booking) ============
+-- Run in the ACADEMIC project (baazubvfsrpmbfmrzumw).
+-- One row = one fixed 1-hour slot for one trainer on one date. A trainer creates a row to
+-- mark themselves available; the Academic Head "books" that same row (sets status +
+-- batch_id) to assign a class into it — never a second, separate booking record, so a slot
+-- cannot be double-booked: booking is just updating the one row that already represents it,
+-- and the app only offers slots with status='available' as assignable in the first place.
+create table if not exists trainer_slots (
+  id uuid primary key default gen_random_uuid(),
+  trainer_id uuid not null references trainers(id) on delete cascade,
+  slot_date date not null,
+  start_time text not null,   -- "HH:MM", 24h, matches <input type="time"> directly
+  end_time text not null,
+  status text not null default 'available',   -- 'available' | 'booked'
+  batch_id uuid references batches(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (trainer_id, slot_date, start_time)   -- one row per trainer per slot — the hard
+                                                -- backstop against double-booking, not just
+                                                -- an app-level check
+);
+create index if not exists trainer_slots_date_idx on trainer_slots (slot_date);
+create index if not exists trainer_slots_trainer_idx on trainer_slots (trainer_id);
