@@ -214,8 +214,9 @@ details[open] .rawsum::before{content:'▾ '}
         <button class="acad-nav-link sidebar-link" id="nav-acad-trainers" onclick="acadSwitchTab('trainers')"><i data-lucide="users" style="width:14px;height:14px"></i> Coaches</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-availability" onclick="acadSwitchTab('availability')"><i data-lucide="calendar-clock" style="width:14px;height:14px"></i> Coach Availability</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-live" onclick="acadSwitchTab('live')"><i data-lucide="layers" style="width:14px;height:14px"></i> Batches</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-classes" onclick="acadSwitchTab('classes')"><i data-lucide="presentation" style="width:14px;height:14px"></i> Classes</button>
+        <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-createbatch" onclick="acadSwitchTab('createbatch')"><i data-lucide="square-plus" style="width:14px;height:14px"></i> Create Batch</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-students" onclick="acadSwitchTab('students')"><i data-lucide="graduation-cap" style="width:14px;height:14px"></i> Students</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-classes" onclick="acadSwitchTab('classes')"><i data-lucide="presentation" style="width:14px;height:14px"></i> Classes</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-courses" onclick="acadSwitchTab('courses')"><i data-lucide="book-open" style="width:14px;height:14px"></i> Courses</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-schedule" onclick="acadSwitchTab('schedule')"><i data-lucide="calendar-range" style="width:14px;height:14px"></i> Schedule</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-reports" onclick="acadSwitchTab('reports')"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Reports</button>
@@ -317,13 +318,55 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-live">
         <div class="grid" id="statgrid"></div>
         <div class="section" id="liveSection">
-          <h2>Live Batches &amp; Attendance <span class="tag">Live · Database</span> <button onclick="openAddStudent()" id="addStuBtn" class="role-head-only hidden">+ Add Student</button></h2>
+          <h2>Live Batches &amp; Attendance <span class="tag">Live · Database</span></h2>
           <div id="liveBatches" class="loading">Loading…</div>
         </div>
         <div class="section role-head-only hidden">
-          <h2>Manage Batches <button onclick="openModal('batch')">+ Create Batch</button></h2>
-          <table><thead><tr><th>Name</th><th>Trainer</th><th>Schedule</th><th>Course</th><th>Students</th><th>Actions</th></tr></thead>
+          <h2>Batches <button onclick="acadSwitchTab('createbatch')">+ Create Batch</button></h2>
+          <div class="mhint" style="margin-bottom:12px">Batch management and details only — to add or edit students, use the Students tab.</div>
+          <table><thead><tr><th>Batch Name</th><th>Trainer</th><th>Course</th><th>Schedule</th><th>Students</th><th>Status</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead>
             <tbody id="batchTable"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Create Batch — dedicated batch-creation workflow (moved out of a popup modal into
+           its own sidebar tab per spec). Reuses the same fields/ids/save logic that used to
+           live in the old #modalBatch popup — nothing about how a batch actually gets created
+           changed, just where the form lives. Head/Founder only, same as before. -->
+      <div class="acad-tab" id="tab-acad-createbatch">
+        <div class="section role-head-only hidden">
+          <h2>Create Batch</h2>
+          <div class="mhint" style="margin-bottom:10px">Pick the course first — it fills sessions, days &amp; capacity. Then tick students at the bottom.</div>
+          <div class="subhead" style="margin:4px 0 8px">Batch Information</div>
+          <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Batch Name</span><input id="m_b_name" placeholder="Batch name (e.g. Phrase Factory)"/></label>
+          <div class="mrow">
+            <label class="lv-field" style="flex:1"><span>Course</span><select id="m_b_type" onchange="typeChanged()"></select></label>
+            <label class="lv-field" style="flex:1"><span>Trainer / Coach</span><select id="m_b_trainer" onchange="checkBatchTrainerConflict()"></select></label>
+          </div>
+          <div class="mhint" id="m_b_hint">Pick a course — its sessions, days and capacity prefill below.</div>
+          <div class="subhead" style="margin:10px 0 6px">Schedule</div>
+          <div class="daychips" id="m_b_days" onclick="checkBatchTrainerConflict()"></div>
+          <div class="mhint">Class days prefill from the course — tap to change per batch, even midway.</div>
+          <div class="mrow">
+            <select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select>
+            <input id="m_b_time" placeholder="Class Time · e.g. 8:00–9:00 PM" onchange="checkBatchTrainerConflict()"/>
+          </div>
+          <div class="mrow">
+            <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60"/></label>
+            <label class="lv-field" style="flex:1"><span>Preparation Buffer (minutes)</span><input id="m_b_buffer" type="number" placeholder="0" value="0"/></label>
+          </div>
+          <div id="m_b_avail" class="mhint" style="margin:6px 0 10px"></div>
+          <div class="mrow">
+            <input id="m_b_sessions" type="number" placeholder="Total sessions"/>
+            <input id="m_b_cap" type="number" placeholder="Max students"/>
+          </div>
+          <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Start Date</span><input id="m_b_start" type="date"/></label>
+          <label class="lv-field lv-grow" style="margin-bottom:6px"><span>End Date (expected completion)</span><input id="m_b_completion" type="date"/></label>
+          <textarea id="m_b_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
+          <div class="mhint">Start below capacity if you like — you can add more students anytime via Edit.</div>
+          <div class="subhead" style="margin:10px 0 8px">Students — select from the existing Student database (no duplicate records are created)</div>
+          <div id="m_b_students" class="pick-list"><div class="mhint" style="padding:8px">Pick a course above to see students registered for it.</div></div>
+          <div class="modal-actions"><button class="btn-cancel" onclick="acadSwitchTab('live')">Cancel</button><button class="btn-save" onclick="saveBatch()">Create Batch</button></div>
         </div>
       </div>
 
@@ -527,11 +570,24 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
       </div>
 
-      <!-- Students — roster across all batches, drawn from `students`. -->
+      <!-- Students — the dedicated, Academic-owned student-management page. Add/Edit/View/
+           Search/Filter all live here now; batch creation only ever SELECTS from this same
+           database (never creates a duplicate student record) — see Create Batch tab. -->
       <div class="acad-tab" id="tab-acad-students">
         <div class="section">
-          <h2>Students <span class="tag" id="studentsCount">0</span></h2>
-          <table><thead><tr><th>Name</th><th>Batch</th><th>Coach</th><th>Status</th><th>Enrolled</th></tr></thead>
+          <h2>Students <span class="tag" id="studentsCount">0</span> <button onclick="openAddStudent()" id="addStuBtn" class="role-head-only hidden">+ Add Student</button></h2>
+          <div class="mrow" style="margin-bottom:12px">
+            <input id="stu_search" placeholder="Search students by name, ID, or contact…" oninput="renderStudentsTable()" style="flex:2"/>
+            <select id="stu_filter_batch" onchange="renderStudentsTable()" style="flex:1"><option value="">All batches</option></select>
+            <select id="stu_filter_status" onchange="renderStudentsTable()" style="flex:1">
+              <option value="">All statuses</option>
+              <option value="In Progress">In Progress</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <table><thead><tr><th>Name</th><th>Batch</th><th>Course</th><th>Coach</th><th>Status</th><th>Enrolled</th><th>Actions</th></tr></thead>
             <tbody id="studentsList"></tbody></table>
         </div>
       </div>
@@ -555,30 +611,14 @@ details[open] .rawsum::before{content:'▾ '}
     </div>
 </div>
 
-<div class="modal-bg" id="modalBatch"><div class="modal" style="width:440px">
-  <h3>Create Batch</h3>
-  <div class="mhint" style="margin-bottom:10px">Pick the course first — it fills sessions, days &amp; capacity. Then tick students at the bottom.</div>
-  <input id="m_b_name" placeholder="Batch name (e.g. Phrase Factory)"/>
-  <select id="m_b_trainer"></select>
-  <select id="m_b_type" onchange="typeChanged()"></select>
-  <div class="mhint" id="m_b_hint">Pick a course — its sessions, days and capacity prefill below.</div>
-  <div class="daychips" id="m_b_days"></div>
-  <div class="mhint">Class days prefill from the course — tap to change per batch, even midway.</div>
-  <div class="mrow">
-    <select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select>
-    <input id="m_b_time" placeholder="Time · e.g. 8:00–9:00 PM"/>
-  </div>
-  <div class="mrow">
-    <input id="m_b_sessions" type="number" placeholder="Total sessions"/>
-    <input id="m_b_cap" type="number" placeholder="Max students"/>
-  </div>
-  <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Batch start date — first class day (not enrolment date)</span><input id="m_b_start" type="date"/></label>
-  <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Expected completion date</span><input id="m_b_completion" type="date"/></label>
-  <textarea id="m_b_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
-  <div class="mhint">Start below capacity if you like — you can add more students anytime via Edit.</div>
-  <div class="subhead" style="margin:10px 0 8px">Add registered students (unassigned)</div>
-  <div id="m_b_students" class="pick-list"><div class="mhint" style="padding:8px">Pick a course above to see students registered for it.</div></div>
-  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batch')">Cancel</button><button class="btn-save" onclick="saveBatch()">Save</button></div>
+<!-- Batch Details — read-only summary, opened from the Batches tab. Editing/students stay
+     in their own dedicated places (Edit Batch modal, Students tab) per the ownership split. -->
+<div class="modal-bg" id="modalBatchDetails"><div class="modal" style="width:460px;max-height:88vh;overflow:auto">
+  <h3 id="bd_title">Batch Details</h3>
+  <div id="bd_body" class="stu-grid"></div>
+  <div class="subhead" style="margin:14px 0 8px">Students <span id="bd_stu_count" class="tag">0</span></div>
+  <div id="bd_students" class="pick-list"></div>
+  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchDetails')">Close</button><button class="btn-save" id="bd_att_btn">View Attendance</button></div>
 </div></div>
 
 <div class="modal-bg" id="modalBatchEdit"><div class="modal" style="width:480px;max-height:88vh;overflow:auto">
@@ -976,6 +1016,7 @@ async function boot(){
 
   if (isHead) {
     await loadHeadView(); // also loads Trainers table + Courses (see loadHeadView)
+    buildDayChips(); typeChanged(); // prime the Create Batch tab so it's ready on first visit
   } else if (!isRestricted) {
     await loadTrainersTable();
     await loadCourses();
@@ -1610,17 +1651,44 @@ async function loadClassesTab(){
 // ============================================================================
 // Students — full roster across all batches, drawn from `students`.
 // ============================================================================
+let _allStudents = [];
 async function loadStudentsTab(){
   try{
     const {data:students} = await sb.from('students').select('*').order('enrolled_date',{ascending:false});
-    const rows = students||[];
-    document.getElementById('studentsCount').textContent = rows.length;
-    document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => `
-      <tr><td>${esc(s.name)}</td><td>${esc(s.batch_name||'Unassigned')}</td><td>${esc(s.trainer_name||'—')}</td>
-      <td><span class="badge ${s.status!=='inactive'?'b-active':'b-inactive'}">${esc(s.status||'active')}</span></td>
-      <td>${s.enrolled_date||'—'}</td></tr>
-    `).join('') : '<tr><td colspan="5" class="empty">No students yet.</td></tr>';
+    _allStudents = students||[];
+    const batchSel = document.getElementById('stu_filter_batch');
+    if (batchSel) {
+      const names = [...new Set(_allStudents.map(s=>s.batch_name).filter(Boolean))].sort();
+      const cur = batchSel.value;
+      batchSel.innerHTML = '<option value="">All batches</option>' + names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      batchSel.value = cur;
+    }
+    renderStudentsTable();
   }catch(e){ console.warn('Students tab failed to load:', e.message); }
+}
+// Search + batch/status filter over the already-fetched roster — client-side, no re-query,
+// since the whole point of a dedicated Students page is fast search/filter over one list.
+function renderStudentsTable(){
+  const q = (document.getElementById('stu_search')?.value||'').trim().toLowerCase();
+  const batchF = document.getElementById('stu_filter_batch')?.value||'';
+  const statusF = document.getElementById('stu_filter_status')?.value||'';
+  const rows = _allStudents.filter(s => {
+    if (batchF && s.batch_name !== batchF) return false;
+    if (statusF && (s.status||'') !== statusF) return false;
+    if (q) {
+      const hay = [s.name, s.uin, s.contact].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const countEl = document.getElementById('studentsCount');
+  if (countEl) countEl.textContent = rows.length + (rows.length!==_allStudents.length ? ` / ${_allStudents.length}` : '');
+  document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => `
+    <tr><td>${esc(s.name)}</td><td>${esc(s.batch_name||'Unassigned')}</td><td>${esc(s.programme||'—')}</td><td>${esc(s.trainer_name||'—')}</td>
+    <td><span class="badge ${s.status!=='inactive'?'b-active':'b-inactive'}">${esc(s.status||'active')}</span></td>
+    <td>${s.enrolled_date||'—'}</td>
+    <td><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>
+  `).join('') : `<tr><td colspan="7" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
 }
 
 // ============================================================================
@@ -1679,16 +1747,21 @@ async function loadHeadView(){
   await loadTrainersTable();
 
   const { data: batches } = await sb.from('batches').select('*, trainers(name), courses(name), students(id)').order('created_at');
+  window._allBatchesFull = batches||[];
   document.getElementById('batchTable').innerHTML = (batches||[]).map(b => {
     const cn=b.courses?.name||courseLabel(b.batch_type);
     const n=(b.students?b.students.length:0), cap=b.capacity;
     const seats=cap?`${n}/${cap}`:`${n}`;
     const seatCol=(cap&&n>=cap)?'var(--yellow)':'var(--tx2)';
-    return `<tr><td>${esc(b.name)}</td><td>${b.trainers?.name||'—'}</td><td>${b.day_pattern||''} ${b.time_slot||''}</td>
+    return `<tr><td>${esc(b.name)}</td><td>${b.trainers?.name||'—'}</td>
     <td>${esc(cn)}${b.sessions_total?' · '+b.sessions_total+'s':''}</td>
+    <td>${b.day_pattern||''} ${b.time_slot||''}</td>
     <td style="color:${seatCol}">${seats}</td>
-    <td><button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button> <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">No batches yet</td></tr>';
+    <td><span class="badge ${b.status!=='inactive'&&b.status!=='closed'?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
+    <td>${b.start_date||'—'}</td>
+    <td>${b.expected_completion_date||'—'}</td>
+    <td><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button> <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
+  }).join('') || '<tr><td colspan="9" class="empty">No batches yet</td></tr>';
 
   const { data: assigns } = await sb.from('assignments').select('*, trainers(name)').order('created_at',{ascending:false});
   document.getElementById('assignTable').innerHTML = (assigns||[]).map(a => `
@@ -1923,6 +1996,41 @@ async function assignStudents(ids,batch){
   if(!ids||!ids.length)return;
   await sb.from('students').update({batch_id:batch.id,batch_name:batch.name,trainer_name:batch.trainer_name||null}).in('id',ids);
 }
+
+// Batch Details — read-only view (View action in the Batches tab). Student
+// creation/editing is deliberately NOT reachable from here — that's the Students tab's job.
+async function openBatchDetails(id){
+  const { data: b } = await sb.from('batches').select('*, trainers(name), courses(name)').eq('id', id).single();
+  if (!b) return;
+  const { data: students } = await sb.from('students').select('id,name,uin,status').eq('batch_id', id).order('name');
+  const rows = students||[];
+  document.getElementById('bd_title').textContent = b.name;
+  document.getElementById('bd_body').innerHTML =
+    '<span class="k">Course</span><span class="v">'+esc(b.courses?.name||courseLabel(b.batch_type)||'—')+'</span>'
+    +'<span class="k">Trainer</span><span class="v">'+esc(b.trainers?.name||'—')+'</span>'
+    +'<span class="k">Schedule</span><span class="v">'+esc(b.day_pattern||'—')+'</span>'
+    +'<span class="k">Time</span><span class="v">'+esc(b.time_slot||'—')+'</span>'
+    +'<span class="k">Class Duration</span><span class="v">'+(b.class_duration_minutes?b.class_duration_minutes+' min':'—')+'</span>'
+    +'<span class="k">Prep Buffer</span><span class="v">'+(b.prep_buffer_minutes!=null?b.prep_buffer_minutes+' min':'—')+'</span>'
+    +'<span class="k">Students</span><span class="v">'+rows.length+(b.capacity?' / '+b.capacity:'')+'</span>'
+    +'<span class="k">Status</span><span class="v">'+esc(b.status||'active')+'</span>'
+    +'<span class="k">Start Date</span><span class="v">'+(b.start_date||'—')+'</span>'
+    +'<span class="k">End Date</span><span class="v">'+(b.expected_completion_date||'—')+'</span>';
+  document.getElementById('bd_stu_count').textContent = rows.length;
+  document.getElementById('bd_students').innerHTML = rows.length
+    ? rows.map(s=>'<div class="pick-row"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span><span class="badge '+(s.status!=='inactive'?'b-active':'b-inactive')+'">'+esc(s.status||'active')+'</span></div>').join('')
+    : '<div class="mhint" style="padding:8px">No students assigned to this batch yet — add them from the Students tab.</div>';
+  const attBtn = document.getElementById('bd_att_btn');
+  const liveIdx = (window._liveBatches||[]).findIndex(lb => lb.name === b.name);
+  if (liveIdx >= 0) {
+    attBtn.style.display = '';
+    attBtn.onclick = () => { closeModal('batchDetails'); openAtt(liveIdx); };
+  } else {
+    attBtn.style.display = 'none';
+  }
+  document.getElementById('modalBatchDetails').classList.add('on');
+}
+
 let _editBatch=null;
 async function openBatchEdit(id){
   if(!requireHeadAccess())return;
@@ -1958,6 +2066,36 @@ async function saveBatchEdit(){
   closeModal('batchEdit');
   await loadHeadView();await loadStats();await loadLive();
 }
+// Trainer availability / conflict check for batch creation — compares the picked
+// trainer + days + class time against that trainer's OTHER active batches (recurring
+// weekly commitments, same source of truth the Schedule tab already reads:
+// batches.day_pattern + time_slot). Distinct from the Coach Availability grid's
+// trainer_slots system, which is per-specific-date — batches are recurring weekly
+// commitments, so the conflict check compares against other batches, not one-off slots.
+function checkBatchTrainerConflict(){
+  const out = document.getElementById('m_b_avail');
+  if (!out) return null;
+  const trainerSel = document.getElementById('m_b_trainer');
+  const trainerId = trainerSel?.value||'';
+  const days = [...document.querySelectorAll('#m_b_days .dchip.on')].map(x=>x.dataset.d);
+  const timeSlot = (document.getElementById('m_b_time')?.value||'').trim();
+  if (!trainerId || !days.length || !timeSlot) { out.textContent=''; return null; }
+  const trainerName = trainerSel.options[trainerSel.selectedIndex]?.text || '';
+  const others = (window._allBatchesFull||[]).filter(b => String(b.trainer_id)===String(trainerId) && b.status!=='inactive' && b.status!=='closed');
+  const conflict = others.find(b => {
+    const otherDays = (b.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(d=>days.includes(d));
+    return otherDays.length && (b.time_slot||'').trim().toLowerCase() === timeSlot.toLowerCase();
+  });
+  if (conflict) {
+    out.innerHTML = `⚠ Trainer unavailable at this time — already teaching "<b>${esc(conflict.name)}</b>" (${esc(conflict.day_pattern||'')} · ${esc(conflict.time_slot||'')}). Please select another time or Trainer.`;
+    out.style.color = 'var(--yellow)';
+    return conflict;
+  }
+  out.innerHTML = `✓ ${esc(trainerName)} is available at this time. Preparation buffer: available. Conflict: none.`;
+  out.style.color = 'var(--green)';
+  return null;
+}
+
 async function saveBatch(){
   if (!requireHeadAccess()) return;
   const name = document.getElementById('m_b_name').value.trim();
@@ -1967,6 +2105,8 @@ async function saveBatch(){
   const days=[...document.querySelectorAll('#m_b_days .dchip.on')].map(x=>x.dataset.d);
   const mc=document.getElementById('m_b_mc').value;
   const time_slot=document.getElementById('m_b_time').value.trim();
+  const class_duration_minutes=parseInt(document.getElementById('m_b_duration').value)||60;
+  const prep_buffer_minutes=parseInt(document.getElementById('m_b_buffer').value)||0;
   const sessions_total=parseInt(document.getElementById('m_b_sessions').value)||(c?c.sessions_total:null)||null;
   const capacity=parseInt(document.getElementById('m_b_cap').value)||(c?c.max_students:null)||null;
   const start_date=document.getElementById('m_b_start').value||null;
@@ -1980,18 +2120,27 @@ async function saveBatch(){
   // ambiguous, not just untidy.
   const {data:dupe}=await sb.from('batches').select('id').ilike('name',name).limit(1);
   if(dupe&&dupe.length){alert(`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
+  // Hard block on a trainer double-booking, same "never allow conflicting schedules"
+  // backstop already used for the Coach Availability slot system.
+  if (trainer_id && time_slot) {
+    const conflict = checkBatchTrainerConflict();
+    if (conflict) { alert('This trainer is already booked at this day/time (batch "'+conflict.name+'"). Pick a different time or trainer.'); return; }
+  }
   const day_pattern=days.join(', ')+(mc?` · MC ${mc}`:'');
   const trainerSel=document.getElementById('m_b_trainer');
   const trainer_name=trainerSel.value?((trainerSel.options[trainerSel.selectedIndex]||{}).text||null):null;
-  const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active' };
+  const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, class_duration_minutes, prep_buffer_minutes, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active' };
   const {data:newBatch,error}=await sb.from('batches').insert(rec).select().single();
   if(error){alert('Save failed: '+error.message);return;}
   const picked=[...document.querySelectorAll('#m_b_students input:checked')].map(x=>x.value);
   if(picked.length)await assignStudents(picked,newBatch);
-  closeModal('batch'); document.getElementById('m_b_name').value=''; document.getElementById('m_b_time').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value='';
+  document.getElementById('m_b_name').value=''; document.getElementById('m_b_time').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value=''; document.getElementById('m_b_duration').value='60'; document.getElementById('m_b_buffer').value='0';
   document.querySelectorAll('#m_b_days .dchip.on').forEach(x=>x.classList.remove('on'));
   document.getElementById('m_b_students').innerHTML='';
+  document.getElementById('m_b_avail').textContent='';
   await loadHeadView(); await loadStats(); await loadLive();
+  alert('Batch "'+name+'" created.');
+  acadSwitchTab('live');
 }
 
 async function deleteBatch(id,name){
@@ -2128,8 +2277,17 @@ async function saveStuMove(){
   loadLive();loadStats();
 }
 async function openStu(i,j){
+  const b=window._liveBatches[i];if(!b)return;const s=b.students[j];if(!s)return;
+  return openStuCore(s);
+}
+// Students-tab "View" action — same detail/edit modal as the per-batch attendance view's
+// student click, just entered from a flat student id instead of a batch/row index.
+async function openStuById(id){
+  return openStuCore({ id });
+}
+async function openStuCore(s){
   if(!requireHeadAccess())return;
-  const b=window._liveBatches[i];if(!b)return;const s=b.students[j];if(!s)return;_stu=s;
+  if(!s)return;_stu=s;
   try{const {data:full}=await sb.from('students').select('*').eq('id',s.id).maybeSingle();if(full)Object.assign(s,full);}catch(e){}
   document.getElementById('stu_name').textContent=s.name;
   document.getElementById('stu_info').innerHTML='<div class="stu-grid">'
