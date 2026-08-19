@@ -2466,7 +2466,17 @@
 // ── deleteHREmployee (orig line 9318) ──
         async function deleteHREmployee(id) {
             if (!confirm('Remove this employee record? This does not delete related payroll/leave history.')) return;
-            await dbInstance.from('hr_employees').delete().eq('id', id);
+            // Previously discarded the result entirely — if Supabase rejected the delete
+            // (e.g. a foreign key from hr_leave_requests/hr_attendance/payroll still
+            // pointing at this employee), nothing was actually removed, but the UI reloaded
+            // the same still-existing row and showed no error at all: "delete, refresh,
+            // employee comes back," except the employee was never deleted in the first
+            // place — silent failure, not a caching or recreation bug.
+            const { error } = await dbInstance.from('hr_employees').delete().eq('id', id);
+            if (error) {
+                alert('Could not delete this employee.\n\nReason: ' + error.message + '\n\nThis usually means related records (leave requests, attendance, payroll, payslips) still reference this employee. Deleting those first — or archiving the employee instead of deleting — would resolve this.');
+                return;
+            }
             await loadHRData();
             renderHREmployees();
         }

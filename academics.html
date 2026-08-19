@@ -307,7 +307,10 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="dash-grid">
           <div class="section dash-card"><h3>Today's Schedule</h3><div id="dashToday" class="loading">Loading…</div></div>
           <div class="section dash-card"><h3>Pending Tasks</h3><div id="dashPending" class="loading">Loading…</div></div>
-          <div class="section dash-card"><h3>Recent Activity</h3><div id="dashRecent" class="loading">Loading…</div></div>
+          <!-- Head/Coordinator only — company-wide leave activity has no business on a
+               Trainer's own dashboard (see loadAcadDashboard: this card is left empty and
+               hidden entirely for any non-Head role). -->
+          <div class="section dash-card role-head-only hidden" id="acadRecentActivitySection"><h3>Recent Activity</h3><div id="dashRecent" class="loading">Loading…</div></div>
         </div>
       </div>
 
@@ -1125,6 +1128,26 @@ async function loadAcadDashboard(){
       document.getElementById('dashUpcomingAvail').innerHTML = upcomingAvail.length
         ? upcomingAvail.map(b => `<div class="acad-leave-row"><span class="acad-avatar-dot">${esc((b.trainer_name||'?').slice(0,1).toUpperCase())}</span><span style="flex:1">${esc(b.trainer_name||'—')} — ${esc(b.name)}</span><span style="color:var(--tx3)">from ${b.expected_completion_date}</span></div>`).join('')
         : '<div class="empty">No batches completing in the next 7 days.</div>';
+
+      // Head/Coordinator only — see #acadRecentActivitySection's role-head-only class.
+      // This used to run unconditionally for every role, showing a Trainer's dashboard
+      // company-wide leave approvals for employees they have no reason to know about
+      // (reported directly: a Trainer's own dashboard showing "Ali approved leave...").
+      const dashRecentEl = document.getElementById('dashRecent');
+      if (dashRecentEl) {
+        try {
+          const [{ data: recentLeaves }, { data: allEmployees }] = await Promise.all([
+            mediaHrDB.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }).limit(5),
+            mediaHrDB.from('hr_employees').select('id,full_name')
+          ]);
+          const nameById = new Map((allEmployees||[]).map(e=>[e.id,e.full_name]));
+          dashRecentEl.innerHTML = (recentLeaves && recentLeaves.length)
+            ? recentLeaves.map(l => `<div class="dash-row"><span>${esc(nameById.get(l.employee_id)||'Someone')} ${esc(l.status)} leave (${esc(l.leave_type||'Leave')})</span><span style="color:var(--tx3)">${l.start_date} → ${l.end_date}</span></div>`).join('')
+            : '<div class="empty">No recent activity.</div>';
+        } catch (e) {
+          dashRecentEl.innerHTML = '<div class="empty">No recent activity.</div>';
+        }
+      }
     } else {
       const tiles = [{ lbl: 'Active Batches', val: activeBatches.length }];
       if (isTrainerCapable) {
@@ -1148,19 +1171,6 @@ async function loadAcadDashboard(){
         : '<div class="empty">No pending tasks.</div>';
     } else {
       document.getElementById('dashPending').innerHTML = '<div class="empty">See the Assigned Tasks tab to manage the team\'s workload.</div>';
-    }
-
-    try {
-      const [{ data: recentLeaves }, { data: allEmployees }] = await Promise.all([
-        mediaHrDB.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }).limit(5),
-        mediaHrDB.from('hr_employees').select('id,full_name')
-      ]);
-      const nameById = new Map((allEmployees||[]).map(e=>[e.id,e.full_name]));
-      document.getElementById('dashRecent').innerHTML = (recentLeaves && recentLeaves.length)
-        ? recentLeaves.map(l => `<div class="dash-row"><span>${esc(nameById.get(l.employee_id)||'Someone')} ${esc(l.status)} leave (${esc(l.leave_type||'Leave')})</span><span style="color:var(--tx3)">${l.start_date} → ${l.end_date}</span></div>`).join('')
-        : '<div class="empty">No recent activity.</div>';
-    } catch (e) {
-      document.getElementById('dashRecent').innerHTML = '<div class="empty">No recent activity.</div>';
     }
   } catch (e) {
     console.warn('Dashboard summary failed to build:', e.message);
