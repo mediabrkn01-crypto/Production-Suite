@@ -33,8 +33,11 @@ const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
         const dbInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const ACAD_SUPABASE_URL = "https://baazubvfsrpmbfmrzumw.supabase.co";
-const ACAD_SUPABASE_KEY = "sb_publishable_cpAjOHoZL3AMZHaNieb_0A_Tb1kspmh";
+// Academic's tables now live in the same project as HR/Media Suite — consolidated here
+// after the original separate Academic project (baazubvfsrpmbfmrzumw) became unreachable
+// under the current login. See academics.html for the matching change.
+const ACAD_SUPABASE_URL = SUPABASE_URL;
+const ACAD_SUPABASE_KEY = SUPABASE_ANON_KEY;
 const acadDB = supabase.createClient(ACAD_SUPABASE_URL, ACAD_SUPABASE_KEY);
 
 // ---------- Session / identity ----------
