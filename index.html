@@ -579,7 +579,20 @@
         </div>
     </div>
 
-    <div id="portal-login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4 overflow-y-auto">
+    <!-- Shown FIRST, by default — covers the moment between page-load and knowing whether
+         there's a session to restore (the ?e= SSO handoff from academics.html) or not. Only
+         index.html?e=... ever attempts a restore (this app has no other persisted session —
+         see trySSOFromAcademic below); everyone else falls straight to the login screen with
+         no artificial delay. Never show the raw password form while that check is still in
+         flight — that's the "dashboard → login flashes → dashboard" bug from the recording. -->
+    <div id="auth-loading-screen" class="fixed inset-0 z-[60] flex items-center justify-center bg-[#05060e]">
+        <div class="flex flex-col items-center gap-4">
+            <img src="Broken English Final Logo-03.png" alt="" class="h-12 w-auto object-contain opacity-80">
+            <div class="text-xs text-[#6b74a0] tracking-wide">Loading application…</div>
+        </div>
+    </div>
+
+    <div id="portal-login-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-[#05060e] p-4 overflow-y-auto">
         <div class="w-full max-w-md card p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 text-center my-auto">
             <div class="flex justify-center">
                 <img src="Broken English Final Logo-03.png" alt="Broken English Logo" class="h-16 w-auto object-contain">
@@ -2446,6 +2459,7 @@
             // anything below touches the URL or reveals the app frame.
             await checkAcademicAccess(deepLinkTab);
 
+            document.getElementById('auth-loading-screen')?.classList.add('hidden');
             const loginScreen = document.getElementById('portal-login-screen');
             loginScreen.classList.add('hidden');
             loginScreen.style.display = ''; // reset any forced display
@@ -7961,15 +7975,24 @@ async function saveLeave(){
 // only an Academic/HR record), this silently falls through to the normal password login
 // screen — never auto-logs in someone we can't actually verify.
 (async function trySSOFromAcademic(){
+  // #auth-loading-screen covers the whole page by default (see its markup above) so the
+  // password form is never visible while this runs. Every exit path below must resolve it
+  // one way or the other: either launchSession() takes over (which hides it too, alongside
+  // the login screen and the app frame), or nothing panned out and we reveal the login form
+  // ourselves via showLoginNow(). Never leave both hidden — that's a blank screen forever.
+  function showLoginNow(){
+    document.getElementById('auth-loading-screen')?.classList.add('hidden');
+    document.getElementById('portal-login-screen')?.classList.remove('hidden');
+  }
   try {
     const qp = new URLSearchParams(location.search);
     const e = qp.get('e');
-    if (!e) return; // no handoff in progress — normal login screen proceeds as-is
-    if (typeof dbInstance === 'undefined' || !dbInstance) return;
+    if (!e) { showLoginNow(); return; } // no handoff in progress — nothing to restore, ever
+    if (typeof dbInstance === 'undefined' || !dbInstance) { showLoginNow(); return; }
     const { data: users, error } = await dbInstance.from('user_roster').select('*');
-    if (error || !users) return;
+    if (error || !users) { showLoginNow(); return; }
     const found = users.find(u => (u.email || '').trim().toLowerCase() === e.trim().toLowerCase());
-    if (!found) return; // not a Media Suite login — let them sign in manually as usual
+    if (!found) { showLoginNow(); return; } // not a Media Suite login — sign in manually as usual
     activeUser = found.name;
     activeRole = found.role || 'employee';
     activeEmail = found.email;
@@ -7977,8 +8000,8 @@ async function saveLeave(){
     localStorage.setItem('be_active_role', activeRole);
     localStorage.setItem('be_active_email', activeEmail);
     saveAccountForSwitching(activeUser, activeRole, activeEmail, found.pass || '');
-    await launchSession(); // also runs checkAcademicAccess() and the ?tab= deep-link handler
-  } catch (_) { /* fall through to the normal login screen on any failure */ }
+    await launchSession(); // also runs checkAcademicAccess() and the ?tab= deep-link handler; hides #auth-loading-screen itself
+  } catch (_) { showLoginNow(); /* fall through to the normal login screen on any failure */ }
 })();
 </script>
 </body>

@@ -174,7 +174,17 @@ details[open] .rawsum::before{content:'▾ '}
 </head>
 <body>
 
-<div id="login">
+<!-- Shown FIRST, by default — this file always attempts a session restore on load (either
+     the be_media_academic_session handoff from index.html, or a locally-saved be_session),
+     so the raw username/password form must never be the first thing visible: that's the
+     "dashboard → login flashes → dashboard" bug. trySSO() at the bottom of this file hides
+     this and reveals #login only if BOTH restore attempts fail. -->
+<div id="auth-loading-screen" style="position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg)">
+  <img src="Broken English Final Logo-03.png" alt="" style="height:44px;width:auto;object-fit:contain;opacity:.8"/>
+  <div style="font-size:12px;color:var(--text-muted);letter-spacing:.02em">Loading application…</div>
+</div>
+
+<div id="login" style="display:none">
   <div class="lbox">
     <img src="Broken English Final Logo-03.png" alt="Broken English"/>
     <h1>Academics Portal</h1>
@@ -641,6 +651,7 @@ async function doLogin(){
   }
   currentUser = data;
   try{localStorage.setItem('be_session',JSON.stringify({u:data.username,n:data.name,r:data.role,t:Date.now()}));}catch(_){}
+  document.getElementById('auth-loading-screen').style.display = 'none';
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   boot();
@@ -1965,6 +1976,7 @@ async function tryMediaSSO(){
     currentUser={username:s.email,name:rec.full_name||s.name,role:isHead?'academic_head':'trainer'};
     _authSource='media';
     window._mediaEmployeeId=rec.id; // used by clock in/out to sync into the Media Suite's own hr_attendance table
+    document.getElementById('auth-loading-screen').style.display='none';
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='flex';
     boot();
@@ -1984,6 +1996,7 @@ async function tryMediaSSO(){
     currentUser=data;
     _authSource='beos';
     try{localStorage.setItem('be_session',JSON.stringify({u:data.username,n:data.name,r:data.role,t:Date.now()}));}catch(_){}
+    document.getElementById('auth-loading-screen').style.display='none';
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='flex';
     boot();
