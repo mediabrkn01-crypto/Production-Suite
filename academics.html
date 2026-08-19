@@ -219,6 +219,13 @@ details[open] .rawsum::before{content:'▾ '}
         <button class="acad-nav-link sidebar-link" id="nav-acad-courses" onclick="acadSwitchTab('courses')"><i data-lucide="book-open" style="width:14px;height:14px"></i> Courses</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-schedule" onclick="acadSwitchTab('schedule')"><i data-lucide="calendar-range" style="width:14px;height:14px"></i> Schedule</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-reports" onclick="acadSwitchTab('reports')"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Reports</button>
+        <!-- Academic operational items — these are department modules (a coach's own batch
+             work, task queue, session log), not personal employee-HR items, so they stay in
+             the ACADEMIC group rather than under My Workspace, which is reserved for the
+             common employee items shared with every other department (see below). -->
+        <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-mybatches" onclick="acadSwitchTab('mybatches')"><i data-lucide="book-marked" style="width:14px;height:14px"></i> My Batches</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-tasks" onclick="acadSwitchTab('tasks')"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
+        <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-logs" onclick="acadSwitchTab('logs')"><i data-lucide="notebook" style="width:14px;height:14px"></i> Logs</button>
       </div>
       <div style="margin-bottom:14px">
         <div class="nav-section-title">MY WORKSPACE</div>
@@ -238,10 +245,6 @@ details[open] .rawsum::before{content:'▾ '}
         <button class="acad-nav-link sidebar-link" id="nav-acad-documents" onclick="acadSwitchTab('documents')"><i data-lucide="folder" style="width:14px;height:14px"></i> My Documents</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-payslips" onclick="acadSwitchTab('payslips')"><i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-team" onclick="acadSwitchTab('team')"><i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members</button>
-        <!-- Academic-specific personal items, appended after the common set. -->
-        <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-mybatches" onclick="acadSwitchTab('mybatches')"><i data-lucide="book-marked" style="width:14px;height:14px"></i> My Batches</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-tasks" onclick="acadSwitchTab('tasks')"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
-        <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-logs" onclick="acadSwitchTab('logs')"><i data-lucide="notebook" style="width:14px;height:14px"></i> Logs</button>
       </div>
     </div>
     <div style="flex-shrink:0">
@@ -256,7 +259,7 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
         <button id="acad-account-switcher-trigger" onclick="acadToggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,.8);border:1px solid rgba(255,255,255,.08);margin-bottom:8px;cursor:pointer">
           <div style="display:flex;align-items:center;gap:8px">
-            <div id="acad-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,.15);border:1px solid rgba(255,107,6,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">?</div>
+            <div id="acad-user-avatar-wrap"><div id="acad-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,.15);border:1px solid rgba(255,107,6,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">?</div></div>
             <div style="text-align:left">
               <div id="acad-user-name" style="font-size:11px;font-weight:600;color:#f1f5f9">—</div>
               <div id="acad-user-role" style="font-size:9px;color:#808a9d">—</div>
@@ -419,6 +422,7 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-profile">
         <div class="section">
           <h2>My Profile</h2>
+          <div id="profilePhoto" style="margin-bottom:16px;display:none"></div>
           <div id="profileNoLink" class="empty" style="display:none">No HR employee record is linked to your login yet — ask HR to link your portal email.</div>
           <div id="profileBody" class="stu-grid loading">Loading…</div>
         </div>
@@ -1229,33 +1233,70 @@ function _acadProfileField(label, value){
   if (value === undefined || value === null || value === '') value = '—';
   return `<div class="k">${esc(label)}</div><div class="v">${esc(String(value))}</div>`;
 }
+// Same photo source and fallback logic as common.js's hrAvatarHTML (base64 upload wins over
+// a legacy Drive URL, initials-on-gradient if neither exists) — not a second Academic-only
+// photo store, just this file's own render of the same hr_employees.photo_base64/photo_url
+// fields.
+function _acadAvatarHTML(me, sizePx){
+  sizePx = sizePx || 56;
+  const name = (me && me.full_name) || '?';
+  const photoUrl = (me && me.photo_base64) || (me && me.photo_url) || null;
+  const initials = name.split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('') || '?';
+  const style = `width:${sizePx}px;height:${sizePx}px;border-radius:50%;flex-shrink:0;object-fit:cover;font-size:${Math.round(sizePx*0.38)}px`;
+  return photoUrl
+    ? `<img src="${esc(photoUrl)}" alt="${esc(name)}" style="${style}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{style:'${style};display:flex;align-items:center;justify-content:center;background:var(--gk);color:#fff;font-weight:700',textContent:'${esc(initials)}'}))">`
+    : `<div style="${style};display:flex;align-items:center;justify-content:center;background:var(--gk);color:#fff;font-weight:700">${esc(initials)}</div>`;
+}
+// Same role-string convention already used throughout this file (comma-joined roles on
+// hr_employees.department, optional "Senior/Mid-Level/Junior " level prefix on the first
+// one) — mirrors common.js's hrRoleInfo() rather than inventing a second parser.
+function _acadRoleInfo(me){
+  const roles = (me && me.department || '').split(',').map(s=>s.trim()).filter(Boolean);
+  if (!roles.length) return { level:'', primary:'', additional:[] };
+  const levels = ['Senior','Mid-Level','Junior'];
+  let level = '', primary = roles[0];
+  for (const lvl of levels) { if (primary.startsWith(lvl+' ')) { level = lvl; primary = primary.slice(lvl.length+1); break; } }
+  return { level, primary, additional: roles.slice(1) };
+}
 async function loadMyProfileTab(){
   const body = document.getElementById('profileBody');
   const noLink = document.getElementById('profileNoLink');
+  const photoEl = document.getElementById('profilePhoto');
   if (!body) return;
   try {
     const me = await _acadGetMyHREmployeeRecord();
     if (!me) {
       body.style.display = 'none';
+      if (photoEl) photoEl.style.display = 'none';
       if (noLink) noLink.style.display = '';
       return;
     }
     if (noLink) noLink.style.display = 'none';
     body.style.display = '';
     body.className = 'stu-grid';
+    if (photoEl) { photoEl.style.display = ''; photoEl.innerHTML = _acadAvatarHTML(me, 56); }
     const divisionLabel = ({education:'Education',production:'Production House',hr:'HR',accounts:'Accounts',other:'Other'})[me.division] || me.division;
+    const roleInfo = _acadRoleInfo(me);
     body.innerHTML = [
       _acadProfileField('Name', me.full_name),
       _acadProfileField('Employee ID', me.employee_id),
       _acadProfileField('Department', divisionLabel),
-      _acadProfileField('Role', me.department),
+      _acadProfileField('Role', roleInfo.primary ? ((roleInfo.level?roleInfo.level+' ':'')+roleInfo.primary) : me.department),
+      _acadProfileField('Level', roleInfo.level),
+      _acadProfileField('Additional Roles', roleInfo.additional.length ? roleInfo.additional.join(', ') : ''),
       _acadProfileField('Employment Type', me.employment_type === 'part_time' ? 'Part-Time' : 'Full-Time'),
       _acadProfileField('Designation', me.designation),
       _acadProfileField('Joining Date', me.joining_date),
+      _acadProfileField('Date of Birth', me.dob),
       _acadProfileField('Phone', me.phone),
       _acadProfileField('Portal Email', me.portal_email),
+      _acadProfileField('Manager (portal email)', me.manager_email),
       _acadProfileField('Employment Status', me.employment_status),
     ].join('');
+    // Sidebar user avatar mirrors the same HR photo, not just initials — one photo source
+    // shown consistently everywhere this employee is represented in this workspace.
+    const avatarWrap = document.getElementById('acad-user-avatar-wrap');
+    if (avatarWrap) avatarWrap.innerHTML = _acadAvatarHTML(me, 28);
   } catch(e) { body.innerHTML = ''; body.className='empty'; body.textContent = 'Could not load profile: ' + e.message; }
 }
 async function loadAnnouncementsTab(){
@@ -1264,15 +1305,25 @@ async function loadAnnouncementsTab(){
   try {
     const { data } = await mediaHrDB.from('hr_announcements').select('*').order('created_at',{ascending:false});
     const rows = data || [];
-    el.innerHTML = rows.length ? rows.map(a => `
-      <div class="section" style="margin-bottom:10px;padding:16px">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+    // Same field names index.html's renderEmployeeAnnouncementsList reads (title/category/
+    // message/created_at) — this previously read `a.body`, which doesn't exist on this
+    // table (the real column is `message`), so the announcement text silently never
+    // rendered. Card layout matches the reference: icon + title + category tag + message
+    // preview + formatted date, not a bare title/date row.
+    el.innerHTML = rows.length ? rows.map(a => {
+      const dateLabel = a.created_at ? new Date(a.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      const excerpt = (a.message||'').slice(0,280) + ((a.message||'').length>280?'…':'');
+      return `<div class="section" style="margin-bottom:10px;padding:16px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+          <i data-lucide="megaphone" style="width:14px;height:14px;color:var(--k2)"></i>
           <div style="font-weight:700">${esc(a.title||'Announcement')}</div>
-          <div style="color:var(--tx3);font-size:11px;white-space:nowrap">${(a.created_at||'').slice(0,10)}</div>
+          ${a.category ? `<span class="badge" style="background:rgba(240,88,37,.12);color:var(--k2);border:1px solid rgba(240,88,37,.3)">${esc(a.category)}</span>` : ''}
         </div>
-        <div style="margin-top:6px;color:var(--tx2);font-size:13px;white-space:pre-wrap">${esc(a.body||'')}</div>
-      </div>
-    `).join('') : '<div class="empty">No announcements yet.</div>';
+        <div style="color:var(--tx2);font-size:13px;white-space:pre-wrap">${esc(excerpt)}</div>
+        <div style="color:var(--tx3);font-size:11px;margin-top:8px">${esc(dateLabel)}</div>
+      </div>`;
+    }).join('') : '<div class="empty">No announcements yet.</div>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) { el.innerHTML = '<div class="empty">Could not load announcements: '+esc(e.message)+'</div>'; }
 }
 async function loadDocumentsTab(){
