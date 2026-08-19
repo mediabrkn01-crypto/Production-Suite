@@ -81,6 +81,7 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
             // included as an available option, not a requirement — nothing forces it to be used.
             hr: ['HR Manager', 'HR Executive', 'HR Intern'],
             accounts: ['Accounts Manager', 'Accounts Executive', 'Accounts Intern'],
+            sales: ['Student Counselor', 'Student Counselor Head'],
             other: [] // Administration/etc. — no preset chips, Designation field covers the title
         };
         function hrParseRoles(departmentStr) {
@@ -1200,7 +1201,7 @@ async function acadSyncTrainersFromHR(){
                 return;
             }
             const probationEnd = hrProbationEndDate(me);
-            const myDivisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Other' }[me.division] || me.division;
+            const myDivisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Other' }[me.division] || me.division;
             const myRoleInfo = hrRoleInfo(me);
             body.innerHTML =
                 hrProfileField('Employee ID', me.employee_id) +

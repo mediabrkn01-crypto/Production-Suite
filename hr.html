@@ -795,6 +795,7 @@
                                 <option value="">Department: All</option>
                                 <option value="production">Production House</option>
                                 <option value="education">Education</option>
+                                <option value="sales">Sales</option>
                                 <option value="other">Other</option>
                             </select>
                             <select id="hr-emp-filter-department" onchange="renderHREmployees()" class="hr-select">
@@ -1225,6 +1226,7 @@
                     <select id="hr-emp-division" class="hr-select w-full" onchange="renderHREmpRoleChips()">
                         <option value="production">Production House</option>
                         <option value="education">Education / Coaching</option>
+                        <option value="sales">Sales</option>
                         <option value="hr">HR</option>
                         <option value="accounts">Accounts</option>
                         <option value="other">Other</option>
@@ -2498,7 +2500,7 @@
                 (!status || e.employment_status === status) &&
                 (!q || [e.full_name, e.employee_id, e.department].join(' ').toLowerCase().includes(q))
             );
-            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             document.getElementById('hr-employees-cards').innerHTML = rows.length ? rows.map(e => `
                 <div class="card glass-card p-4 rounded-2xl space-y-2">
                     <div class="flex items-start justify-between">
@@ -2562,7 +2564,7 @@
                     hrProfileField('Emergency Contact', [e.emergency_contact_name, e.emergency_contact_phone].filter(Boolean).join(' — ')) + hrProfileField('Notes / History', e.notes, true);
             } else if (hrProfileTab === 'employment') {
                 const probationEnd = hrProbationEndDate(e);
-                const divisionLabelMap = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Other' };
+                const divisionLabelMap = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Other' };
                 const roleInfo = hrRoleInfo(e);
                 body.innerHTML = hrProfileField('Employee ID', e.employee_id) + hrProfileField('Department', divisionLabelMap[e.division] || e.division) +
                     hrProfileField('Role', roleInfo.primary ? ((roleInfo.level ? roleInfo.level + ' ' : '') + roleInfo.primary) : '—') +
@@ -2621,7 +2623,7 @@
 
 // ── renderHRDepartments (orig line 9464) ──
         function renderHRDepartments() {
-            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             const groups = {};
             Object.keys(HR_ROLES).forEach(div => HR_ROLES[div].forEach(d => { groups[d] = { division: div, count: 0 }; }));
             // An employee with multiple roles counts toward each one — e.g. an Editor +
@@ -2645,7 +2647,7 @@
                 const key = e.designation + '|' + e.division;
                 counts[key] = (counts[key] || 0) + 1;
             });
-            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             const rows = Object.entries(counts).sort((a,b) => b[1]-a[1]);
             document.getElementById('hr-designations-rows').innerHTML = rows.length ? rows.map(([key, count]) => {
                 const [desig, div] = key.split('|');
@@ -3151,7 +3153,7 @@
             document.getElementById('hr-applicants-section').classList.add('hidden');
             const grid = document.getElementById('hr-jobs-grid');
             grid.classList.remove('hidden');
-            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             grid.innerHTML = hrJobOpenings.length ? hrJobOpenings.map(j => {
                 const count = hrApplicants.filter(a => a.job_id === j.id).length;
                 const deadlineLabel = j.application_deadline ? new Date(j.application_deadline).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'}) : null;
@@ -3363,7 +3365,7 @@
 
 // ── renderHRReports (orig line 10190) ──
         function renderHRReports() {
-            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             const total = hrEmployees.length;
             const active = hrEmployees.filter(e => e.employment_status === 'active').length;
             const approvedLeaveYtd = hrLeaveRequests.filter(r => r.status === 'approved').length;
@@ -3648,11 +3650,12 @@
             const dchartEl = document.getElementById('hr-wf-chart-attendance');
             if (dchartEl) dchartEl.innerHTML = hrSvgDonut(attSegs) + hrChartLegend(attSegs);
 
-            const deptCounts = { production: 0, education: 0, other: 0 };
-            roster.forEach(e => { deptCounts[e.division === 'production' ? 'production' : e.division === 'education' ? 'education' : 'other']++; });
+            const deptCounts = { production: 0, education: 0, sales: 0, other: 0 };
+            roster.forEach(e => { deptCounts[e.division === 'production' ? 'production' : e.division === 'education' ? 'education' : e.division === 'sales' ? 'sales' : 'other']++; });
             const deptSegs = [
                 { label: 'Production House', value: deptCounts.production, color: '#8b5cf6' },
                 { label: 'Education', value: deptCounts.education, color: '#2dd4bf' },
+                { label: 'Sales', value: deptCounts.sales, color: '#f59e0b' },
                 { label: 'Other', value: deptCounts.other, color: '#6b7280' }
             ];
             const deptEl = document.getElementById('hr-wf-chart-dept');
@@ -3698,7 +3701,7 @@
 
             // ── Per-employee table ──
             if (!tableEl) return;
-            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             tableEl.innerHTML = `
                 <table class="w-full text-xs text-left" style="min-width:1400px">
                     <thead><tr class="text-[#6b74a0] text-[10px] uppercase tracking-wider border-b border-white/[0.06]">
