@@ -223,18 +223,20 @@ details[open] .rawsum::before{content:'▾ '}
       <div style="margin-bottom:14px">
         <div class="nav-section-title">MY WORKSPACE</div>
         <!-- Same common employee items as index.html's My Workspace group (My Profile,
-             Announcements, My Documents, My Payslips, Team Members) — that functionality
-             lives in one place (index.html) rather than being rebuilt a second time here
-             (see "do not duplicate HR system"), so these hand off to it via the shared
-             SSO session, landing directly on the right tab (see index.html's ?tab= deep-link
-             support) instead of just its home screen. Same labels, icons, and position as
-             the reference shell — only the destination differs from a same-page switchTab(). -->
-        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('my-profile')"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
-        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('announcements')"><i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements</button>
+             Announcements, My Documents, My Payslips, Team Members) — rendered natively
+             INSIDE this workspace (acadSwitchTab, no page navigation) rather than handing
+             off to index.html: a prior version of this sidebar redirected to
+             index.html?tab=..., which read as "My Profile sent me to a different app" and
+             was reported as a navigation bug. The underlying HR data is still the single
+             shared source (mediaHrDB.hr_employees / hr_announcements / hr_payroll — the
+             exact same tables index.html's own My Workspace reads), just queried and
+             rendered here directly instead of redirecting to go read it elsewhere. -->
+        <button class="acad-nav-link sidebar-link" id="nav-acad-profile" onclick="acadSwitchTab('profile')"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-announcements" onclick="acadSwitchTab('announcements')"><i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-attendance" onclick="acadSwitchTab('attendance')"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance &amp; Leave</button>
-        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('my-docs')"><i data-lucide="folder" style="width:14px;height:14px"></i> My Documents</button>
-        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('my-payslips')"><i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips</button>
-        <button class="acad-nav-link sidebar-link" onclick="acadGoToMediaSuiteTab('team-members')"><i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-documents" onclick="acadSwitchTab('documents')"><i data-lucide="folder" style="width:14px;height:14px"></i> My Documents</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-payslips" onclick="acadSwitchTab('payslips')"><i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-team" onclick="acadSwitchTab('team')"><i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members</button>
         <!-- Academic-specific personal items, appended after the common set. -->
         <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-mybatches" onclick="acadSwitchTab('mybatches')"><i data-lucide="book-marked" style="width:14px;height:14px"></i> My Batches</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-tasks" onclick="acadSwitchTab('tasks')"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
@@ -242,12 +244,25 @@ details[open] .rawsum::before{content:'▾ '}
       </div>
     </div>
     <div style="flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,.8);border:1px solid rgba(255,255,255,.08);margin-bottom:8px">
-        <div id="acad-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,.15);border:1px solid rgba(255,107,6,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">?</div>
-        <div>
-          <div id="acad-user-name" style="font-size:11px;font-weight:600;color:#f1f5f9">—</div>
-          <div id="acad-user-role" style="font-size:9px;color:#808a9d">—</div>
+      <!-- Account Switcher — same shared be_saved_accounts localStorage key index.html's own
+           switcher reads/writes, so an account saved on either page is switchable from both.
+           Was missing from this sidebar entirely before (a real gap: "why did Account Switch
+           disappear inside Academic" was a fair question — there was nothing here at all). -->
+      <div style="position:relative">
+        <div id="acad-account-switcher-panel" class="hidden" style="position:absolute;bottom:100%;left:0;width:100%;margin-bottom:8px;background:rgba(10,14,23,.98);border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 20px 40px rgba(0,0,0,.8);overflow:hidden;z-index:30">
+          <div style="padding:8px 12px;font-size:10px;color:#808a9d;text-transform:uppercase;font-weight:700;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.06)">Switch Account</div>
+          <div id="acad-account-switcher-list" style="max-height:192px;overflow-y:auto"></div>
         </div>
+        <button id="acad-account-switcher-trigger" onclick="acadToggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,.8);border:1px solid rgba(255,255,255,.08);margin-bottom:8px;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="acad-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,.15);border:1px solid rgba(255,107,6,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">?</div>
+            <div style="text-align:left">
+              <div id="acad-user-name" style="font-size:11px;font-weight:600;color:#f1f5f9">—</div>
+              <div id="acad-user-role" style="font-size:9px;color:#808a9d">—</div>
+            </div>
+          </div>
+          <i data-lucide="chevrons-up-down" style="width:13px;height:13px;color:#808a9d"></i>
+        </button>
       </div>
       <button id="acad-logout-btn" onclick="logout()" style="width:100%;display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;font-weight:500;color:#ef4444;background:transparent;border:none;cursor:pointer">
         <i data-lucide="log-out" style="width:14px;height:14px"></i> <span id="acad-logout-label">Log Out</span>
@@ -375,6 +390,50 @@ details[open] .rawsum::before{content:'▾ '}
           <h2>Log a Session <button onclick="openModal('session')">+ Log Session</button></h2>
           <table><thead><tr><th>Student</th><th>Date</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead>
             <tbody id="myLogs"></tbody></table>
+        </div>
+      </div>
+
+      <!-- My Profile — the logged-in user's own HR record (mediaHrDB.hr_employees, matched
+           by portal_email), rendered natively here. Never navigates anywhere else. -->
+      <div class="acad-tab" id="tab-acad-profile">
+        <div class="section">
+          <h2>My Profile</h2>
+          <div id="profileNoLink" class="empty" style="display:none">No HR employee record is linked to your login yet — ask HR to link your portal email.</div>
+          <div id="profileBody" class="stu-grid loading">Loading…</div>
+        </div>
+      </div>
+
+      <!-- Announcements — same hr_announcements table index.html's Announcements tab reads. -->
+      <div class="acad-tab" id="tab-acad-announcements">
+        <div class="section">
+          <h2>Announcements</h2>
+          <div id="announcementsList" class="loading">Loading…</div>
+        </div>
+      </div>
+
+      <!-- My Documents — same hr_employees.document_links field index.html's My Documents reads. -->
+      <div class="acad-tab" id="tab-acad-documents">
+        <div class="section">
+          <h2>My Documents</h2>
+          <div id="documentsList" class="loading">Loading…</div>
+        </div>
+      </div>
+
+      <!-- My Payslips — same hr_payroll table (employee_id + published=true) index.html reads. -->
+      <div class="acad-tab" id="tab-acad-payslips">
+        <div class="section">
+          <h2>My Payslips</h2>
+          <table><thead><tr><th>Month</th><th>Net Salary</th><th>Status</th></tr></thead>
+            <tbody id="payslipsRows"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Team Members — Education-division colleagues on approved leave today, same
+           hr_leave_requests source the rest of this file's leave features already use. -->
+      <div class="acad-tab" id="tab-acad-team">
+        <div class="section">
+          <h2>Team Members <span class="tag">On Leave Today</span></h2>
+          <div id="teamOnLeaveList" class="loading">Loading…</div>
         </div>
       </div>
 
@@ -662,22 +721,53 @@ async function doLogin(){
 // window.open(), so there is no separate tab to "close" on sign-out. Logout is therefore
 // identical for every path: clear every session this file knows about, then land back on
 // the one real login screen (index.html), same as HR/Pipeline's own logoutPortal().
-// Common "My Workspace" items shared with index.html (My Profile, Announcements, My
-// Documents, My Payslips, Team Members) hand off there instead of being rebuilt a second
-// time here — same session (the redirect that brought this user here never cleared
-// index.html's own be_active_user/role/email), so this lands them straight on the right
-// tab via index.html's own ?tab= deep-link support, not just its home screen.
-function acadGoToMediaSuiteTab(tab){
-  if(_authSource !== 'media'){
-    alert('This is part of the Media Suite, which this login isn\'t linked to. Ask HR to set your portal email so Media Suite features are available here too.');
-    return;
-  }
-  // index.html has no session-resume of its own (every fresh load shows its password
-  // login screen) — so carry the identity across the same way academics.html's own
-  // tryMediaSSO() bridge already works in the other direction: index.html re-verifies
-  // this email against its own user_roster before trusting it, never blindly.
-  location.href = 'index.html?e=' + encodeURIComponent(currentUser.username) + '&n=' + encodeURIComponent(currentUser.name) + '&tab=' + encodeURIComponent(tab);
+// ── Account Switcher — reads/writes the exact same be_saved_accounts key index.html's
+// own switcher uses (getSavedAccounts/saveAccountForSwitching there), so switching is a
+// genuinely shared, global feature, not a second Academic-only implementation.
+function _acadGetSavedAccounts(){
+  try { return JSON.parse(localStorage.getItem('be_saved_accounts') || '[]'); } catch(_) { return []; }
 }
+function _acadSaveAccountForSwitching(name, role, email, pass){
+  let accounts = _acadGetSavedAccounts().filter(a => a.email.toLowerCase() !== email.toLowerCase());
+  accounts.push({ name, role, email, pass: pass || '' });
+  try { localStorage.setItem('be_saved_accounts', JSON.stringify(accounts)); } catch(_) {}
+}
+function acadToggleAccountSwitcher(){
+  const panel = document.getElementById('acad-account-switcher-panel');
+  const opening = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden');
+  if (opening) acadRenderAccountSwitcherList();
+}
+function acadRenderAccountSwitcherList(){
+  const list = document.getElementById('acad-account-switcher-list');
+  if (!list) return;
+  const accounts = _acadGetSavedAccounts();
+  const others = accounts.filter(a => (a.email||'').toLowerCase() !== (currentUser?.username||'').toLowerCase());
+  list.innerHTML = others.length ? others.map(a => `
+    <button onclick="acadSwitchToAccount('${esc(a.email)}')" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 12px;background:transparent;border:none;color:var(--tx2);cursor:pointer;text-align:left;font-size:12px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='transparent'">
+      <span class="acad-avatar-dot" style="width:22px;height:22px;font-size:9px">${esc((a.name||'?').slice(0,1).toUpperCase())}</span>
+      <span style="flex:1;min-width:0"><div style="color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div><div style="font-size:9.5px;color:var(--tx3)">${esc(a.role||'')}</div></span>
+    </button>
+  `).join('') : '<div style="padding:12px;font-size:11px;color:var(--tx3)">No other saved accounts on this device.</div>';
+}
+// Switching always routes through index.html's SSO bridge (same one My Workspace links
+// use) — it re-verifies the target account server-side and correctly lands them in either
+// the Media Suite or back in Academic depending on THAT account's own division, rather
+// than this file guessing or duplicating that routing logic a second time.
+function acadSwitchToAccount(email){
+  const accounts = _acadGetSavedAccounts();
+  const target = accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+  if (!target) return;
+  document.getElementById('acad-account-switcher-panel').classList.add('hidden');
+  location.href = 'index.html?e=' + encodeURIComponent(target.email) + '&n=' + encodeURIComponent(target.name);
+}
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('acad-account-switcher-panel');
+  const trigger = document.getElementById('acad-account-switcher-trigger');
+  if (panel && !panel.classList.contains('hidden') && !panel.contains(e.target) && !trigger.contains(e.target)) {
+    panel.classList.add('hidden');
+  }
+});
 function logout(){
   try{localStorage.removeItem('be_session');}catch(_){}
   try{localStorage.removeItem('be_media_academic_session');}catch(_){}
@@ -856,6 +946,11 @@ async function boot(){
   loadStudentsTab();
   loadScheduleTab();
   loadReportsTab();
+  loadMyProfileTab();
+  loadAnnouncementsTab();
+  loadDocumentsTab();
+  loadPayslipsTab();
+  loadTeamTab();
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -1092,6 +1187,107 @@ async function loadTrainersTable(){
     <td><button class="act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>
   `).join('') || '<tr><td colspan="4" class="empty">No trainers yet</td></tr>';
 }
+// ============================================================================
+// Native "My Workspace" common items — My Profile, Announcements, My Documents,
+// My Payslips, Team Members. Same shared HR data as index.html's own versions
+// (mediaHrDB, same table names), rendered directly here instead of navigating
+// away to read it — a page hop for these used to read as "My Profile sent me to
+// a different app," which is exactly the bug this replaces.
+// ============================================================================
+let _myHREmployeeRecord = null;
+async function _acadGetMyHREmployeeRecord(){
+  if (_myHREmployeeRecord) return _myHREmployeeRecord;
+  if (!currentUser || !currentUser.username) return null;
+  const { data } = await mediaHrDB.from('hr_employees').select('*').eq('portal_email', currentUser.username.trim().toLowerCase()).maybeSingle();
+  _myHREmployeeRecord = data || null;
+  return _myHREmployeeRecord;
+}
+function _acadProfileField(label, value){
+  if (value === undefined || value === null || value === '') value = '—';
+  return `<div class="k">${esc(label)}</div><div class="v">${esc(String(value))}</div>`;
+}
+async function loadMyProfileTab(){
+  const body = document.getElementById('profileBody');
+  const noLink = document.getElementById('profileNoLink');
+  if (!body) return;
+  try {
+    const me = await _acadGetMyHREmployeeRecord();
+    if (!me) {
+      body.style.display = 'none';
+      if (noLink) noLink.style.display = '';
+      return;
+    }
+    if (noLink) noLink.style.display = 'none';
+    body.style.display = '';
+    body.className = 'stu-grid';
+    const divisionLabel = ({education:'Education',production:'Production House',hr:'HR',accounts:'Accounts',other:'Other'})[me.division] || me.division;
+    body.innerHTML = [
+      _acadProfileField('Name', me.full_name),
+      _acadProfileField('Employee ID', me.employee_id),
+      _acadProfileField('Department', divisionLabel),
+      _acadProfileField('Role', me.department),
+      _acadProfileField('Employment Type', me.employment_type === 'part_time' ? 'Part-Time' : 'Full-Time'),
+      _acadProfileField('Designation', me.designation),
+      _acadProfileField('Joining Date', me.joining_date),
+      _acadProfileField('Phone', me.phone),
+      _acadProfileField('Portal Email', me.portal_email),
+      _acadProfileField('Employment Status', me.employment_status),
+    ].join('');
+  } catch(e) { body.innerHTML = ''; body.className='empty'; body.textContent = 'Could not load profile: ' + e.message; }
+}
+async function loadAnnouncementsTab(){
+  const el = document.getElementById('announcementsList');
+  if (!el) return;
+  try {
+    const { data } = await mediaHrDB.from('hr_announcements').select('*').order('created_at',{ascending:false});
+    const rows = data || [];
+    el.innerHTML = rows.length ? rows.map(a => `
+      <div class="section" style="margin-bottom:10px;padding:16px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+          <div style="font-weight:700">${esc(a.title||'Announcement')}</div>
+          <div style="color:var(--tx3);font-size:11px;white-space:nowrap">${(a.created_at||'').slice(0,10)}</div>
+        </div>
+        <div style="margin-top:6px;color:var(--tx2);font-size:13px;white-space:pre-wrap">${esc(a.body||'')}</div>
+      </div>
+    `).join('') : '<div class="empty">No announcements yet.</div>';
+  } catch(e) { el.innerHTML = '<div class="empty">Could not load announcements: '+esc(e.message)+'</div>'; }
+}
+async function loadDocumentsTab(){
+  const el = document.getElementById('documentsList');
+  if (!el) return;
+  try {
+    const me = await _acadGetMyHREmployeeRecord();
+    if (!me) { el.innerHTML = '<div class="empty">No HR employee record is linked to your login yet.</div>'; return; }
+    const docs = (me.document_links || '').split(',').map(s=>s.trim()).filter(Boolean);
+    el.innerHTML = docs.length ? docs.map(d => `<div class="dash-row"><a href="${esc(d)}" target="_blank" rel="noopener" style="color:var(--tx)">${esc(d)}</a></div>`).join('') : '<div class="empty">No documents on file yet.</div>';
+  } catch(e) { el.innerHTML = '<div class="empty">Could not load documents: '+esc(e.message)+'</div>'; }
+}
+async function loadPayslipsTab(){
+  const tbody = document.getElementById('payslipsRows');
+  if (!tbody) return;
+  try {
+    const me = await _acadGetMyHREmployeeRecord();
+    if (!me) { tbody.innerHTML = '<tr><td colspan="3" class="empty">No HR employee record is linked to your login yet.</td></tr>'; return; }
+    const { data } = await mediaHrDB.from('hr_payroll').select('*').eq('employee_id', me.id).eq('published', true);
+    const rows = data || [];
+    tbody.innerHTML = rows.length ? rows.map(p => `<tr><td>${esc(p.month)}</td><td>₹${Number(p.net_salary||0).toLocaleString('en-IN')}</td><td><span class="badge ${p.payment_status==='paid'?'b-active':'b-inactive'}">${esc(p.payment_status)}</span></td></tr>`).join('') : '<tr><td colspan="3" class="empty">No payslips yet.</td></tr>';
+  } catch(e) { tbody.innerHTML = '<tr><td colspan="3" class="empty">Could not load payslips: '+esc(e.message)+'</td></tr>'; }
+}
+async function loadTeamTab(){
+  const el = document.getElementById('teamOnLeaveList');
+  if (!el) return;
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const [{data:employees},{data:leaves}] = await Promise.all([
+      mediaHrDB.from('hr_employees').select('id,full_name').eq('division','education').eq('employment_status','active'),
+      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',today).gte('end_date',today)
+    ]);
+    const byId = new Map((employees||[]).map(e=>[e.id,e]));
+    const rows = (leaves||[]).map(l=>({emp:byId.get(l.employee_id), leave:l})).filter(r=>r.emp);
+    el.innerHTML = rows.length ? rows.map(r => `<div class="acad-leave-row"><span class="acad-avatar-dot">${esc((r.emp.full_name||'?').slice(0,1).toUpperCase())}</span><span style="flex:1">${esc(r.emp.full_name)}</span><span style="color:var(--tx3)">${r.leave.start_date} → ${r.leave.end_date}</span></div>`).join('') : '<div class="empty">No one on your team is on leave today.</div>';
+  } catch(e) { el.innerHTML = '<div class="empty">Could not load team status: '+esc(e.message)+'</div>'; }
+}
+
 // ============================================================================
 // Coach Availability — list of coaches with their availability fields, drilling
 // down into a coach detail (their info + assigned batches) and from there into a
@@ -1976,6 +2172,9 @@ async function tryMediaSSO(){
     currentUser={username:s.email,name:rec.full_name||s.name,role:isHead?'academic_head':'trainer'};
     _authSource='media';
     window._mediaEmployeeId=rec.id; // used by clock in/out to sync into the Media Suite's own hr_attendance table
+    // No real password to store here (SSO-only entry) — matches how index.html's own
+    // trySSOFromAcademic() saves a switchable account for this same reason.
+    _acadSaveAccountForSwitching(currentUser.name, currentUser.role, currentUser.username, '');
     document.getElementById('auth-loading-screen').style.display='none';
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='flex';
