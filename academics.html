@@ -233,7 +233,8 @@ details[open] .rawsum::before{content:'▾ '}
              rendered here directly instead of redirecting to go read it elsewhere. -->
         <button class="acad-nav-link sidebar-link" id="nav-acad-profile" onclick="acadSwitchTab('profile')"><i data-lucide="user-check" style="width:14px;height:14px"></i> My Profile</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-announcements" onclick="acadSwitchTab('announcements')"><i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-attendance" onclick="acadSwitchTab('attendance')"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance &amp; Leave</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-attendance" onclick="acadSwitchTab('attendance')"><i data-lucide="clock" style="width:14px;height:14px"></i> My Attendance</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-leave" onclick="acadSwitchTab('leave')"><i data-lucide="calendar-days" style="width:14px;height:14px"></i> My Leave</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-documents" onclick="acadSwitchTab('documents')"><i data-lucide="folder" style="width:14px;height:14px"></i> My Documents</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-payslips" onclick="acadSwitchTab('payslips')"><i data-lucide="receipt" style="width:14px;height:14px"></i> My Payslips</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-team" onclick="acadSwitchTab('team')"><i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members</button>
@@ -359,11 +360,29 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
       </div>
 
+      <!-- My Attendance — real day-by-day calendar built from mediaHrDB.hr_attendance (the
+           same table this file's own clock in/out already writes to) + approved leave days
+           layered on top, matching the reference Media Suite Attendance page's calendar
+           style. Simpler than index.html's own payroll-aware version (no weekly-off/holiday
+           calendar rules ported over — this reads raw attendance + leave status only), but
+           real data, not a placeholder. -->
       <div class="acad-tab" id="tab-acad-attendance">
+        <div class="section">
+          <h2>My Attendance</h2>
+          <div class="lv-note">Your own attendance record — present days and approved leave. Clock in / out with the button up top.</div>
+          <div class="acad-dash-tiles" id="attStats" style="margin:14px 0"></div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px" id="attCalendar" class="loading">Loading…</div>
+        </div>
+      </div>
+
+      <!-- My Leave — apply, view balances, view request history. Same hr_leave_requests
+           table as HR's own Leave Management (see saveLeave()) — HR reviews and
+           approves/rejects, this is a read/write view onto that one shared system. -->
+      <div class="acad-tab" id="tab-acad-leave">
         <div class="section" id="leaveShared">
-          <h2>Leave &amp; Attendance <span class="tag">HR</span></h2>
-          <div class="lv-note">Clock in / out with the button up top — that's yours alone. Leave below goes through the same HR Leave Management system as every other department: HR reviews and approves/rejects it, and the approved status is what the rest of Academic (dashboard, Coach Availability, scheduling) reads.</div>
-          <div class="subhead" style="margin:4px 0 10px">On leave today</div>
+          <h2>My Leave <span class="tag">HR</span></h2>
+          <div class="lv-note">Goes through the same HR Leave Management system as every other department — HR reviews and approves/rejects, and the approved status is what the rest of Academic (dashboard, Coach Availability, scheduling) reads.</div>
+          <div class="subhead" style="margin:4px 0 10px">On leave today (whole team)</div>
           <div id="onLeaveToday" class="loading">Loading…</div>
           <div class="subhead" style="margin:18px 0 10px">Apply for leave</div>
           <div class="lv-row">
@@ -376,7 +395,9 @@ details[open] .rawsum::before{content:'▾ '}
             <button class="lv-apply" onclick="saveLeave()">Submit to HR</button>
           </div>
           <div id="lv_no_hr_link" class="empty" style="display:none;margin-top:8px">No HR employee record is linked to your login yet — ask HR to link your portal email before applying for leave.</div>
-          <div class="subhead" style="margin:18px 0 10px">My Leave Requests</div>
+          <div class="subhead" style="margin:18px 0 10px">My Balances</div>
+          <div class="acad-dash-tiles" id="leaveBalances"></div>
+          <div class="subhead" style="margin:18px 0 10px">My Requests</div>
           <div id="myLeaveHistory" class="loading">Loading…</div>
         </div>
         <div class="section role-restricted-only hidden" id="clockOnly">
@@ -951,6 +972,8 @@ async function boot(){
   loadDocumentsTab();
   loadPayslipsTab();
   loadTeamTab();
+  loadAttendanceCalendar();
+  loadLeaveBalances();
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -2094,6 +2117,78 @@ async function _acadHRLeaveRows(){
   const {data} = await mediaHrDB.from('hr_leave_requests').select('*').order('requested_at',{ascending:false});
   return data||[];
 }
+
+// My Attendance — day-by-day calendar for the current month, built from this file's own
+// mediaHrDB.hr_attendance rows (same table clockToggle() already writes to) with approved
+// leave days layered on top. Matches the reference Media Suite Attendance page's calendar
+// style; simpler than its payroll engine (no weekly-off/holiday rules ported over) but real.
+async function loadAttendanceCalendar(){
+  const statsEl = document.getElementById('attStats');
+  const calEl = document.getElementById('attCalendar');
+  if (!calEl) return;
+  try {
+    const me = await _acadGetMyHREmployeeRecord();
+    if (!me) { calEl.innerHTML = '<div class="empty" style="grid-column:1/-1">No HR employee record is linked to your login yet.</div>'; if(statsEl) statsEl.innerHTML=''; return; }
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth() + 1;
+    const monthStr = `${y}-${String(m).padStart(2,'0')}`;
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const [{data:attRows}, {data:leaveRows}] = await Promise.all([
+      mediaHrDB.from('hr_attendance').select('*').eq('employee_id', me.id).gte('att_date', monthStr+'-01').lte('att_date', monthStr+'-'+String(daysInMonth).padStart(2,'0')),
+      mediaHrDB.from('hr_leave_requests').select('*').eq('employee_id', me.id).eq('status','approved')
+    ]);
+    const attByDate = new Map((attRows||[]).map(r=>[r.att_date, r.status||'present']));
+    const onLeaveDate = (dateStr) => (leaveRows||[]).some(l => l.start_date <= dateStr && l.end_date >= dateStr);
+    let present=0, leave=0, absent=0;
+    const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const cells = dowLabels.map(d=>`<div style="text-align:center;font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;padding-bottom:4px">${d}</div>`);
+    const firstDow = new Date(y, m-1, 1).getDay();
+    for (let i=0;i<firstDow;i++) cells.push('<div></div>');
+    const today = now.toISOString().slice(0,10);
+    for (let d=1; d<=daysInMonth; d++){
+      const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
+      let code = '', color = 'var(--tx3)';
+      if (onLeaveDate(dateStr)) { code='L'; color='var(--yellow)'; leave++; }
+      else if (attByDate.has(dateStr)) { code='P'; color='var(--green)'; present++; }
+      else if (dateStr < today) { code='A'; color='var(--brand-3)'; absent++; }
+      cells.push(`<div style="border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;min-height:44px;${dateStr===today?'border-color:var(--brand-1)':''}">
+        <div style="font-size:10px;color:var(--tx3)">${d}</div>
+        <div style="font-size:12px;font-weight:700;color:${color}">${code||'—'}</div>
+      </div>`);
+    }
+    calEl.innerHTML = cells.join('');
+    if (statsEl) statsEl.innerHTML = [
+      {label:'Present',val:present,color:'#10b981'},
+      {label:'On Leave',val:leave,color:'#f59e0b'},
+      {label:'Absent (unmarked)',val:absent,color:'#ff0552'},
+    ].map(s=>`<div class="acad-stat-card" style="cursor:default"><div><div class="val" style="color:${s.color}">${s.val}</div><div class="lbl">${s.label}</div></div></div>`).join('');
+  } catch(e) { calEl.innerHTML = '<div class="empty" style="grid-column:1/-1">Could not load attendance: '+esc(e.message)+'</div>'; }
+}
+
+// My Leave balances — same hr_leave_balances table HR's own screen manages (allotted per
+// type); "used" computed live from this employee's own approved requests rather than a
+// separately-maintained counter, same "never trust a stored counter" approach common.js's
+// hrComputeLeaveUsed already uses.
+async function loadLeaveBalances(){
+  const el = document.getElementById('leaveBalances');
+  if (!el) return;
+  try {
+    const me = await _acadGetMyHREmployeeRecord();
+    if (!me) { el.innerHTML=''; return; }
+    const [{data:balances}, {data:myRequests}] = await Promise.all([
+      mediaHrDB.from('hr_leave_balances').select('*').eq('employee_id', me.id),
+      mediaHrDB.from('hr_leave_requests').select('*').eq('employee_id', me.id).eq('status','approved')
+    ]);
+    const rows = balances || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty">No balances set by HR yet.</div>'; return; }
+    el.innerHTML = rows.map(b => {
+      const used = (myRequests||[]).filter(r=>r.leave_type===b.leave_type).reduce((s,r)=>s+(r.days||0),0);
+      const unlimited = b.leave_type === 'Unpaid Leave';
+      const remaining = unlimited ? '—' : Math.max(0, (b.allotted||0) - used);
+      return `<div class="acad-stat-card" style="cursor:default"><div><div class="val">${remaining}</div><div class="lbl">${esc(b.leave_type)}</div></div></div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="empty">Could not load balances: '+esc(e.message)+'</div>'; }
+}
 async function loadLeave(){
   const el=document.getElementById('onLeaveToday');if(!el)return;
   try{
@@ -2108,6 +2203,8 @@ async function loadLeave(){
     el.innerHTML=lvs||'<div class="lv-none">No one on leave today.</div>';
   }catch(e){el.className='';el.innerHTML='<div class="empty">Could not load HR leave data: '+esc(e.message)+'</div>';}
   loadMyLeaveHistory();
+  loadLeaveBalances();
+  loadAttendanceCalendar();
 }
 async function loadMyLeaveHistory(){
   const body=document.getElementById('myLeaveHistory'); if(!body) return;
