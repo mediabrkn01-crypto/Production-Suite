@@ -319,16 +319,22 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-attendance">
         <div class="section" id="leaveShared">
           <h2>Leave &amp; Attendance <span class="tag">HR</span></h2>
-          <div class="lv-note">Clock in / out with the button up top — that's yours alone. Leave below is visible to the whole team.</div>
+          <div class="lv-note">Clock in / out with the button up top — that's yours alone. Leave below goes through the same HR Leave Management system as every other department: HR reviews and approves/rejects it, and the approved status is what the rest of Academic (dashboard, Coach Availability, scheduling) reads.</div>
           <div class="subhead" style="margin:4px 0 10px">On leave today</div>
           <div id="onLeaveToday" class="loading">Loading…</div>
-          <div class="subhead" style="margin:18px 0 10px">Apply your own leave</div>
+          <div class="subhead" style="margin:18px 0 10px">Apply for leave</div>
           <div class="lv-row">
+            <label class="lv-field"><span>Type</span>
+              <select id="lv_type"><option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option><option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option></select>
+            </label>
             <label class="lv-field"><span>From</span><input id="lv_from" type="date"/></label>
             <label class="lv-field"><span>To</span><input id="lv_to" type="date"/></label>
             <label class="lv-field lv-grow"><span>Reason</span><input id="lv_reason" placeholder="Optional"/></label>
-            <button class="lv-apply" onclick="saveLeave()">Apply</button>
+            <button class="lv-apply" onclick="saveLeave()">Submit to HR</button>
           </div>
+          <div id="lv_no_hr_link" class="empty" style="display:none;margin-top:8px">No HR employee record is linked to your login yet — ask HR to link your portal email before applying for leave.</div>
+          <div class="subhead" style="margin:18px 0 10px">My Leave Requests</div>
+          <div id="myLeaveHistory" class="loading">Loading…</div>
         </div>
         <div class="section role-restricted-only hidden" id="clockOnly">
           <h2>My Workspace</h2>
@@ -864,12 +870,16 @@ async function loadAcadDashboard(){
       // instead (My Batches / Pending Tasks) — these company-wide numbers are a Head/
       // Coordinator concern, matching "Coaches see only their own work" everywhere else
       // in this module.
-      const [{ data: trainers }, { data: allBatches }, { data: students }, { data: sessions }, { data: leaves }] = await Promise.all([
+      const [{ data: trainers }, { data: allBatches }, { data: students }, { data: sessions }, { data: approvedLeaves }, { data: hrEmployees }] = await Promise.all([
         sb.from('trainers').select('*'),
         sb.from('batches').select('*'),
         sb.from('students').select('id'),
         sb.from('sessions').select('session_date'),
-        sb.from('leaves').select('*').eq('status', 'approved')
+        // Single source of truth for leave: the SAME hr_leave_requests table (Media Suite
+        // project) HR's own Leave Management screen reads/writes — not a separate Academic
+        // leave system. See saveLeave()/loadLeave() below for the matching submit/read path.
+        mediaHrDB.from('hr_leave_requests').select('*').eq('status', 'approved'),
+        mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
       ]);
       const activeTrainers = (trainers || []).filter(t => t.status === 'active');
       const ftCount = activeTrainers.filter(t => t.type !== 'pt').length;
@@ -877,16 +887,24 @@ async function loadAcadDashboard(){
       const batchesActive = (allBatches || []).filter(b => b.status === 'active' && (!b.expected_completion_date || b.expected_completion_date >= today));
       const upcomingBatches = (allBatches || []).filter(b => b.start_date && b.start_date > today);
       const busyTrainerIds = new Set(batchesActive.filter(b => b.trainer_id).map(b => b.trainer_id));
-      const availableCoaches = activeTrainers.filter(t => !busyTrainerIds.has(t.id));
       const todaysClasses = (sessions || []).filter(s => s.session_date === today).length;
-      // On leave today: match by portal_email first (reliable — set by HR's sync), falling
-      // back to a name match only if no email is on file for either side (best-effort, same
-      // fallback pattern already used elsewhere in this codebase for un-linked records).
-      const onLeaveToday = (leaves || []).filter(l => l.from_date <= today && l.to_date >= today);
+      // On leave today: hr_leave_requests is keyed by employee_id, not portal_email, so map
+      // through hr_employees first. Falls back to a name match only for a trainer with no
+      // portal_email on file at all (not yet linked by HR).
+      const empById = new Map((hrEmployees || []).map(e => [e.id, e]));
+      const onLeaveToday = (approvedLeaves || []).filter(l => l.start_date <= today && l.end_date >= today)
+        .map(l => {
+          const emp = empById.get(l.employee_id);
+          return { ...l, from_date: l.start_date, to_date: l.end_date, _email: (emp && emp.portal_email || '').toLowerCase(), _name: (emp && emp.full_name || '').toLowerCase() };
+        });
       const onLeaveTrainers = activeTrainers.filter(t => onLeaveToday.some(l =>
-        (t.portal_email && l.username && t.portal_email.toLowerCase() === String(l.username).toLowerCase()) ||
-        (!t.portal_email && t.name && l.username && String(l.username).toLowerCase().includes(t.name.toLowerCase()))
+        (t.portal_email && l._email && t.portal_email.toLowerCase() === l._email) ||
+        (!t.portal_email && t.name && l._name && l._name === t.name.toLowerCase())
       ));
+      const onLeaveIds = new Set(onLeaveTrainers.map(t => t.id));
+      // "Available" means not on an active batch AND not on approved leave today — HR leave
+      // must actually block a coach from reading as available, not just be a separate tile.
+      const availableCoaches = activeTrainers.filter(t => !busyTrainerIds.has(t.id) && !onLeaveIds.has(t.id));
       // Becoming available soon: active batch, this trainer, completing within 7 days.
       const soon = new Date(today); soon.setDate(soon.getDate() + 7);
       const soonStr = soon.toISOString().slice(0, 10);
@@ -942,9 +960,13 @@ async function loadAcadDashboard(){
     }
 
     try {
-      const { data: recentLeaves } = await sb.from('leaves').select('*').order('from_date', { ascending: false }).limit(5);
+      const [{ data: recentLeaves }, { data: allEmployees }] = await Promise.all([
+        mediaHrDB.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }).limit(5),
+        mediaHrDB.from('hr_employees').select('id,full_name')
+      ]);
+      const nameById = new Map((allEmployees||[]).map(e=>[e.id,e.full_name]));
       document.getElementById('dashRecent').innerHTML = (recentLeaves && recentLeaves.length)
-        ? recentLeaves.map(l => `<div class="dash-row"><span>${esc(l.username)} applied leave</span><span style="color:var(--tx3)">${l.from_date} → ${l.to_date}</span></div>`).join('')
+        ? recentLeaves.map(l => `<div class="dash-row"><span>${esc(nameById.get(l.employee_id)||'Someone')} ${esc(l.status)} leave (${esc(l.leave_type||'Leave')})</span><span style="color:var(--tx3)">${l.start_date} → ${l.end_date}</span></div>`).join('')
         : '<div class="empty">No recent activity.</div>';
     } catch (e) {
       document.getElementById('dashRecent').innerHTML = '<div class="empty">No recent activity.</div>';
@@ -1047,8 +1069,10 @@ function availShowCoach(trainerId){
   const hours = (t.pt_time_start && t.pt_time_end) ? `${t.pt_time_start}–${t.pt_time_end}` : '';
   const courses = (t.teachable_courses || '').split(',').map(s => s.trim()).filter(Boolean);
   const myBatches = _availBatches.filter(b => String(b.trainer_id) === String(t.id));
+  const onLeave = _availOnLeaveIds.has(t.id);
   document.getElementById('availCoachDetail').innerHTML = `
-    <h2>${esc(t.name)} <span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${esc(t.status||'—')}</span></h2>
+    <h2>${esc(t.name)} <span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${esc(t.status||'—')}</span>${onLeave?' <span class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)">On Leave (HR-approved today)</span>':''}</h2>
+    ${onLeave?'<div class="warn-box"><b>On approved leave today.</b> Do not assign this coach to a class until their leave ends — check HR Leave Management for the exact return date.</div>':''}
     <div class="stu-grid">
       <div class="k">Type</div><div class="v">${t.type==='pt'?'Part-Time':'Full-Time'}</div>
       <div class="k">Available Days</div><div class="v">${esc(days) || '—'}</div>
@@ -1091,22 +1115,36 @@ function availShowBatch(batchId, trainerId){
     </div>
   `;
 }
+let _availOnLeaveIds = new Set();
 async function loadAvailabilityTab(){
   try{
-    const [{data:trainers},{data:batches}] = await Promise.all([
+    const today = new Date().toISOString().slice(0,10);
+    const [{data:trainers},{data:batches},{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
       sb.from('trainers').select('*'),
-      sb.from('batches').select('*')
+      sb.from('batches').select('*'),
+      // Same hr_leave_requests source as the Overview dashboard — one leave system, not two.
+      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',today).gte('end_date',today),
+      mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
     ]);
     _availTrainers = (trainers||[]).filter(t=>t.status==='active' || t.status==null);
     _availBatches = batches||[];
+    const empById = new Map((hrEmployees||[]).map(e=>[e.id,e]));
+    const onLeaveEmails = new Set((approvedLeaves||[]).map(l=>{ const e=empById.get(l.employee_id); return e && (e.portal_email||'').toLowerCase(); }).filter(Boolean));
+    const onLeaveNames = new Set((approvedLeaves||[]).map(l=>{ const e=empById.get(l.employee_id); return e && (e.full_name||'').toLowerCase(); }).filter(Boolean));
+    _availOnLeaveIds = new Set(_availTrainers.filter(t =>
+      (t.portal_email && onLeaveEmails.has(t.portal_email.toLowerCase())) ||
+      (!t.portal_email && t.name && onLeaveNames.has(t.name.toLowerCase()))
+    ).map(t=>t.id));
     const busyIds = new Set(_availBatches.filter(b=>b.status==='active').map(b=>b.trainer_id).filter(Boolean));
     document.getElementById('availList').innerHTML = _availTrainers.length ? _availTrainers.map(t=>{
       const mine = _availBatches.filter(b=>String(b.trainer_id)===String(t.id));
-      const available = !busyIds.has(t.id);
+      const onLeave = _availOnLeaveIds.has(t.id);
+      const available = !busyIds.has(t.id) && !onLeave;
+      const label = onLeave ? 'On Leave (HR)' : (available ? 'Available' : 'Assigned');
       return `<tr class="clickable" onclick="availShowCoach('${t.id}')">
         <td>${esc(t.name)}</td>
         <td>${t.type==='pt'?'Part-Time':'Full-Time'}</td>
-        <td><span class="badge ${available?'b-active':'b-inactive'}">${available?'Available':'Assigned'}</span></td>
+        <td><span class="badge ${available?'b-active':'b-inactive'}">${label}</span></td>
         <td>${esc(t.pt_available_days||'—')}</td>
         <td>${t.pt_time_start&&t.pt_time_end?esc(t.pt_time_start+'–'+t.pt_time_end):'—'}</td>
         <td>${mine.length}</td>
@@ -1803,27 +1841,56 @@ async function mediaSyncClockToHrAttendance(dateStr, fields){
     else await mediaHrDB.from('hr_attendance').insert({ employee_id: window._mediaEmployeeId, att_date: dateStr, status:'present', ...fields });
   }catch(e){ console.warn('Could not sync clock action into Media Suite HR attendance:', e.message); }
 }
+// Leave now goes through the SAME hr_leave_requests table (Media Suite project) that HR's
+// own Leave Management screen reads and writes \u2014 same schema submitMyLeave() uses in
+// shared/common.js (employee_id/leave_type/start_date/end_date/days/reason/status). This
+// replaces the old sb.from('leaves') table in the Academic project, which was a silent
+// duplicate: it auto-approved on insert with no HR review step at all, and HR never saw it.
+// `window._mediaEmployeeId` is captured once at SSO time (tryMediaSSO) from hr_employees.id.
+async function _acadHRLeaveRows(){
+  const {data} = await mediaHrDB.from('hr_leave_requests').select('*').order('requested_at',{ascending:false});
+  return data||[];
+}
 async function loadLeave(){
   const el=document.getElementById('onLeaveToday');if(!el)return;
   try{
     const d=new Date().toISOString().slice(0,10);
-    const r2=await sb.from('leaves').select('*').lte('from_date',d).gte('to_date',d);
-    const r3=await sb.from('roles').select('name,username');
-    const us=r3.data||[];
-    const nameOf=function(u){const m=us.find(function(x){return x.username===u;});return m?m.name:u;};
-    const lvs=(r2.data||[]).map(function(l){return '<span class="lv-chip"><i class="ti ti-plane-departure"></i>'+esc(nameOf(l.username))+'<span class="lv-sub">till '+l.to_date+(l.reason?' \u00b7 '+esc(l.reason):'')+'</span></span>';}).join('');
+    const [{data:approved}, {data:employees}] = await Promise.all([
+      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',d).gte('end_date',d),
+      mediaHrDB.from('hr_employees').select('id,full_name')
+    ]);
+    const nameOf = id => { const m=(employees||[]).find(e=>e.id===id); return m ? m.full_name : id; };
+    const lvs=(approved||[]).map(l=>'<span class="lv-chip"><i class="ti ti-plane-departure"></i>'+esc(nameOf(l.employee_id))+'<span class="lv-sub">'+esc(l.leave_type||'Leave')+' \u00b7 till '+l.end_date+(l.reason?' \u00b7 '+esc(l.reason):'')+'</span></span>').join('');
     el.className='lv-chips';
     el.innerHTML=lvs||'<div class="lv-none">No one on leave today.</div>';
-  }catch(e){el.className='';el.innerHTML='<div class="empty">Run the Phase 1 migration to activate leave tracking.</div>';}
+  }catch(e){el.className='';el.innerHTML='<div class="empty">Could not load HR leave data: '+esc(e.message)+'</div>';}
+  loadMyLeaveHistory();
+}
+async function loadMyLeaveHistory(){
+  const body=document.getElementById('myLeaveHistory'); if(!body) return;
+  const noLink=document.getElementById('lv_no_hr_link');
+  if(!window._mediaEmployeeId){ if(noLink) noLink.style.display=''; body.innerHTML='<div class="empty">No leave history to show without a linked HR record.</div>'; return; }
+  if(noLink) noLink.style.display='none';
+  try{
+    const {data} = await mediaHrDB.from('hr_leave_requests').select('*').eq('employee_id',window._mediaEmployeeId).order('requested_at',{ascending:false});
+    const rows = data||[];
+    body.innerHTML = rows.length ? rows.map(r=>`<div class="dash-row"><span>${esc(r.leave_type||'Leave')} \u00b7 ${r.start_date} \u2192 ${r.end_date}</span><span class="badge ${r.status==='approved'?'b-active':(r.status==='rejected'?'b-inactive':'')}" style="${r.status==='pending'?'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)':''}">${esc(r.status)}</span></div>`).join('') : '<div class="empty">No leave requests yet.</div>';
+  }catch(e){ body.innerHTML = '<div class="empty">Could not load your leave history: '+esc(e.message)+'</div>'; }
 }
 async function saveLeave(){
   if(!currentUser)return;
+  if(!window._mediaEmployeeId){ document.getElementById('lv_no_hr_link').style.display=''; return; }
+  const leave_type=document.getElementById('lv_type').value;
   const f=document.getElementById('lv_from').value,t=document.getElementById('lv_to').value;
   if(!f||!t){alert('Both dates required');return;}
-  const {error}=await sb.from('leaves').insert({username:currentUser.username,from_date:f,to_date:t,reason:document.getElementById('lv_reason').value.trim()||null,status:'approved'});
+  const days = Math.round((new Date(t)-new Date(f))/86400000)+1;
+  if(days<1){alert('End date must be on or after start date.');return;}
+  const reason=document.getElementById('lv_reason').value.trim()||null;
+  const {error}=await mediaHrDB.from('hr_leave_requests').insert([{employee_id:window._mediaEmployeeId,leave_type,start_date:f,end_date:t,days,reason,status:'pending'}]);
   if(error){alert('Save failed: '+error.message);return;}
   document.getElementById('lv_reason').value='';document.getElementById('lv_from').value='';document.getElementById('lv_to').value='';
-  alert('Leave applied \u2014 the team can see it.');loadLeave();
+  alert('Leave request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
+  loadLeave();
 }
 
 /* Two possible single-sign-on sources feed this page — never its own login form:
