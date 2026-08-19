@@ -915,7 +915,11 @@ async function acadSyncTrainersFromHR(){
     for (const emp of eduEmployees) {
       if (!emp.full_name) continue;
       const key = emp.full_name.trim().toLowerCase();
-      const status = emp.employment_status === 'active' ? 'active' : 'inactive';
+      // Mirror HR's own Add/Edit Employee form convention: an unset employment_status
+      // defaults to "Active" there, so only an EXPLICIT 'inactive'/'exited' should sync
+      // as inactive — otherwise employees created before this field existed get wrongly
+      // hidden everywhere Academic filters on trainers.status = 'active'.
+      const status = (emp.employment_status === 'inactive' || emp.employment_status === 'exited') ? 'inactive' : 'active';
       // Coach scheduling fields, mirrored straight from the HR record — HR (via Add/Edit
       // Employee) is the single source of truth for these; this sync only ever reads FROM
       // hr_employees and writes INTO acadDB.trainers, never the other direction.

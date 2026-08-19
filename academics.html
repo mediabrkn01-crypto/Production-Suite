@@ -1212,7 +1212,12 @@ async function acadSyncTrainersFromHRLocal(){
     for (const emp of eduEmployees) {
       if (!emp.full_name) continue;
       const key = emp.full_name.trim().toLowerCase();
-      const status = emp.employment_status === 'active' ? 'active' : 'inactive';
+      // HR's own Add/Edit Employee form treats an unset employment_status as "Active"
+      // (defaults the dropdown to 'active' when the stored value is missing) — mirror
+      // that convention here. Only an EXPLICIT 'inactive'/'exited' should sync as inactive;
+      // otherwise employees created before this field existed get wrongly hidden everywhere
+      // Academic filters on trainers.status = 'active' (Coach Availability grid, etc).
+      const status = (emp.employment_status === 'inactive' || emp.employment_status === 'exited') ? 'inactive' : 'active';
       const coachFields = {
         type: emp.employment_type === 'part_time' ? 'pt' : 'ft',
         teachable_courses: emp.teachable_courses || null,
