@@ -1367,6 +1367,13 @@ async function loadMyProfileTab(){
     body.style.display = '';
     body.className = 'stu-grid';
     if (photoEl) { photoEl.style.display = ''; photoEl.innerHTML = _acadAvatarHTML(me, 56); }
+    // Sidebar user avatar mirrors the same HR photo, not just initials — one photo source
+    // shown consistently everywhere this employee is represented in this workspace. Done
+    // right after the photo itself (not at the end, after building the profile detail
+    // list below) so a failure rendering those details can never silently prevent the
+    // sidebar photo from ever showing — that used to be one fragile try block.
+    const avatarWrap = document.getElementById('acad-user-avatar-wrap');
+    if (avatarWrap) avatarWrap.innerHTML = _acadAvatarHTML(me, 28);
     const divisionLabel = ({education:'Education',production:'Production House',hr:'HR',accounts:'Accounts',other:'Other'})[me.division] || me.division;
     const roleInfo = _acadRoleInfo(me);
     body.innerHTML = [
@@ -1385,10 +1392,6 @@ async function loadMyProfileTab(){
       _acadProfileField('Manager (portal email)', me.manager_email),
       _acadProfileField('Employment Status', me.employment_status),
     ].join('');
-    // Sidebar user avatar mirrors the same HR photo, not just initials — one photo source
-    // shown consistently everywhere this employee is represented in this workspace.
-    const avatarWrap = document.getElementById('acad-user-avatar-wrap');
-    if (avatarWrap) avatarWrap.innerHTML = _acadAvatarHTML(me, 28);
   } catch(e) { body.innerHTML = ''; body.className='empty'; body.textContent = 'Could not load profile: ' + e.message; }
 }
 async function loadAnnouncementsTab(){
