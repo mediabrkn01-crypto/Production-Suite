@@ -61,6 +61,21 @@ create table if not exists trainer_slots (
 create index if not exists trainer_slots_date_idx on trainer_slots (slot_date);
 create index if not exists trainer_slots_trainer_idx on trainer_slots (trainer_id);
 
+-- ============ Phase 4 — Flexible multi-range working hours (Trainer/Coach) ============
+-- Run in the MEDIA SUITE project (fevqnpllmarhoqdzpatq). Idempotent, safe to re-run.
+-- Some Trainers/Coaches don't work one continuous block (e.g. 10:00-12:00, 14:00-16:00,
+-- 18:00-19:00 in the same day) — the old pt_time_start/pt_time_end pair could only ever
+-- hold one range. pt_time_ranges stores that as JSON text: a list of {"start":"HH:MM",
+-- "end":"HH:MM"} objects, e.g. '[{"start":"10:00","end":"12:00"},{"start":"14:00","end":"16:00"}]'.
+-- Optional — NULL/empty means "not set", same as every other pt_* field, and a record can
+-- still be saved with none. pt_time_start/pt_time_end are kept as-is (not dropped) so
+-- already-saved single-range records keep displaying correctly via hrGetWorkingHourRanges()'s
+-- fallback (common.js) — new saves from hr.html write pt_time_ranges (and, for backward
+-- compatibility with anything still reading the old pair, mirror the first/last range's
+-- start/end into pt_time_start/pt_time_end too).
+alter table hr_employees add column if not exists pt_time_ranges text;
+alter table trainers add column if not exists pt_time_ranges text;
+
 -- No new table for student attendance — an `attendance` table (student_uin/batch_name/
 -- session_num/session_date/status/marked_by), already independent of employee attendance,
 -- already existed from before this phase (see openAtt()/saveAtt() in academics.html, on the

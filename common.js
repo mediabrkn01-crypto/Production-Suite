@@ -827,6 +827,55 @@ async function loadMyHRData() {
             return (info.level ? info.level + ' ' : '') + info.primary;
         }
 
+// ── Flexible multi-range working hours (Trainer/Coach) ──
+// A Trainer/Coach's working hours are not always one continuous block — a part-timer might
+// work 10:00–12:00, 14:00–16:00, 18:00–19:00 in the same day. Stored as JSON text in
+// pt_time_ranges (hr_employees and trainers both), e.g. '[{"start":"10:00","end":"12:00"}, …]',
+// rather than the old single pt_time_start/pt_time_end pair, which could only ever represent
+// one range. Those two legacy columns are left in the schema and still read as a fallback
+// below, so employee records saved before this feature existed still display correctly — new
+// saves write pt_time_ranges only (see saveHREmployee in hr.html). Shared here (not
+// duplicated per page) so index.html, hr.html, and academics.html all resolve/display working
+// hours identically. This is entirely separate from "My Availability" (trainer_slots) — see
+// the comments there; working hours is the general schedule template, availability is which
+// specific date/time slots the trainer has actually opened up for booking.
+function hrGetWorkingHourRanges(emp) {
+    if (!emp) return [];
+    if (emp.pt_time_ranges) {
+        try {
+            const parsed = JSON.parse(emp.pt_time_ranges);
+            if (Array.isArray(parsed)) return parsed.filter(r => r && r.start && r.end);
+        } catch (e) { /* malformed — fall through to the legacy single-range fields below */ }
+    }
+    if (emp.pt_time_start && emp.pt_time_end) return [{ start: emp.pt_time_start, end: emp.pt_time_end }];
+    return [];
+}
+// Minutes between "HH:MM" strings — negative/zero for an invalid or empty range, so callers
+// can filter those out without a separate validity check.
+function hrTimeRangeMinutes(r) {
+    if (!r || !r.start || !r.end) return 0;
+    const [sh, sm] = r.start.split(':').map(Number);
+    const [eh, em] = r.end.split(':').map(Number);
+    if ([sh, sm, eh, em].some(n => Number.isNaN(n))) return 0;
+    return (eh * 60 + em) - (sh * 60 + sm);
+}
+function hrTotalWorkingHours(ranges) {
+    const mins = (ranges || []).reduce((sum, r) => sum + Math.max(0, hrTimeRangeMinutes(r)), 0);
+    return mins / 60;
+}
+function hrFormatTotalHours(hours) {
+    return (Number.isInteger(hours) ? String(hours) : hours.toFixed(1)) + 'h';
+}
+// Multi-line display string for hrProfileField(..., true) — "Not Set" (not blank, not "0h")
+// when the trainer genuinely has no working hours configured yet, per spec.
+function hrFormatWorkingHours(emp) {
+    const ranges = hrGetWorkingHourRanges(emp);
+    if (!ranges.length) return 'Not Set';
+    const lines = ranges.map(r => `${r.start}–${r.end}`);
+    lines.push(`Total: ${hrFormatTotalHours(hrTotalWorkingHours(ranges))}`);
+    return lines.join('\n');
+}
+
 // ── hrSeedDefaultLeaveBalances (orig line 7636) ──
         async function hrSeedDefaultLeaveBalances(employeeId) {
             const rows = HR_LEAVE_TYPES.filter(t => !HR_UNLIMITED_LEAVE_TYPES.includes(t)).map(t => ({
@@ -1036,6 +1085,7 @@ async function acadSyncTrainersFromHR(){
         pt_available_days: emp.pt_available_days || null,
         pt_time_start: emp.pt_time_start || null,
         pt_time_end: emp.pt_time_end || null,
+        pt_time_ranges: emp.pt_time_ranges || null,
         // Lets academics.html's own leave/availability lookups match a trainer row reliably
         // (leaves.username is the person's login — an email when they signed in via the
         // Media Suite SSO bridge) instead of a fuzzy name match.

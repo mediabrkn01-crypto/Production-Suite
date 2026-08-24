@@ -1313,8 +1313,12 @@
                                 <button type="button" onclick="hrTogglePtDay('Sun')" class="hr-role-chip" data-day="Sun">Sun</button>
                             </div>
                         </div>
-                        <div><label class="hr-field-label">Available From</label><input id="hr-emp-pt-time-start" type="time" class="hr-input w-full"></div>
-                        <div><label class="hr-field-label">Available Until</label><input id="hr-emp-pt-time-end" type="time" class="hr-input w-full"></div>
+                        <div class="sm:col-span-2">
+                            <label class="hr-field-label">Working / Available Hours <span style="font-weight:400;color:#6b74a0">(optional — supports multiple time ranges in the same day)</span></label>
+                            <div id="hr-emp-time-ranges" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+                            <button type="button" onclick="hrAddTimeRange()" class="hr-role-chip" style="margin-top:6px;width:fit-content">+ Add Time Range</button>
+                            <p id="hr-emp-time-ranges-total" style="font-size:11px;color:#6b74a0;margin-top:6px">Working Hours: Not Set</p>
+                        </div>
                     </div>
                 </div>
                 <div><label class="hr-field-label">Primary Role</label>
@@ -2169,6 +2173,64 @@
             });
         }
 
+        // ── Flexible multi-range Working Hours (Trainer/Coach) ──
+        // hrEmpTimeRanges is the in-form editing state, [{start,end}, …] — mirrors the
+        // hrEmpSelectedCourses/hrEmpSelectedPtDays pattern already used above. Genuinely
+        // optional: an employee record saves fine with this array empty (see saveHREmployee).
+        let hrEmpTimeRanges = [];
+
+        function renderHREmpTimeRanges() {
+            const container = document.getElementById('hr-emp-time-ranges');
+            const totalEl = document.getElementById('hr-emp-time-ranges-total');
+            if (!container) return;
+            container.innerHTML = hrEmpTimeRanges.length ? hrEmpTimeRanges.map((r, i) => `
+                <div style="display:flex;align-items:center;gap:8px">
+                    <input type="time" class="hr-input" style="width:auto" value="${r.start || ''}" onchange="hrUpdateTimeRange(${i}, 'start', this.value)">
+                    <span style="color:#6b74a0;font-size:12px">→</span>
+                    <input type="time" class="hr-input" style="width:auto" value="${r.end || ''}" onchange="hrUpdateTimeRange(${i}, 'end', this.value)">
+                    <button type="button" onclick="hrRemoveTimeRange(${i})" class="hr-role-chip" style="color:#f87171;border-color:rgba(248,113,113,0.3)">Remove</button>
+                </div>
+            `).join('') : '<p class="text-[10px] text-[#4a5182]">No time ranges added — this field is optional.</p>';
+            if (totalEl) {
+                // Only complete (both start and end filled), positive-length ranges count
+                // toward the total shown here — an in-progress row (one time picked, the
+                // other still blank) is not yet an error, just not counted yet.
+                const complete = hrEmpTimeRanges.filter(r => r.start && r.end && hrTimeRangeMinutes(r) > 0);
+                totalEl.textContent = complete.length
+                    ? `Total Available Hours: ${hrFormatTotalHours(hrTotalWorkingHours(complete))}`
+                    : 'Working Hours: Not Set';
+            }
+        }
+        function hrAddTimeRange() {
+            hrEmpTimeRanges.push({ start: '', end: '' });
+            renderHREmpTimeRanges();
+        }
+        function hrRemoveTimeRange(i) {
+            hrEmpTimeRanges.splice(i, 1);
+            renderHREmpTimeRanges();
+        }
+        function hrUpdateTimeRange(i, field, value) {
+            if (!hrEmpTimeRanges[i]) return;
+            hrEmpTimeRanges[i][field] = value;
+            renderHREmpTimeRanges();
+        }
+        // Returns { ranges, error } — ranges is only the rows with both times filled in
+        // (a still-blank row the HR user hasn't finished, or hasn't removed, is silently
+        // dropped rather than blocking save — matches "saving without any time ranges must
+        // be allowed"). error is a user-facing message when a FILLED-IN row is invalid.
+        function hrValidateTimeRanges() {
+            const filled = hrEmpTimeRanges.filter(r => r.start || r.end);
+            for (const r of filled) {
+                if (!r.start || !r.end) return { ranges: null, error: 'Each time range needs both a start and an end time (or remove it).' };
+                if (hrTimeRangeMinutes(r) <= 0) return { ranges: null, error: `End time must be after start time (${r.start} → ${r.end}).` };
+            }
+            const sorted = [...filled].sort((a, b) => a.start.localeCompare(b.start));
+            for (let i = 1; i < sorted.length; i++) {
+                if (sorted[i].start < sorted[i - 1].end) return { ranges: null, error: `Time ranges overlap (${sorted[i-1].start}–${sorted[i-1].end} and ${sorted[i].start}–${sorted[i].end}).` };
+            }
+            return { ranges: sorted, error: null };
+        }
+
 // ── updateHREmpAcademicHint (orig line 8999) ──
         function updateHREmpAcademicHint() {
             const hint = document.getElementById('hr-emp-academic-hint');
@@ -2237,8 +2299,11 @@
             hrEmpSelectedPtDays = e?.pt_available_days ? e.pt_available_days.split(',').map(s => s.trim()).filter(Boolean) : [];
             document.getElementById('hr-emp-pt-max-classes').value = e?.pt_max_classes_per_day || '';
             document.getElementById('hr-emp-pt-max-hours').value = e?.pt_max_hours || '';
-            document.getElementById('hr-emp-pt-time-start').value = e?.pt_time_start || '';
-            document.getElementById('hr-emp-pt-time-end').value = e?.pt_time_end || '';
+            // hrGetWorkingHourRanges (common.js) — reads pt_time_ranges, falling back to the
+            // legacy single pt_time_start/pt_time_end pair for records saved before this
+            // feature existed, so their one range still shows up here pre-filled.
+            hrEmpTimeRanges = (typeof hrGetWorkingHourRanges === 'function' ? hrGetWorkingHourRanges(e) : []).map(r => ({ ...r }));
+            renderHREmpTimeRanges();
             renderHREmpPartTimeFields();
             document.querySelectorAll('#hr-emp-pt-days-chips [data-day]').forEach(btn => {
                 btn.classList.toggle('active', hrEmpSelectedPtDays.includes(btn.dataset.day));
@@ -2395,6 +2460,11 @@
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
             if (!name) { alert('Full name is required.'); return; }
+            // Working Hours is optional — hrValidateTimeRanges() only blocks save when a row
+            // the HR user actually started filling in is invalid (missing one side, end
+            // before start, or overlapping another range); a completely empty list is fine.
+            const { ranges: validTimeRanges, error: timeRangesError } = hrValidateTimeRanges();
+            if (timeRangesError) { alert(timeRangesError); return; }
             const monthly_salary = parseFloat(document.getElementById('hr-emp-salary').value) || 0;
             const joining_date = document.getElementById('hr-emp-joining').value || null;
             const loginEmail = document.getElementById('hr-emp-email').value.trim().toLowerCase();
@@ -2444,8 +2514,13 @@
                 pt_max_classes_per_day: parseInt(document.getElementById('hr-emp-pt-max-classes').value) || null,
                 pt_max_hours: parseFloat(document.getElementById('hr-emp-pt-max-hours').value) || null,
                 pt_available_days: hrEmpSelectedPtDays.join(', '),
-                pt_time_start: document.getElementById('hr-emp-pt-time-start').value || null,
-                pt_time_end: document.getElementById('hr-emp-pt-time-end').value || null
+                // pt_time_ranges is the real source of truth now (supports multiple ranges);
+                // pt_time_start/pt_time_end are still written too — mirrored from the first/
+                // last range — purely for backward compatibility with anything still reading
+                // only the old single-range pair. Both null when no ranges were entered.
+                pt_time_ranges: validTimeRanges.length ? JSON.stringify(validTimeRanges) : null,
+                pt_time_start: validTimeRanges.length ? validTimeRanges[0].start : null,
+                pt_time_end: validTimeRanges.length ? validTimeRanges[validTimeRanges.length - 1].end : null
             };
             try {
                 if (hrEditingEmployeeId) {
@@ -2700,11 +2775,17 @@
                     (e.division === 'education' ? (
                         hrProfileField('Coaching Employment Type', e.employment_type === 'part_time' ? 'Part-Time' : e.employment_type === 'full_time' ? 'Full-Time' : null) +
                         hrProfileField('Courses They Can Teach', e.teachable_courses) +
+                        // Links out to the existing Coach Availability tab (academics.html) —
+                        // that system itself is untouched, this just opens it, same pattern
+                        // as the existing My Profile "My Workspace" deep links elsewhere.
+                        `<div style="padding:8px 0"><a href="academics.html" target="_blank" class="hr-role-chip" style="text-decoration:none;display:inline-block">View Availability</a></div>` +
                         (e.employment_type === 'part_time' ? (
                             hrProfileField('Max Classes / Day', e.pt_max_classes_per_day) +
                             hrProfileField('Max Working Hours / Day', e.pt_max_hours) +
                             hrProfileField('Available Days', e.pt_available_days) +
-                            hrProfileField('Available Time', (e.pt_time_start && e.pt_time_end) ? `${e.pt_time_start} – ${e.pt_time_end}` : null)
+                            // Multi-range working hours — e.g. "10:00–12:00\n14:00–16:00\n18:00–19:00\nTotal: 5h",
+                            // or "Not Set" when none are configured (hrFormatWorkingHours, common.js).
+                            hrProfileField('Working Hours', hrFormatWorkingHours(e), true)
                         ) : '')
                     ) : '');
             } else if (hrProfileTab === 'salary') {
