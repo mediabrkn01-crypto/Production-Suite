@@ -148,8 +148,16 @@ tr.clickable{cursor:pointer}
 .lv-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
 .lv-field{display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;}
 .lv-field.lv-grow{flex:1;min-width:150px;}
-.lv-field input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;}
-.lv-field input:focus{border-color:rgba(237,31,81,.5);}
+/* select/textarea share the exact same dark styling as input — previously only .lv-field
+   input was covered, so any <select>/<textarea> inside a .lv-field (e.g. Create Batch's
+   Course/Trainer dropdowns) fell through to the browser's default white background once
+   this form moved out of its old .modal wrapper (.modal input,.modal select no longer
+   matched). width:100%+box-sizing keeps a <select> from sizing to its longest option text,
+   so two fields side-by-side in the same .mrow stay equal width instead of one being wider. */
+.lv-field input,.lv-field select,.lv-field textarea{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;}
+.lv-field input:focus,.lv-field select:focus,.lv-field textarea:focus{border-color:rgba(237,31,81,.5);}
+.lv-field select{-webkit-appearance:menulist;-moz-appearance:menulist;appearance:menulist;color-scheme:dark;}
+.lv-field select option{background:#0f1121;color:var(--tx);}
 .lv-apply{padding:11px 22px;border:none;border-radius:9px;background:var(--gk);color:#fff;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 20px rgba(237,31,81,.3);}
 .stu-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px;margin-bottom:12px;padding:14px;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:12px;}
 .stu-grid .k{color:var(--tx3);text-transform:uppercase;font-size:9.5px;letter-spacing:.07em;align-self:center;}
@@ -308,10 +316,6 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="dash-grid">
           <div class="section dash-card"><h3>Today's Schedule</h3><div id="dashToday" class="loading">Loading…</div></div>
           <div class="section dash-card"><h3>Pending Tasks</h3><div id="dashPending" class="loading">Loading…</div></div>
-          <!-- Head/Coordinator only — company-wide leave activity has no business on a
-               Trainer's own dashboard (see loadAcadDashboard: this card is left empty and
-               hidden entirely for any non-Head role). -->
-          <div class="section dash-card role-head-only hidden" id="acadRecentActivitySection"><h3>Recent Activity</h3><div id="dashRecent" class="loading">Loading…</div></div>
         </div>
       </div>
 
@@ -348,8 +352,8 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="daychips" id="m_b_days" onclick="checkBatchTrainerConflict()"></div>
           <div class="mhint">Class days prefill from the course — tap to change per batch, even midway.</div>
           <div class="mrow">
-            <select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select>
-            <input id="m_b_time" placeholder="Class Time · e.g. 8:00–9:00 PM" onchange="checkBatchTrainerConflict()"/>
+            <label class="lv-field" style="flex:1"><span>Masterclass Day</span><select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select></label>
+            <label class="lv-field" style="flex:1"><span>Class Time</span><input id="m_b_time" placeholder="e.g. 8:00–9:00 PM" onchange="checkBatchTrainerConflict()"/></label>
           </div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60"/></label>
@@ -357,12 +361,12 @@ details[open] .rawsum::before{content:'▾ '}
           </div>
           <div id="m_b_avail" class="mhint" style="margin:6px 0 10px"></div>
           <div class="mrow">
-            <input id="m_b_sessions" type="number" placeholder="Total sessions"/>
-            <input id="m_b_cap" type="number" placeholder="Max students"/>
+            <label class="lv-field" style="flex:1"><span>Total Sessions</span><input id="m_b_sessions" type="number" placeholder="Total sessions"/></label>
+            <label class="lv-field" style="flex:1"><span>Max Students</span><input id="m_b_cap" type="number" placeholder="Max students"/></label>
           </div>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Start Date</span><input id="m_b_start" type="date"/></label>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>End Date (expected completion)</span><input id="m_b_completion" type="date"/></label>
-          <textarea id="m_b_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
+          <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Notes</span><textarea id="m_b_notes" placeholder="Notes (optional)" style="min-height:50px"></textarea></label>
           <div class="mhint">Start below capacity if you like — you can add more students anytime via Edit.</div>
           <div class="subhead" style="margin:10px 0 8px">Students — select from the existing Student database (no duplicate records are created)</div>
           <div id="m_b_students" class="pick-list"><div class="mhint" style="padding:8px">Pick a course above to see students registered for it.</div></div>
@@ -1171,25 +1175,6 @@ async function loadAcadDashboard(){
         ? upcomingAvail.map(b => `<div class="acad-leave-row"><span class="acad-avatar-dot">${esc((b.trainer_name||'?').slice(0,1).toUpperCase())}</span><span style="flex:1">${esc(b.trainer_name||'—')} — ${esc(b.name)}</span><span style="color:var(--tx3)">from ${b.expected_completion_date}</span></div>`).join('')
         : '<div class="empty">No batches completing in the next 7 days.</div>';
 
-      // Head/Coordinator only — see #acadRecentActivitySection's role-head-only class.
-      // This used to run unconditionally for every role, showing a Trainer's dashboard
-      // company-wide leave approvals for employees they have no reason to know about
-      // (reported directly: a Trainer's own dashboard showing "Ali approved leave...").
-      const dashRecentEl = document.getElementById('dashRecent');
-      if (dashRecentEl) {
-        try {
-          const [{ data: recentLeaves }, { data: allEmployees }] = await Promise.all([
-            mediaHrDB.from('hr_leave_requests').select('*').order('requested_at', { ascending: false }).limit(5),
-            mediaHrDB.from('hr_employees').select('id,full_name')
-          ]);
-          const nameById = new Map((allEmployees||[]).map(e=>[e.id,e.full_name]));
-          dashRecentEl.innerHTML = (recentLeaves && recentLeaves.length)
-            ? recentLeaves.map(l => `<div class="dash-row"><span>${esc(nameById.get(l.employee_id)||'Someone')} ${esc(l.status)} leave (${esc(l.leave_type||'Leave')})</span><span style="color:var(--tx3)">${l.start_date} → ${l.end_date}</span></div>`).join('')
-            : '<div class="empty">No recent activity.</div>';
-        } catch (e) {
-          dashRecentEl.innerHTML = '<div class="empty">No recent activity.</div>';
-        }
-      }
     } else {
       const tiles = [{ lbl: 'Active Batches', val: activeBatches.length }];
       if (isTrainerCapable) {
@@ -1861,6 +1846,13 @@ async function deleteTrainer(id, name){
   if(error){alert('Cannot delete: this trainer still has batches or sessions linked. Reassign or delete those first.\n\n('+error.message+')');return;}
   await loadHeadView(); await loadStats();
 }
+async function deleteCourse(id, name){
+  if (!requireHeadAccess()) return;
+  if (!confirmDelete('course', name)) return; // type-DELETE guard — same as deleteTrainer/deleteStudent/deleteBatch
+  const {error}=await sb.from('courses').delete().eq('id', id);
+  if(error){alert('Cannot delete: this course still has batches linked to it. Reassign or delete those first, or use Disable instead.\n\n('+error.message+')');return;}
+  await loadCourses(); // refresh the list immediately
+}
 function esc(s){return String(s??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
 
 /* ── Courses are defined by the Academic Head in the DB, not hardcoded ── */
@@ -1887,7 +1879,8 @@ function renderCourseTable(){
     <td>${c.type==='recorded'?'—':(c.type==='one-on-one'?'1':(c.max_students||'—'))}</td>
     <td>${esc(c.default_days||'—')}${c.mc_day?' · MC '+esc(c.mc_day):''}</td>
     <td><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
-    <button class="act-btn" onclick="toggleCourse('${c.id}')">${c.active===false?'Enable':'Disable'}</button></td></tr>
+    <button class="act-btn" onclick="toggleCourse('${c.id}')">${c.active===false?'Enable':'Disable'}</button>
+    <button class="act-btn" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>
   `).join('')||'<tr><td colspan="7" class="empty">No courses yet — define your first course.</td></tr>';
 }
 function populateCourseSelect(){
