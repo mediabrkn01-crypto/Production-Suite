@@ -886,26 +886,54 @@ async function loadMyHRData() {
 // (Pipeline → My Profile → Pipeline, switching Academic tabs, etc.) never
 // re-queries and never "loses" the already-loaded photo. Pass true to force a
 // fresh fetch — e.g. right after the user changes their own profile photo.
+// CRITICAL: the cache is keyed by WHOSE profile it holds (the resolved email at fetch
+// time), not just "is something cached". switchToAccount() (this file, used by both
+// index.html and hr.html) and hr.html's own admin-to-admin switch both change
+// activeEmail/activeUser and re-render WITHOUT a page reload — a real, already-shipped
+// path where a module-level cache with no identity check would keep serving the PREVIOUS
+// account's name/photo/designation to the newly switched-in account. Every read below
+// re-resolves the current identity and compares it against which identity the cache
+// actually belongs to; a mismatch is treated as "no cache", full stop, regardless of
+// forceRefresh. This is what makes the cache self-invalidating on account switch instead
+// of depending on every switch call site remembering to bust it by hand.
 let _currentUserProfileCache = null;
+let _currentUserProfileCacheKey = null;
 let _currentUserProfilePromise = null;
+let _currentUserProfilePromiseKey = null;
 function _resolveCurrentUserIdentity() {
     const email = (typeof activeEmail !== 'undefined' && activeEmail) || (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || null;
     const name = (typeof activeUser !== 'undefined' && activeUser) || (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || null;
     const db = (typeof dbInstance !== 'undefined' && dbInstance) || (typeof mediaHrDB !== 'undefined' && mediaHrDB) || null;
     return { email, name, db };
 }
+// Call explicitly on logout, in addition to the automatic key-mismatch check above — belt
+// and suspenders, and makes "no stale profile can survive a logout" true even if some
+// future caller reads the module variables directly instead of through this function.
+function clearCurrentUserProfileCache() {
+    _currentUserProfileCache = null;
+    _currentUserProfileCacheKey = null;
+    _currentUserProfilePromise = null;
+    _currentUserProfilePromiseKey = null;
+}
 async function loadCurrentUserProfile(forceRefresh) {
+    const { email, name, db } = _resolveCurrentUserIdentity();
+    const key = (email || '').trim().toLowerCase();
+    // Cache/in-flight request belongs to a DIFFERENT identity than the one currently
+    // active — e.g. an account switch happened since the last call. Never return or reuse
+    // it, no matter what forceRefresh says.
+    if (_currentUserProfileCacheKey && _currentUserProfileCacheKey !== key) _currentUserProfileCache = null;
+    if (_currentUserProfilePromiseKey && _currentUserProfilePromiseKey !== key) _currentUserProfilePromise = null;
     if (_currentUserProfileCache && !forceRefresh) return _currentUserProfileCache;
     if (_currentUserProfilePromise && !forceRefresh) return _currentUserProfilePromise;
+    _currentUserProfilePromiseKey = key;
     _currentUserProfilePromise = (async () => {
-        const { email, name, db } = _resolveCurrentUserIdentity();
-        if (!email || !db) return null;
+        if (!email || !db) { _currentUserProfileCache = null; _currentUserProfileCacheKey = key; return null; }
         try {
             // select('*') rather than naming photo_base64 explicitly — on a database where
             // that column hasn't been added yet, naming it here makes the whole query error
             // out (PGRST 42703), which silently broke photo sync for every employee, not
             // just ones with an uploaded photo. select('*') degrades gracefully instead.
-            let { data, error } = await db.from('hr_employees').select('*').eq('portal_email', email.trim().toLowerCase()).limit(1);
+            let { data, error } = await db.from('hr_employees').select('*').eq('portal_email', key).limit(1);
             if (error) { console.warn('loadCurrentUserProfile: lookup by email failed:', error.message); return null; }
             if (!data || !data[0]) {
                 // Fallback: no HR record linked by email — try matching by name instead, for
@@ -914,17 +942,22 @@ async function loadCurrentUserProfile(forceRefresh) {
                 const byName = await db.from('hr_employees').select('*').eq('full_name', name).limit(1);
                 if (!byName.error && byName.data && byName.data[0]) data = byName.data;
             }
-            if (!data || !data[0]) { console.warn(`loadCurrentUserProfile: no hr_employees record found for "${name}" (${email}). Profile can't sync until this login is linked to an employee record.`); return null; }
+            if (!data || !data[0]) { console.warn(`loadCurrentUserProfile: no hr_employees record found for "${name}" (${email}). Profile can't sync until this login is linked to an employee record.`); _currentUserProfileCache = null; _currentUserProfileCacheKey = key; return null; }
             const rec = data[0];
             const photoUrl = rec.photo_base64 || (rec.photo_url ? hrConvertDriveUrl(rec.photo_url) : null);
             const title = (typeof hrRoleDisplay === 'function') ? hrRoleDisplay(rec) : (rec.designation || null);
-            _currentUserProfileCache = { employeeId: rec.id, name: rec.full_name || name || '', designation: (title && title !== '—') ? title : null, photoUrl, raw: rec };
-            return _currentUserProfileCache;
+            // Re-check the identity is STILL the one this fetch was for — if a second switch
+            // happened while this query was in flight, this result is now stale too; don't
+            // let it win the cache.
+            const stillCurrent = _resolveCurrentUserIdentity().email && _resolveCurrentUserIdentity().email.trim().toLowerCase() === key;
+            const result = { employeeId: rec.id, name: rec.full_name || name || '', designation: (title && title !== '—') ? title : null, photoUrl, raw: rec };
+            if (stillCurrent) { _currentUserProfileCache = result; _currentUserProfileCacheKey = key; }
+            return result;
         } catch (e) {
             console.warn('loadCurrentUserProfile failed:', e.message);
             return null;
         } finally {
-            _currentUserProfilePromise = null;
+            if (_currentUserProfilePromiseKey === key) _currentUserProfilePromise = null;
         }
     })();
     return _currentUserProfilePromise;
