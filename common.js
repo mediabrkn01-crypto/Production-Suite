@@ -950,12 +950,17 @@ function applyCurrentUserProfileToDOM(profile) {
             if (el) el.textContent = profile.designation;
         });
     }
-    // "My Profile Photo" widget on the My Settings page (index.html)
+    // "My Profile Photo" widget on the My Settings page (index.html). onerror is attached
+    // BEFORE src is set — the other way around is a real race: for an already-cached or
+    // instantly-failing image, the browser can fire the error before the next line of JS
+    // runs, so an onerror assigned after src can miss it and leave a broken-image icon with
+    // nothing to catch it. Falls back to the initials span already sitting underneath this
+    // img in the DOM (see my-avatar-wrap's markup) — never a bare broken-image icon.
     const img = document.getElementById('my-avatar-img');
     if (img && profile.photoUrl) {
+        img.onerror = () => { console.warn('my-avatar-img failed to load:', profile.photoUrl); img.classList.add('hidden'); };
         img.src = profile.photoUrl;
         img.classList.remove('hidden');
-        img.onerror = () => { console.warn('my-avatar-img failed to load:', profile.photoUrl); img.classList.add('hidden'); };
     }
 }
 

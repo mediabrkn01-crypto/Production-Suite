@@ -2442,16 +2442,23 @@
                 localStorage.setItem('be_active_role', activeRole);
             }
 
-            // Load profile photo
+            // Initials shown immediately — safe, synchronous, always correct. The actual
+            // photo is set ONLY by hrFetchAndApplyMyPhoto() below (the one profile source of
+            // truth — hr_employees.photo_base64/photo_url), not from here.
+            //
+            // This used to also set img.src straight from liveMe.avatar (a legacy chat-avatar
+            // field on user_roster) with NO error handling at all — if that value was ever
+            // invalid/corrupted, the browser's broken-image icon would show and nothing would
+            // catch it until the HR photo below finished loading a moment later (or stay
+            // broken indefinitely for an employee with no HR photo at all). Removed rather
+            // than patched with an onerror, since keeping it around as a second, separate
+            // photo source is exactly the "avatar depends on separate rendering/state logic
+            // instead of one shared source" problem this was already meant to fix.
             if (liveMe) {
                 const initials = activeUser.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
                 const ini = document.getElementById('my-avatar-initials');
-                const img = document.getElementById('my-avatar-img');
                 if (ini) ini.textContent = initials;
-                if (img && liveMe.avatar) { img.src = liveMe.avatar; img.classList.remove('hidden'); }
             }
-            // HR-saved photo (from the employee's linked HR record) takes priority over the
-            // legacy chat-avatar upload above, everywhere the person's own avatar is shown.
             hrFetchAndApplyMyPhoto();
 
             // Not awaited — the Pipeline table (from syncLedgerEngine above) already rendered
