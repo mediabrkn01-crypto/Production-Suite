@@ -483,7 +483,11 @@ details[open] .rawsum::before{content:'▾ '}
       </div>
 
       <div class="acad-tab" id="tab-acad-live">
-        <div class="grid" id="statgrid"></div>
+        <!-- Was class="grid" (a bare Tailwind display:grid with no columns/gap defined —
+             why the old plain cards stacked in a single column instead of a tile row).
+             acad-dash-tiles is the same responsive tile-grid class the Overview dashboard's
+             own stat tiles already use. -->
+        <div class="acad-dash-tiles" id="statgrid"></div>
         <div class="section" id="liveSection">
           <h2><span id="tab-acad-live-label">Live Batches &amp; Attendance</span> <span class="tag">Live · Database</span></h2>
           <div id="liveBatches" class="loading">Loading…</div>
@@ -1831,13 +1835,27 @@ async function loadStats(){
   const { data: trainers } = await sb.from('trainers').select('*').eq('status','active');
   const { data: batches } = await sb.from('batches').select('*');
   const { data: students } = await sb.from('students').select('*');
-  const { data: sessions } = await sb.from('sessions').select('*').eq('status','completed');
-  document.getElementById('statgrid').innerHTML = `
-    <div class="card"><div class="lbl">Active Trainers</div><div class="val">${trainers?.length||0}</div></div>
-    <div class="card"><div class="lbl">Total Batches</div><div class="val">${batches?.length||0}</div></div>
-    <div class="card"><div class="lbl">Total Students</div><div class="val">${students?.length||0}</div></div>
-    <div class="card"><div class="lbl">Sessions Completed</div><div class="val">${sessions?.length||0}</div></div>
-  `;
+  // Was querying `sessions` for status='completed' — a table this app's actual attendance-
+  // marking flow (saveAtt(), Mark Attendance on every batch card) never writes to at all, so
+  // this always read 0 regardless of how much real progress existed. `attendance` is the
+  // real table every completed session actually gets recorded in (one row per student per
+  // marked session) — counting distinct (batch_name, session_num) pairs gives the real
+  // number of sessions actually delivered, not one row per student marked present in it.
+  let sessionsCompleted = 0;
+  try {
+    const { data: att } = await sb.from('attendance').select('batch_name,session_num');
+    sessionsCompleted = new Set((att||[]).map(a => a.batch_name+'|'+a.session_num)).size;
+  } catch (e) { console.warn('Could not load sessions-completed count:', e.message); }
+  // Same acadStatTile() icon+color+sparkline component the Overview dashboard and Reports
+  // already use — this grid was still the old plain label/value cards, the one place left
+  // that hadn't been brought in line with the rest of the redesigned Academic module.
+  document.getElementById('statgrid').innerHTML = [
+    acadStatTile('users', '#3b82f6', trainers?.length||0, 'Active Trainers', "acadSwitchTab('trainers')"),
+    acadStatTile('layers', '#ff0552', batches?.length||0, 'Total Batches', "acadSwitchTab('live')"),
+    acadStatTile('graduation-cap', '#10b981', students?.length||0, 'Total Students', "acadSwitchTab('students')"),
+    acadStatTile('check-circle', '#f59e0b', sessionsCompleted, 'Sessions Completed', "acadSwitchTab('live')"),
+  ].join('');
+  lucide.createIcons();
 }
 
 // Trainers table is visible to everyone (read-only for trainers, +Add/Delete for Head via
