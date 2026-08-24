@@ -2533,12 +2533,17 @@
                 }
             }
 
-            // Update sidebar user display
-            const initials = (activeUser || 'U').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-            const avatarEl = document.getElementById('sidebar-user-avatar');
-            if (avatarEl) avatarEl.textContent = initials;
-            const avatarElMobile = document.getElementById('sidebar-user-avatar-mobile');
-            if (avatarElMobile) avatarElMobile.textContent = initials;
+            // NOTE: this used to also stomp #sidebar-user-avatar/-mobile back down to plain
+            // initials textContent here, unconditionally, on every login. hrFetchAndApplyMyPhoto()
+            // (fired above) and checkAcademicAccess() (awaited above, which calls the same shared
+            // applyCurrentUserProfileToDOM()) already render the real HR photo (or a proper
+            // initials fallback) into those exact elements via hrAvatarHTML() — by the time
+            // execution reaches this point, checkAcademicAccess has already resolved, so the
+            // correct avatar is already sitting in the DOM. This later assignment ran after that
+            // and overwrote it back to bare initials every single time, which is why the Pipeline
+            // sidebar never actually showed a photo even though the fetch itself was working
+            // correctly. Removed rather than reordered, so there is exactly one place
+            // (applyCurrentUserProfileToDOM, common.js) that ever writes to these elements.
             // (sidebar-user-role is set earlier, before checkAcademicAccess() — see there for why)
             // Update active-user-display for the new sidebar
             const audEl = document.getElementById('active-user-display');
