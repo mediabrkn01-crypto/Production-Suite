@@ -1164,6 +1164,13 @@ async function acadSyncTrainersFromHR(){
             </div>`;
         }
 
+// Approved leave (any type, including 'Work From Home' — it's one of HR_LEAVE_TYPES, not a
+// separate system) covering dateStr for this employee — shared by hrAttDayCode() and
+// hrCalculatePayrollForMonth() below so the calendar grid and the Present/Absent/payroll
+// figures can never disagree about which days are covered by an approved leave.
+function hrApprovedLeaveFor(employeeId, dateStr) {
+    return hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr) || null;
+}
 // ── hrAttDayCode (orig line 9555) ──
         function hrAttDayCode(employee, dateStr, dayOfWeek) {
             if (employee.joining_date && dateStr < employee.joining_date) return null; // before joining — blank
@@ -1186,15 +1193,30 @@ async function acadSyncTrainersFromHR(){
                     // Unpaid leave gets its own code (UL) — it used to render identically to
                     // Absent ('A'), making it impossible to tell "took approved unpaid leave"
                     // apart from "didn't show up, nothing filed" on the grid.
-                    const leave = hrLeaveRequests.find(r => r.employee_id === employee.id && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
+                    const leave = hrApprovedLeaveFor(employee.id, dateStr);
+                    if (leave && leave.leave_type === 'Work From Home') return 'WFH';
                     return (leave && leave.leave_type === 'Unpaid Leave') ? 'UL' : 'PL';
                 }
                 return 'P'; // present, half_day, wfh
             }
+            // No hr_attendance row AT ALL for this date (the actual "blank cell" bug this fixes)
+            // — an approved Leave/WFH request still covering the date is real, existing data
+            // this employee never had a chance to clock in around, and must resolve the same way
+            // it would if a properly-filed on_leave attendance row existed (above) — never fall
+            // through to Weekly Off/Absent just because nobody filed the row. Checked before
+            // Weekly Off/Holiday-adjacent fallbacks per the requested priority order.
+            const leave = hrApprovedLeaveFor(employee.id, dateStr);
+            if (leave) {
+                if (leave.leave_type === 'Work From Home') return 'WFH';
+                return leave.leave_type === 'Unpaid Leave' ? 'UL' : 'PL';
+            }
             if (hrIsWeeklyOff(dayOfWeek)) return 'WO'; // configurable weekly off, not otherwise marked
             const today = new Date().toISOString().slice(0,10);
-            if (dateStr > today) return null; // future, unmarked — blank
-            return null; // past, unmarked — blank rather than assuming Present
+            if (dateStr >= today) return null; // today (still an open attendance day) or future — blank, never auto-Absent
+            // Genuinely past, working day, no clock-in, no approved leave/WFH, not a holiday or
+            // weekly off — this is the one case that used to stay an "unexplained blank" cell
+            // forever. Resolves to Absent, same code manually-marked absences already use.
+            return 'A';
         }
 
 // ── hrComputeLeaveUsed (orig line 9776) ──
@@ -1303,15 +1325,33 @@ async function acadSyncTrainersFromHR(){
                     if (rec.status === 'holiday') { holidayDays++; continue; }
                     if (rec.status === 'absent') { absentDays++; continue; }
                     if (rec.status === 'on_leave') {
-                        const leave = hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr);
+                        const leave = hrApprovedLeaveFor(employeeId, dateStr);
                         if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
                         paidLeaveDays++; continue;
                     }
                     if (rec.status === 'half_day') { halfDayDays++; continue; }
                     presentDays++; continue; // present, late, wfh — all worked
                 }
+                // No hr_attendance row at all — an approved Leave/WFH request still covering
+                // this date is real, existing data this employee never got an attendance row
+                // filed for (the same gap hrAttDayCode() fixes for the calendar display) —
+                // must resolve the same way a filed on_leave row would, not fall through to
+                // Weekly Off/Absent(LOP) just because nobody filed it. Approved WFH counts as
+                // presentDays (worked, paid) the same way an actual wfh-status attendance row
+                // already would above — Leave (paid/unpaid) does not, same as everywhere else
+                // in this function.
+                const leave = hrApprovedLeaveFor(employeeId, dateStr);
+                if (leave) {
+                    if (leave.leave_type === 'Work From Home') { presentDays++; continue; }
+                    if (leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
+                    paidLeaveDays++; continue;
+                }
                 if (hrIsWeeklyOff(dow)) { weeklyOffDays++; continue; }
-                // No record, not a weekly-off, not a holiday — genuinely unmarked/unworked → LOP.
+                // No record, no approved leave/WFH, not a weekly-off, not a holiday — genuinely
+                // unmarked/unworked → LOP. (dateStr === todayStr also lands here if unmarked;
+                // unlike the calendar's own hrAttDayCode(), payroll has always evaluated today
+                // as already elapsed once its own hour has passed — unchanged here, this fix is
+                // only about the missing leave/WFH check, not payroll's date-boundary rule.)
                 absentDays++;
             }
             // LOP: every day that isn't Present, Approved Paid Leave, Weekly Off, or Holiday —
