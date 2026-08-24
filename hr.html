@@ -530,7 +530,11 @@
         </div>
         <div id="mobile-sidebar-nav-host"></div>
         <div style="margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
-            <button onclick="logoutPortal()" style="display:flex;align-items:center;gap:8px;color:#ef4444;background:none;border:none;cursor:pointer;font-size:12px;font-weight:500;padding:6px 0;width:100%">
+            <!-- Was permanently styled red/destructive (color:#ef4444) — the desktop sidebar's
+                 own Logout button (below, in <aside>) already uses the shared .sidebar-link
+                 class (muted text, subtle white-tinted hover, no red at all), so this mobile
+                 one just gets the same treatment instead of its own separate red styling. -->
+            <button onclick="logoutFromHR()" class="sidebar-link" style="width:100%;text-align:left">
                 <i data-lucide="log-out" style="width:14px;height:14px"></i> Log Out
             </button>
         </div>
@@ -968,7 +972,11 @@
                             <h1 class="text-xl font-bold tracking-tight">Workforce Report</h1>
                             <p class="text-[#6b74a0] text-xs mt-1">Every employee HR has created — attendance, work activity and payroll, in one place.</p>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center">
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                            <label class="hr-field-label" style="margin:0">Department</label>
+                            <select id="hr-workforce-dept-filter" class="hr-select" onchange="renderHRWorkforceReport()" style="min-width:160px">
+                                <option value="">All Departments</option>
+                            </select>
                             <button onclick="shiftHRWorkforceMonth(-1)" class="hr-select" style="cursor:pointer;padding:8px 12px">‹</button>
                             <input id="hr-workforce-month" type="month" class="hr-input" onchange="renderHRWorkforceReport()">
                             <button onclick="shiftHRWorkforceMonth(1)" class="hr-select" style="cursor:pointer;padding:8px 12px">›</button>
@@ -985,7 +993,7 @@
                             <div id="hr-wf-chart-dept" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap"></div>
                         </div>
                         <div class="card glass-card p-4 rounded-2xl">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Employee Activity (Production)</h3>
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-white/60 mb-3">Workforce Activity</h3>
                             <div id="hr-wf-chart-activity"></div>
                         </div>
                         <div class="card glass-card p-4 rounded-2xl">
@@ -3760,7 +3768,7 @@
         }
 
 // ── hrWorkforceRowFor (orig line 10471) ──
-        function hrWorkforceRowFor(e, month, acadBatchesByName, acadTasksByName) {
+        function hrWorkforceRowFor(e, month, acadBatchesByName, acadTasksByName, salesByName) {
             const p = hrCalculatePayrollForMonth(e.id, month);
             const applicableWorkingDays = p.presentDays + p.halfDayDays + p.absentDays;
             const presentEquivalent = p.presentDays + p.halfDayDays * 0.5;
@@ -3795,6 +3803,20 @@
                     tasks: tasks.length,
                     tasksPending: tasks.filter(t => t.status === 'pending').length
                 };
+            } else if (e.division === 'sales') {
+                // The ONLY real, existing Sales-attributable field in the system —
+                // students.source_counsellor (set on the Add Student form in academics.html/
+                // index.html, matched by full name the same way Education matches trainers
+                // above). There's no leads/follow-up/conversion pipeline anywhere in this app
+                // to report on, so this is real enrolled-student attribution, not an invented
+                // metric standing in for one.
+                const mine = salesByName[e.full_name.trim().toLowerCase()] || [];
+                work = {
+                    kind: 'sales',
+                    enrolled: mine.length,
+                    inProgress: mine.filter(s => s.status === 'In Progress').length,
+                    completed: mine.filter(s => s.status === 'Completed').length
+                };
             }
 
             return { emp: e, pct, applicableWorkingDays, presentDays: p.presentDays, lateCount, afternoonCount,
@@ -3808,6 +3830,18 @@
             const month = (monthInput && monthInput.value) || new Date().toISOString().slice(0, 7);
             const tableEl = document.getElementById('hr-workforce-table');
             if (tableEl) tableEl.innerHTML = '<div class="text-center text-[#4a5182] text-xs py-8">Loading workforce report…</div>';
+
+            // Department filter options — built from whichever divisions are ACTUALLY present
+            // among active employees right now (hrEmployees.division, the same real field the
+            // rest of HR already uses everywhere else — see the divisionLabel map below), not
+            // a hardcoded department list. Only rebuilt once (first render) so an in-progress
+            // selection survives the month being changed.
+            const deptFilterEl = document.getElementById('hr-workforce-dept-filter');
+            if (deptFilterEl && deptFilterEl.options.length <= 1) {
+                const divisionLabelForFilter = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
+                const present = [...new Set(hrEmployees.filter(e => e.employment_status === 'active').map(e => e.division).filter(Boolean))];
+                deptFilterEl.innerHTML = '<option value="">All Departments</option>' + present.map(d => `<option value="${d}">${esc(divisionLabelForFilter[d] || d)}</option>`).join('');
+            }
 
             // Production task list (for the work-activity column) — same field mapping
             // index.html uses for its own in-memory assignmentsList, fetched fresh here since
@@ -3845,10 +3879,27 @@
                 console.warn('Workforce report: Academic activity unavailable —', e.message);
             }
 
+            // Sales attribution — students.source_counsellor, matched by name (see
+            // hrWorkforceRowFor's own comment on why this is the only real field available).
+            let salesByName = {};
+            try {
+                const { data: students } = await acadDB.from('students').select('status,source_counsellor');
+                (students || []).forEach(s => {
+                    const key = (s.source_counsellor || '').trim().toLowerCase();
+                    if (key) (salesByName[key] = salesByName[key] || []).push(s);
+                });
+            } catch (e) {
+                console.warn('Workforce report: Sales activity unavailable —', e.message);
+            }
+
             // Master list — EVERY active employee HR has created, every department. Never
-            // filtered down to "only people who logged in" or "only one module".
-            const roster = hrEmployees.filter(e => e.employment_status === 'active');
-            const rows = roster.map(e => hrWorkforceRowFor(e, month, acadBatchesByName, acadTasksByName));
+            // filtered down to "only people who logged in" or "only one module". The
+            // Department filter (if not "All Departments") narrows this to one division —
+            // its options were just populated above from the actual divisions present in
+            // hrEmployees, not a hardcoded list.
+            const deptFilter = document.getElementById('hr-workforce-dept-filter')?.value || '';
+            const roster = hrEmployees.filter(e => e.employment_status === 'active' && (!deptFilter || e.division === deptFilter));
+            const rows = roster.map(e => hrWorkforceRowFor(e, month, acadBatchesByName, acadTasksByName, salesByName));
 
             // ── Charts ──
             const attTotals = rows.reduce((acc, r) => {
@@ -3876,15 +3927,53 @@
             const deptEl = document.getElementById('hr-wf-chart-dept');
             if (deptEl) deptEl.innerHTML = hrSvgDonut(deptSegs) + hrChartLegend(deptSegs);
 
-            const prodRows = rows.filter(r => r.work && r.work.kind === 'production');
-            const activitySegs = [
-                { label: 'Assigned', value: prodRows.reduce((s, r) => s + r.work.assigned, 0), color: '#60a5fa' },
-                { label: 'Completed', value: prodRows.reduce((s, r) => s + r.work.completed, 0), color: '#10b981' },
-                { label: 'Pending', value: prodRows.reduce((s, r) => s + r.work.pending, 0), color: '#facc15' },
-                { label: 'Rework', value: prodRows.reduce((s, r) => s + r.work.rework, 0), color: '#ef4444' }
-            ];
+            // Company-wide Workforce Activity — every department that has a real, existing
+            // work model gets its own metric set here (Production: task pipeline; Education:
+            // batches/classes; Sales: real student attribution via source_counsellor). Admin/
+            // HR/Accounts have no work-tracking system anywhere in this app to report on, so
+            // they're simply omitted rather than shown with an invented metric. "All
+            // Departments" shows one summary row per department (item 5's format); picking a
+            // single department in the filter shows that department's own full metric
+            // breakdown as bars, same detail level Production always had.
             const activityEl = document.getElementById('hr-wf-chart-activity');
-            if (activityEl) activityEl.innerHTML = prodRows.length ? hrSvgBars(activitySegs) : '<div class="text-center text-[#4a5182] text-xs py-8">No Production-division employees yet.</div>';
+            const prodRows = rows.filter(r => r.work && r.work.kind === 'production');
+            const eduRows = rows.filter(r => r.work && r.work.kind === 'education');
+            const salesRows = rows.filter(r => r.work && r.work.kind === 'sales');
+            if (activityEl) {
+                if (deptFilter === 'production') {
+                    activityEl.innerHTML = prodRows.length ? hrSvgBars([
+                        { label: 'Assigned', value: prodRows.reduce((s, r) => s + r.work.assigned, 0), color: '#60a5fa' },
+                        { label: 'Completed', value: prodRows.reduce((s, r) => s + r.work.completed, 0), color: '#10b981' },
+                        { label: 'Pending', value: prodRows.reduce((s, r) => s + r.work.pending, 0), color: '#facc15' },
+                        { label: 'Rework', value: prodRows.reduce((s, r) => s + r.work.rework, 0), color: '#ef4444' }
+                    ]) : '<div class="text-center text-[#4a5182] text-xs py-8">No Production-division employees yet.</div>';
+                } else if (deptFilter === 'education') {
+                    activityEl.innerHTML = eduRows.length ? hrSvgBars([
+                        { label: 'Active Batches', value: eduRows.reduce((s, r) => s + r.work.batches, 0), color: '#2dd4bf' },
+                        { label: 'Classes Assigned', value: eduRows.reduce((s, r) => s + r.work.tasks, 0), color: '#60a5fa' },
+                        { label: 'Classes Pending', value: eduRows.reduce((s, r) => s + r.work.tasksPending, 0), color: '#facc15' }
+                    ]) : '<div class="text-center text-[#4a5182] text-xs py-8">No Education-division employees yet.</div>';
+                } else if (deptFilter === 'sales') {
+                    activityEl.innerHTML = salesRows.length ? hrSvgBars([
+                        { label: 'Students Enrolled', value: salesRows.reduce((s, r) => s + r.work.enrolled, 0), color: '#f59e0b' },
+                        { label: 'In Progress', value: salesRows.reduce((s, r) => s + r.work.inProgress, 0), color: '#60a5fa' },
+                        { label: 'Completed', value: salesRows.reduce((s, r) => s + r.work.completed, 0), color: '#10b981' }
+                    ]) : '<div class="text-center text-[#4a5182] text-xs py-8">No Sales-division employees yet.</div>';
+                } else if (deptFilter) {
+                    activityEl.innerHTML = '<div class="text-center text-[#4a5182] text-xs py-8">No work-activity model for this department yet.</div>';
+                } else {
+                    const summaryRows = [
+                        prodRows.length ? { label: 'Production', metric: 'Completed Tasks', value: prodRows.reduce((s, r) => s + r.work.completed, 0), color: '#8b5cf6' } : null,
+                        salesRows.length ? { label: 'Sales', metric: 'Students Enrolled', value: salesRows.reduce((s, r) => s + r.work.enrolled, 0), color: '#f59e0b' } : null,
+                        eduRows.length ? { label: 'Education', metric: 'Classes Assigned', value: eduRows.reduce((s, r) => s + r.work.tasks, 0), color: '#2dd4bf' } : null,
+                    ].filter(Boolean);
+                    activityEl.innerHTML = summaryRows.length ? summaryRows.map(s => `
+                        <div class="dash-row" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+                            <span style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:${s.color}"></span>${esc(s.label)} · ${esc(s.metric)}</span>
+                            <span style="font-weight:700;color:#fff">${s.value}</span>
+                        </div>`).join('') : '<div class="text-center text-[#4a5182] text-xs py-8">No department work-activity data yet.</div>';
+                }
+            }
 
             const payrollRows = rows.map(r => r.payrollRow).filter(Boolean);
             const grossTotal = payrollRows.reduce((s, p) => s + (p.basic || 0) + (p.allowances || 0), 0);
@@ -3930,7 +4019,8 @@
                             const e = r.emp;
                             const workText = !r.work ? '—'
                                 : r.work.kind === 'production' ? `${r.work.assigned} assigned · ${r.work.completed} done · ${r.work.pending} pending · ${r.work.rework} rework`
-                                : `${r.work.batches} batches · ${r.work.tasks} tasks (${r.work.tasksPending} pending)`;
+                                : r.work.kind === 'education' ? `${r.work.batches} batches · ${r.work.tasks} tasks (${r.work.tasksPending} pending)`
+                                : `${r.work.enrolled} students enrolled · ${r.work.inProgress} in progress · ${r.work.completed} completed`;
                             const pctColor = r.pct === null ? 'text-[#4a5182]' : r.pct >= 90 ? 'text-green-400' : r.pct >= 75 ? 'text-yellow-400' : 'text-red-400';
                             return `<tr>
                                 <td class="py-2 pr-3 text-white flex items-center gap-2">${hrAvatarHTML(e, 22)}${esc(e.full_name)}</td>
