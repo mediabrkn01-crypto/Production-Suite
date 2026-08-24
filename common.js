@@ -71,6 +71,7 @@ let hrAttendance = [];
 let hrPayroll = [];
 let hrSalaryHistory = [];
 let hrHolidays = [];
+let hrOfficialEvents = []; // hr_official_events — paid company-wide event days (see hrOfficialEventFor)
 let hrCompanySettings = { weekly_off_sunday: true, weekly_off_saturday: false };
 let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLoaded guards loadHRData()
 
@@ -256,11 +257,13 @@ async function loadMyHRData() {
         if (!me) {
             hrEmployees = []; hrAttendance = []; hrLeaveRequests = []; hrLeaveBalances = [];
             hrPayroll = []; hrSalaryHistory = [];
-            const [hol, settings] = await Promise.all([
+            const [hol, oe, settings] = await Promise.all([
                 dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
+                dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
                 dbInstance.from('hr_company_settings').select('*').limit(1)
             ]);
             hrHolidays = hol.data || [];
+            hrOfficialEvents = oe.data || [];
             if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
             myHRDataLoaded = true;
             return;
@@ -279,7 +282,7 @@ async function loadMyHRData() {
         const teamIds = [me.id, ...teamMembers.map(t => t.id)];
         const scopeAttLeave = q => teamIds.length > 1 ? q.in('employee_id', teamIds) : q.eq('employee_id', me.id);
 
-        const [att, leaveReq, leaveBal, pay, salHist, hol, settings, attLogs] = await Promise.all([
+        const [att, leaveReq, leaveBal, pay, salHist, hol, oe, settings, attLogs] = await Promise.all([
             scopeAttLeave(dbInstance.from('hr_attendance').select('*')),
             scopeAttLeave(dbInstance.from('hr_leave_requests').select('*')).order('requested_at', { ascending: false }),
             scopeAttLeave(dbInstance.from('hr_leave_balances').select('*')),
@@ -288,6 +291,7 @@ async function loadMyHRData() {
             dbInstance.from('hr_payroll').select('*').eq('employee_id', me.id).eq('published', true).order('month', { ascending: false }),
             dbInstance.from('hr_salary_history').select('*').eq('employee_id', me.id).order('effective_date', { ascending: false }),
             dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
+            dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
             dbInstance.from('hr_company_settings').select('*').limit(1),
             // Own raw clock-in log — hrAttDayCode/hrCalculatePayrollForMonth's fallback (via
             // hrPortalLogFor) needs this populated here too, not just from hr.html's loader, or
@@ -301,6 +305,7 @@ async function loadMyHRData() {
         hrPayroll = pay.data || [];
         hrSalaryHistory = salHist.data || [];
         hrHolidays = hol.data || [];
+        hrOfficialEvents = oe.data || [];
         if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
         if (!attLogs.error) window._hrAttendanceLogsCache = attLogs.data || [];
     } catch (e) {
@@ -1171,6 +1176,15 @@ async function acadSyncTrainersFromHR(){
 function hrApprovedLeaveFor(employeeId, dateStr) {
     return hrLeaveRequests.find(r => r.employee_id === employeeId && r.status === 'approved' && r.start_date <= dateStr && r.end_date >= dateStr) || null;
 }
+// A structured, HR-created hr_official_events row covering dateStr and this employee's
+// division (or applies_to='all') — e.g. Onam Celebration, a company-wide paid event day
+// where normal clock-in isn't required. Deliberately NOT derived from announcement text in
+// any way — HR must explicitly create this record; scanning "Onam Celebration" out of an
+// announcement's title and guessing at attendance rules would be unsafe (see spec item 8),
+// so there is no code path anywhere that reads hr_announcements for this purpose.
+function hrOfficialEventFor(employee, dateStr) {
+    return hrOfficialEvents.find(ev => ev.event_date === dateStr && (ev.applies_to === 'all' || ev.applies_to === employee.division)) || null;
+}
 // ── hrAttDayCode (orig line 9555) ──
         function hrAttDayCode(employee, dateStr, dayOfWeek) {
             if (employee.joining_date && dateStr < employee.joining_date) return null; // before joining — blank
@@ -1210,12 +1224,20 @@ function hrApprovedLeaveFor(employeeId, dateStr) {
                 if (leave.leave_type === 'Work From Home') return 'WFH';
                 return leave.leave_type === 'Unpaid Leave' ? 'UL' : 'PL';
             }
+            // Official Event / Paid Special Day (e.g. Onam Celebration) — a structured,
+            // HR-created hr_official_events row, never inferred from announcement text (see
+            // hrOfficialEventFor's own comment). Only overrides the Absent fallback when the
+            // event doesn't require clock-in; an event marked Clock In Required = Yes changes
+            // nothing here and normal attendance rules keep applying, per spec example B.
+            const event = hrOfficialEventFor(employee, dateStr);
+            if (event && !event.clock_in_required) return 'OE';
             if (hrIsWeeklyOff(dayOfWeek)) return 'WO'; // configurable weekly off, not otherwise marked
             const today = new Date().toISOString().slice(0,10);
             if (dateStr >= today) return null; // today (still an open attendance day) or future — blank, never auto-Absent
-            // Genuinely past, working day, no clock-in, no approved leave/WFH, not a holiday or
-            // weekly off — this is the one case that used to stay an "unexplained blank" cell
-            // forever. Resolves to Absent, same code manually-marked absences already use.
+            // Genuinely past, working day, no clock-in, no approved leave/WFH/official event,
+            // not a holiday or weekly off — this is the one case that used to stay an
+            // "unexplained blank" cell forever. Resolves to Absent, same code manually-marked
+            // absences already use.
             return 'A';
         }
 
@@ -1305,7 +1327,7 @@ function hrApprovedLeaveFor(employeeId, dateStr) {
             const elapsedDays = monthPrefix < todayMonthPrefix ? daysInMonth
                 : monthPrefix > todayMonthPrefix ? 0
                 : Number(todayStr.slice(8, 10));
-            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0, preJoiningDays = 0;
+            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0, preJoiningDays = 0, officialEventDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
@@ -1346,26 +1368,37 @@ function hrApprovedLeaveFor(employeeId, dateStr) {
                     if (leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
                     paidLeaveDays++; continue;
                 }
+                // Official Event / Paid Special Day — a paid, non-absence day by default (spec
+                // item 12), tracked in its own bucket rather than folded into presentDays (no
+                // work was actually done/clocked) or paidLeaveDays (nobody applied for leave) —
+                // kept out of both lopDays and, deliberately, out of presentDays too, so it
+                // shows up as its own line in the Workforce Report rather than silently
+                // inflating "Present". Still paid (see payableDays below). Only applies when
+                // clock-in isn't required, same as the calendar-code fallback above.
+                const event = hrOfficialEventFor(employee, dateStr);
+                if (event && !event.clock_in_required) { officialEventDays++; continue; }
                 if (hrIsWeeklyOff(dow)) { weeklyOffDays++; continue; }
-                // No record, no approved leave/WFH, not a weekly-off, not a holiday — genuinely
-                // unmarked/unworked → LOP. (dateStr === todayStr also lands here if unmarked;
-                // unlike the calendar's own hrAttDayCode(), payroll has always evaluated today
-                // as already elapsed once its own hour has passed — unchanged here, this fix is
-                // only about the missing leave/WFH check, not payroll's date-boundary rule.)
+                // No record, no approved leave/WFH/official event, not a weekly-off, not a
+                // holiday — genuinely unmarked/unworked → LOP. (dateStr === todayStr also lands
+                // here if unmarked; unlike the calendar's own hrAttDayCode(), payroll has always
+                // evaluated today as already elapsed once its own hour has passed — unchanged
+                // here, this fix is only about the missing leave/WFH/event check, not payroll's
+                // date-boundary rule.)
                 absentDays++;
             }
-            // LOP: every day that isn't Present, Approved Paid Leave, Weekly Off, or Holiday —
-            // plus pre-joining days, which reduce pay the same way but aren't "LOP" in the
-            // attendance-discipline sense, so they're reported separately (see preJoiningDays).
+            // LOP: every day that isn't Present, Approved Paid Leave, Official Event, Weekly
+            // Off, or Holiday — plus pre-joining days, which reduce pay the same way but aren't
+            // "LOP" in the attendance-discipline sense, so they're reported separately (see
+            // preJoiningDays).
             const lopDays = unpaidLeaveDays + absentDays + halfDayDays * 0.5;
-            const payableDays = presentDays + paidLeaveDays + weeklyOffDays + holidayDays + halfDayDays * 0.5;
+            const payableDays = presentDays + paidLeaveDays + officialEventDays + weeklyOffDays + holidayDays + halfDayDays * 0.5;
             const futureDays = daysInMonth - elapsedDays; // not yet occurred — never paid, never LOP'd, simply not evaluated
             // Basic is prorated to the elapsed portion of the month, not always the full salary
             // — for a month that's completely in the past this equals the full salary anyway
             // (elapsedDays === daysInMonth), so nothing changes for normal end-of-month payroll.
             const earnedBasic = Math.round(dailySalary * elapsedDays * 100) / 100;
             const leaveDeduction = Math.round(dailySalary * (lopDays + preJoiningDays) * 100) / 100;
-            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, officialEventDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
         }
 
 // ── hrProbationEndDate (orig line 10650) ──

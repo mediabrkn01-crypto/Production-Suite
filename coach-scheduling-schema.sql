@@ -153,3 +153,25 @@ create table if not exists academic_delegation_audit (
   detail text,
   created_at timestamptz not null default now()
 );
+
+-- ============ Phase 8 — Official Event / Paid Special Day (HR Attendance) ============
+-- Run in the MEDIA SUITE project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- A structured, HR-created record for a company-wide (or department-specific) paid event day
+-- where normal clock-in isn't expected — e.g. Onam Celebration, Annual Event, Training Day.
+-- Deliberately separate from hr_holidays (Holiday stays 'H', this resolves to 'OE') and NEVER
+-- derived from hr_announcements text — HR must explicitly create a row here; nothing in the
+-- app scans announcement titles to infer attendance rules (see hrOfficialEventFor in
+-- common.js). hrAttDayCode/hrCalculatePayrollForMonth read this table live, so once a row is
+-- created, every past date it covers automatically re-resolves from Absent to OE the next
+-- time the Attendance Report or Payroll is opened — no per-employee backfill needed.
+create table if not exists hr_official_events (
+  id uuid primary key default gen_random_uuid(),
+  event_date date not null,
+  title text not null,
+  applies_to text not null default 'all',  -- 'all' | 'production' | 'education' | 'sales' | 'hr' | 'accounts' | 'other' — matches hr_employees.division
+  paid boolean not null default true,               -- default paid/non-absence, per spec item 12
+  clock_in_required boolean not null default false, -- if true, this event changes nothing — normal attendance rules still apply (spec item 11)
+  notes text,
+  created_at timestamptz not null default now()
+);
+create index if not exists hr_official_events_date_idx on hr_official_events (event_date, applies_to);

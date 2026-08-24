@@ -429,6 +429,7 @@
         .hr-att-cell-PL { color:#60a5fa; font-weight:700; }
         .hr-att-cell-UL { color:#fb923c; font-weight:700; }
         .hr-att-cell-WFH { color:#2dd4bf; font-weight:700; }
+        .hr-att-cell-OE { color:#f472b6; font-weight:700; }
         .hr-att-cell-WO { color:#5b6389; }
         .hr-att-cell-H { color:#c084fc; font-weight:700; }
         .hr-att-cell-blank { color:#3a4062; }
@@ -1179,6 +1180,22 @@
                             <tbody id="hr-holidays-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
+
+                    <div class="flex items-center justify-between" style="margin-top:8px">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Official Events / Paid Special Days</h1>
+                            <p class="text-[#6b74a0] text-xs mt-1">Company-wide or department events (e.g. Onam Celebration) where normal clock-in isn't required. Recognized automatically by Attendance and Payroll — never counted as Absent.</p>
+                        </div>
+                        <button onclick="openHROfficialEventModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Special Day</button>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Date</th><th class="py-3 px-4">Title</th><th class="py-3 px-4">Applies To</th><th class="py-3 px-4">Paid</th><th class="py-3 px-4">Clock In Required</th><th class="py-3 px-4 text-center">Actions</th>
+                            </tr></thead>
+                            <tbody id="hr-official-events-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- HR: DOCUMENTS -->
@@ -1599,6 +1616,36 @@
         </div>
     </div>
 
+    <div id="hr-official-event-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:420px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Add Official Event / Paid Special Day</h3>
+                <button onclick="closeHROfficialEventModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="space-y-3">
+                <div><label class="hr-field-label">Title</label><input id="hr-oe-title" placeholder="e.g. Onam Celebration" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Date</label><input id="hr-oe-date" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Applies To</label>
+                    <select id="hr-oe-applies-to" class="hr-select w-full">
+                        <option value="all">All Employees</option>
+                        <option value="production">Production House</option>
+                        <option value="education">Education</option>
+                        <option value="sales">Sales</option>
+                        <option value="hr">HR</option>
+                        <option value="accounts">Accounts</option>
+                        <option value="other">Administration</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-oe-paid" checked style="accent-color:#ff6b06"> Paid</label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-oe-clockin" style="accent-color:#ff6b06"> Clock In Required</label>
+                </div>
+                <div><label class="hr-field-label">Notes (optional)</label><textarea id="hr-oe-notes" rows="2" class="hr-input w-full" placeholder="Any additional context for HR"></textarea></div>
+            </div>
+            <button onclick="saveHROfficialEvent()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Official Event</button>
+        </div>
+    </div>
+
     <div id="call-toast" class="hidden fixed top-5 left-1/2 -translate-x-1/2 z-[95] bg-transparent border border-orange-500/40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
         <i data-lucide="bell" class="w-4 h-4 text-white/70 shrink-0"></i>
         <span id="call-toast-text"></span>
@@ -1749,7 +1796,7 @@
                     leaveBalQuery = dbInstance.from('hr_leave_balances').select('*').eq('employee_id', myEmpId || NOBODY);
                     attQuery = dbInstance.from('hr_attendance').select('*').eq('employee_id', myEmpId || NOBODY);
                 }
-                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, empDocs, settings, roster] = await Promise.all([
+                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, empDocs, settings, roster] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
                     leaveReqQuery,
                     leaveBalQuery,
@@ -1760,6 +1807,7 @@
                     dbInstance.from('hr_applicants').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
                     dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
+                    dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_company_settings').select('*').limit(1),
                     // Login-account roster — hr.html doesn't run the Pipeline module, so unlike
@@ -1843,6 +1891,11 @@
                 hrApplicants = applicants.data || [];
                 hrSalaryHistory = salHist.data || [];
                 hrHolidays = holidays.data || [];
+                // Missing-table safety: if hr_official_events doesn't exist yet (SQL not run),
+                // this query errors and .data is undefined — falls back to [], same as every
+                // other table here, so the rest of HR keeps working while this one feature
+                // just has nothing to show until the migration is run.
+                hrOfficialEvents = officialEvents.data || [];
                 hrEmployeeDocuments = empDocs.data || [];
                 hrCompanySettings = (settings.data && settings.data[0]) || { weekly_off_sunday: true, weekly_off_saturday: false };
                 if (!roster.error) userRoster = roster.data || [];
@@ -1943,7 +1996,7 @@
             else if (tab === 'payroll') renderHRPayroll();
             else if (tab === 'payslips') renderHRPayslipsList();
             else if (tab === 'documents') renderHRDocumentsList();
-            else if (tab === 'holidays') renderHRHolidays();
+            else if (tab === 'holidays') { renderHRHolidays(); renderHROfficialEvents(); }
             else if (tab === 'recruitment') renderHRRecruitment();
             else if (tab === 'hr-reports') renderHRReports();
             else if (tab === 'notifications') { renderHRNotifications(); renderHRAnnouncementsSentList(); }
@@ -2981,7 +3034,7 @@
                 const codes = dayNums.map(d => {
                     const dateStr = `${month}-${String(d).padStart(2,'0')}`;
                     const dow = new Date(y, m - 1, d).getDay();
-                    return { day: d, dow, code: hrAttDayCode(e, dateStr, dow) };
+                    return { day: d, dow, date: dateStr, code: hrAttDayCode(e, dateStr, dow) };
                 });
                 // Present/Absent figures come from hrCalculatePayrollForMonth — the SAME
                 // centralized engine the Workforce Report and payroll itself use — instead of
@@ -3050,6 +3103,14 @@
             // Grid table
             const codeClass = c => c ? `hr-att-cell-${c}` : 'hr-att-cell-blank';
             const codeLabel = c => c || '—';
+            // OE cells get a tooltip with the actual event title, e.g. "Onam Celebration ·
+            // Official Company Event · Paid Day" — looked up per-cell (employee, date) since
+            // the same OE code can represent different events on different dates/departments.
+            const cellTitle = (emp, c) => {
+                if (c.code !== 'OE') return '';
+                const ev = hrOfficialEventFor(emp, c.date);
+                return ev ? ` title="${(ev.title || 'Official Event').replace(/"/g,'&quot;')} · Official Company Event · ${ev.paid === false ? 'Unpaid' : 'Paid'} Day"` : '';
+            };
             document.getElementById('hr-att-monthly-report').innerHTML = `
                 <table class="hr-att-grid">
                     <thead>
@@ -3068,7 +3129,7 @@
                             <tr>
                                 <td class="hr-att-sticky" style="color:#8890b5">${r.emp.employee_id || '—'}</td>
                                 <td class="hr-att-sticky2" style="color:#fff;font-weight:600">${r.emp.full_name}</td>
-                                ${r.codes.map(c => `<td class="${codeClass(c.code)}">${codeLabel(c.code)}</td>`).join('')}
+                                ${r.codes.map(c => `<td class="${codeClass(c.code)}"${cellTitle(r.emp, c)}>${codeLabel(c.code)}</td>`).join('')}
                                 <td style="color:#4ade80;font-weight:700">${r.present}</td>
                                 <td style="color:#f87171;font-weight:700">${r.absent}</td>
                                 <td style="color:#facc15;font-weight:700">${r.late}</td>
@@ -4137,6 +4198,71 @@
                     <td class="py-2.5 px-4 text-center"><button onclick="deleteHRHoliday('${h.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No holidays added yet.</td></tr>`;
+        }
+
+// ── openHROfficialEventModal ──
+        function openHROfficialEventModal() {
+            document.getElementById('hr-oe-title').value = '';
+            document.getElementById('hr-oe-date').value = '';
+            document.getElementById('hr-oe-applies-to').value = 'all';
+            document.getElementById('hr-oe-paid').checked = true;
+            document.getElementById('hr-oe-clockin').checked = false;
+            document.getElementById('hr-oe-notes').value = '';
+            document.getElementById('hr-official-event-modal').classList.remove('hidden');
+            document.getElementById('hr-official-event-modal').classList.add('flex');
+        }
+
+// ── closeHROfficialEventModal ──
+        function closeHROfficialEventModal() {
+            document.getElementById('hr-official-event-modal').classList.add('hidden');
+            document.getElementById('hr-official-event-modal').classList.remove('flex');
+        }
+
+// ── saveHROfficialEvent ──
+        // Only ever writes a structured hr_official_events row from these explicit form
+        // fields — never derived from hr_announcements text (see hrOfficialEventFor's own
+        // comment in common.js). Backfill of already-Absent days for this date is automatic:
+        // hrAttDayCode/hrCalculatePayrollForMonth are live queries, so the next time anyone
+        // opens the Attendance Report or Payroll for this date, it re-resolves to OE — no
+        // per-employee row needs editing, per spec item 13.
+        async function saveHROfficialEvent() {
+            const title = document.getElementById('hr-oe-title').value.trim();
+            const event_date = document.getElementById('hr-oe-date').value;
+            const applies_to = document.getElementById('hr-oe-applies-to').value;
+            const paid = document.getElementById('hr-oe-paid').checked;
+            const clock_in_required = document.getElementById('hr-oe-clockin').checked;
+            const notes = document.getElementById('hr-oe-notes').value.trim() || null;
+            if (!title || !event_date) { alert('Title and date are required.'); return; }
+            try {
+                await dbInstance.from('hr_official_events').insert([{ title, event_date, applies_to, paid, clock_in_required, notes }]);
+                closeHROfficialEventModal();
+                await loadHRData();
+                renderHROfficialEvents();
+            } catch (e) { alert('Could not save official event: ' + e.message); }
+        }
+
+// ── deleteHROfficialEvent ──
+        async function deleteHROfficialEvent(id) {
+            if (!(await showConfirm('This cannot be undone. Any dates that resolved to OE because of this event will fall back to their normal attendance rules.', { title: 'Remove this official event?', confirmLabel: 'Remove', danger: true }))) return;
+            await dbInstance.from('hr_official_events').delete().eq('id', id);
+            await loadHRData();
+            renderHROfficialEvents();
+        }
+
+// ── renderHROfficialEvents ──
+        function renderHROfficialEvents() {
+            const appliesToLabel = { all: 'All Employees', production: 'Production House', education: 'Education', sales: 'Sales', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const rows = [...hrOfficialEvents].sort((a,b) => a.event_date.localeCompare(b.event_date));
+            document.getElementById('hr-official-events-rows').innerHTML = rows.length ? rows.map(ev => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">${new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${ev.title}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${ev.paid === false ? 'No' : 'Yes'}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${ev.clock_in_required ? 'Yes' : 'No'}</td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="deleteHROfficialEvent('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
+                </tr>
+            `).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No official events added yet.</td></tr>`;
         }
 
 // ── updateHRPayrollNetPreview (orig line 10738) ──
