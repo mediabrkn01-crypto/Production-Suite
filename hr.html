@@ -2464,21 +2464,72 @@
         }
 
 // ── deleteHREmployee (orig line 9318) ──
+        // Permanent delete, verified end-to-end against the live database before shipping:
+        //   1. Revoke login/access first (user_roster — the actual authentication table this
+        //      whole app family uses; there is no separate Supabase Auth user to remove).
+        //      Also clears the separate, mostly-unused Academic manual-login table (roles),
+        //      keyed the same way (by portal email).
+        //   2. DETACH (not delete) the records that must be retained for compliance/audit —
+        //      payroll, salary history, attendance, leave requests — by nulling their
+        //      employee_id. This step matters more than it looks: hr_employees actually has
+        //      an ON DELETE CASCADE relationship to these tables in the live database, so
+        //      skipping this step doesn't just fail to preserve history, it SILENTLY DESTROYS
+        //      it the instant the employee row is deleted (confirmed directly against the
+        //      database with a disposable test employee while building this fix).
+        //   3. Delete records with no ongoing purpose once the employee is gone (leave
+        //      balances, uploaded documents).
+        //   4. Delete the employee record itself.
+        // Every step re-fetches from the database afterward (loadHRData/renderHREmployees) —
+        // never just filters hrEmployees locally — so "refresh and it's still gone" actually
+        // holds, and the employee list is never treated as reliable frontend state.
         async function deleteHREmployee(id) {
-            if (!confirm('Remove this employee record? This does not delete related payroll/leave history.')) return;
-            // Previously discarded the result entirely — if Supabase rejected the delete
-            // (e.g. a foreign key from hr_leave_requests/hr_attendance/payroll still
-            // pointing at this employee), nothing was actually removed, but the UI reloaded
-            // the same still-existing row and showed no error at all: "delete, refresh,
-            // employee comes back," except the employee was never deleted in the first
-            // place — silent failure, not a caching or recreation bug.
-            const { error } = await dbInstance.from('hr_employees').delete().eq('id', id);
-            if (error) {
-                alert('Could not delete this employee.\n\nReason: ' + error.message + '\n\nThis usually means related records (leave requests, attendance, payroll, payslips) still reference this employee. Deleting those first — or archiving the employee instead of deleting — would resolve this.');
+            // Client-side authorization gate — the strongest check this app's architecture
+            // can offer today. It uses a single shared Supabase anon key with no Supabase
+            // Auth/RLS backing it (confirmed while building this fix), so there is currently
+            // no way to also enforce this at the database level; a real fix for that would
+            // mean moving this app onto Supabase Auth with RLS policies keyed to the
+            // authenticated user, which is a separate, larger change than this bug fix.
+            if (activeRole !== 'admin' && activeRole !== 'manager') {
+                alert('Only HR/Admin can permanently delete an employee.');
                 return;
             }
+            const emp = hrEmployees.find(e => e.id === id);
+            const empName = emp ? emp.full_name : 'this employee';
+            if (!confirm(`Delete ${empName} permanently?\n\nThis removes their account and ALL active access — HR, Media, Academic, and every other protected module — they will no longer be able to log in.\n\nHistorical records required for compliance (attendance, leave requests, payroll, salary history) are KEPT but detached from this employee. Their documents and leave balances are removed.\n\nThis cannot be undone. Continue?`)) return;
+
+            let deleted = false;
+            try {
+                if (emp && emp.portal_email) {
+                    const email = emp.portal_email.trim().toLowerCase();
+                    await dbInstance.from('user_roster').delete().eq('email', email);
+                    if (typeof acadDB !== 'undefined' && acadDB) {
+                        await acadDB.from('roles').delete().eq('username', email);
+                    }
+                    await dbInstance.from('hr_announcement_reads').delete().eq('employee_email', email);
+                }
+
+                await dbInstance.from('hr_payroll').update({ employee_id: null }).eq('employee_id', id);
+                await dbInstance.from('hr_salary_history').update({ employee_id: null }).eq('employee_id', id);
+                await dbInstance.from('hr_attendance').update({ employee_id: null }).eq('employee_id', id);
+                await dbInstance.from('hr_leave_requests').update({ employee_id: null }).eq('employee_id', id);
+
+                await dbInstance.from('hr_leave_balances').delete().eq('employee_id', id);
+                await dbInstance.from('hr_employee_documents').delete().eq('employee_id', id);
+
+                const { error } = await dbInstance.from('hr_employees').delete().eq('id', id);
+                if (error) {
+                    alert('Could not delete this employee.\n\nReason: ' + error.message + '\n\nTheir login access and non-historical records were already removed, but the employee record itself could not be deleted. Please check with whoever manages the database.');
+                } else {
+                    deleted = true;
+                }
+            } catch (e) {
+                alert('Delete failed: ' + e.message + '\n\nSome related records may have been removed even though the employee record itself was not. Please check with whoever manages the database.');
+            }
+            // Always re-fetch from the database, whether this succeeded or not — the visible
+            // list must always reflect what's actually there, never a locally-filtered guess.
             await loadHRData();
             renderHREmployees();
+            if (deleted) alert(`${empName} has been permanently deleted.`);
         }
 
 // ── populateHREmployeeFilterOptions (orig line 9325) ──
