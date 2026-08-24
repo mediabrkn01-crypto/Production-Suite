@@ -1134,21 +1134,47 @@ async function loadLive(){
   const active=all.filter(b=>!b.end||b.end>=today);
   const done=all.filter(b=>b.end&&b.end<today);
   window._liveBatches=active.concat(done);
+  // Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance,
+  // same Head-only click-to-view-student behavior), cleaner presentation: a real header row
+  // with a course badge, the roster as individual chips instead of a run-on dot-separated
+  // string, and a taller progress bar with its own percentage label instead of just a
+  // tiny caption underneath. Uses existing tokens only (.badge, --gk gradient, --tx*) \u2014
+  // no new component, no new colors.
   const card=(b,i)=>{
     const total=b.elite?20:32; const marked=(doneMap[b.name]||new Set()).size;
     const base=(window._baseMap&&window._baseMap[b.raw||b.name])||0;
     const dn=Math.min(total,base+marked); const pct=Math.min(100,Math.round(dn/total*100));
-    return '<div class="card" style="margin-bottom:10px;text-align:left">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
-    +'<div><b>'+(isHead&&b.elite?'<span style="cursor:pointer;text-decoration:underline dotted" onclick="openStu('+i+',0)">'+esc(b.name)+'</span>':esc(b.name))+'</b> \u00b7 '+esc(b.trainer)+' \u00b7 '+esc(b.prog)+(b.elite?' \u00b7 1:1':' \u00b7 '+b.students.length+' students')+'</div>'
-    +'<div style="display:flex;gap:6px">'
-    +(isHead&&!b.elite?'<button class="act-btn" onclick="renameBatch('+i+')">Rename</button>':'')
-    +(isHead?'<button class="act-btn" onclick="setBaseline('+i+')">Set Progress</button>':'')
-    +'<button class="act-btn" onclick="openAtt('+i+')">Mark Attendance</button></div></div>'
-    +(b.elite?'':'<div style="margin-top:6px;font-size:12px;opacity:.7">'+b.students.map(function(s,j){return isHead?('<span style="cursor:pointer;text-decoration:underline dotted" onclick="openStu('+i+','+j+')">'+esc(s.name)+'</span>'):esc(s.name);}).join(' \u00b7 ')+'</div>')
-    +'<div style="height:7px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:8px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#ed1f51,#f05825)"></div></div>'
-    +'<div style="font-size:11px;opacity:.6;margin-top:3px">'+dn+' / '+total+' done'+(base?' ('+base+' pre-logged + '+marked+' marked)':'')+'</div>'
-    +'</div>';
+    const nameHtml = (isHead&&b.elite) ? `<span style="cursor:pointer" onclick="openStu(${i},0)">${esc(b.name)}</span>` : esc(b.name);
+    const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
+      b.students.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:var(--tx2);${isHead?'cursor:pointer':''}" ${isHead?`onclick="openStu(${i},${j})"`:''}><span class="acad-avatar-dot" style="width:18px;height:18px;font-size:8.5px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(s.name)}</span>`).join('')
+    }</div>`;
+    return `<div class="card" style="margin-bottom:12px;padding:16px;text-align:left">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:15px;font-weight:700;color:var(--tx)">${nameHtml}</span>
+            <span class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.28)">${esc(b.prog||'\u2014')}</span>
+            ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : ''}
+          </div>
+          <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          ${isHead&&!b.elite?`<button class="act-btn" onclick="renameBatch(${i})">Rename</button>`:''}
+          ${isHead?`<button class="act-btn" onclick="setBaseline(${i})">Set Progress</button>`:''}
+          <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
+        </div>
+      </div>
+      ${roster}
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+          <span style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em">Progress</span>
+          <span style="font-size:11px;color:var(--tx2);font-weight:600">${dn} / ${total} done${base?` (${base} pre-logged + ${marked} marked)`:''} \u00b7 ${pct}%</span>
+        </div>
+        <div style="height:8px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--gk);border-radius:99px"></div>
+        </div>
+      </div>
+    </div>`;
   };
   const el=document.getElementById('liveBatches'); el.className='';
   let html=active.length?active.map(function(b,i){return card(b,i);}).join(''):'<div class="empty">No active batches for you.</div>';
