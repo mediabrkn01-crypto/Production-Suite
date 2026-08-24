@@ -319,15 +319,24 @@ details[open] .rawsum::before{content:'▾ '}
       <div style="margin-bottom:14px">
         <div class="nav-section-title">ACADEMIC</div>
         <button class="acad-nav-link sidebar-link active" id="nav-acad-dashboard" onclick="acadSwitchTab('dashboard')"><i data-lucide="layout-dashboard" style="width:14px;height:14px"></i> Overview</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-trainers" onclick="acadSwitchTab('trainers')"><i data-lucide="users" style="width:14px;height:14px"></i> Coaches</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-availability" onclick="acadSwitchTab('availability')"><i data-lucide="calendar-clock" style="width:14px;height:14px"></i> Coach Availability</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-live" onclick="acadSwitchTab('live')"><i data-lucide="layers" style="width:14px;height:14px"></i> Batches</button>
+        <!-- Coaches (full roster) and Reports (company-wide aggregates) are Academic Head-
+             only concepts per the Strict Trainer/Coach Access Control spec — a Trainer has no
+             "My Coaches"/"My Reports" equivalent, so these are simply hidden, not reused. -->
+        <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-trainers" onclick="acadSwitchTab('trainers')"><i data-lucide="users" style="width:14px;height:14px"></i> Coaches</button>
+        <!-- Availability/Batches/Students/Classes/Schedule stay as ONE tab each (not
+             duplicated into separate "My X" tabs) — the underlying query and heading text
+             both switch on role (see acadApplyRoleLabels() and each tab's load function),
+             so a Trainer reaches the exact same nav item but only ever gets their own data,
+             server-side, matching item 9's "scope the query" requirement rather than
+             hiding rows client-side. -->
+        <button class="acad-nav-link sidebar-link" id="nav-acad-availability" onclick="acadSwitchTab('availability')"><i data-lucide="calendar-clock" style="width:14px;height:14px"></i> <span id="nav-acad-availability-label">Coach Availability</span></button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-live" onclick="acadSwitchTab('live')"><i data-lucide="layers" style="width:14px;height:14px"></i> <span id="nav-acad-live-label">Batches</span></button>
         <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-createbatch" onclick="acadSwitchTab('createbatch')"><i data-lucide="square-plus" style="width:14px;height:14px"></i> Create Batch</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-students" onclick="acadSwitchTab('students')"><i data-lucide="graduation-cap" style="width:14px;height:14px"></i> Students</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-classes" onclick="acadSwitchTab('classes')"><i data-lucide="presentation" style="width:14px;height:14px"></i> Classes</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-students" onclick="acadSwitchTab('students')"><i data-lucide="graduation-cap" style="width:14px;height:14px"></i> <span id="nav-acad-students-label">Students</span></button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-classes" onclick="acadSwitchTab('classes')"><i data-lucide="presentation" style="width:14px;height:14px"></i> <span id="nav-acad-classes-label">Classes</span></button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-courses" onclick="acadSwitchTab('courses')"><i data-lucide="book-open" style="width:14px;height:14px"></i> Courses</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-schedule" onclick="acadSwitchTab('schedule')"><i data-lucide="calendar-range" style="width:14px;height:14px"></i> Schedule</button>
-        <button class="acad-nav-link sidebar-link" id="nav-acad-reports" onclick="acadSwitchTab('reports')"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Reports</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-schedule" onclick="acadSwitchTab('schedule')"><i data-lucide="calendar-range" style="width:14px;height:14px"></i> <span id="nav-acad-schedule-label">Schedule</span></button>
+        <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-reports" onclick="acadSwitchTab('reports')"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Reports</button>
         <!-- Academic operational items — these are department modules (a coach's own batch
              work, task queue, session log), not personal employee-HR items, so they stay in
              the ACADEMIC group rather than under My Workspace, which is reserved for the
@@ -422,7 +431,7 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-live">
         <div class="grid" id="statgrid"></div>
         <div class="section" id="liveSection">
-          <h2>Live Batches &amp; Attendance <span class="tag">Live · Database</span></h2>
+          <h2><span id="tab-acad-live-label">Live Batches &amp; Attendance</span> <span class="tag">Live · Database</span></h2>
           <div id="liveBatches" class="loading">Loading…</div>
         </div>
         <div class="section role-head-only hidden">
@@ -626,7 +635,7 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-availability">
         <div class="section">
           <h2>
-            Availability
+            <span id="tab-acad-availability-label">Availability</span>
             <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:400">
               <button class="act-btn" onclick="availShiftDate(-1)">‹</button>
               <input type="date" id="availDate" style="width:auto" onchange="renderAvailabilityGrid()"/>
@@ -668,7 +677,7 @@ details[open] .rawsum::before{content:'▾ '}
       <!-- Classes — today's + upcoming sessions across all batches, drawn from `sessions`. -->
       <div class="acad-tab" id="tab-acad-classes">
         <div class="section">
-          <h2>Today's Classes</h2>
+          <h2><span id="tab-acad-classes-label">Today's Classes</span></h2>
           <div id="classesToday" class="loading">Loading…</div>
         </div>
         <div class="section">
@@ -682,7 +691,7 @@ details[open] .rawsum::before{content:'▾ '}
            database (never creates a duplicate student record) — see Create Batch tab. -->
       <div class="acad-tab" id="tab-acad-students">
         <div class="section">
-          <h2>Students <span class="tag" id="studentsCount">0</span> <button onclick="openAddStudent()" id="addStuBtn" class="role-head-only hidden">+ Add Student</button></h2>
+          <h2><span id="tab-acad-students-label">Students</span> <span class="tag" id="studentsCount">0</span> <button onclick="openAddStudent()" id="addStuBtn" class="role-head-only hidden">+ Add Student</button></h2>
           <div class="mrow" style="margin-bottom:12px">
             <input id="stu_search" placeholder="Search students by name, ID, or contact…" oninput="renderStudentsTable()" style="flex:2"/>
             <select id="stu_filter_batch" onchange="renderStudentsTable()" style="flex:1"><option value="">All batches</option></select>
@@ -702,7 +711,7 @@ details[open] .rawsum::before{content:'▾ '}
       <!-- Schedule — weekly timetable grid built from batches.day_pattern + time_slot. -->
       <div class="acad-tab" id="tab-acad-schedule">
         <div class="section">
-          <h2>Weekly Timetable</h2>
+          <h2><span id="tab-acad-schedule-label">Weekly Timetable</span></h2>
           <div id="scheduleGrid" class="loading">Loading…</div>
         </div>
       </div>
@@ -998,9 +1007,15 @@ function _applyAuthSourceUI(){
 
 async function loadLive(){
   const isHead=currentUser.role==='founder'||currentUser.role==='academic_head';
-  const {data:studs}=await sb.from('students').select('id,uin,name,contact,batch_name,trainer_name,programme,status,planned_end_date,source_counsellor,enrolled_date');
+  // Scoped at the query level for a Trainer (was: fetch every student, then filter the
+  // rendered rows client-side \u2014 the other trainers' students still left the database in the
+  // network response even though they never appeared on screen). ilike matches the same
+  // trainer_name field the old client-side filter compared against, just pushed into the
+  // query itself.
+  let studQuery=sb.from('students').select('id,uin,name,contact,batch_name,trainer_name,programme,status,planned_end_date,source_counsellor,enrolled_date');
+  if(!isHead) studQuery=studQuery.ilike('trainer_name', currentUser.name||'');
+  const {data:studs}=await studQuery;
   let rows=(studs||[]).filter(s=>s.name);
-  if(!isHead){const me=(currentUser.name||'').toLowerCase();rows=rows.filter(s=>(s.trainer_name||'').toLowerCase()===me);}
   const today=new Date().toISOString().slice(0,10);
   const map={};
   rows.forEach(s=>{
@@ -1010,14 +1025,26 @@ async function loadLive(){
     map[key].students.push(s);
     if(s.planned_end_date&&(!map[key].end||s.planned_end_date>map[key].end))map[key].end=s.planned_end_date;
   });
+  // Batch names this trainer's own students actually belong to \u2014 used to scope the
+  // attendance/baseline queries below too, not just the students query above, so a
+  // Trainer's session-progress lookup never pulls another trainer's batch rows either.
+  const myBatchNames=[...new Set(Object.values(map).map(b=>b.raw).filter(Boolean))];
   // sessions done per batch (by attendance)
   const doneMap={};
-  try{const {data:att}=await sb.from('attendance').select('batch_name,session_num');
-    (att||[]).forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});}catch(e){}
+  try{
+    let attQuery=sb.from('attendance').select('batch_name,session_num');
+    if(!isHead) attQuery = myBatchNames.length ? attQuery.in('batch_name', myBatchNames) : null;
+    if(attQuery){const {data:att}=await attQuery;
+      (att||[]).forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});}
+  }catch(e){}
   // manual baseline progress (sessions already done before tracking started)
   const baseMap={};window._baseMap=baseMap;
-  try{const {data:bb}=await sb.from('batches').select('name,baseline_sessions');
-    (bb||[]).forEach(function(b){baseMap[b.name]=+b.baseline_sessions||0;});}catch(e){}
+  try{
+    let baseQuery=sb.from('batches').select('name,baseline_sessions');
+    if(!isHead) baseQuery = myBatchNames.length ? baseQuery.in('name', myBatchNames) : null;
+    if(baseQuery){const {data:bb}=await baseQuery;
+      (bb||[]).forEach(function(b){baseMap[b.name]=+b.baseline_sessions||0;});}
+  }catch(e){}
   const all=Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
   const active=all.filter(b=>!b.end||b.end>=today);
   const done=all.filter(b=>b.end&&b.end<today);
@@ -1108,6 +1135,26 @@ function updateAcadHeaderDateTime() {
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   el.textContent = date + '  ·  ' + time;
 }
+// Relabels the four shared tabs (Availability/Batches/Students/Schedule) that a Trainer and
+// the Academic Head both reach through the same nav item and tab id — reused, not duplicated,
+// per the earlier UI-cleanup work's own "reuse, don't invent a second component" pattern.
+// Each underlying load function (renderAvailabilityGrid/loadLive/loadStudentsTab/
+// loadScheduleTab) already scopes its QUERY by role; this only changes the heading text so a
+// Trainer reads "My Batches & Attendance" instead of the Head's "Live Batches & Attendance"
+// for the exact same tab, matching the Strict Trainer/Coach Access Control nav wording.
+function acadApplyRoleLabels(isHead){
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('nav-acad-availability-label', isHead ? 'Coach Availability' : 'My Availability');
+  set('tab-acad-availability-label', isHead ? 'Availability' : 'My Availability');
+  set('nav-acad-live-label', isHead ? 'Batches' : 'Student Attendance');
+  set('tab-acad-live-label', isHead ? 'Live Batches & Attendance' : 'My Batches & Attendance');
+  set('nav-acad-students-label', isHead ? 'Students' : 'My Students');
+  set('tab-acad-students-label', isHead ? 'Students' : 'My Students');
+  set('nav-acad-classes-label', isHead ? 'Classes' : 'My Classes');
+  set('tab-acad-classes-label', isHead ? "Today's Classes" : "My Classes Today");
+  set('nav-acad-schedule-label', isHead ? 'Schedule' : 'My Calendar');
+  set('tab-acad-schedule-label', isHead ? 'Weekly Timetable' : 'My Weekly Calendar');
+}
 function applyAcadRoleGates(){
   const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
   const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
@@ -1144,12 +1191,14 @@ async function boot(){
   document.getElementById('acad-backlink-btn').style.display = 'inline-flex';
 
   const { isHead, isTrainerCapable, isRestricted } = applyAcadRoleGates();
+  acadApplyRoleLabels(isHead);
 
   if (isHead) {
     await loadHeadView(); // also loads Trainers table + Courses (see loadHeadView)
     buildDayChips(); buildBatchTimeOptions(); typeChanged(); // prime the Create Batch tab so it's ready on first visit
   } else if (!isRestricted) {
-    await loadTrainersTable();
+    // Coaches roster is Academic Head-only now (Strict Trainer/Coach Access Control) — a
+    // Trainer no longer even fetches it, not just doesn't see the nav item for it.
     await loadCourses();
   }
   if (isTrainerCapable) await loadTrainerView();
@@ -1158,9 +1207,15 @@ async function boot(){
     document.getElementById('liveSection').style.display = 'none';
     document.getElementById('statgrid').style.display = 'none';
   } else {
+    // loadLive() itself scopes the students/attendance/baseline queries by trainer_name
+    // when the caller isn't Head (see there) — same tab either way, real server-side scope.
     await loadLive();
-    await loadStats();
   }
+  // statgrid ("Active Trainers"/"Total Batches"/"Total Students"/"Sessions Completed") is
+  // company-wide by definition — Head-only, not just hidden for the fully-restricted role.
+  // A Trainer previously got these numbers fetched (and rendered into a DOM node they just
+  // didn't happen to scroll to) even though item 8 explicitly forbids showing them.
+  if (isHead) await loadStats(); else { const sg = document.getElementById('statgrid'); if (sg) sg.style.display = 'none'; }
   initClock();
   loadLeave();
   await loadAcadDashboard();
@@ -1168,7 +1223,9 @@ async function boot(){
   loadClassesTab();
   loadStudentsTab();
   loadScheduleTab();
-  loadReportsTab();
+  // Reports is a company-wide aggregate page with no "My Reports" equivalent — Head-only,
+  // not fetched at all for a Trainer (the nav item itself is also hidden, see the sidebar).
+  if (isHead) loadReportsTab();
   loadMyProfileTab();
   loadAnnouncementsTab();
   loadDocumentsTab();
@@ -1415,9 +1472,10 @@ async function acadSyncTrainersFromHRLocal(){
   }
 }
 async function loadTrainersTable(){
-  // The per-row Delete button stays visible to everyone (same pattern as the rest of this
-  // file) — deleteTrainer() itself calls requireHeadAccess() and blocks non-Head users at
-  // the actual point of the write, same runtime guard already used for openModal() etc.
+  // Academic Head-only (Strict Trainer/Coach Access Control) — a Trainer has no "Coaches"
+  // nav item to reach this from anymore, and boot() no longer calls this for a Trainer
+  // either; this guard is defense-in-depth in case something else ever calls it directly.
+  if (currentUser.role !== 'founder' && currentUser.role !== 'academic_head') return;
   await acadSyncTrainersFromHRLocal();
   const { data: trainers } = await sb.from('trainers').select('*').order('created_at');
   document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => `
@@ -1625,6 +1683,26 @@ async function renderAvailabilityGrid(){
   const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
   if (!wrap) return;
   const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  // A Trainer must never see the team grid — not just have it visually hidden, the query
+  // itself never fetches another coach's row or slots. Only the Head branch below fetches
+  // every active trainer; a Trainer gets ONE row (their own), which is also all
+  // renderMyAvailabilityToggle() below needs to find "me" in — same lookup, just never has
+  // anyone else's data to find in the first place.
+  if (!isHead) {
+    wrap.innerHTML = '<div class="empty">Team availability is visible to the Academic Head only. Use the panel below to manage your own.</div>';
+    try {
+      const myId = window._myTrainerId;
+      const [{data:mySlots}] = await Promise.all([
+        sb.from('trainer_slots').select('*').eq('slot_date', date).eq('trainer_id', myId || '00000000-0000-0000-0000-000000000000'),
+      ]);
+      const { data: myTrainerRow } = myId ? await sb.from('trainers').select('*').eq('id', myId).maybeSingle() : { data: null };
+      _availTrainers = myTrainerRow ? [myTrainerRow] : [];
+      _availSlotsForDate = mySlots||[];
+      _availOnLeaveIds = new Set(); // My Slots panel doesn't render a leave badge; not needed here
+    } catch (e) { console.warn('Could not load your availability:', e.message); _availTrainers = []; _availSlotsForDate = []; }
+    renderMyAvailabilityToggle(date);
+    return;
+  }
   try{
     const [{data:trainers},{data:slots},{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
       sb.from('trainers').select('*').eq('status','active'),
@@ -1771,10 +1849,24 @@ async function confirmAssignSlot(){
 // ============================================================================
 async function loadClassesTab(){
   try{
+    const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
     const today = new Date().toISOString().slice(0,10);
     const soon = new Date(); soon.setDate(soon.getDate()+7);
     const soonStr = soon.toISOString().slice(0,10);
-    const {data:sessions} = await sb.from('sessions').select('*').gte('session_date', today).lte('session_date', soonStr).order('session_date');
+    let query = sb.from('sessions').select('*').gte('session_date', today).lte('session_date', soonStr).order('session_date');
+    // Scoped at the QUERY level, not fetched-then-hidden — a Trainer's own batch ids are
+    // resolved first (window._myTrainerId, set by loadTrainerView() earlier in boot()), then
+    // `sessions` is filtered to only those batch_ids server-side. `sessions` has no direct
+    // trainer_id column, batch_id is the only link back to a trainer, hence the extra lookup.
+    if (!isHead) {
+      const myId = window._myTrainerId;
+      if (!myId) { document.getElementById('classesToday').innerHTML = '<div class="empty">No coach profile linked to your login yet.</div>'; document.getElementById('classesUpcoming').innerHTML = ''; return; }
+      const { data: myBatches } = await sb.from('batches').select('id').eq('trainer_id', myId);
+      const myBatchIds = (myBatches||[]).map(b=>b.id);
+      if (!myBatchIds.length) { document.getElementById('classesToday').innerHTML = '<div class="empty">No classes scheduled today.</div>'; document.getElementById('classesUpcoming').innerHTML = '<div class="empty">Nothing scheduled in the next 7 days.</div>'; return; }
+      query = query.in('batch_id', myBatchIds);
+    }
+    const {data:sessions} = await query;
     const rows = sessions||[];
     const todays = rows.filter(s=>s.session_date===today);
     const upcoming = rows.filter(s=>s.session_date>today);
@@ -1790,7 +1882,14 @@ async function loadClassesTab(){
 let _allStudents = [];
 async function loadStudentsTab(){
   try{
-    const {data:students} = await sb.from('students').select('*').order('enrolled_date',{ascending:false});
+    const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+    // Scoped at the query level for a Trainer — trainer_name is the same field students'
+    // own batch-assignment already keys off of (see assignStudents()/saveBatch()), and the
+    // same match loadLive() already used client-side; pushed into the query itself here so
+    // another Trainer's students never leave the database in the response at all.
+    let query = sb.from('students').select('*').order('enrolled_date',{ascending:false});
+    if (!isHead) query = query.ilike('trainer_name', currentUser.name);
+    const {data:students} = await query;
     _allStudents = students||[];
     const batchSel = document.getElementById('stu_filter_batch');
     if (batchSel) {
@@ -1833,7 +1932,10 @@ function renderStudentsTable(){
 // ============================================================================
 async function loadScheduleTab(){
   try{
-    const {data:batches} = await sb.from('batches').select('*').eq('status','active');
+    const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+    let query = sb.from('batches').select('*').eq('status','active');
+    if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
+    const {data:batches} = await query;
     const rows = batches||[];
     document.getElementById('scheduleGrid').innerHTML = rows.length ? `
       <table><thead><tr><th>Batch</th><th>Coach</th><th>Days</th><th>Time Slot</th></tr></thead><tbody>
