@@ -766,8 +766,10 @@ async function loadMyHRData() {
                 if (!_lastKnownPayslipIds.has(p.id)) {
                     if (hadPayslipBaseline) {
                         const monthLabel = (() => { try { const [y,m] = p.month.split('-').map(Number); return new Date(y, m-1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); } catch(e) { return p.month; } })();
+                        // In-app bell only (see notifMeta's 'payslip' case + initMyPayslips'
+                        // NEW marker) — no sendBrowserNotif here, per spec: "Do not use
+                        // browser-native notifications" for this specific alert.
                         addNotif('payslip', `Your payslip for ${monthLabel} is now available.`, null, p.id);
-                        sendBrowserNotif('New Payslip Available', `Your payslip for ${monthLabel} is now available.`);
                     }
                     _lastKnownPayslipIds.add(p.id);
                     changed = true;
@@ -1452,13 +1454,286 @@ function hrOfficialEventFor(employee, dateStr) {
             return d.toISOString().slice(0,10);
         }
 
+// ---------- Number → words (Indian numbering: Crore/Lakh/Thousand) ----------
+// Used for the "Amount In Words" line on the payslip. Was only defined on index.html —
+// moved here so hr.html (and any other page) can build the same payslip too.
+        function _numToWordsIndian(num) {
+            num = Math.round(num);
+            if (num === 0) return 'Zero';
+            const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+            const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+            const twoDigits = n => n < 20 ? ones[n] : tens[Math.floor(n/10)] + (n % 10 ? '-' + ones[n % 10] : '');
+            const threeDigits = n => {
+                let s = '';
+                if (n >= 100) { s += ones[Math.floor(n/100)] + ' Hundred'; n %= 100; if (n) s += ' '; }
+                if (n) s += twoDigits(n);
+                return s;
+            };
+            let n = num, parts = [];
+            const crore = Math.floor(n / 10000000); n %= 10000000;
+            const lakh = Math.floor(n / 100000); n %= 100000;
+            const thousand = Math.floor(n / 1000); n %= 1000;
+            if (crore) parts.push(threeDigits(crore) + ' Crore');
+            if (lakh) parts.push(twoDigits(lakh) + ' Lakh');
+            if (thousand) parts.push(twoDigits(thousand) + ' Thousand');
+            if (n) parts.push(threeDigits(n));
+            return parts.join(' ');
+        }
+        function amountInWordsINR(amount) {
+            return `Indian Rupee ${_numToWordsIndian(Math.abs(amount))} Only`;
+        }
+
+// Black-text "Broken English" logo for the payslip PDF, embedded inline as a data URL rather
+// than fetched at runtime — see the original index.html comment this was copied from for why
+// (relative-path/CORS failure class, plus jsPDF needing an already-downscaled bitmap).
+        const PAYSLIP_LOGO = { dataUrl: 'data:image/png;base64,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', w: 400, h: 164 };
+        function _loadPayslipLogo() {
+            return Promise.resolve(PAYSLIP_LOGO);
+        }
+
+// hrDefaultPaymentDateFor moved here from hr.html — the payslip builder below needs it on
+// every page, not just hr.html.
+        function hrDefaultPaymentDateFor(monthStr) {
+            if (!monthStr) return '';
+            const [y, m] = monthStr.split('-').map(Number);
+            const d = new Date(y, m, 10); // m (not m-1) lands one month after the pay period
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+// Payslip PDF — laid out to match the reference format supplied by the company (company
+// header w/ logo, Employee Summary + highlighted Net Pay box, Paid/LOP days, two-column
+// Earnings/Deductions, Gross Earnings vs Total Deductions, Total Net Payable, amount in
+// words). Every figure comes straight off the same hr_payroll row HR saved — nothing here is
+// recalculated independently, so this can never drift from HR's approved numbers. Builds the
+// jsPDF document for one payroll row/employee, without saving it — shared by the single
+// Download button, HR's own View/Payslip buttons, and the bulk "Download All Payslips (ZIP)".
+// Moved here from hr.html — it used to only exist on that page, so index.html's My Payslips
+// (every employee's own self-service download) called downloadHRPayslip() → this function,
+// which didn't exist in index.html's scope, and silently threw. Now there is exactly one
+// payslip-building function, shared by HR and every employee, so the two can never disagree.
+        async function _buildHRPayslipDoc(p, e) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const pageW = doc.internal.pageSize.getWidth();
+            const marginX = 14;
+            const rightX = pageW - marginX;
+
+            const [y, m] = p.month.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            // Paid Days is always the full calendar days in the month (Aug → 31, Feb → 28/29),
+            // independent of attendance — it's a reference figure, not derived from LOP.
+            const paidDays = daysInMonth;
+            // Day-count breakdown (Present/Leave/Weekly Off/Holiday/LOP) is recomputed live from
+            // current attendance + approved-leave records — always automatic, per the payroll
+            // rule: Present→Present, Approved Paid Leave→Leave (not LOP), Sunday/Weekly Off and
+            // Company Holiday→not LOP, Absent with nothing approved→LOP.
+            const dayInfo = hrCalculatePayrollForMonth(p.employee_id, p.month);
+            const lopDays = dayInfo.lopDays;
+            // Payment Date is a distinct thing from the Pay Period — salary for August is paid
+            // in September. Uses whatever was actually saved on this payroll row; falls back to
+            // the standard default (10th of the following month) for older rows saved before
+            // this field existed, or on a database that hasn't had the column added yet.
+            const payDateStr = p.payment_date || hrDefaultPaymentDateFor(p.month);
+            const [pdy, pdm, pdd] = payDateStr.split('-').map(Number);
+            const payDate = new Date(pdy, pdm - 1, pdd).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            // "Basic Salary" on the payslip is p.basic — the stored, HR-approved figure (full
+            // month's salary once the whole period has elapsed; prorated to the elapsed portion
+            // if payroll's being checked mid-month — see hrCalculatePayrollForMonth). It's
+            // deliberately NOT re-derived independently here: doing that used to make the
+            // printed Gross Earnings disagree with the actual Net Pay whenever Basic had been
+            // prorated, since Gross would show the full salary while Net reflected the smaller
+            // prorated+LOP-adjusted figure. Using the same stored value everywhere means the
+            // printed arithmetic always adds up, and this can never drift from what HR approved.
+            const monthlySalary = hrGetEffectiveSalary(p.employee_id, p.month); // full contracted salary — shown as a reference only
+            const basicForPayslip = p.basic != null ? p.basic : monthlySalary;
+            const grossEarnings = basicForPayslip + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
+            const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
+            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
+            // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
+            // a broken superscript-1. "Rs." is what actually prints correctly.
+            const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const logo = await _loadPayslipLogo();
+            let headerY = 20;
+            if (logo) {
+                const logoW = 34, logoH = logoW * (logo.h / logo.w);
+                doc.addImage(logo.dataUrl, 'PNG', marginX, 12, logoW, logoH);
+                headerY = 12 + logoH + 7;
+            }
+            doc.setFontSize(15); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
+            doc.text('Broken English', marginX, headerY);
+            doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(120);
+            doc.text('Production Studio Network', marginX, headerY + 5);
+
+            doc.setFontSize(9); doc.setTextColor(120);
+            doc.text('Payslip For the Month', rightX, 18, { align: 'right' });
+            doc.setFontSize(12); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
+            doc.text(monthLabel, rightX, 24, { align: 'right' });
+            doc.setFont(undefined, 'normal');
+
+            doc.setDrawColor(225); doc.line(marginX, 32, rightX, 32);
+
+            // Employee Summary (left) + Net Pay box (right)
+            let sy = 42;
+            doc.setFontSize(9); doc.setTextColor(140);
+            doc.text('EMPLOYEE SUMMARY', marginX, sy);
+            sy += 7;
+            const summaryRow = (label, val) => {
+                doc.setFontSize(9.5); doc.setTextColor(120); doc.text(label, marginX, sy);
+                doc.setTextColor(20); doc.text(':', marginX + 34, sy); doc.text(String(val ?? '—'), marginX + 38, sy);
+                sy += 6.5;
+            };
+            summaryRow('Employee Name', e?.full_name || hrEmpName(p.employee_id));
+            summaryRow('Role', e ? hrRoleDisplay(e) : '—');
+            summaryRow('Employee ID', e?.employee_id || '—');
+            summaryRow('Pay Period', monthLabel);
+            summaryRow('Pay Date', payDate);
+            // Full contracted salary, always — a fixed reference point so it's clear the payslip
+            // isn't wrong when Basic Salary below is lower (mid-period check or partial month).
+            summaryRow('Monthly Salary', rupee(monthlySalary));
+
+            // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
+            // run to a decimal like "28.5", which would collide with a neighboring label if two
+            // were placed on the same line. Pre-Joining only shows when it's actually nonzero
+            // (mid-month joiner) — no clutter for the normal case.
+            const hasPreJoining = dayInfo.preJoiningDays > 0;
+            const hasFutureDays = dayInfo.futureDays > 0;
+            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = hasPreJoining ? 76 : 70;
+            doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
+            doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
+            doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
+            doc.text(rupee(netPay), boxX + 9, boxY + 12);
+            doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(80, 140, 110);
+            doc.text('Total Net Pay', boxX + 9, boxY + 18);
+            doc.setDrawColor(200, 230, 215); doc.line(boxX + 4, boxY + 21, boxX + boxW - 4, boxY + 21);
+            doc.setFontSize(8.5); doc.setTextColor(60);
+            const statRow = (label, val, i) => {
+                const ry = boxY + 26 + i * 6.2;
+                doc.text(label, boxX + 9, ry); doc.text(':', boxX + 34, ry); doc.text(String(val), boxX + 38, ry);
+            };
+            statRow('Paid Days', paidDays, 0);
+            statRow('Present Days', dayInfo.presentDays, 1);
+            statRow('Paid Leave', dayInfo.paidLeaveDays, 2);
+            statRow('Weekly Off', dayInfo.weeklyOffDays, 3);
+            statRow('Company Holidays', dayInfo.holidayDays, 4);
+            statRow('LOP Days', lopDays, 5);
+            if (hasPreJoining) statRow('Before Joining', dayInfo.preJoiningDays, 6);
+
+            let y2 = Math.max(sy, boxY + boxH) + 6;
+            if (lopDays > 0 || hasPreJoining) {
+                doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
+                doc.setFontSize(9); doc.setTextColor(120); doc.text('LOP', marginX, y2);
+                doc.text(':', marginX + 34, y2); doc.setTextColor(20);
+                const lopNote = lopDays > 0
+                    ? `${lopDays} day${lopDays===1?'':'s'} — absent or unpaid leave (not Sunday/weekly-off, holiday, or approved paid leave)`
+                    : 'No absence-based LOP this period.';
+                const joinNote = hasPreJoining ? ` Plus ${dayInfo.preJoiningDays} day(s) before this employee's joining date — also unpaid, but not attendance-related.` : '';
+                const noteLines = doc.splitTextToSize(lopNote + joinNote, rightX - marginX - 38);
+                doc.text(noteLines, marginX + 38, y2);
+                y2 += 5 * noteLines.length + 3;
+            }
+            if (hasFutureDays) {
+                doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
+                doc.setFontSize(9); doc.setTextColor(120); doc.text('Note', marginX, y2);
+                doc.text(':', marginX + 34, y2); doc.setTextColor(20);
+                const futureNote = doc.splitTextToSize(`This pay period isn't finished yet — ${dayInfo.futureDays} day(s) haven't happened. Basic Salary above reflects only the ${dayInfo.elapsedDays} elapsed day(s) so far; re-generate this payslip after the period ends for the final figure.`, rightX - marginX - 38);
+                doc.text(futureNote, marginX + 38, y2);
+                y2 += 5 * futureNote.length + 3;
+            }
+            doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 8;
+
+            // Two-column Earnings / Deductions table (16mm gutter between columns so a
+            // right-aligned earnings amount can never run into the deductions label)
+            const gutter = 16;
+            const colW = (rightX - marginX - gutter) / 2;
+            const earnCol = marginX, dedCol = marginX + colW + gutter;
+            const tableTopY = y2;
+            doc.setFontSize(8.5); doc.setTextColor(140); doc.setFont(undefined, 'bold');
+            doc.text('EARNINGS', earnCol, y2); doc.text('AMOUNT', earnCol + colW, y2, { align: 'right' });
+            doc.text('DEDUCTIONS', dedCol, y2); doc.text('AMOUNT', dedCol + colW, y2, { align: 'right' });
+            y2 += 3;
+            doc.setDrawColor(220);
+            doc.line(earnCol, y2, earnCol + colW, y2); doc.line(dedCol, y2, dedCol + colW, y2);
+            y2 += 6;
+            doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
+
+            const earnings = [['Basic Salary', basicForPayslip], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
+            const deductions = [];
+            // Day count in the label matches exactly what the rupee figure was calculated over
+            // — LOP days plus any pre-joining days, since both reduce this same deduction line.
+            const deductionDays = lopDays + dayInfo.preJoiningDays;
+            if (p.leave_deduction) deductions.push([`LOP Deduction${deductionDays ? ` (${deductionDays}d)` : ''}`, p.leave_deduction]);
+            if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
+            if (p.advances) deductions.push(['Advances', p.advances]);
+            if (!deductions.length) deductions.push(['—', 0]);
+
+            const rowCount = Math.max(earnings.length, deductions.length);
+            for (let i = 0; i < rowCount; i++) {
+                const ry = y2 + i * 6.5;
+                if (earnings[i]) { doc.setTextColor(60); doc.text(earnings[i][0], earnCol, ry); doc.setTextColor(20); doc.text(rupee(earnings[i][1]), earnCol + colW, ry, { align: 'right' }); }
+                if (deductions[i]) { doc.setTextColor(60); doc.text(deductions[i][0], dedCol, ry); doc.setTextColor(20); doc.text(rupee(deductions[i][1]), dedCol + colW, ry, { align: 'right' }); }
+            }
+            y2 += rowCount * 6.5 + 3;
+            doc.setDrawColor(220); doc.line(earnCol, y2, earnCol + colW, y2); doc.line(dedCol, y2, dedCol + colW, y2);
+            y2 += 6;
+            doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(30);
+            doc.text('Gross Earnings', earnCol, y2); doc.text(rupee(grossEarnings), earnCol + colW, y2, { align: 'right' });
+            doc.text('Total Deductions', dedCol, y2); doc.text(rupee(totalDeductions), dedCol + colW, y2, { align: 'right' });
+            doc.setFont(undefined, 'normal');
+
+            y2 += 12;
+            doc.setFillColor(246, 247, 250); doc.rect(marginX, y2, rightX - marginX, 16, 'F');
+            doc.setFontSize(9.5); doc.setFont(undefined, 'bold'); doc.setTextColor(30);
+            doc.text('TOTAL NET PAYABLE', marginX + 4, y2 + 6.5);
+            doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+            doc.text('Gross Earnings - Total Deductions', marginX + 4, y2 + 12);
+            doc.setFillColor(230, 250, 240);
+            doc.rect(rightX - 42, y2 + 2, 38, 12, 'F');
+            doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
+            doc.text(rupee(netPay), rightX - 5, y2 + 9.5, { align: 'right' });
+
+            y2 += 26;
+            doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
+            doc.text(`Amount In Words : ${amountInWordsINR(netPay)}`, marginX, y2, { maxWidth: rightX - marginX });
+
+            doc.setFontSize(8); doc.setTextColor(160);
+            doc.text('-- This is a system-generated document. --', pageW / 2, 285, { align: 'center' });
+
+            return doc;
+        }
+
 // ── downloadHRPayslip (orig line 11327) ──
-        async function downloadHRPayslip(id) {
+// Shared by every Download/View/Payslip button on both hr.html and index.html — HR and
+// every employee build the identical PDF from the identical _buildHRPayslipDoc() above, off
+// the same saved hr_payroll row, so the two sides can never show different numbers (spec:
+// "Payslip data must match payroll" / "do not maintain two different payslip formats").
+// btnEl (optional) is the clicked button itself (pass `this` from onclick) — when given, it
+// gets a "Preparing…" state while the PDF builds and a success/error toast afterward, so a
+// slow build or a real failure (a missing jsPDF/PAYSLIP_LOGO load, a bad payroll row) is never
+// silent; without it (e.g. a future non-button call site) the download still runs, just
+// without the visible loading/toast feedback. Also clears this payslip's "NEW" bell
+// notification and the NEW-in-My-Payslips marker (see initMyPayslips) — "opens/downloads it"
+// is exactly when the spec says the NEW marker may be cleared.
+        async function downloadHRPayslip(id, btnEl) {
             const p = hrPayroll.find(x => x.id === id);
-            if (!p) return;
+            if (!p) { if (typeof showToast === 'function') showToast('error', 'Unable to download payslip.'); return; }
             const e = hrEmployees.find(x => x.id === p.employee_id);
-            const doc = await _buildHRPayslipDoc(p, e);
-            doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
+            const originalLabel = btnEl ? btnEl.textContent : null;
+            if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Preparing...'; }
+            try {
+                const doc = await _buildHRPayslipDoc(p, e);
+                doc.save(`Payslip_${(e?.full_name||'employee').replace(/\s+/g,'_')}_${p.month}.pdf`);
+                if (typeof dismissNotif === 'function') dismissNotif('payslip_' + p.id); // clears the bell entry
+                if (typeof initMyPayslips === 'function' && document.getElementById('my-payslips-rows')) initMyPayslips(); // re-render so the NEW marker actually disappears from this row too
+                if (typeof showToast === 'function') showToast('success', 'Payslip downloaded successfully.');
+            } catch (err) {
+                console.warn('Payslip download failed:', err.message);
+                if (typeof showToast === 'function') showToast('error', 'Unable to download payslip.');
+            } finally {
+                if (btnEl) { btnEl.disabled = false; btnEl.textContent = originalLabel; }
+            }
         }
 
 // ── myHREmployeeRecord (orig line 11445) ──
@@ -1642,12 +1917,20 @@ function hrOfficialEventFor(employee, dateStr) {
             // Supabase RLS policy this needs to be a real access-control boundary, not just a
             // UI filter.
             const mine = hrPayroll.filter(p => p.employee_id === me.id && p.published === true);
+            // NEW marker: reuses the bell's own live `notifications` array rather than a
+            // separate read/unread table — a payslip is "new" here exactly as long as its
+            // addNotif('payslip', ..., p.id) entry (checkForHRNotifications, id `payslip_<id>`)
+            // is still sitting in the bell, unread/undismissed. Downloading it (downloadHRPayslip)
+            // dismisses that same entry, which is also what clears this marker — one piece of
+            // state, two places it's shown, never two things that can disagree. Deliberately no
+            // "Received"/acknowledged marker — only NEW, cleared automatically on open/download.
+            const isNew = id => (typeof notifications !== 'undefined') && notifications.some(n => n.id === 'payslip_' + id);
             el.innerHTML = mine.length ? mine.map(p => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">${p.month}</td>
+                    <td class="py-2.5 px-4 text-white font-semibold">${p.month}${isNew(p.id) ? ' <span class="text-[9px] font-bold uppercase tracking-wide text-white bg-orange-500 rounded-full px-2 py-0.5" style="margin-left:6px">New</span>' : ''}</td>
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn">Download</button></td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn">Download</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }

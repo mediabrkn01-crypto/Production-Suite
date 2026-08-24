@@ -2893,7 +2893,7 @@
                 body.innerHTML = reqs.length ? `<div class="space-y-1.5">${reqs.map(r => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${r.leave_type} — ${r.start_date} → ${r.end_date}</span><span class="hr-badge hr-badge-${r.status}">${r.status}</span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
             } else if (hrProfileTab === 'payroll') {
                 const pay = hrPayroll.filter(p => p.employee_id === e.id);
-                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
+                body.innerHTML = pay.length ? `<div class="space-y-1.5">${pay.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="text-[#4a5182] text-xs">No payroll entries yet.</p>';
             } else if (hrProfileTab === 'documents') {
                 body.innerHTML = hrRenderEmployeeDocuments(e.id);
             } else if (hrProfileTab === 'performance') {
@@ -3648,7 +3648,7 @@
                     <td class="py-2.5 px-4 text-[#a5adcf]">${p.month}</td>
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
+                    <td class="py-2.5 px-4 text-center"><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }
@@ -4315,14 +4315,8 @@
             document.getElementById('hr-payroll-modal').classList.add('flex');
         }
 
-// ── hrDefaultPaymentDateFor (orig line 10784) ──
-        function hrDefaultPaymentDateFor(monthStr) {
-            if (!monthStr) return '';
-            const [y, m] = monthStr.split('-').map(Number);
-            const d = new Date(y, m, 10); // m (not m-1) lands one month after the pay period
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        }
-
+// hrDefaultPaymentDateFor moved to common.js — _buildHRPayslipDoc (also now in common.js)
+// needs it on every page that can build a payslip, not just this one.
 // ── hrDefaultPaymentDate (orig line 10790) ──
         function hrDefaultPaymentDate() {
             document.getElementById('hr-pr-payment-date').value = hrDefaultPaymentDateFor(document.getElementById('hr-pr-month').value);
@@ -4498,7 +4492,7 @@
                     <td class="py-2.5 px-4">${p.published ? '<span class="hr-badge hr-badge-approved">Sent</span>' : '<span class="hr-badge hr-badge-pending">Draft — HR only</span>'}</td>
                     <td class="py-2.5 px-4 text-center" style="white-space:nowrap">
                         <button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button>
-                        <button onclick="downloadHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px">View</button>
+                        <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">View</button>
                         ${p.published
                             ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#fb923c">Revoke</button>`
                             : `<button onclick="sendHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Send</button>`}
@@ -4612,200 +4606,15 @@
             } catch (e) { alert('Could not delete payroll record: ' + e.message); }
         }
 
-// ── _buildHRPayslipDoc (orig line 11134) ──
-        async function _buildHRPayslipDoc(p, e) {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const pageW = doc.internal.pageSize.getWidth();
-            const marginX = 14;
-            const rightX = pageW - marginX;
-
-            const [y, m] = p.month.split('-').map(Number);
-            const daysInMonth = new Date(y, m, 0).getDate();
-            const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-            // Paid Days is always the full calendar days in the month (Aug → 31, Feb → 28/29),
-            // independent of attendance — it's a reference figure, not derived from LOP.
-            const paidDays = daysInMonth;
-            // Day-count breakdown (Present/Leave/Weekly Off/Holiday/LOP) is recomputed live from
-            // current attendance + approved-leave records — always automatic, per the payroll
-            // rule: Present→Present, Approved Paid Leave→Leave (not LOP), Sunday/Weekly Off and
-            // Company Holiday→not LOP, Absent with nothing approved→LOP.
-            const dayInfo = hrCalculatePayrollForMonth(p.employee_id, p.month);
-            const lopDays = dayInfo.lopDays;
-            // Payment Date is a distinct thing from the Pay Period — salary for August is paid
-            // in September. Uses whatever was actually saved on this payroll row; falls back to
-            // the standard default (10th of the following month) for older rows saved before
-            // this field existed, or on a database that hasn't had the column added yet.
-            const payDateStr = p.payment_date || hrDefaultPaymentDateFor(p.month);
-            const [pdy, pdm, pdd] = payDateStr.split('-').map(Number);
-            const payDate = new Date(pdy, pdm - 1, pdd).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-            // "Basic Salary" on the payslip is p.basic — the stored, HR-approved figure (full
-            // month's salary once the whole period has elapsed; prorated to the elapsed portion
-            // if payroll's being checked mid-month — see hrCalculatePayrollForMonth). It's
-            // deliberately NOT re-derived independently here: doing that used to make the
-            // printed Gross Earnings disagree with the actual Net Pay whenever Basic had been
-            // prorated, since Gross would show the full salary while Net reflected the smaller
-            // prorated+LOP-adjusted figure. Using the same stored value everywhere means the
-            // printed arithmetic always adds up, and this can never drift from what HR approved.
-            const monthlySalary = hrGetEffectiveSalary(p.employee_id, p.month); // full contracted salary — shown as a reference only
-            const basicForPayslip = p.basic != null ? p.basic : monthlySalary;
-            const grossEarnings = basicForPayslip + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
-            const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
-            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
-            // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
-            // a broken superscript-1. "Rs." is what actually prints correctly.
-            const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-            const logo = await _loadPayslipLogo();
-            let headerY = 20;
-            if (logo) {
-                const logoW = 34, logoH = logoW * (logo.h / logo.w);
-                doc.addImage(logo.dataUrl, 'PNG', marginX, 12, logoW, logoH);
-                headerY = 12 + logoH + 7;
-            }
-            doc.setFontSize(15); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
-            doc.text('Broken English', marginX, headerY);
-            doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(120);
-            doc.text('Production Studio Network', marginX, headerY + 5);
-
-            doc.setFontSize(9); doc.setTextColor(120);
-            doc.text('Payslip For the Month', rightX, 18, { align: 'right' });
-            doc.setFontSize(12); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
-            doc.text(monthLabel, rightX, 24, { align: 'right' });
-            doc.setFont(undefined, 'normal');
-
-            doc.setDrawColor(225); doc.line(marginX, 32, rightX, 32);
-
-            // Employee Summary (left) + Net Pay box (right)
-            let sy = 42;
-            doc.setFontSize(9); doc.setTextColor(140);
-            doc.text('EMPLOYEE SUMMARY', marginX, sy);
-            sy += 7;
-            const summaryRow = (label, val) => {
-                doc.setFontSize(9.5); doc.setTextColor(120); doc.text(label, marginX, sy);
-                doc.setTextColor(20); doc.text(':', marginX + 34, sy); doc.text(String(val ?? '—'), marginX + 38, sy);
-                sy += 6.5;
-            };
-            summaryRow('Employee Name', e?.full_name || hrEmpName(p.employee_id));
-            summaryRow('Role', e ? hrRoleDisplay(e) : '—');
-            summaryRow('Employee ID', e?.employee_id || '—');
-            summaryRow('Pay Period', monthLabel);
-            summaryRow('Pay Date', payDate);
-            // Full contracted salary, always — a fixed reference point so it's clear the payslip
-            // isn't wrong when Basic Salary below is lower (mid-period check or partial month).
-            summaryRow('Monthly Salary', rupee(monthlySalary));
-
-            // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
-            // run to a decimal like "28.5", which would collide with a neighboring label if two
-            // were placed on the same line. Pre-Joining only shows when it's actually nonzero
-            // (mid-month joiner) — no clutter for the normal case.
-            const hasPreJoining = dayInfo.preJoiningDays > 0;
-            const hasFutureDays = dayInfo.futureDays > 0;
-            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = hasPreJoining ? 76 : 70;
-            doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
-            doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
-            doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
-            doc.text(rupee(netPay), boxX + 9, boxY + 12);
-            doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(80, 140, 110);
-            doc.text('Total Net Pay', boxX + 9, boxY + 18);
-            doc.setDrawColor(200, 230, 215); doc.line(boxX + 4, boxY + 21, boxX + boxW - 4, boxY + 21);
-            doc.setFontSize(8.5); doc.setTextColor(60);
-            const statRow = (label, val, i) => {
-                const ry = boxY + 26 + i * 6.2;
-                doc.text(label, boxX + 9, ry); doc.text(':', boxX + 34, ry); doc.text(String(val), boxX + 38, ry);
-            };
-            statRow('Paid Days', paidDays, 0);
-            statRow('Present Days', dayInfo.presentDays, 1);
-            statRow('Paid Leave', dayInfo.paidLeaveDays, 2);
-            statRow('Weekly Off', dayInfo.weeklyOffDays, 3);
-            statRow('Company Holidays', dayInfo.holidayDays, 4);
-            statRow('LOP Days', lopDays, 5);
-            if (hasPreJoining) statRow('Before Joining', dayInfo.preJoiningDays, 6);
-
-            let y2 = Math.max(sy, boxY + boxH) + 6;
-            if (lopDays > 0 || hasPreJoining) {
-                doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
-                doc.setFontSize(9); doc.setTextColor(120); doc.text('LOP', marginX, y2);
-                doc.text(':', marginX + 34, y2); doc.setTextColor(20);
-                const lopNote = lopDays > 0
-                    ? `${lopDays} day${lopDays===1?'':'s'} — absent or unpaid leave (not Sunday/weekly-off, holiday, or approved paid leave)`
-                    : 'No absence-based LOP this period.';
-                const joinNote = hasPreJoining ? ` Plus ${dayInfo.preJoiningDays} day(s) before this employee's joining date — also unpaid, but not attendance-related.` : '';
-                const noteLines = doc.splitTextToSize(lopNote + joinNote, rightX - marginX - 38);
-                doc.text(noteLines, marginX + 38, y2);
-                y2 += 5 * noteLines.length + 3;
-            }
-            if (hasFutureDays) {
-                doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
-                doc.setFontSize(9); doc.setTextColor(120); doc.text('Note', marginX, y2);
-                doc.text(':', marginX + 34, y2); doc.setTextColor(20);
-                const futureNote = doc.splitTextToSize(`This pay period isn't finished yet — ${dayInfo.futureDays} day(s) haven't happened. Basic Salary above reflects only the ${dayInfo.elapsedDays} elapsed day(s) so far; re-generate this payslip after the period ends for the final figure.`, rightX - marginX - 38);
-                doc.text(futureNote, marginX + 38, y2);
-                y2 += 5 * futureNote.length + 3;
-            }
-            doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 8;
-
-            // Two-column Earnings / Deductions table (16mm gutter between columns so a
-            // right-aligned earnings amount can never run into the deductions label)
-            const gutter = 16;
-            const colW = (rightX - marginX - gutter) / 2;
-            const earnCol = marginX, dedCol = marginX + colW + gutter;
-            const tableTopY = y2;
-            doc.setFontSize(8.5); doc.setTextColor(140); doc.setFont(undefined, 'bold');
-            doc.text('EARNINGS', earnCol, y2); doc.text('AMOUNT', earnCol + colW, y2, { align: 'right' });
-            doc.text('DEDUCTIONS', dedCol, y2); doc.text('AMOUNT', dedCol + colW, y2, { align: 'right' });
-            y2 += 3;
-            doc.setDrawColor(220);
-            doc.line(earnCol, y2, earnCol + colW, y2); doc.line(dedCol, y2, dedCol + colW, y2);
-            y2 += 6;
-            doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
-
-            const earnings = [['Basic Salary', basicForPayslip], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
-            const deductions = [];
-            // Day count in the label matches exactly what the rupee figure was calculated over
-            // — LOP days plus any pre-joining days, since both reduce this same deduction line.
-            const deductionDays = lopDays + dayInfo.preJoiningDays;
-            if (p.leave_deduction) deductions.push([`LOP Deduction${deductionDays ? ` (${deductionDays}d)` : ''}`, p.leave_deduction]);
-            if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
-            if (p.advances) deductions.push(['Advances', p.advances]);
-            if (!deductions.length) deductions.push(['—', 0]);
-
-            const rowCount = Math.max(earnings.length, deductions.length);
-            for (let i = 0; i < rowCount; i++) {
-                const ry = y2 + i * 6.5;
-                if (earnings[i]) { doc.setTextColor(60); doc.text(earnings[i][0], earnCol, ry); doc.setTextColor(20); doc.text(rupee(earnings[i][1]), earnCol + colW, ry, { align: 'right' }); }
-                if (deductions[i]) { doc.setTextColor(60); doc.text(deductions[i][0], dedCol, ry); doc.setTextColor(20); doc.text(rupee(deductions[i][1]), dedCol + colW, ry, { align: 'right' }); }
-            }
-            y2 += rowCount * 6.5 + 3;
-            doc.setDrawColor(220); doc.line(earnCol, y2, earnCol + colW, y2); doc.line(dedCol, y2, dedCol + colW, y2);
-            y2 += 6;
-            doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(30);
-            doc.text('Gross Earnings', earnCol, y2); doc.text(rupee(grossEarnings), earnCol + colW, y2, { align: 'right' });
-            doc.text('Total Deductions', dedCol, y2); doc.text(rupee(totalDeductions), dedCol + colW, y2, { align: 'right' });
-            doc.setFont(undefined, 'normal');
-
-            y2 += 12;
-            doc.setFillColor(246, 247, 250); doc.rect(marginX, y2, rightX - marginX, 16, 'F');
-            doc.setFontSize(9.5); doc.setFont(undefined, 'bold'); doc.setTextColor(30);
-            doc.text('TOTAL NET PAYABLE', marginX + 4, y2 + 6.5);
-            doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(120);
-            doc.text('Gross Earnings - Total Deductions', marginX + 4, y2 + 12);
-            doc.setFillColor(230, 250, 240);
-            doc.rect(rightX - 42, y2 + 2, 38, 12, 'F');
-            doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
-            doc.text(rupee(netPay), rightX - 5, y2 + 9.5, { align: 'right' });
-
-            y2 += 26;
-            doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
-            doc.text(`Amount In Words : ${amountInWordsINR(netPay)}`, marginX, y2, { maxWidth: rightX - marginX });
-
-            doc.setFontSize(8); doc.setTextColor(160);
-            doc.text('-- This is a system-generated document. --', pageW / 2, 285, { align: 'center' });
-
-            return doc;
-        }
-
+// _buildHRPayslipDoc, _loadPayslipLogo/PAYSLIP_LOGO, amountInWordsINR/_numToWordsIndian,
+// and hrDefaultPaymentDateFor all moved to common.js — this exact same function used to live
+// only here, so index.html's My Payslips (employee self-service download) called
+// downloadHRPayslip() (common.js) → _buildHRPayslipDoc(), which only existed on THIS page's
+// own inline script and threw ReferenceError on index.html, silently failing every employee
+// download. HR's own download/View/Payslip buttons here still worked (same page, same script
+// scope) — which is exactly why this looked like an employee-only bug. Centralizing it means
+// HR and every employee now build the identical payslip from the identical function — no
+// second format to drift out of sync (see common.js for the moved code + full comment).
 // ── downloadAllHRPayslipsZip (orig line 11337) ──
         async function downloadAllHRPayslipsZip() {
             const month = document.getElementById('hr-payroll-month').value;
