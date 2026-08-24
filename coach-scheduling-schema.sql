@@ -82,3 +82,20 @@ alter table trainers add column if not exists pt_time_ranges text;
 -- Batches tab). Reusing it, not duplicating it, is the correct fix — see the app-code commit
 -- for what actually needed to change (propagating the newly assigned trainer onto the
 -- batch's students so they show up there).
+
+-- ============ Phase 5 — Legacy vs new course structure, per batch ============
+-- Run in the ACADEMIC project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- The 2026 course-structure change (e.g. Foundation: old 32 group + 8 master + 2 one-on-one
+-- -> new 40 group + 0 master + 2 one-on-one) does NOT rename the course — "Foundation",
+-- "Talk Club Elite", and "Elite Course" are each ONE course row shared by both the batches
+-- that already exist under the old structure and any new batch created after the change.
+-- The distinction lives on the BATCH, not a duplicate course record: batch_structure_version
+-- is 'legacy' for a batch created under the old session composition, 'new_2026' for one
+-- created after. Never inferred/recomputed automatically from the course name — set once,
+-- at batch-creation time, and never changed afterward, so an ongoing legacy batch is never
+-- silently reinterpreted under the new session composition (see Academic Existing-Data
+-- Migration spec: "Never automatically convert an ongoing legacy batch into the new
+-- structure."). NULL means "not set" (e.g. a batch created before this column existed) —
+-- treat that the same as 'legacy' when displaying/continuing an existing batch's session
+-- count, since it predates the new structure entirely.
+alter table batches add column if not exists batch_structure_version text;

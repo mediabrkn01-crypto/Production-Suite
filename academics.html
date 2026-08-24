@@ -2337,7 +2337,13 @@ async function saveBatch(){
   // Real name from the trainer record itself, by id — never parsed out of the option's
   // display text, which can carry a "(courses not set)"/" — Available" UI-only suffix.
   const trainer_name=trainer_id?((_allActiveTrainers.find(t=>String(t.id)===String(trainer_id))||{}).name||null):null;
-  const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, class_duration_minutes, prep_buffer_minutes, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active' };
+  // Every batch created here goes through Create Batch, which only ever offers the current
+  // (new_2026) course structure — see the active-courses filter above. A legacy batch is
+  // never created through this form; those only exist from the pre-2026 migration, tagged
+  // 'legacy' there. Set once, at creation, and never changed afterward (see
+  // batch_structure_version's own comment, coach-scheduling-schema.sql) — an ongoing batch's
+  // session composition is never silently reinterpreted by anything reading this field.
+  const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, class_duration_minutes, prep_buffer_minutes, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active', batch_structure_version:'new_2026' };
   const {data:newBatch,error}=await sb.from('batches').insert(rec).select().single();
   if(error){showToast('error','Unable to save changes. '+error.message);return;}
   const picked=[...document.querySelectorAll('#m_b_students input:checked')].map(x=>x.value);
