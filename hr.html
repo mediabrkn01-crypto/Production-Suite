@@ -3170,16 +3170,42 @@
             if (window.lucide) lucide.createIcons();
         }
 
+// hrLeaveSubmittedInfo — the real submitted-on date/time for a leave request, from its own
+// requested_at column (populated by the database at insert time, never generated here — see
+// the insert sites in common.js/hr.html, none of which set this field themselves). Also
+// classifies it relative to the leave's own start_date: 'late' (submitted after the leave
+// already started — a retroactive request), 'same-day', or 'advance' (the normal case) —
+// purely informational, per spec item 6: this never feeds into the Approve/Reject decision
+// itself, only into what HR sees while deciding.
+        function hrLeaveSubmittedInfo(r) {
+            if (!r.requested_at) return { label: 'Submission time unavailable', title: '', kind: null };
+            const submitted = new Date(r.requested_at);
+            if (isNaN(submitted.getTime())) return { label: 'Submission time unavailable', title: '', kind: null };
+            const dateLabel = submitted.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+            const timeLabel = submitted.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+            const exactTitle = `Submitted: ${dateLabel}\n${submitted.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}`;
+            const submittedDateStr = submitted.toISOString().slice(0, 10);
+            let kind = 'advance';
+            if (r.start_date) {
+                if (submittedDateStr > r.start_date) kind = 'late';
+                else if (submittedDateStr === r.start_date) kind = 'same-day';
+            }
+            return { label: `Submitted: ${dateLabel} · ${timeLabel}`, title: exactTitle, kind };
+        }
+
 // ── renderHRLeaveRequests (orig line 9712) ──
         function renderHRLeaveRequests() {
             const rows = hrLeaveRequests.slice(0, 30);
-            document.getElementById('hr-leave-requests-rows').innerHTML = rows.length ? rows.map(r => `
+            document.getElementById('hr-leave-requests-rows').innerHTML = rows.length ? rows.map(r => {
+                const submitted = hrLeaveSubmittedInfo(r);
+                return `
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
                     <div style="display:flex;align-items:center;gap:10px">
                         ${hrAvatarForEmployeeId(r.employee_id, 30)}
                         <div>
                         <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}</div>
                         <div class="text-[#6b74a0] text-xs">${r.start_date} → ${r.end_date} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
+                        <div class="text-[#6b74a0] text-xs" style="margin-top:2px" title="${submitted.title}">${submitted.label}${submitted.kind === 'late' ? ' <span style="color:#fb923c;font-weight:600">⚠ Submitted after leave date</span>' : submitted.kind === 'same-day' ? ' · <span style="color:#8890b5">Same-day request</span>' : ''}</div>
                         </div>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px">
@@ -3190,7 +3216,7 @@
                         ` : ''}
                     </div>
                 </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
+            `; }).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
         }
 
 // ── hrSyncLeaveToAttendance (orig line 9753) ──
