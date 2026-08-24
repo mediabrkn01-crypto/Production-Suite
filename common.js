@@ -1736,6 +1736,57 @@ function hrOfficialEventFor(employee, dateStr) {
             }
         }
 
+// hrSyncLeaveToAttendance — moved here from hr.html so decideHRLeave (below) can call it from
+// any page. When a leave request is approved, writes/updates an on_leave hr_attendance row for
+// every date in the request's range, so the calendar/payroll's own recorded-row branch shows
+// it consistently with a manually-filed on_leave entry. Untouched logic-wise from the original
+// hr.html version — this fix is only about making decideHRLeave itself exist and work, not
+// about changing what happens once it runs.
+        async function hrSyncLeaveToAttendance(req) {
+            const start = new Date(req.start_date), end = new Date(req.end_date);
+            const dates = [];
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dates.push(new Date(d).toISOString().slice(0,10));
+            for (const dateStr of dates) {
+                const existing = hrAttendance.find(a => a.employee_id === req.employee_id && a.att_date === dateStr);
+                if (existing) {
+                    await dbInstance.from('hr_attendance').update({ status: 'on_leave' }).eq('id', existing.id);
+                } else {
+                    await dbInstance.from('hr_attendance').insert([{ employee_id: req.employee_id, att_date: dateStr, status: 'on_leave' }]);
+                }
+            }
+        }
+
+// decideHRLeave — the Approve/Reject button handler for a leave request, called from both
+// hr.html (HR's own Leave Requests tab) and index.html (a manager's My Team leave list). This
+// function was referenced by both pages' onclick handlers but never actually defined anywhere
+// in the codebase — clicking Approve/Reject called a function that didn't exist, so nothing
+// happened (no error surfaced anywhere visible, since onclick="..." swallows a thrown
+// ReferenceError silently). Writes the real status to hr_leave_requests (the only thing that
+// actually decides the request — nothing here recalculates leave balances separately, since
+// hrComputeLeaveUsed already computes "used" live off approved requests, not a stored
+// counter), then syncs an approved request into hr_attendance (existing, previously orphaned
+// hrSyncLeaveToAttendance) so the calendar reflects it immediately, not just via the
+// live-approved-leave fallback. Each caller is responsible for its own re-render afterward
+// (index.html already chains .then(initMyTeam); hr.html's buttons now chain
+// .then(renderHRLeaveRequests) the same way) — this function only ever does the write.
+        async function decideHRLeave(id, status) {
+            const req = hrLeaveRequests.find(r => r.id === id);
+            if (!req) { if (typeof showToast === 'function') showToast('error', 'Could not find that leave request — try reloading.'); return; }
+            const { error } = await dbInstance.from('hr_leave_requests').update({ status }).eq('id', id);
+            if (error) {
+                console.warn('Could not update leave request:', error.message);
+                if (typeof showToast === 'function') showToast('error', 'Could not update the leave request: ' + error.message); else alert('Could not update the leave request: ' + error.message);
+                return;
+            }
+            req.status = status; // optimistic — reflects immediately even before the reload below finishes
+            if (status === 'approved') {
+                try { await hrSyncLeaveToAttendance(req); } catch (e) { console.warn('Could not sync approved leave to attendance:', e.message); }
+            }
+            if (typeof loadHRData === 'function') await loadHRData();
+            else if (typeof loadMyHRData === 'function') await loadMyHRData();
+            if (typeof showToast === 'function') showToast('success', status === 'approved' ? 'Leave request approved.' : 'Leave request rejected.');
+        }
+
 // ── myHREmployeeRecord (orig line 11445) ──
         function myHREmployeeRecord() {
             return hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());

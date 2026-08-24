@@ -3211,28 +3211,17 @@
                     <div style="display:flex;align-items:center;gap:8px">
                         <span class="hr-badge hr-badge-${r.status}">${r.status}</span>
                         ${r.status === 'pending' ? `
-                            <button onclick="decideHRLeave('${r.id}','approved')" class="hr-icon-btn" style="color:#4ade80">Approve</button>
-                            <button onclick="decideHRLeave('${r.id}','rejected')" class="hr-icon-btn" style="color:#f87171">Reject</button>
+                            <button onclick="decideHRLeave('${r.id}','approved').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#4ade80">Approve</button>
+                            <button onclick="decideHRLeave('${r.id}','rejected').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#f87171">Reject</button>
                         ` : ''}
                     </div>
                 </div>
             `; }).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
         }
 
-// ── hrSyncLeaveToAttendance (orig line 9753) ──
-        async function hrSyncLeaveToAttendance(req) {
-            const start = new Date(req.start_date), end = new Date(req.end_date);
-            const dates = [];
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dates.push(new Date(d).toISOString().slice(0,10));
-            for (const dateStr of dates) {
-                const existing = hrAttendance.find(a => a.employee_id === req.employee_id && a.att_date === dateStr);
-                if (existing) {
-                    await dbInstance.from('hr_attendance').update({ status: 'on_leave' }).eq('id', existing.id);
-                } else {
-                    await dbInstance.from('hr_attendance').insert([{ employee_id: req.employee_id, att_date: dateStr, status: 'on_leave' }]);
-                }
-            }
-        }
+// hrSyncLeaveToAttendance and decideHRLeave moved to common.js — decideHRLeave (the
+// Approve/Reject button handler) needs to be callable from index.html's own My Team leave
+// list too, not just this page.
 
 // ── populateHRLeaveBalanceEmployeeSelect (orig line 9767) ──
         function populateHRLeaveBalanceEmployeeSelect() {
