@@ -1288,13 +1288,20 @@ async function loadAcadDashboard(){
         : '<div class="empty">No batches completing in the next 7 days.</div>';
 
     } else {
-      const tiles = [{ lbl: 'Active Batches', val: activeBatches.length }];
+      // Same acadStatTile() component the Head dashboard uses above — this branch used to
+      // render a much older plain `<div class="card"><div class="lbl">…</div><div class="val">
+      // …</div></div>` with no icon/color/sparkline at all, which is exactly why a Trainer's
+      // Overview tab looked flat and inconsistent next to Media Suite's Pipeline Matrix (and
+      // next to the Head's own dashboard, one role over). Same component, same colors already
+      // used elsewhere in this file — not a new palette, just applied here too.
+      const tiles = [acadStatTile('layers', '#ff0552', activeBatches.length, 'Active Batches', "acadSwitchTab('live')")];
       if (isTrainerCapable) {
-        tiles.push({ lbl: 'My Batches', val: countRows('#myBatches tr') });
+        tiles.push(acadStatTile('book-marked', '#3b82f6', countRows('#myBatches tr'), 'My Batches', "acadSwitchTab('mybatches')"));
         const pendingCount = Array.from(document.querySelectorAll('#myTasks tr')).filter(r => r.children[3] && /pending|in.progress/i.test(r.children[3].textContent)).length;
-        tiles.push({ lbl: 'Pending Tasks', val: pendingCount });
+        tiles.push(acadStatTile('list-check', '#f59e0b', pendingCount, 'Pending Tasks', "acadSwitchTab('tasks')"));
       }
-      document.getElementById('dashSummary').innerHTML = tiles.map(t => `<div class="card"><div class="lbl">${t.lbl}</div><div class="val">${t.val}</div></div>`).join('');
+      document.getElementById('dashSummary').innerHTML = tiles.join('');
+      lucide.createIcons();
       document.getElementById('acadOnLeaveSection').style.display = 'none';
       document.getElementById('acadUpcomingAvailSection').style.display = 'none';
     }
