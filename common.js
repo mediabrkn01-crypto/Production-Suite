@@ -866,44 +866,106 @@ async function loadMyHRData() {
         }
 
 // ── hrFetchAndApplyMyPhoto (orig line 7959) ──
-        async function hrFetchAndApplyMyPhoto() {
-            if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
-            try {
-                // select('*') rather than naming photo_base64 explicitly — on a database where
-                // that column hasn't been added yet, naming it here makes the whole query error
-                // out (PGRST 42703), which silently broke photo sync for every employee, not
-                // just ones with an uploaded photo. select('*') degrades gracefully instead:
-                // rec.photo_base64 below is just undefined if the column doesn't exist.
-                let { data, error } = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
-                if (error) { console.warn('HR photo lookup by email failed:', error.message); return; }
-                if (!data || !data[0]) {
-                    // Fallback: no HR record linked by email — try matching by name instead,
-                    // in case this person's HR record was never given a portal email.
-                    const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
-                    if (!byName.error && byName.data && byName.data[0]) data = byName.data;
-                }
-                if (!data || !data[0]) { console.warn(`HR photo lookup: no hr_employees record found for "${activeUser}" (${activeEmail}). Photo can't sync until HR links this login to an employee record.`); return; }
-                const rec = data[0];
-                const photo = rec.photo_base64 || (rec.photo_url ? hrConvertDriveUrl(rec.photo_url) : null);
-                if (!photo) { console.warn(`HR photo lookup: found employee record "${rec.full_name}" but it has no photo saved yet.`); return; }
-                // Sidebar avatar (bottom-left, next to name/role) — and its mobile-topbar
-                // twin, so the photo is visible immediately on phones too, not just desktop.
-                const photoImgHtml = `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
-                const sidebarAvatar = document.getElementById('sidebar-user-avatar');
-                if (sidebarAvatar) sidebarAvatar.innerHTML = photoImgHtml;
-                const sidebarAvatarMobile = document.getElementById('sidebar-user-avatar-mobile');
-                if (sidebarAvatarMobile) sidebarAvatarMobile.innerHTML = photoImgHtml;
-                // "My Profile Photo" widget on the My Settings page
-                const img = document.getElementById('my-avatar-img');
-                if (img) {
-                    img.src = photo;
-                    img.classList.remove('hidden');
-                    img.onerror = () => img.classList.add('hidden');
-                }
-            } catch (e) {
-                console.warn('Could not load HR-saved profile photo:', e.message);
+// ============================================================================
+// SHARED CURRENT-USER PROFILE LOADER — the one source of truth for the logged-in
+// user's own hr_employees record (name, designation, photo), replacing what used
+// to be three separate near-identical queries: hrFetchAndApplyMyPhoto's own fetch,
+// checkAcademicAccess's own fetch (index.html), and academics.html's own fetch.
+// All three now call this one function instead. Always looked up by portal_email
+// (falling back to full_name only when no portal email is linked yet) — never by
+// a hardcoded name→photo map, so a name change or two similarly-named employees
+// can't cross-wire anyone's photo.
+//
+// Works from any of the three pages without them needing to agree on variable
+// names: resolves the current identity from whichever of activeEmail/activeUser
+// (index.html, hr.html) or currentUser.username/.name (academics.html) actually
+// exists on the page it's running on, and the Supabase client from whichever of
+// dbInstance/mediaHrDB is defined — both point at the same project.
+//
+// Memoized after the first successful fetch, so navigating between tabs/pages
+// (Pipeline → My Profile → Pipeline, switching Academic tabs, etc.) never
+// re-queries and never "loses" the already-loaded photo. Pass true to force a
+// fresh fetch — e.g. right after the user changes their own profile photo.
+let _currentUserProfileCache = null;
+let _currentUserProfilePromise = null;
+function _resolveCurrentUserIdentity() {
+    const email = (typeof activeEmail !== 'undefined' && activeEmail) || (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || null;
+    const name = (typeof activeUser !== 'undefined' && activeUser) || (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || null;
+    const db = (typeof dbInstance !== 'undefined' && dbInstance) || (typeof mediaHrDB !== 'undefined' && mediaHrDB) || null;
+    return { email, name, db };
+}
+async function loadCurrentUserProfile(forceRefresh) {
+    if (_currentUserProfileCache && !forceRefresh) return _currentUserProfileCache;
+    if (_currentUserProfilePromise && !forceRefresh) return _currentUserProfilePromise;
+    _currentUserProfilePromise = (async () => {
+        const { email, name, db } = _resolveCurrentUserIdentity();
+        if (!email || !db) return null;
+        try {
+            // select('*') rather than naming photo_base64 explicitly — on a database where
+            // that column hasn't been added yet, naming it here makes the whole query error
+            // out (PGRST 42703), which silently broke photo sync for every employee, not
+            // just ones with an uploaded photo. select('*') degrades gracefully instead.
+            let { data, error } = await db.from('hr_employees').select('*').eq('portal_email', email.trim().toLowerCase()).limit(1);
+            if (error) { console.warn('loadCurrentUserProfile: lookup by email failed:', error.message); return null; }
+            if (!data || !data[0]) {
+                // Fallback: no HR record linked by email — try matching by name instead, for
+                // an employee whose HR record was never given a portal email. Still a real
+                // identifying-field lookup per employee, never a hardcoded name→photo map.
+                const byName = await db.from('hr_employees').select('*').eq('full_name', name).limit(1);
+                if (!byName.error && byName.data && byName.data[0]) data = byName.data;
             }
+            if (!data || !data[0]) { console.warn(`loadCurrentUserProfile: no hr_employees record found for "${name}" (${email}). Profile can't sync until this login is linked to an employee record.`); return null; }
+            const rec = data[0];
+            const photoUrl = rec.photo_base64 || (rec.photo_url ? hrConvertDriveUrl(rec.photo_url) : null);
+            const title = (typeof hrRoleDisplay === 'function') ? hrRoleDisplay(rec) : (rec.designation || null);
+            _currentUserProfileCache = { employeeId: rec.id, name: rec.full_name || name || '', designation: (title && title !== '—') ? title : null, photoUrl, raw: rec };
+            return _currentUserProfileCache;
+        } catch (e) {
+            console.warn('loadCurrentUserProfile failed:', e.message);
+            return null;
+        } finally {
+            _currentUserProfilePromise = null;
         }
+    })();
+    return _currentUserProfilePromise;
+}
+
+// Applies a loaded profile to every known avatar/name/designation element across all
+// three pages — checks each element's existence first, so it's safe to call from any
+// page; only the elements that page actually has get updated. Uses hrAvatarHTML() for
+// the actual <img>/fallback markup — the same function, not a second hand-written
+// version — so a broken/missing photo always falls back to initials, never a broken-
+// image icon or a blank circle.
+function applyCurrentUserProfileToDOM(profile) {
+    if (!profile) return;
+    if (typeof hrAvatarHTML === 'function') {
+        const sidebarAvatar = document.getElementById('sidebar-user-avatar');
+        if (sidebarAvatar) sidebarAvatar.innerHTML = hrAvatarHTML(profile.raw, 28);
+        const sidebarAvatarMobile = document.getElementById('sidebar-user-avatar-mobile');
+        if (sidebarAvatarMobile) sidebarAvatarMobile.innerHTML = hrAvatarHTML(profile.raw, 26);
+    }
+    if (profile.designation) {
+        ['sidebar-user-role', 'sidebar-user-role-mobile', 'hr-active-role-display', 'hr-topbar-role'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = profile.designation;
+        });
+    }
+    // "My Profile Photo" widget on the My Settings page (index.html)
+    const img = document.getElementById('my-avatar-img');
+    if (img && profile.photoUrl) {
+        img.src = profile.photoUrl;
+        img.classList.remove('hidden');
+        img.onerror = () => { console.warn('my-avatar-img failed to load:', profile.photoUrl); img.classList.add('hidden'); };
+    }
+}
+
+// Kept as the existing call name every page already uses (hrFetchAndApplyMyPhoto()) so
+// nothing calling it needs to change — now backed by the one shared loader above instead
+// of running its own separate query.
+async function hrFetchAndApplyMyPhoto() {
+    const profile = await loadCurrentUserProfile();
+    applyCurrentUserProfileToDOM(profile);
+}
 
 // ── acadSyncTrainersFromHR (orig line 8306) ──
 async function acadSyncTrainersFromHR(){

@@ -1399,6 +1399,15 @@ let _myHREmployeeRecord = null;
 async function _acadGetMyHREmployeeRecord(){
   if (_myHREmployeeRecord) return _myHREmployeeRecord;
   if (!currentUser || !currentUser.username) return null;
+  // Shared loader (common.js) — the same one index.html/hr.html use, so there's one
+  // hr_employees query for this person shared across all three pages, not three separate
+  // ones. Callers here all expect the raw hr_employees row shape (me.full_name,
+  // me.division, etc.), which is exactly profile.raw.
+  if (typeof loadCurrentUserProfile === 'function') {
+    const profile = await loadCurrentUserProfile();
+    _myHREmployeeRecord = profile ? profile.raw : null;
+    return _myHREmployeeRecord;
+  }
   const { data } = await mediaHrDB.from('hr_employees').select('*').eq('portal_email', currentUser.username.trim().toLowerCase()).maybeSingle();
   _myHREmployeeRecord = data || null;
   return _myHREmployeeRecord;

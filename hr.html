@@ -2309,7 +2309,7 @@
         function handleHREmpPhotoUpload(event) {
             const file = event.target.files && event.target.files[0];
             if (!file) return;
-            if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+            if (!file.type.startsWith('image/')) { showToast('warning','Please choose an image file.'); return; }
             const statusEl = document.getElementById('hr-emp-photo-upload-status');
             statusEl.textContent = 'Processing...';
             const reader = new FileReader();
@@ -2472,6 +2472,9 @@
                             if (!hrLeaveBalances.some(b => b.employee_id === existing.id)) {
                                 await hrSeedDefaultLeaveBalances(existing.id);
                             }
+                            if (typeof loadCurrentUserProfile === 'function' && payload.portal_email && activeEmail && payload.portal_email === activeEmail.trim().toLowerCase()) {
+                                applyCurrentUserProfileToDOM(await loadCurrentUserProfile(true));
+                            }
                             closeHREmployeeModal();
                             await loadHRData();
                             renderHREmployees();
@@ -2505,6 +2508,12 @@
                             hrPendingApplicantConversionId = null;
                         }
                     }
+                }
+                // If the record just saved is this logged-in admin's own (portal_email
+                // matches), refresh the shared profile cache so their own sidebar/avatar/
+                // designation update immediately — not just on next page load.
+                if (typeof loadCurrentUserProfile === 'function' && payload.portal_email && activeEmail && payload.portal_email === activeEmail.trim().toLowerCase()) {
+                    applyCurrentUserProfileToDOM(await loadCurrentUserProfile(true));
                 }
                 closeHREmployeeModal();
                 await loadHRData();
@@ -4606,21 +4615,12 @@
             const initials = (activeUser || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();
             if (avatarEl) avatarEl.textContent = initials;
             if (avatarElMobile) avatarElMobile.textContent = initials;
-            // Real HR title, from the same hr_employees.department/designation fields and
-            // hrRoleDisplay() every other page already uses — not a second, HR-only concept
-            // of "role". Photo itself is handled by hrFetchAndApplyMyPhoto() (common.js),
-            // called separately below — it already knows how to update these same elements.
-            try {
-                if (typeof ensureHRDataLoaded === 'function') await ensureHRDataLoaded();
-                const me = typeof myHREmployeeRecord === 'function' ? myHREmployeeRecord() : null;
-                if (me) {
-                    const title = hrRoleDisplay(me);
-                    if (title && title !== '—') {
-                        if (roleEl) roleEl.textContent = title;
-                        if (roleElMobile) roleElMobile.textContent = title;
-                    }
-                }
-            } catch (e) { /* keep the generic fallback already shown */ }
+            // Real HR title + photo come from hrFetchAndApplyMyPhoto() (common.js), called
+            // right after this in bootHRPage() below — it's now backed by the one shared
+            // loadCurrentUserProfile() every page uses, and updates these same elements
+            // (plus sidebar-user-role/-mobile, hr-topbar-role) once the record loads. This
+            // used to run its own separate ensureHRDataLoaded()+myHREmployeeRecord() lookup
+            // here too — removed as a genuine duplicate query for the same person's record.
         }
 
         (function bootHRPage() {

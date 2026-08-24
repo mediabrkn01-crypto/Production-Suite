@@ -6542,23 +6542,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (pipelineGroup) pipelineGroup.classList.remove('hidden'); // default: everyone sees Pipeline
             if (!activeEmail || typeof dbInstance === 'undefined' || !dbInstance) return;
             try {
-                let { data, error } = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
-                if (error) { console.warn('Academic access check failed:', error.message); return; }
-                if (!data || !data[0]) {
-                    const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
-                    if (!byName.error && byName.data && byName.data[0]) data = byName.data;
-                }
-                if (!data || !data[0]) return; // no linked HR record — no academic access, silently
-                const rec = data[0];
-                // Show the employee's real HR title next to their name (e.g. "Academic Head" /
-                // "Senior Video Editor") instead of the generic system-role label, wherever
-                // that record was found — applies to every employee, not just Education.
-                const roleLabelEl = document.getElementById('sidebar-user-role');
-                const roleLabelElMobile = document.getElementById('sidebar-user-role-mobile');
-                if (hrRoleDisplay(rec) !== '—') {
-                    if (roleLabelEl) roleLabelEl.textContent = hrRoleDisplay(rec);
-                    if (roleLabelElMobile) roleLabelElMobile.textContent = hrRoleDisplay(rec);
-                }
+                // Shared loader (common.js) — same query hrFetchAndApplyMyPhoto() already ran
+                // moments ago in launchSession(), memoized, so this reuses that result instead
+                // of running a second near-identical hr_employees query for the same person.
+                const profile = await loadCurrentUserProfile();
+                if (!profile) return; // no linked HR record — no academic access, silently
+                const rec = profile.raw;
+                // Real HR title (e.g. "Academic Head" / "Senior Video Editor") next to the
+                // name, instead of the generic system-role label — applies to every employee,
+                // not just Education. applyCurrentUserProfileToDOM also re-applies the photo,
+                // which is harmless/idempotent here.
+                applyCurrentUserProfileToDOM(profile);
                 if (rec.division !== 'education') return; // not Education dept — no academic access
                 // Academic now lives in its own real app (academics.html) — same pattern as the
                 // HR redirect (switchTab's 'hr' branch → hr.html). The embedded Academic tabs
