@@ -100,6 +100,44 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
 @keyframes acadrise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
 @media(max-width:1000px){.dash-grid{grid-template-columns:1fr}}
+
+/* ── Mobile off-canvas nav — same shared pattern/markup convention as index.html and
+   hr.html's own mobile sidebars (openMobileSidebar/closeMobileSidebar in common.js clone
+   this page's own desktop nav into #mobile-sidebar-nav-host on first open — one source of
+   truth for nav links, not a third hand-copied list). This file previously had NONE of
+   this — desktop-only, unusable on a phone. ── */
+#mobile-topbar{display:none}
+#mobile-nav-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;backdrop-filter:blur(4px)}
+#mobile-nav-overlay.open{display:block}
+#mobile-sidebar{position:fixed;top:0;left:0;bottom:0;width:240px;background:rgba(8,11,20,.98);border-right:1px solid rgba(255,255,255,.07);z-index:50;padding:20px 12px;display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .25s cubic-bezier(.16,1,.3,1);overflow-y:auto}
+#mobile-sidebar.open{transform:translateX(0)}
+@media(max-width:767px){
+  aside{display:none!important}
+  #mobile-topbar{display:flex!important}
+  #app{flex-direction:column!important}
+  .acad-main{padding:12px!important}
+  .dash-grid{grid-template-columns:repeat(2,1fr)!important;gap:8px!important}
+  table{min-width:560px}
+}
+@media(min-width:768px){#mobile-topbar{display:none!important}aside{display:flex!important}}
+
+/* ── General responsive base — dashboard tiles, forms, modals. Deliberately generic
+   selectors (not per-page one-offs) so any future card/form/table added to this file picks
+   these rules up automatically. ── */
+.acad-dash-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.mrow{flex-wrap:wrap}
+@media(max-width:640px){
+  .mrow{flex-direction:column}
+  .mrow>*{width:100%}
+  .lv-row{flex-direction:column;align-items:stretch!important}
+  .lv-field{width:100%}
+  .modal{max-width:calc(100vw - 32px)!important;max-height:85vh;overflow-y:auto}
+  .stu-grid{grid-template-columns:1fr!important}
+}
+/* Scoped to sections that actually contain a table, not every .section card generally —
+   avoids clipping unrelated dropdowns/tooltips that also live inside a .section. */
+.section:has(table){overflow-x:auto;-webkit-overflow-scrolling:touch}
+.section table{min-width:520px}
 .dash-card h3{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
 .dash-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px}
 .dash-row:last-child{border:none}
@@ -217,6 +255,42 @@ details[open] .rawsum::before{content:'▾ '}
     <input id="lp" type="password" placeholder="Password"/>
     <button onclick="doLogin()">Sign In</button>
     <div class="lerr" id="lerr">Invalid username or password.</div>
+  </div>
+</div>
+
+<!-- Mobile off-canvas nav — see the CSS comment above for why this exists. -->
+<div id="mobile-nav-overlay" onclick="closeMobileSidebar()"></div>
+<div id="mobile-sidebar">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="Broken English Final Logo-03.png" style="height:28px;width:auto">
+      <span style="font-size:13px;font-weight:700;color:#f1f5f9">Academic</span>
+    </div>
+    <button onclick="closeMobileSidebar()" style="color:#808a9d;background:none;border:none;cursor:pointer;padding:4px">
+      <i data-lucide="x" style="width:16px;height:16px"></i>
+    </button>
+  </div>
+  <div id="mobile-sidebar-nav-host"></div>
+  <div style="margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
+    <button onclick="logout()" style="display:flex;align-items:center;gap:8px;color:#ef4444;background:none;border:none;cursor:pointer;font-size:12px;font-weight:500;padding:6px 0;width:100%">
+      <i data-lucide="log-out" style="width:14px;height:14px"></i> Log Out
+    </button>
+  </div>
+</div>
+
+<!-- Mobile top bar — hamburger + always-visible profile summary (photo, name, role/
+     designation), so identity is visible immediately on a phone without opening any menu,
+     matching what the desktop sidebar already shows. -->
+<div id="mobile-topbar" style="align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(10,14,23,.95);border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:30;gap:8px">
+  <div style="display:flex;align-items:center;gap:8px;min-width:0">
+    <button onclick="openMobileSidebar()" style="color:#808a9d;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:6px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">
+      <i data-lucide="menu" style="width:16px;height:16px"></i>
+    </button>
+    <div id="acad-user-avatar-wrap-mobile" style="flex-shrink:0"><div id="acad-user-avatar-mobile" style="width:26px;height:26px;border-radius:50%;background:rgba(255,107,6,.15);border:1px solid rgba(255,107,6,.3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#ff6b06;overflow:hidden">?</div></div>
+    <div style="min-width:0">
+      <div id="acad-user-name-mobile" style="font-size:12px;font-weight:600;color:#f1f5f9;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+      <div id="acad-user-role-mobile" style="font-size:9px;color:#808a9d;line-height:1.2">—</div>
+    </div>
   </div>
 </div>
 
@@ -1029,6 +1103,10 @@ async function boot(){
   document.getElementById('acad-user-name').textContent = currentUser.name || '—';
   document.getElementById('acad-user-role').textContent = roleLabel;
   document.getElementById('acad-user-avatar').textContent = initials || '?';
+  // Same summary, mirrored onto the mobile topbar — visible immediately on a phone too.
+  const nameElMobile = document.getElementById('acad-user-name-mobile'); if (nameElMobile) nameElMobile.textContent = currentUser.name || '—';
+  const roleElMobile = document.getElementById('acad-user-role-mobile'); if (roleElMobile) roleElMobile.textContent = roleLabel;
+  const avatarElMobile = document.getElementById('acad-user-avatar-mobile'); if (avatarElMobile) avatarElMobile.textContent = initials || '?';
   document.getElementById('acad-role-badge').textContent = roleLabel;
   document.getElementById('acad-date-text').textContent = new Date().toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
   // Same-tab navigation either way (see logout()) — no "close tab" special case needed.
@@ -1378,6 +1456,8 @@ async function loadMyProfileTab(){
     // sidebar photo from ever showing — that used to be one fragile try block.
     const avatarWrap = document.getElementById('acad-user-avatar-wrap');
     if (avatarWrap) avatarWrap.innerHTML = _acadAvatarHTML(me, 28);
+    const avatarWrapMobile = document.getElementById('acad-user-avatar-wrap-mobile');
+    if (avatarWrapMobile) avatarWrapMobile.innerHTML = _acadAvatarHTML(me, 26);
     const divisionLabel = ({education:'Education',production:'Production House',hr:'HR',accounts:'Accounts',other:'Other'})[me.division] || me.division;
     const roleInfo = _acadRoleInfo(me);
     body.innerHTML = [

@@ -886,11 +886,13 @@ async function loadMyHRData() {
                 const rec = data[0];
                 const photo = rec.photo_base64 || (rec.photo_url ? hrConvertDriveUrl(rec.photo_url) : null);
                 if (!photo) { console.warn(`HR photo lookup: found employee record "${rec.full_name}" but it has no photo saved yet.`); return; }
-                // Sidebar avatar (bottom-left, next to name/role)
+                // Sidebar avatar (bottom-left, next to name/role) — and its mobile-topbar
+                // twin, so the photo is visible immediately on phones too, not just desktop.
+                const photoImgHtml = `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
                 const sidebarAvatar = document.getElementById('sidebar-user-avatar');
-                if (sidebarAvatar) {
-                    sidebarAvatar.innerHTML = `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
-                }
+                if (sidebarAvatar) sidebarAvatar.innerHTML = photoImgHtml;
+                const sidebarAvatarMobile = document.getElementById('sidebar-user-avatar-mobile');
+                if (sidebarAvatarMobile) sidebarAvatarMobile.innerHTML = photoImgHtml;
                 // "My Profile Photo" widget on the My Settings page
                 const img = document.getElementById('my-avatar-img');
                 if (img) {
@@ -1746,7 +1748,10 @@ async function acadSyncTrainersFromHR(){
     if (!host) {
       host = document.createElement('div');
       host.id = 'be-toast-host';
-      host.style.cssText = 'position:fixed;top:78px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:360px;pointer-events:none;font-family:inherit';
+      // max-width:min(360px, 100vw - 40px) — on a narrow phone (320-430px) the toast shrinks
+      // to fit the available width minus its side margins instead of clipping against the
+      // viewport edge; on a wider screen the 360px cap wins as before.
+      host.style.cssText = 'position:fixed;top:70px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:min(360px,calc(100vw - 40px));pointer-events:none;font-family:inherit';
       document.body.appendChild(host);
     }
     return host;
@@ -1790,7 +1795,7 @@ async function acadSyncTrainersFromHR(){
   function beOverlayShell(innerHtml){
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(4,6,12,.72);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .18s ease;font-family:inherit';
-    overlay.innerHTML = `<div style="width:100%;max-width:400px;background:${BE_COLORS.panelBg};border:1px solid ${BE_COLORS.border};border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(8px);transition:transform .18s ease">${innerHtml}</div>`;
+    overlay.innerHTML = `<div style="width:100%;max-width:400px;max-height:85vh;overflow-y:auto;background:${BE_COLORS.panelBg};border:1px solid ${BE_COLORS.border};border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(8px);transition:transform .18s ease;box-sizing:border-box">${innerHtml}</div>`;
     return overlay;
   }
 
@@ -1872,3 +1877,49 @@ async function acadSyncTrainersFromHR(){
     showToast(type, msg, 6000);
   };
 })();
+
+// ============================================================================
+// SHARED MOBILE OFF-CANVAS SIDEBAR — index.html already has its own working
+// version of this (hand-written mobile nav links, left untouched — no reason
+// to risk it). hr.html and academics.html did not: hr.html had the CSS to
+// HIDE its desktop sidebar below 768px but no replacement at all (a real,
+// severe bug — HR had no way to navigate on a phone); academics.html had
+// neither the CSS nor the markup. Both now use this one shared
+// implementation instead of a third hand-copied nav list to maintain.
+//
+// Rather than duplicating each page's nav links a second time (guaranteed to
+// drift out of sync the next time a nav item is added), this clones the
+// EXISTING desktop sidebar's nav markup into the mobile drawer the first
+// time it opens, and rewrites each link's onclick to also close the drawer
+// afterward. One source of truth for nav links, on every page, always.
+// Requires the page to have a real desktop <aside> containing an element
+// matching MOBILE_SIDEBAR_NAV_SELECTOR (each page defines its own — see the
+// window.MOBILE_SIDEBAR_NAV_SELECTOR assignment near that page's own sidebar
+// markup) and to include the three host elements in its own HTML:
+// #mobile-nav-overlay, #mobile-sidebar > (a header) + #mobile-sidebar-nav-host,
+// #mobile-topbar.
+function openMobileSidebar(){
+  const mobileSidebar = document.getElementById('mobile-sidebar');
+  const overlay = document.getElementById('mobile-nav-overlay');
+  const navHost = document.getElementById('mobile-sidebar-nav-host');
+  if (!mobileSidebar || !overlay) return;
+  if (navHost && !navHost.dataset.cloned) {
+    const sourceSelector = window.MOBILE_SIDEBAR_NAV_SELECTOR || 'aside .sidebar-nav-scroll';
+    const source = document.querySelector(sourceSelector);
+    if (source) {
+      navHost.innerHTML = source.innerHTML;
+      navHost.dataset.cloned = '1';
+      navHost.querySelectorAll('button[onclick], a[onclick]').forEach(el => {
+        const orig = el.getAttribute('onclick') || '';
+        if (!orig.includes('closeMobileSidebar')) el.setAttribute('onclick', orig + ';closeMobileSidebar()');
+      });
+    }
+  }
+  mobileSidebar.classList.add('open');
+  overlay.classList.add('open');
+  if (window.lucide) lucide.createIcons();
+}
+function closeMobileSidebar(){
+  document.getElementById('mobile-sidebar')?.classList.remove('open');
+  document.getElementById('mobile-nav-overlay')?.classList.remove('open');
+}
