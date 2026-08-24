@@ -113,6 +113,15 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
             'Work From Home': 10
         };
         const HR_ATT_STATUSES = ['present', 'absent', 'late', 'afternoon', 'half_day', 'wfh', 'on_leave', 'holiday'];
+        // Monthly paid-leave allowance (payroll policy, not a per-leave-type balance): the
+        // first N approved leave days in a calendar month across every eligible paid leave
+        // type are fully paid; only days beyond this become LOP. 'Unpaid Leave' and 'Work From
+        // Home' are never eligible — Unpaid Leave is LOP by definition, WFH is already counted
+        // as a worked/present day, not leave, elsewhere in this file. There is no separate
+        // "always-paid medical/special exception" flag in hr_leave_requests today (only
+        // leave_type), so every other approved leave_type (Casual/Sick/Annual/Emergency Leave)
+        // is treated as eligible — see hrCalculatePayrollForMonth.
+        const HR_MONTHLY_PAID_LEAVE_DAYS = 3;
         // ── Late auto-detection ─────────────────────────────────────────────────────
         // Single cutoff, single source of truth: clock in at/before this hour → Present;
         // after it → Present + Late. Simplified to exactly this 2-state model per spec
@@ -1038,7 +1047,7 @@ function applyCurrentUserProfileToDOM(profile) {
         // with the Academic module's own sidebar header. Added here so it's set by the same
         // one shared profile write every other designation display already goes through,
         // instead of a second, differently-sourced value racing with this one.
-        ['sidebar-user-role', 'sidebar-user-role-mobile', 'hr-active-role-display', 'hr-topbar-role', 'user-role-badge'].forEach(id => {
+        ['sidebar-user-role', 'sidebar-user-role-mobile', 'hr-active-role-display', 'hr-topbar-role', 'user-role-badge', 'hr-role-badge'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = profile.designation;
         });
@@ -1341,7 +1350,10 @@ function hrOfficialEventFor(employee, dateStr) {
             const elapsedDays = monthPrefix < todayMonthPrefix ? daysInMonth
                 : monthPrefix > todayMonthPrefix ? 0
                 : Number(todayStr.slice(8, 10));
-            let paidLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0, preJoiningDays = 0, officialEventDays = 0;
+            // eligibleLeaveDays accumulates every approved paid-type leave day seen in the
+            // loop below; it's capped to HR_MONTHLY_PAID_LEAVE_DAYS AFTER the loop (paidLeaveDays)
+            // with the remainder folded into LOP (excessLeaveDays) — see below the loop.
+            let eligibleLeaveDays = 0, unpaidLeaveDays = 0, absentDays = 0, holidayDays = 0, weeklyOffDays = 0, presentDays = 0, halfDayDays = 0, preJoiningDays = 0, officialEventDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
@@ -1372,7 +1384,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     if (rec.status === 'on_leave') {
                         const leave = hrApprovedLeaveFor(employeeId, dateStr);
                         if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
-                        paidLeaveDays++; continue;
+                        eligibleLeaveDays++; continue;
                     }
                     if (rec.status === 'half_day') { halfDayDays++; continue; }
                     presentDays++; continue; // present, late, wfh — all worked
@@ -1389,7 +1401,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 if (leave) {
                     if (leave.leave_type === 'Work From Home') { presentDays++; continue; }
                     if (leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
-                    paidLeaveDays++; continue;
+                    eligibleLeaveDays++; continue;
                 }
                 // Official Event / Paid Special Day — a paid, non-absence day by default (spec
                 // item 12), tracked in its own bucket rather than folded into presentDays (no
@@ -1409,11 +1421,19 @@ function hrOfficialEventFor(employee, dateStr) {
                 // date-boundary rule.)
                 absentDays++;
             }
-            // LOP: every day that isn't Present, Approved Paid Leave, Official Event, Weekly
-            // Off, or Holiday — plus pre-joining days, which reduce pay the same way but aren't
-            // "LOP" in the attendance-discipline sense, so they're reported separately (see
-            // preJoiningDays).
-            const lopDays = unpaidLeaveDays + absentDays + halfDayDays * 0.5;
+            // Monthly paid-leave allowance: only the first HR_MONTHLY_PAID_LEAVE_DAYS approved
+            // eligible-leave days in the month are paidLeaveDays; anything beyond that is
+            // excessLeaveDays, which is LOP the same as Unpaid Leave — the employee took more
+            // leave than the monthly allowance covers, regardless of which leave_type it was
+            // filed under. Order doesn't matter for the deduction amount (every day in a month
+            // has the same dailySalary), only the total count does.
+            const paidLeaveDays = Math.min(eligibleLeaveDays, HR_MONTHLY_PAID_LEAVE_DAYS);
+            const excessLeaveDays = Math.max(0, eligibleLeaveDays - HR_MONTHLY_PAID_LEAVE_DAYS);
+            // LOP: every day that isn't Present, Approved Paid Leave (within the monthly
+            // allowance), Official Event, Weekly Off, or Holiday — plus pre-joining days, which
+            // reduce pay the same way but aren't "LOP" in the attendance-discipline sense, so
+            // they're reported separately (see preJoiningDays).
+            const lopDays = unpaidLeaveDays + absentDays + excessLeaveDays + halfDayDays * 0.5;
             const payableDays = presentDays + paidLeaveDays + officialEventDays + weeklyOffDays + holidayDays + halfDayDays * 0.5;
             const futureDays = daysInMonth - elapsedDays; // not yet occurred — never paid, never LOP'd, simply not evaluated
             // Basic is prorated to the elapsed portion of the month, not always the full salary
@@ -1421,7 +1441,7 @@ function hrOfficialEventFor(employee, dateStr) {
             // (elapsedDays === daysInMonth), so nothing changes for normal end-of-month payroll.
             const earnedBasic = Math.round(dailySalary * elapsedDays * 100) / 100;
             const leaveDeduction = Math.round(dailySalary * (lopDays + preJoiningDays) * 100) / 100;
-            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, officialEventDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
+            return { salary, daysInMonth, dailySalary, presentDays, paidLeaveDays, eligibleLeaveDays, excessLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, officialEventDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
         }
 
 // ── hrProbationEndDate (orig line 10650) ──

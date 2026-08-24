@@ -570,7 +570,12 @@
                     <img src="Broken English Final Logo-03.png" alt="Broken English Logo" style="height:32px;width:auto;object-fit:contain" onerror="this.style.display='none'">
                     <div>
                         <div style="font-size:13px;font-weight:700;letter-spacing:0.5px;line-height:1;color:#f1f5f9">HR Management</div>
-                        <div style="font-size:9px;letter-spacing:0.5px;font-weight:600;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Broken English Media Suite</div>
+                        <!-- Was hardcoded "Broken English Media Suite" — wrong module name and
+                             inconsistent with index.html's user-role-badge / academics.html's
+                             acad-role-badge, which both show the logged-in user's actual
+                             designation here instead. Now the same shared write
+                             (applyCurrentUserProfileToDOM in common.js) fills this in too. -->
+                        <div id="hr-role-badge" style="font-size:9px;letter-spacing:0.5px;font-weight:600;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"></div>
                     </div>
                 </div>
             </div>
@@ -3697,7 +3702,10 @@
             const active2 = hrEmployees.filter(e => e.employment_status === 'active');
             const rows = active2.map(e => {
                 const p = hrCalculatePayrollForMonth(e.id, month);
-                const counts = { present: p.presentDays, absent: p.absentDays, late: 0, afternoon: 0, half_day: p.halfDayDays, wfh: 0, on_leave: p.paidLeaveDays + p.unpaidLeaveDays };
+                // on_leave here is total leave days taken (paid + beyond the monthly paid-leave
+                // allowance + unpaid) — p.paidLeaveDays alone would undercount once someone
+                // exceeds the allowance, since the excess is still a leave day, just LOP'd.
+                const counts = { present: p.presentDays, absent: p.absentDays, late: 0, afternoon: 0, half_day: p.halfDayDays, wfh: 0, on_leave: p.paidLeaveDays + p.excessLeaveDays + p.unpaidLeaveDays };
                 // presentDays already folds in late/afternoon/wfh (see hrCalculatePayrollForMonth's
                 // fallthrough) — split them back out here purely for this table's own columns,
                 // without changing what actually counts toward the percentage.
@@ -3882,7 +3890,7 @@
             }
 
             return { emp: e, pct, applicableWorkingDays, presentDays: p.presentDays, lateCount, afternoonCount,
-                      leaveDays: p.paidLeaveDays + p.unpaidLeaveDays, absentDays: p.absentDays, avgHours, payrollRow, work };
+                      leaveDays: p.paidLeaveDays + p.excessLeaveDays + p.unpaidLeaveDays, absentDays: p.absentDays, avgHours, payrollRow, work };
         }
 
 // ── renderHRWorkforceReport (orig line 10512) ──
@@ -4342,7 +4350,7 @@
             document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays} · LOP: ${calc.lopDays} (Unpaid Leave ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''})` +
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays}${calc.excessLeaveDays ? ` (of ${calc.eligibleLeaveDays} taken — first ${HR_MONTHLY_PAID_LEAVE_DAYS}/month paid)` : ''} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays}${calc.officialEventDays ? ` · Official Event: ${calc.officialEventDays}` : ''} · LOP: ${calc.lopDays} (Unpaid Leave ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.excessLeaveDays ? ` + Excess Leave ${calc.excessLeaveDays}` : ''}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''})` +
                 `${calc.preJoiningDays ? ` · Before joining: ${calc.preJoiningDays} day(s) (also deducted — not yet employed, counted separately from LOP)` : ''}` +
                 ` — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
