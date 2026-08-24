@@ -2495,7 +2495,7 @@
             }
             const emp = hrEmployees.find(e => e.id === id);
             const empName = emp ? emp.full_name : 'this employee';
-            if (!confirm(`Delete ${empName} permanently?\n\nThis removes their account and ALL active access — HR, Media, Academic, and every other protected module — they will no longer be able to log in.\n\nHistorical records required for compliance (attendance, leave requests, payroll, salary history) are KEPT but detached from this employee. Their documents and leave balances are removed.\n\nThis cannot be undone. Continue?`)) return;
+            if (!(await showConfirm(`This removes their account and ALL active access — HR, Media, Academic, and every other protected module — they will no longer be able to log in.\n\nHistorical records required for compliance (attendance, leave requests, payroll, salary history) are KEPT but detached from this employee. Their documents and leave balances are removed.\n\nThis cannot be undone.`, { title: `Delete ${empName} permanently?`, confirmLabel: 'Delete Employee', danger: true }))) return;
 
             let deleted = false;
             try {
@@ -2518,18 +2518,18 @@
 
                 const { error } = await dbInstance.from('hr_employees').delete().eq('id', id);
                 if (error) {
-                    alert('Could not delete this employee.\n\nReason: ' + error.message + '\n\nTheir login access and non-historical records were already removed, but the employee record itself could not be deleted. Please check with whoever manages the database.');
+                    showToast('error', 'Unable to delete employee. Please try again.\n\nReason: ' + error.message, 7000);
                 } else {
                     deleted = true;
                 }
             } catch (e) {
-                alert('Delete failed: ' + e.message + '\n\nSome related records may have been removed even though the employee record itself was not. Please check with whoever manages the database.');
+                showToast('error', 'Unable to delete employee. Please try again.\n\n' + e.message, 7000);
             }
             // Always re-fetch from the database, whether this succeeded or not — the visible
             // list must always reflect what's actually there, never a locally-filtered guess.
             await loadHRData();
             renderHREmployees();
-            if (deleted) alert(`${empName} has been permanently deleted.`);
+            if (deleted) showToast('success', `${empName} deleted successfully`);
         }
 
 // ── populateHREmployeeFilterOptions (orig line 9325) ──
@@ -3107,7 +3107,7 @@
 
 // ── deleteHREmployeeDocument (orig line 9892) ──
         async function deleteHREmployeeDocument(docId) {
-            if (!confirm('Delete this document?')) return;
+            if (!(await showConfirm('This cannot be undone.', { title: 'Delete this document?', confirmLabel: 'Delete', danger: true }))) return;
             await dbInstance.from('hr_employee_documents').delete().eq('id', docId);
             await loadHRData();
             renderHREmployeeProfile();
@@ -3203,7 +3203,7 @@
 
 // ── deleteHRJob (orig line 9977) ──
         async function deleteHRJob(jobId) {
-            if (!confirm('Delete this job opening and all its applicants?')) return;
+            if (!(await showConfirm('This cannot be undone.', { title: 'Delete this job opening and all its applicants?', confirmLabel: 'Delete', danger: true }))) return;
             await dbInstance.from('hr_job_openings').delete().eq('id', jobId);
             await loadHRData();
             renderHRRecruitment();
@@ -3337,7 +3337,7 @@
 
 // ── deleteHRApplicant (orig line 10106) ──
         async function deleteHRApplicant(id) {
-            if (!confirm('Delete this applicant?')) return;
+            if (!(await showConfirm('This cannot be undone.', { title: 'Delete this applicant?', confirmLabel: 'Delete', danger: true }))) return;
             await dbInstance.from('hr_applicants').delete().eq('id', id);
             await loadHRData();
             renderHRApplicantsList();
@@ -3873,7 +3873,7 @@
 
 // ── deleteHRHoliday (orig line 10717) ──
         async function deleteHRHoliday(id) {
-            if (!confirm('Remove this holiday from the calendar?')) return;
+            if (!(await showConfirm('This cannot be undone.', { title: 'Remove this holiday from the calendar?', confirmLabel: 'Remove', danger: true }))) return;
             await dbInstance.from('hr_holidays').delete().eq('id', id);
             await loadHRData();
             renderHRHolidays();
@@ -4037,7 +4037,7 @@
             if (!month) { alert('Pick a payroll month first.'); return; }
             const active = hrEmployees.filter(e => e.employment_status === 'active');
             if (!active.length) { alert('No active employees to generate payslips for.'); return; }
-            if (!confirm(`Generate payslips for all ${active.length} active employee(s) for ${month}?\n\nAnyone who already has a payslip for this month will have it recalculated and updated — not duplicated.`)) return;
+            if (!(await showConfirm(`Anyone who already has a payslip for this month will have it recalculated and updated — not duplicated.`, { title: `Generate payslips for all ${active.length} active employee(s) for ${month}?`, confirmLabel: 'Generate' }))) return;
 
             const statusEl = document.getElementById('hr-payroll-bulk-status');
             const payment_date = hrDefaultPaymentDateFor(month);
@@ -4157,7 +4157,7 @@
 
 // ── revokeHRPayslipAccess (orig line 11015) ──
         async function revokeHRPayslipAccess(id) {
-            if (!confirm('Revoke this employee\'s access to this payslip? It will go back to Draft (HR only) until you Send it again.')) return;
+            if (!(await showConfirm('It will go back to Draft (HR only) until you Send it again.', { title: 'Revoke this employee\'s access to this payslip?', confirmLabel: 'Revoke Access', danger: true }))) return;
             const { error } = await hrSetPayrollPublished(id, false);
             if (error) { alert(error.message); return; }
             await loadHRData();
@@ -4171,7 +4171,7 @@
             if (!month) { alert('Pick a payroll month first.'); return; }
             const rows = hrPayroll.filter(p => p.month === month && !p.published);
             if (!rows.length) { alert('Nothing to send — every payslip for this month is already published, or none have been generated yet.'); return; }
-            if (!confirm(`Send ${rows.length} payslip(s) for ${month} to their respective employees?\n\nEach employee will only be able to see their own payslip.`)) return;
+            if (!(await showConfirm(`Each employee will only be able to see their own payslip.`, { title: `Send ${rows.length} payslip(s) for ${month} to their respective employees?`, confirmLabel: 'Send' }))) return;
             const statusEl = document.getElementById('hr-payroll-bulk-status');
             let sent = 0, failed = [];
             for (const p of rows) {
@@ -4191,7 +4191,7 @@
         async function deleteSelectedHRPayroll() {
             if (!hrSelectedPayrollIds.size) { alert('No payslips selected.'); return; }
             const ids = [...hrSelectedPayrollIds];
-            if (!confirm(`Delete ${ids.length} selected payroll record(s)? This cannot be undone.`)) return;
+            if (!(await showConfirm('This cannot be undone.', { title: `Delete ${ids.length} selected payroll record(s)?`, confirmLabel: 'Delete', danger: true }))) return;
             const statusEl = document.getElementById('hr-payroll-bulk-status');
             let deleted = 0, failed = [];
             for (const id of ids) {

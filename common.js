@@ -1719,3 +1719,156 @@ async function acadSyncTrainersFromHR(){
         function closeBirthdayPopup() {
             document.getElementById('birthday-popup-overlay')?.classList.add('hidden');
         }
+
+// ============================================================================
+// SHARED IN-APP NOTIFICATION SYSTEM — toasts + confirm/prompt modals, replacing
+// native alert()/confirm()/prompt() everywhere. One implementation here (common.js
+// is loaded by index.html, hr.html, and academics.html already) so every page
+// behaves identically instead of three separate copies. Self-contained inline
+// styles — deliberately does NOT depend on any one page's own CSS custom
+// properties (each of the three files defines its own, differently-named set),
+// so the same toast/modal renders correctly no matter which page is showing it.
+// Colors match the existing Broken English dark theme + orange→pink→red brand
+// gradient already used everywhere (sidebar accents, primary buttons, badges).
+// ============================================================================
+(function(){
+  const BE_COLORS = {
+    bg: '#12162a', panelBg: '#0f1121', border: 'rgba(255,255,255,.1)',
+    text: '#f1f5f9', muted: '#a5adcf',
+    success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6',
+    gradient: 'linear-gradient(135deg,#ff6b06,#f9182f,#ff0552)',
+    dangerGradient: 'linear-gradient(135deg,#f9182f,#ff0552)'
+  };
+  const BE_ICONS = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+
+  function beEnsureToastHost(){
+    let host = document.getElementById('be-toast-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'be-toast-host';
+      host.style.cssText = 'position:fixed;top:78px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:360px;pointer-events:none;font-family:inherit';
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+
+  // showToast(type, message, durationMs?) — type is 'success'|'error'|'warning'|'info'.
+  // Auto-dismisses after durationMs (default 4000ms); click the × to dismiss early.
+  // Returns a dismiss() function in case a caller wants to close it programmatically.
+  window.showToast = function(type, message, durationMs){
+    type = BE_ICONS[type] ? type : 'info';
+    durationMs = durationMs || 4200;
+    const host = beEnsureToastHost();
+    const accent = BE_COLORS[type];
+    const el = document.createElement('div');
+    el.style.cssText = `pointer-events:auto;display:flex;align-items:flex-start;gap:10px;background:${BE_COLORS.bg};border:1px solid ${BE_COLORS.border};border-left:3px solid ${accent};border-radius:10px;padding:12px 14px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:13px;color:${BE_COLORS.text};opacity:0;transform:translateX(16px);transition:opacity .25s ease,transform .25s ease`;
+    el.innerHTML = `<span style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:${accent}22;color:${accent};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${BE_ICONS[type]}</span>`
+      + `<span style="flex:1;line-height:1.45;padding-top:1px;white-space:pre-line;word-break:break-word">${message}</span>`
+      + `<span data-be-toast-close style="cursor:pointer;color:${BE_COLORS.muted};font-size:15px;line-height:1;padding:1px 2px" title="Dismiss">&times;</span>`;
+    host.appendChild(el);
+    requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+    let timer;
+    const dismiss = () => {
+      clearTimeout(timer);
+      el.style.opacity = '0'; el.style.transform = 'translateX(16px)';
+      setTimeout(() => el.remove(), 220);
+    };
+    el.querySelector('[data-be-toast-close]').onclick = dismiss;
+    timer = setTimeout(dismiss, durationMs);
+    return dismiss;
+  };
+
+  function beEnsureModalHost(){
+    let host = document.getElementById('be-modal-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'be-modal-host';
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+  function beOverlayShell(innerHtml){
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(4,6,12,.72);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .18s ease;font-family:inherit';
+    overlay.innerHTML = `<div style="width:100%;max-width:400px;background:${BE_COLORS.panelBg};border:1px solid ${BE_COLORS.border};border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(8px);transition:transform .18s ease">${innerHtml}</div>`;
+    return overlay;
+  }
+
+  // showConfirm(message, opts?) -> Promise<boolean>. Replaces window.confirm().
+  // opts: { title, confirmLabel, cancelLabel, danger } — danger:true uses the red
+  // accent for destructive actions (delete employee/course/batch/student/trainer, etc).
+  window.showConfirm = function(message, opts){
+    opts = opts || {};
+    return new Promise(resolve => {
+      const host = beEnsureModalHost();
+      const confirmBg = opts.danger ? BE_COLORS.dangerGradient : BE_COLORS.gradient;
+      const overlay = beOverlayShell(`
+        <div style="font-size:16px;font-weight:800;color:${BE_COLORS.text};margin-bottom:10px">${opts.title || (opts.danger ? 'Are you sure?' : 'Confirm')}</div>
+        <div style="font-size:13px;color:${BE_COLORS.muted};line-height:1.55;white-space:pre-line;margin-bottom:20px">${message}</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button data-be-cancel style="padding:10px 16px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1;font-weight:600;font-size:13px;cursor:pointer">${opts.cancelLabel || 'Cancel'}</button>
+          <button data-be-confirm style="padding:10px 16px;border-radius:9px;border:none;background:${confirmBg};color:#fff;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 18px rgba(237,31,81,.35)">${opts.confirmLabel || 'Confirm'}</button>
+        </div>`);
+      host.appendChild(overlay);
+      requestAnimationFrame(() => { overlay.style.opacity = '1'; overlay.firstElementChild.style.transform = 'translateY(0)'; overlay.querySelector('[data-be-confirm]')?.focus(); });
+      const cleanup = (result) => { overlay.style.opacity = '0'; setTimeout(() => overlay.remove(), 150); resolve(result); };
+      overlay.querySelector('[data-be-cancel]').onclick = () => cleanup(false);
+      overlay.querySelector('[data-be-confirm]').onclick = () => cleanup(true);
+      overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+      const escHandler = (e) => { if (e.key === 'Escape') { cleanup(false); document.removeEventListener('keydown', escHandler); } };
+      document.addEventListener('keydown', escHandler);
+    });
+  };
+
+  // showPrompt(message, opts?) -> Promise<string|null>. Replaces window.prompt().
+  // opts: { title, defaultValue, placeholder, confirmLabel, requireExact } —
+  // requireExact (a string) keeps Confirm disabled until the typed value matches
+  // it (case-insensitive) — mirrors the existing "type DELETE to confirm" guard.
+  window.showPrompt = function(message, opts){
+    opts = opts || {};
+    return new Promise(resolve => {
+      const host = beEnsureModalHost();
+      const overlay = beOverlayShell(`
+        <div style="font-size:16px;font-weight:800;color:${BE_COLORS.text};margin-bottom:10px">${opts.title || 'Confirm'}</div>
+        <div style="font-size:13px;color:${BE_COLORS.muted};line-height:1.55;white-space:pre-line;margin-bottom:14px">${message}</div>
+        <input data-be-input type="text" placeholder="${opts.placeholder || ''}" value="${opts.defaultValue || ''}" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:10px 12px;color:${BE_COLORS.text};font-size:13px;outline:none;margin-bottom:20px">
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button data-be-cancel style="padding:10px 16px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1;font-weight:600;font-size:13px;cursor:pointer">Cancel</button>
+          <button data-be-confirm style="padding:10px 16px;border-radius:9px;border:none;background:${BE_COLORS.dangerGradient};color:#fff;font-weight:700;font-size:13px;cursor:pointer" ${opts.requireExact ? 'disabled' : ''}>${opts.confirmLabel || 'OK'}</button>
+        </div>`);
+      host.appendChild(overlay);
+      const input = overlay.querySelector('[data-be-input]');
+      const confirmBtn = overlay.querySelector('[data-be-confirm]');
+      confirmBtn.style.opacity = opts.requireExact ? '.5' : '1';
+      requestAnimationFrame(() => { overlay.style.opacity = '1'; overlay.firstElementChild.style.transform = 'translateY(0)'; input.focus(); input.select(); });
+      if (opts.requireExact) {
+        input.addEventListener('input', () => {
+          const ok = input.value.trim().toLowerCase() === String(opts.requireExact).toLowerCase();
+          confirmBtn.disabled = !ok;
+          confirmBtn.style.opacity = ok ? '1' : '.5';
+        });
+      }
+      const cleanup = (result) => { overlay.style.opacity = '0'; setTimeout(() => overlay.remove(), 150); resolve(result); };
+      overlay.querySelector('[data-be-cancel]').onclick = () => cleanup(null);
+      confirmBtn.onclick = () => { if (!confirmBtn.disabled) cleanup(input.value); };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmBtn.disabled) cleanup(input.value); });
+      overlay.onclick = (e) => { if (e.target === overlay) cleanup(null); };
+    });
+  };
+
+  // Global safety net: any alert() call site not individually converted to showToast()
+  // still renders through the branded toast instead of a native browser popup — the hard
+  // requirement is "never a native popup," and this guarantees that everywhere, even for
+  // calls this pass didn't reach individually. Type is classified from the same message
+  // conventions already used throughout this codebase (a leading ✓/⚠/✕, or keywords like
+  // "Cannot"/"failed"/"Could not" for errors) — individually-converted call sites still pass
+  // their own explicit type, which is always more accurate than this guess.
+  window.alert = function(message){
+    const msg = String(message == null ? '' : message);
+    let type = 'info';
+    if (/^✓|success|saved|created|updated|deleted|sent|complete/i.test(msg)) type = 'success';
+    else if (/^⚠|warning|already|not available|unavailable|at capacity/i.test(msg)) type = 'warning';
+    else if (/^✕|cannot|could not|failed|unable|error/i.test(msg)) type = 'error';
+    showToast(type, msg, 6000);
+  };
+})();

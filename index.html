@@ -1964,7 +1964,11 @@
         }
         function beAlert(message) { return _beModalShow({ message, showCancel: false }); }
         function beConfirm(message, danger = false) { return _beModalShow({ message, showCancel: true, okText: 'OK', danger }); }
-        window.alert = beAlert;
+        // window.alert override removed — common.js (loaded before this inline script) now
+        // sets its own shared toast-based override, covering every page identically, so any
+        // alert() call not individually converted to showToast() still renders as a toast,
+        // not a modal, consistently across index.html/hr.html/academics.html. beAlert/
+        // beConfirm/bePrompt stay defined and in use below for call sites already using them.
 
         // Branded prompt — text input inside our modal, replaces all native prompt() calls
         function bePrompt(message, placeholder = '') {
@@ -6708,24 +6712,24 @@ async function setBaseline(i){
   const name=b.raw||b.name;
   const total=b.elite?20:32;
   const cur=(window._baseMap&&window._baseMap[name])||0;
-  const v=prompt('Sessions already completed for "'+name+'" before tracking started (0\u2013'+total+'):\nGoing forward, attendance adds on top of this.',cur);
+  const v=await bePrompt(`Sessions already completed for "${name}" before tracking started (0\u2013${total}):<br>Going forward, attendance adds on top of this.`, String(cur));
   if(v===null)return;
   const n=Math.max(0,Math.min(total,parseInt(v)||0));
   try{
     let {data:ex}=await acadDB.from('batches').select('id').eq('name',name).maybeSingle();
     if(ex&&ex.id)await acadDB.from('batches').update({baseline_sessions:n}).eq('id',ex.id);
     else await acadDB.from('batches').insert({name:name,baseline_sessions:n,status:'active'});
-  }catch(e){alert('Save failed \u2014 run the baseline migration (adds baseline_sessions).');return;}
+  }catch(e){showToast('error','Save failed \u2014 run the baseline migration (adds baseline_sessions).');return;}
   loadLive();
 }
 async function renameBatch(i){
   const b=window._liveBatches[i]; if(!b||!b.raw)return;
-  const nn=prompt('Rename batch \u201c'+b.raw+'\u201d to:',b.raw);
+  const nn=await bePrompt('Rename batch \u201c'+b.raw+'\u201d to:', b.raw);
   if(!nn||nn.trim()===''||nn===b.raw)return;
   const {error}=await acadDB.from('students').update({batch_name:nn.trim()}).eq('batch_name',b.raw);
-  if(error){alert('Rename failed: '+error.message);return;}
+  if(error){showToast('error','Rename failed: '+error.message);return;}
   await acadDB.from('attendance').update({batch_name:nn.trim()}).eq('batch_name',b.raw);
-  alert('Renamed to '+nn.trim()); loadLive();
+  showToast('success','Renamed to '+nn.trim()); loadLive();
 }
 async function openAtt(i){
   const b=window._liveBatches[i]; if(!b)return; window._attBatch=b;
@@ -6933,15 +6937,15 @@ async function saveTrainer(){
 }
 
 /* ── Delete guard: type the word DELETE to confirm (prevents accidental deletes) ── */
-function confirmDelete(what,name){
-  const p=prompt('Type DELETE to remove this '+what+(name?' — "'+name+'"':'')+'.\nThis cannot be undone.');
+async function confirmDelete(what,name){
+  const p=await showPrompt('This cannot be undone.', { title: 'Type DELETE to remove this '+what+(name?' — "'+name+'"':'')+'.', placeholder: 'DELETE', requireExact: 'delete', confirmLabel: 'Delete' });
   if(p===null)return false;
-  if(p.trim().toLowerCase()!=='delete'){alert('Not deleted — you must type the word DELETE.');return false;}
+  if(p.trim().toLowerCase()!=='delete'){showToast('warning','Not deleted — you must type the word DELETE.');return false;}
   return true;
 }
 async function deleteStudent(){
   if(!requireHeadAccess())return;const s=_stu;if(!s||!s.id)return;
-  if(!confirmDelete('student',s.name))return;
+  if(!(await confirmDelete('student',s.name)))return;
   const {error}=await acadDB.from('students').delete().eq('id',s.id);
   if(error){alert('Cannot delete — payment or attendance links may block it:\n'+error.message);return;}
   document.getElementById('modalStu').classList.remove('on');
@@ -6949,7 +6953,7 @@ async function deleteStudent(){
 }
 async function deleteTrainer(id, name){
   if (!requireHeadAccess()) return;
-  if (!confirmDelete('trainer',name)) return;
+  if (!(await confirmDelete('trainer',name))) return;
   const {error}=await acadDB.from('trainers').delete().eq('id', id);
   if(error){alert('Cannot delete: this trainer still has batches or sessions linked. Reassign or delete those first.\n\n('+error.message+')');return;}
   await loadHeadView(); await loadStats();
@@ -7153,7 +7157,7 @@ async function saveBatch(){
 
 async function deleteBatch(id,name){
   if (!requireHeadAccess()) return;
-  if (!confirmDelete('batch',name||'')) return;
+  if (!(await confirmDelete('batch',name||''))) return;
   const {error}=await acadDB.from('batches').delete().eq('id', id);
   if(error){alert('Cannot delete — students or sessions may be linked:\n'+error.message);return;}
   await loadHeadView(); await loadStats();
@@ -7224,7 +7228,7 @@ async function saveStudent(){
       batch_id=bx.id;
       if(bx.capacity){
         const {count}=await acadDB.from('students').select('id',{count:'exact',head:true}).eq('batch_name',batchName);
-        if((count||0)>=bx.capacity && !confirm('Batch "'+batchName+'" is at capacity ('+count+'/'+bx.capacity+'). Add anyway?'))return;
+        if((count||0)>=bx.capacity && !(await showConfirm('Batch "'+batchName+'" is at capacity ('+count+'/'+bx.capacity+'). Add anyway?', { title: 'Batch at capacity', confirmLabel: 'Add Anyway' })))return;
       }
     }
   }

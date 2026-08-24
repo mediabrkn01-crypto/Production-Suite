@@ -960,24 +960,24 @@ async function setBaseline(i){
   const name=b.raw||b.name;
   const total=b.elite?20:32;
   const cur=(window._baseMap&&window._baseMap[name])||0;
-  const v=prompt('Sessions already completed for "'+name+'" before tracking started (0\u2013'+total+'):\nGoing forward, attendance adds on top of this.',cur);
+  const v=await showPrompt(`Sessions already completed for "${name}" before tracking started (0\u2013${total}):\nGoing forward, attendance adds on top of this.`, { defaultValue: String(cur) });
   if(v===null)return;
   const n=Math.max(0,Math.min(total,parseInt(v)||0));
   try{
     let {data:ex}=await sb.from('batches').select('id').eq('name',name).maybeSingle();
     if(ex&&ex.id)await sb.from('batches').update({baseline_sessions:n}).eq('id',ex.id);
     else await sb.from('batches').insert({name:name,baseline_sessions:n,status:'active'});
-  }catch(e){alert('Save failed \u2014 run the baseline migration (adds baseline_sessions).');return;}
+  }catch(e){showToast('error','Save failed \u2014 run the baseline migration (adds baseline_sessions).');return;}
   loadLive();
 }
 async function renameBatch(i){
   const b=window._liveBatches[i]; if(!b||!b.raw)return;
-  const nn=prompt('Rename batch \u201c'+b.raw+'\u201d to:',b.raw);
+  const nn=await showPrompt('Rename batch \u201c'+b.raw+'\u201d to:', { defaultValue: b.raw });
   if(!nn||nn.trim()===''||nn===b.raw)return;
   const {error}=await sb.from('students').update({batch_name:nn.trim()}).eq('batch_name',b.raw);
-  if(error){alert('Rename failed: '+error.message);return;}
+  if(error){showToast('error','Rename failed: '+error.message);return;}
   await sb.from('attendance').update({batch_name:nn.trim()}).eq('batch_name',b.raw);
-  alert('Renamed to '+nn.trim()); loadLive();
+  showToast('success','Renamed to '+nn.trim()); loadLive();
 }
 async function openAtt(i){
   const b=window._liveBatches[i]; if(!b)return; window._attBatch=b;
@@ -1568,14 +1568,15 @@ async function renderMyAvailabilityToggle(date){
 }
 async function toggleMySlot(trainerId, date, start){
   const existing = _availSlotsForDate.find(s=>String(s.trainer_id)===String(trainerId) && s.start_time===start);
-  if (existing && existing.status==='booked') { alert('This slot is already booked to a batch — ask the Academic Head to reassign it first.'); return; }
+  if (existing && existing.status==='booked') { showToast('warning','This slot is already booked to a batch — ask the Academic Head to reassign it first.'); return; }
   try{
-    if (existing) await sb.from('trainer_slots').delete().eq('id', existing.id);
+    if (existing) { await sb.from('trainer_slots').delete().eq('id', existing.id); showToast('success','Availability removed'); }
     else {
       const end = String((parseInt(start,10)+1)%24).padStart(2,'0')+':00';
       await sb.from('trainer_slots').insert({ trainer_id: trainerId, slot_date: date, start_time: start, end_time: end, status: 'available' });
+      showToast('success','Availability saved');
     }
-  }catch(e){ alert('Could not update availability: '+e.message); return; }
+  }catch(e){ showToast('error','Could not update availability: '+e.message); return; }
   renderAvailabilityGrid();
 }
 
@@ -1596,13 +1597,13 @@ async function openAssignSlot(trainerId, trainerName, date, start){
 async function confirmAssignSlot(){
   if (!_assignSlotCtx) return;
   const batchId = document.getElementById('assignSlotBatch').value;
-  if (!batchId) { alert('Pick a batch first.'); return; }
+  if (!batchId) { showToast('warning','Pick a batch first.'); return; }
   const { trainerId, date, start } = _assignSlotCtx;
   try{
     // Re-fetch the specific slot right before writing — the grid's cached copy could be
     // stale if another Head/tab booked it in the meantime.
     const { data: fresh } = await sb.from('trainer_slots').select('*').eq('trainer_id', trainerId).eq('slot_date', date).eq('start_time', start).maybeSingle();
-    if (!fresh || fresh.status !== 'available') { alert('This slot is no longer open — someone else may have just booked it. Refresh and try again.'); document.getElementById('modalAssignSlot').classList.remove('on'); renderAvailabilityGrid(); return; }
+    if (!fresh || fresh.status !== 'available') { showToast('warning','This slot is no longer open — someone else may have just booked it. Refresh and try again.',6000); document.getElementById('modalAssignSlot').classList.remove('on'); renderAvailabilityGrid(); return; }
     // Daily class cap — defaults to 5, or the trainer's own configured
     // pt_max_classes_per_day (set by HR on the employee record) when present. Counts
     // existing BOOKED slots for this trainer on this date, not counting the one being
@@ -1612,11 +1613,11 @@ async function confirmAssignSlot(){
     const { data: todaysBooked } = await sb.from('trainer_slots').select('id').eq('trainer_id', trainerId).eq('slot_date', date).eq('status','booked');
     const bookedCount = (todaysBooked||[]).length;
     if (bookedCount >= dailyCap) {
-      alert(`${capTrainer?capTrainer.name:'This coach'} already has ${bookedCount}/${dailyCap} classes booked on ${date} — daily limit reached. Pick a different date or coach.`);
+      showToast('warning', `${capTrainer?capTrainer.name:'This coach'} already has ${bookedCount}/${dailyCap} classes booked on ${date} — daily limit reached. Pick a different date or coach.`, 6500);
       return;
     }
     const { error } = await sb.from('trainer_slots').update({ status:'booked', batch_id: batchId }).eq('id', fresh.id);
-    if (error) { alert('Could not assign: '+error.message); return; }
+    if (error) { showToast('error','Unable to assign class. '+error.message); return; }
     // Keep the batch's own trainer_id/trainer_name in sync (same fields Live Batches/
     // dashboard/reports already read) — always overwrite, not just on first assignment,
     // since a Head re-assigning a batch to a different trainer via this same flow should
@@ -1634,7 +1635,8 @@ async function confirmAssignSlot(){
     _assignSlotCtx = null;
     renderAvailabilityGrid();
     if (typeof loadLive === 'function') loadLive();
-  }catch(e){ alert('Could not assign: '+e.message); }
+    showToast('success','Class assigned');
+  }catch(e){ showToast('error','Unable to assign class. '+e.message); }
 }
 
 // ============================================================================
@@ -1866,33 +1868,36 @@ function closeModal(type){ document.getElementById('modal'+cap(type)).classList.
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 
 /* ── Delete guard: type the word DELETE to confirm (prevents accidental deletes) ── */
-function confirmDelete(what,name){
-  const p=prompt('Type DELETE to remove this '+what+(name?' — "'+name+'"':'')+'.\nThis cannot be undone.');
+async function confirmDelete(what,name){
+  const p=await showPrompt('This cannot be undone.', { title: 'Type DELETE to remove this '+what+(name?' — "'+name+'"':'')+'.', placeholder: 'DELETE', requireExact: 'delete', confirmLabel: 'Delete' });
   if(p===null)return false;
-  if(p.trim().toLowerCase()!=='delete'){alert('Not deleted — you must type the word DELETE.');return false;}
+  if(p.trim().toLowerCase()!=='delete'){showToast('warning','Not deleted — you must type the word DELETE.');return false;}
   return true;
 }
 async function deleteStudent(){
   if(!requireHeadAccess())return;const s=_stu;if(!s||!s.id)return;
-  if(!confirmDelete('student',s.name))return;
+  if(!(await confirmDelete('student',s.name)))return;
   const {error}=await sb.from('students').delete().eq('id',s.id);
-  if(error){alert('Cannot delete — payment or attendance links may block it:\n'+error.message);return;}
+  if(error){showToast('error','Unable to delete student — payment or attendance links may block it. '+error.message,6000);return;}
   document.getElementById('modalStu').classList.remove('on');
   loadLive();loadStats();
+  showToast('success','Student deleted successfully');
 }
 async function deleteTrainer(id, name){
   if (!requireHeadAccess()) return;
-  if (!confirmDelete('trainer',name)) return;
+  if (!(await confirmDelete('trainer',name))) return;
   const {error}=await sb.from('trainers').delete().eq('id', id);
-  if(error){alert('Cannot delete: this trainer still has batches or sessions linked. Reassign or delete those first.\n\n('+error.message+')');return;}
+  if(error){showToast('error','Unable to delete trainer — they still have batches or sessions linked. Reassign or delete those first.',6000);return;}
   await loadHeadView(); await loadStats();
+  showToast('success','Trainer removed successfully');
 }
 async function deleteCourse(id, name){
   if (!requireHeadAccess()) return;
-  if (!confirmDelete('course', name)) return; // type-DELETE guard — same as deleteTrainer/deleteStudent/deleteBatch
+  if (!(await confirmDelete('course', name))) return; // type-DELETE guard — same as deleteTrainer/deleteStudent/deleteBatch
   const {error}=await sb.from('courses').delete().eq('id', id);
-  if(error){alert('Cannot delete: this course still has batches linked to it. Reassign or delete those first, or use Disable instead.\n\n('+error.message+')');return;}
+  if(error){showToast('error','Unable to delete course — it still has batches linked to it. Reassign or delete those first, or use Disable instead.',6000);return;}
   await loadCourses(); // refresh the list immediately
+  showToast('success','Course deleted successfully');
 }
 function esc(s){return String(s??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
 
@@ -2225,13 +2230,13 @@ async function saveBatch(){
   // (Coach profile, Sales visibility, reports), so a silent duplicate would be genuinely
   // ambiguous, not just untidy.
   const {data:dupe}=await sb.from('batches').select('id').ilike('name',name).limit(1);
-  if(dupe&&dupe.length){alert(`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
+  if(dupe&&dupe.length){showToast('error',`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
   // Hard block on a trainer conflict — checked against BOTH their other recurring batches
   // AND their real marked availability in trainer_slots (see checkBatchTrainerConflict).
   // Never silently creates a conflicting booking; the Head picks another time/Trainer instead.
   if (trainer_id) {
     const conflict = await checkBatchTrainerConflict();
-    if (conflict) { alert(conflict.message); return; }
+    if (conflict) { showToast('warning', conflict.message, 6500); return; }
   }
   const day_pattern=days.join(', ')+(mc?` · MC ${mc}`:'');
   // Real name from the trainer record itself, by id — never parsed out of the option's
@@ -2239,7 +2244,7 @@ async function saveBatch(){
   const trainer_name=trainer_id?((_allActiveTrainers.find(t=>String(t.id)===String(trainer_id))||{}).name||null):null;
   const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, class_duration_minutes, prep_buffer_minutes, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active' };
   const {data:newBatch,error}=await sb.from('batches').insert(rec).select().single();
-  if(error){alert('Save failed: '+error.message);return;}
+  if(error){showToast('error','Unable to save changes. '+error.message);return;}
   const picked=[...document.querySelectorAll('#m_b_students input:checked')].map(x=>x.value);
   if(picked.length)await assignStudents(picked,newBatch);
   // Book the matching trainer_slots row too, if the trainer had marked it available — same
@@ -2254,16 +2259,17 @@ async function saveBatch(){
   document.getElementById('m_b_students').innerHTML='';
   document.getElementById('m_b_avail').textContent='';
   await loadHeadView(); await loadStats(); await loadLive();
-  alert('Batch "'+name+'" created.');
+  showToast('success','Batch created successfully');
   acadSwitchTab('live');
 }
 
 async function deleteBatch(id,name){
   if (!requireHeadAccess()) return;
-  if (!confirmDelete('batch',name||'')) return;
+  if (!(await confirmDelete('batch',name||''))) return;
   const {error}=await sb.from('batches').delete().eq('id', id);
-  if(error){alert('Cannot delete — students or sessions may be linked:\n'+error.message);return;}
+  if(error){showToast('error','Unable to delete batch — students or sessions may be linked. '+error.message,6000);return;}
   await loadHeadView(); await loadStats();
+  showToast('success','Batch deleted successfully');
 }
 
 async function saveAssignment(){
@@ -2354,7 +2360,7 @@ async function saveStudent(){
       batch_id=bx.id;
       if(bx.capacity){
         const {count}=await sb.from('students').select('id',{count:'exact',head:true}).eq('batch_name',batchName);
-        if((count||0)>=bx.capacity && !confirm('Batch "'+batchName+'" is at capacity ('+count+'/'+bx.capacity+'). Add anyway?'))return;
+        if((count||0)>=bx.capacity && !(await showConfirm('Batch "'+batchName+'" is at capacity ('+count+'/'+bx.capacity+'). Add anyway?', { title: 'Batch at capacity', confirmLabel: 'Add Anyway' })))return;
       }
     }
   }
