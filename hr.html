@@ -711,10 +711,22 @@
 
             <!-- ====== HR WORKSPACE TAB ====== -->
             <div id="tab-content-hr" class="space-y-6">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Management</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee management, attendance, leave, payroll and workforce overview.</p>
+                    </div>
+                    <!-- Date/time chip — same component (markup + live-updating clock) as
+                         index.html's Pipeline Matrix and academics.html's Academic Command
+                         Center headers. This page previously had no header controls at all,
+                         the one real design gap between the three otherwise-matching headers
+                         (search/notifications are Pipeline-specific functionality, not part
+                         of the shared design language, so intentionally not added here). -->
+                    <div class="flex items-center gap-2 flex-wrap justify-end">
+                        <div id="hr-header-date-chip" class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default;color:#808a9d">
+                            <i data-lucide="calendar" style="width:13px;height:13px"></i>
+                            <span id="hr-header-date-text"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -4704,6 +4716,17 @@
             // here too — removed as a genuine duplicate query for the same person's record.
         }
 
+        // Same date/time chip behavior as index.html's header-date-text — updates every
+        // second, same "Month Day, Year  ·  HH:MM:SS" format.
+        function updateHRHeaderDateTime() {
+            const el = document.getElementById('hr-header-date-text');
+            if (!el) return;
+            const now = new Date();
+            const date = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            el.textContent = date + '  ·  ' + time;
+        }
+
         (function bootHRPage() {
             if (!activeUser || activeRole !== 'admin') {
                 window.location.href = 'index.html';
@@ -4712,6 +4735,8 @@
             renderHRSidebarIdentity();
             if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
             initHRPanel();
+            updateHRHeaderDateTime();
+            setInterval(updateHRHeaderDateTime, 1000);
             if (window.lucide) lucide.createIcons();
         })();
 

@@ -1097,6 +1097,17 @@ async function saveAtt(){
 // role-trainer-only: trainer, or academic_head (their own teaching load — unchanged from
 //   before, an Academic Head still sees "My Batches"/"My Tasks"/"Logs" for themself).
 // role-restricted-only / role-nontrainer-only: the "everything else" fallback states.
+// Same date/time chip format as index.html's updateHeaderDateTime() — "Month Day, Year  ·
+// HH:MM:SS", ticking every second, so the one shell component that appears on all three
+// pages' dashboard headers now reads identically everywhere, not just visually similar.
+function updateAcadHeaderDateTime() {
+  const el = document.getElementById('acad-date-text');
+  if (!el) return;
+  const now = new Date();
+  const date = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.textContent = date + '  ·  ' + time;
+}
 function applyAcadRoleGates(){
   const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
   const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
@@ -1123,7 +1134,11 @@ async function boot(){
   const roleElMobile = document.getElementById('acad-user-role-mobile'); if (roleElMobile) roleElMobile.textContent = roleLabel;
   const avatarElMobile = document.getElementById('acad-user-avatar-mobile'); if (avatarElMobile) avatarElMobile.textContent = initials || '?';
   document.getElementById('acad-role-badge').textContent = roleLabel;
-  document.getElementById('acad-date-text').textContent = new Date().toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+  // Same live-updating format as index.html's header-date-text (updates every second) —
+  // this used to be a one-time, differently-formatted stamp ("Mon, Aug 24, 2026, 3:00"),
+  // the one real mismatch against the otherwise-identical date chip on the other two pages.
+  updateAcadHeaderDateTime();
+  if (!window._acadDateTimeInterval) window._acadDateTimeInterval = setInterval(updateAcadHeaderDateTime, 1000);
   // Same-tab navigation either way (see logout()) — no "close tab" special case needed.
   document.getElementById('acad-logout-label').textContent = 'Log Out';
   document.getElementById('acad-backlink-btn').style.display = 'inline-flex';
