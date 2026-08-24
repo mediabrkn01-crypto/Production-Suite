@@ -944,6 +944,33 @@ const SHEETS_REMOVED = { /* sheets disconnected */
   batches:  '1rmhxfNZxAEupBQvLIzDY71TurYxSJkRrO4zY7ZxHUTE'
 };
 
+// ROOT CAUSE of "My Availability looks read-only" (and, it turns out, several other silent
+// failures across this file): showToast() was called in 26 places but never actually
+// defined anywhere in this file, common.js, index.html, or hr.html — every call threw
+// ReferenceError: showToast is not defined. The actual database write (insert/delete)
+// always succeeded — verified directly against trainer_slots — but that error was thrown
+// from INSIDE the same try/catch that also calls it, so it re-threw out of the catch block
+// too, which meant the very next line in the calling function (in toggleMySlot's case,
+// renderAvailabilityGrid() — the re-render that would show the change) never ran. The UI
+// silently stayed on the pre-click render while the database already had the correct data.
+// This one missing function explains the entire "clicking does nothing" report.
+function showToast(type, message, duration){
+  let host = document.getElementById('acadToastHost');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'acadToastHost';
+    host.style.cssText = 'position:fixed;top:16px;right:16px;z-index:500;display:flex;flex-direction:column;gap:8px;max-width:340px';
+    document.body.appendChild(host);
+  }
+  const colors = { success: 'var(--green)', error: 'var(--brand-3)', warning: 'var(--yellow)' };
+  const color = colors[type] || 'var(--blue)';
+  const el = document.createElement('div');
+  el.style.cssText = `background:rgba(13,17,28,.95);border:1px solid ${color};border-left:3px solid ${color};border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--text-main);box-shadow:0 10px 30px rgba(0,0,0,.5);backdrop-filter:blur(12px);animation:acadrise .25s ease`;
+  el.textContent = message;
+  host.appendChild(el);
+  setTimeout(() => { el.style.transition = 'opacity .25s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }, duration || 3500);
+}
+
 let currentUser = null;
 // Single-login policy: credentials are only ever entered on index.html. This
 // portal only accepts a be_session token that index.html already wrote for
