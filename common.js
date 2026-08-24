@@ -1200,7 +1200,21 @@ function hrOfficialEventFor(employee, dateStr) {
             }
             if (rec) {
                 if (rec.status === 'holiday') return 'H';
-                if (rec.status === 'absent') return 'A';
+                if (rec.status === 'absent') {
+                    // A persisted 'absent' row (e.g. manually marked by HR before this event
+                    // existed, or before this employee's leave was approved) must not outrank
+                    // a later-created Official Event — otherwise the event only ever "works"
+                    // for employees who happen to have no hr_attendance row at all for that
+                    // date, which is exactly the reported bug: existing employees who already
+                    // had an explicit Absent row stayed stuck on 'A' while brand-new employees
+                    // (never had one) correctly fell through to OE. This is the live
+                    // reconciliation itself — no separate backfill write needed, and running
+                    // it any number of times (reload, edit event, delete event) can never
+                    // create a duplicate row since nothing is ever written here.
+                    const event = hrOfficialEventFor(employee, dateStr);
+                    if (event && !event.clock_in_required) return 'OE';
+                    return 'A';
+                }
                 if (rec.status === 'late') return 'L';
                 if (rec.status === 'afternoon') return 'AL'; // Present · Afternoon Login (still counts as Present — see HR_PRESENT_STATUSES)
                 if (rec.status === 'on_leave') {
@@ -1345,7 +1359,16 @@ function hrOfficialEventFor(employee, dateStr) {
                 }
                 if (rec) {
                     if (rec.status === 'holiday') { holidayDays++; continue; }
-                    if (rec.status === 'absent') { absentDays++; continue; }
+                    if (rec.status === 'absent') {
+                        // Same reconciliation as hrAttDayCode: a persisted Absent row must not
+                        // outrank an Official Event created (or edited) afterward, or payroll
+                        // would keep LOP-deducting an employee for a paid company event day
+                        // just because they already had an explicit row from before the event
+                        // existed.
+                        const event = hrOfficialEventFor(employee, dateStr);
+                        if (event && !event.clock_in_required) { officialEventDays++; continue; }
+                        absentDays++; continue;
+                    }
                     if (rec.status === 'on_leave') {
                         const leave = hrApprovedLeaveFor(employeeId, dateStr);
                         if (leave && leave.leave_type === 'Unpaid Leave') { unpaidLeaveDays++; continue; }
