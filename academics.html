@@ -489,7 +489,7 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-mybatches">
         <div class="section role-trainer-only hidden">
           <h2>My Batches</h2>
-          <table><thead><tr><th>Batch</th><th>Schedule</th><th>Students</th></tr></thead>
+          <table><thead><tr><th>Batch</th><th>Schedule</th><th>Course</th><th>Students</th><th>Status</th><th>Progress</th></tr></thead>
             <tbody id="myBatches"></tbody></table>
         </div>
         <div class="empty role-nontrainer-only">Batches assigned to you as a trainer will appear here.</div>
@@ -588,6 +588,20 @@ details[open] .rawsum::before{content:'▾ '}
           <div id="profilePhoto" style="margin-bottom:16px;display:none"></div>
           <div id="profileNoLink" class="empty" style="display:none">No HR employee record is linked to your login yet — ask HR to link your portal email.</div>
           <div id="profileBody" class="stu-grid loading">Loading…</div>
+          <!-- Quick Access — links to tabs that already exist elsewhere in this same
+               sidebar (My Workspace group); nothing new, just a shortcut grid off the
+               profile page itself, matching the reference design's Quick Access panel.
+               Change Password / Notifications aren't real features anywhere in this app
+               yet, so they're left out rather than linked to something that doesn't exist. -->
+          <div class="subhead" style="margin:22px 0 10px">Quick Access</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">
+            <button class="act-btn" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px" onclick="acadSwitchTab('attendance')"><i data-lucide="clock" style="width:16px;height:16px"></i> My Attendance</button>
+            <button class="act-btn" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px" onclick="acadSwitchTab('leave')"><i data-lucide="calendar-days" style="width:16px;height:16px"></i> My Leave</button>
+            <button class="act-btn" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px" onclick="acadSwitchTab('documents')"><i data-lucide="folder" style="width:16px;height:16px"></i> My Documents</button>
+            <button class="act-btn" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px" onclick="acadSwitchTab('announcements')"><i data-lucide="megaphone" style="width:16px;height:16px"></i> Announcements</button>
+            <button class="act-btn" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px" onclick="acadSwitchTab('payslips')"><i data-lucide="receipt" style="width:16px;height:16px"></i> My Payslips</button>
+            <button class="act-btn" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px" onclick="acadSwitchTab('team')"><i data-lucide="users-round" style="width:16px;height:16px"></i> Team Members</button>
+          </div>
         </div>
       </div>
 
@@ -1918,8 +1932,12 @@ function renderStudentsTable(){
   });
   const countEl = document.getElementById('studentsCount');
   if (countEl) countEl.textContent = rows.length + (rows.length!==_allStudents.length ? ` / ${_allStudents.length}` : '');
+  // Avatar-initials + contact under the name — reuses the existing .acad-avatar-dot
+  // component already used on the dashboard's On Leave/Upcoming Availability rows, not a
+  // new one, matching the two-line student cell in the reference design.
   document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => `
-    <tr><td>${esc(s.name)}</td><td>${esc(s.batch_name||'Unassigned')}</td><td>${esc(s.programme||'—')}</td><td>${esc(s.trainer_name||'—')}</td>
+    <tr><td><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
+    <td>${esc(s.batch_name||'Unassigned')}</td><td>${esc(s.programme||'—')}</td><td>${esc(s.trainer_name||'—')}</td>
     <td><span class="badge ${s.status!=='inactive'?'b-active':'b-inactive'}">${esc(s.status||'active')}</span></td>
     <td>${s.enrolled_date||'—'}</td>
     <td><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>
@@ -2015,9 +2033,26 @@ async function loadTrainerView(){
   if (!myTrainer) return;
 
   const { data: batches } = await sb.from('batches').select('*, students(id)').eq('trainer_id', myTrainer.id);
-  document.getElementById('myBatches').innerHTML = (batches||[]).map(b => `
-    <tr><td>${b.name}</td><td>${b.day_pattern||''} ${b.time_slot||''}</td><td>${b.students?.length||0}</td></tr>
-  `).join('') || '<tr><td colspan="3" class="empty">No batches assigned yet</td></tr>';
+  // Real progress per batch — baseline_sessions (pre-tracking progress) + actual marked
+  // attendance rows for that batch name, same source loadLive()'s Head-facing cards already
+  // use, just scoped here to only this trainer's own (already-scoped) batch list.
+  const myBatchNames = (batches||[]).map(b=>b.name).filter(Boolean);
+  const doneByBatch = {};
+  if (myBatchNames.length) {
+    try {
+      const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', myBatchNames);
+      (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
+    } catch(e) {}
+  }
+  document.getElementById('myBatches').innerHTML = (batches||[]).map(b => {
+    const total = b.sessions_total || 0;
+    const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
+    const pct = total ? Math.round((done/total)*100) : 0;
+    const statusOk = b.status !== 'inactive' && b.status !== 'closed';
+    return `<tr><td>${esc(b.name)}</td><td>${esc(b.day_pattern||'')} ${esc(b.time_slot||'')}</td><td>${esc(b.programme||'—')}</td><td>${b.students?.length||0}</td>
+      <td><span class="badge ${statusOk?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
+      <td style="min-width:110px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gk)"></div></div><span style="font-size:10.5px;color:var(--tx3);min-width:30px">${total?pct+'%':'—'}</span></div></td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">No batches assigned yet</td></tr>';
 
   const { data: tasks } = await sb.from('assignments').select('*').eq('trainer_id', myTrainer.id).order('due_date');
   document.getElementById('myTasks').innerHTML = (tasks||[]).map(t => `
