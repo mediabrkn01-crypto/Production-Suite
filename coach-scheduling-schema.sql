@@ -99,3 +99,17 @@ alter table trainers add column if not exists pt_time_ranges text;
 -- treat that the same as 'legacy' when displaying/continuing an existing batch's session
 -- count, since it predates the new structure entirely.
 alter table batches add column if not exists batch_structure_version text;
+
+-- ============ Phase 6 — Attendance session type (group / one-on-one / masterclass) ============
+-- Run in the ACADEMIC project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- The live single-track attendance flow (openAtt()/saveAtt() in academics.html) has always
+-- had one session_num counter per batch, with no notion of "which kind of session" — fine
+-- when a batch only ever has one class stream. The Academic Existing-Data Migration needs
+-- more: a legacy Foundation-structure batch tracks THREE independent numbered series in the
+-- same period — Group Session #1, One-on-One #1, Masterclass #1 are three different classes,
+-- not the same one. Without a type column those would collide as indistinguishable duplicate
+-- rows under the same session_num. session_type is nullable and NOT set by the existing live
+-- saveAtt() flow — untyped/NULL rows (everything marked day-to-day through the app, before and
+-- after this migration) are implicitly "the batch's one class stream", same meaning as today;
+-- only rows written by the legacy-data migration set it explicitly.
+alter table attendance add column if not exists session_type text;
