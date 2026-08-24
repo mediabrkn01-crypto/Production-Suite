@@ -408,13 +408,43 @@ details[open] .rawsum::before{content:'▾ '}
             <i data-lucide="calendar" style="width:13px;height:13px"></i>
             <span id="acad-date-text"></span>
           </div>
-          <span class="glass-button-wrap rounded-full"><button id="clockBtn" onclick="clockToggle()" style="display:none" class="glass-button px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wide" title="Clock In / Out"><i data-lucide="clock-4" style="width:14px;height:14px"></i> <span id="clockBtnLabel">Clock In</span></button></span>
+          <!-- Clock In/Out used to be a small pill crammed into this header row — index.html
+               never puts it here at all, it's a dedicated Attendance card in the dashboard
+               body (see #attendance-clock-card below). Moved to match, not just restyled in
+               place. Logout also used to have its own circular icon button here — index.html
+               has no header logout at all, only the sidebar's text+icon link (which this
+               file's sidebar already matches) — removed rather than kept and restyled, since
+               index.html's actual pattern is "no header logout button." Back-to-Media-Suite
+               has no index.html equivalent (Academic-specific), kept as the one legitimate
+               header control beyond the date chip. -->
           <span class="glass-button-wrap rounded-full"><button id="acad-backlink-btn" onclick="location.href='index.html'" title="Back to Media Suite" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
             <i data-lucide="arrow-left" class="w-4 h-4"></i>
           </button></span>
-          <span class="glass-button-wrap rounded-full"><button onclick="logout()" title="Sign Out" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
-            <i data-lucide="log-out" class="w-4 h-4"></i>
-          </button></span>
+        </div>
+      </div>
+      <!-- Attendance card — identical structure/classes to index.html's #attendance-clock-card
+           (icon box, ATTENDANCE label + status text, Clock In/Clock Out pill), same green
+           Clock In / red Clock Out styling. Logic is still Academic's own (initClock()/
+           clockToggle() below, backed by mediaHrDB.attendance_logs or this project's own
+           `timeclock` table depending on _authSource) — this is a UI consistency change only,
+           not a second attendance system; the employee clock-in data itself is unchanged. -->
+      <div id="attendance-clock-card" class="hidden card p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4" style="margin-bottom:18px">
+        <div class="flex items-center gap-3">
+          <div class="p-2.5 rounded-lg bg-orange-500/10 text-white/70 shrink-0">
+            <i data-lucide="clock-4" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-white uppercase tracking-wider">Attendance</p>
+            <p id="attendance-status-text" class="text-[11px] text-[#6b74a0] mt-0.5">Checking today's status...</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="attendance-clockin-btn" onclick="clockToggle()" class="text-xs font-bold px-4 py-2 rounded-md uppercase tracking-wide flex items-center gap-1.5 cursor-pointer transition" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-family:Inter,sans-serif">
+            <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
+          </button>
+          <button id="attendance-clockout-btn" onclick="clockToggle()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
+            <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
+          </button>
         </div>
       </div>
       <div class="hidden" id="topbar-legacy-hooks">
@@ -2859,9 +2889,19 @@ let _openClock=null;
 //    (same project as its HR panel \u2014 mediaHrDB, already used for the login check above).
 //    Writing anywhere else would mean HR's Attendance tab in the Media Suite never sees an
 //    Academic employee's clock-ins at all, since it only ever looks at those two tables.
+// Drives the same #attendance-clock-card structure index.html uses (card visible, status
+// text + which of the two buttons shows) \u2014 index.html's own clockin/clockout buttons swap
+// via the same hidden-class toggle pattern used here.
+function _setAttendanceCardState(statusText, clockedIn, disabled){
+  const card=document.getElementById('attendance-clock-card'); if(card) card.classList.remove('hidden');
+  const statusEl=document.getElementById('attendance-status-text'); if(statusEl) statusEl.textContent=statusText;
+  const inBtn=document.getElementById('attendance-clockin-btn');
+  const outBtn=document.getElementById('attendance-clockout-btn');
+  if(inBtn) inBtn.classList.toggle('hidden', clockedIn);
+  if(outBtn) outBtn.classList.toggle('hidden', !clockedIn);
+  if(inBtn) inBtn.disabled = !!disabled;
+}
 async function initClock(){
-  const btn=document.getElementById('clockBtn');
-  if(!btn)return;
   try{
     if(_authSource==='media'){
       const today=new Date().toISOString().slice(0,10);
@@ -2869,18 +2909,16 @@ async function initClock(){
       if(error)return;
       const rec=data&&data[0];
       _openClock = (rec && !rec.log_out_time) ? rec : null;
-      btn.style.display='';
-      btn.disabled = !!(rec && rec.log_out_time);
-      document.getElementById('clockBtnLabel').textContent = _openClock ? ('Clock Out \u00b7 in since '+new Date(_openClock.log_in_time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}))
-        : (rec ? 'Clocked out for today' : 'Clock In');
+      if (_openClock) _setAttendanceCardState('Clocked in at '+new Date(_openClock.log_in_time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+". Don't forget to clock out!", true, false);
+      else if (rec) _setAttendanceCardState('Clocked out for today.', false, true);
+      else _setAttendanceCardState("You haven't clocked in yet today.", false, false);
       return;
     }
     const {data,error}=await sb.from('timeclock').select('*').eq('username',currentUser.username).is('clock_out',null).order('clock_in',{ascending:false}).limit(1);
     if(error)return;
     _openClock=(data&&data[0])||null;
-    btn.style.display='';
-    btn.disabled=false;
-    document.getElementById('clockBtnLabel').textContent=_openClock?('Clock Out \u00b7 in since '+new Date(_openClock.clock_in).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})):'Clock In';
+    if (_openClock) _setAttendanceCardState('Clocked in at '+new Date(_openClock.clock_in).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+". Don't forget to clock out!", true, false);
+    else _setAttendanceCardState("You haven't clocked in yet today.", false, false);
   }catch(e){}
 }
 async function clockToggle(){
