@@ -158,6 +158,22 @@ tr.clickable{cursor:pointer}
 .lv-field input:focus,.lv-field select:focus,.lv-field textarea:focus{border-color:rgba(237,31,81,.5);}
 .lv-field select{-webkit-appearance:menulist;-moz-appearance:menulist;appearance:menulist;color-scheme:dark;}
 .lv-field select option{background:#0f1121;color:var(--tx);}
+/* Native date inputs (Start Date/End Date etc.) render their entered-date text, placeholder
+   and calendar-picker icon using the OS/browser's own light-by-default UI, ignoring the
+   dark `color`/`background` above for those sub-parts specifically — color-scheme:dark is
+   the standards-based fix (supported by Chrome, Safari 16.4+, Firefox) that tells the
+   browser to draw the native picker itself, and the icon/placeholder inside the field, with
+   a dark-appropriate palette instead of a jarring white widget — no custom date picker
+   needed. The -webkit- rules below reinforce this for engines where color-scheme doesn't
+   go quite far enough by itself. */
+.lv-field input[type="date"]{color-scheme:dark;}
+.lv-field input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.75) brightness(1.3);cursor:pointer;}
+.lv-field input[type="date"]::-webkit-datetime-edit,
+.lv-field input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.lv-field input[type="date"]::-webkit-datetime-edit-text,
+.lv-field input[type="date"]::-webkit-datetime-edit-month-field,
+.lv-field input[type="date"]::-webkit-datetime-edit-day-field,
+.lv-field input[type="date"]::-webkit-datetime-edit-year-field{color:var(--tx);}
 .lv-apply{padding:11px 22px;border:none;border-radius:9px;background:var(--gk);color:#fff;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 20px rgba(237,31,81,.3);}
 .stu-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px;margin-bottom:12px;padding:14px;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:12px;}
 .stu-grid .k{color:var(--tx3);text-transform:uppercase;font-size:9.5px;letter-spacing:.07em;align-self:center;}
@@ -349,11 +365,14 @@ details[open] .rawsum::before{content:'▾ '}
           </div>
           <div class="mhint" id="m_b_hint">Pick a course — its sessions, days and capacity prefill below.</div>
           <div class="subhead" style="margin:10px 0 6px">Schedule</div>
-          <div class="daychips" id="m_b_days" onclick="checkBatchTrainerConflict()"></div>
+          <div class="daychips" id="m_b_days" onclick="onBatchScheduleFieldChanged()"></div>
           <div class="mhint">Class days prefill from the course — tap to change per batch, even midway.</div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Masterclass Day</span><select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select></label>
-            <label class="lv-field" style="flex:1"><span>Class Time</span><input id="m_b_time" placeholder="e.g. 8:00–9:00 PM" onchange="checkBatchTrainerConflict()"/></label>
+            <!-- Same hour granularity as trainer_slots.start_time (the Coach Availability
+                 grid's own AVAIL_HOURS) — built by buildBatchTimeOptions() so a Create Batch
+                 time selection maps onto a real, queryable trainer_slots row, not free text. -->
+            <label class="lv-field" style="flex:1"><span>Class Start Time</span><select id="m_b_time_start" onchange="onBatchScheduleFieldChanged()"></select></label>
           </div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60"/></label>
@@ -364,7 +383,7 @@ details[open] .rawsum::before{content:'▾ '}
             <label class="lv-field" style="flex:1"><span>Total Sessions</span><input id="m_b_sessions" type="number" placeholder="Total sessions"/></label>
             <label class="lv-field" style="flex:1"><span>Max Students</span><input id="m_b_cap" type="number" placeholder="Max students"/></label>
           </div>
-          <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Start Date</span><input id="m_b_start" type="date"/></label>
+          <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Start Date</span><input id="m_b_start" type="date" onchange="onBatchScheduleFieldChanged()"/></label>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>End Date (expected completion)</span><input id="m_b_completion" type="date"/></label>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Notes</span><textarea id="m_b_notes" placeholder="Notes (optional)" style="min-height:50px"></textarea></label>
           <div class="mhint">Start below capacity if you like — you can add more students anytime via Edit.</div>
@@ -1020,7 +1039,7 @@ async function boot(){
 
   if (isHead) {
     await loadHeadView(); // also loads Trainers table + Courses (see loadHeadView)
-    buildDayChips(); typeChanged(); // prime the Create Batch tab so it's ready on first visit
+    buildDayChips(); buildBatchTimeOptions(); typeChanged(); // prime the Create Batch tab so it's ready on first visit
   } else if (!isRestricted) {
     await loadTrainersTable();
     await loadCourses();
@@ -1806,14 +1825,36 @@ function trainersQualifiedFor(courseName, selectedId) {
     return !courses.length || courses.includes(courseName) || t.id === selectedId;
   });
 }
-function renderTrainerOptions(selectEl, list, selectedId) {
+// availabilityMap is optional (Map<trainerId, 'available'|'booked'>, from
+// computeTrainerAvailabilityMap()) — only Create Batch's own trainer select passes one;
+// every other caller (Edit Batch's be_trainer, etc.) renders exactly as before.
+function renderTrainerOptions(selectEl, list, selectedId, availabilityMap) {
   if (!selectEl) return;
-  selectEl.innerHTML = '<option value="">— trainer —</option>' + list.map(t =>
-    `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${t.name}${(t.teachable_courses||'').trim() ? '' : ' (courses not set)'}</option>`
-  ).join('');
+  selectEl.innerHTML = '<option value="">— trainer —</option>' + list.map(t => {
+    let availLabel = '';
+    if (availabilityMap) {
+      const status = availabilityMap.get(String(t.id));
+      availLabel = status === 'available' ? ' — Available' : status === 'booked' ? ' — Unavailable (booked)' : ' — Not set';
+    }
+    return `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${t.name}${(t.teachable_courses||'').trim() ? '' : ' (courses not set)'}${availLabel}</option>`;
+  }).join('');
 }
-function refreshBatchTrainerOptionsForCourse(courseName, selectedId) {
-  renderTrainerOptions(document.getElementById('m_b_trainer'), trainersQualifiedFor(courseName, selectedId), selectedId);
+// Real availability, sourced from the SAME trainer_slots table the Coach Availability grid
+// reads/writes (not a second system) — one row per trainer_id/slot_date/start_time. Trainers
+// with no row at all for this date+hour are "Not set" (they haven't marked themselves
+// available), distinct from a row that exists but is already 'booked'.
+async function computeTrainerAvailabilityMap(date, hour) {
+  const map = new Map();
+  if (!date || !hour) return map;
+  const { data: slots } = await sb.from('trainer_slots').select('trainer_id,status').eq('slot_date', date).eq('start_time', hour);
+  (slots||[]).forEach(s => map.set(String(s.trainer_id), s.status));
+  return map;
+}
+async function refreshBatchTrainerOptionsForCourse(courseName, selectedId) {
+  const date = document.getElementById('m_b_start')?.value || '';
+  const hour = document.getElementById('m_b_time_start')?.value || '';
+  const availMap = await computeTrainerAvailabilityMap(date, hour);
+  renderTrainerOptions(document.getElementById('m_b_trainer'), trainersQualifiedFor(courseName, selectedId), selectedId, availMap);
 }
 
 function openModal(type){
@@ -1953,6 +1994,13 @@ function buildDayChips(){
   const box=document.getElementById('m_b_days');
   if(box && !box.children.length) box.innerHTML=DAYS.map(d=>`<span class="dchip" data-d="${d}" onclick="this.classList.toggle('on')">${d}</span>`).join('');
 }
+// Same hour list as the Coach Availability grid (AVAIL_HOURS/_availSlotLabel, defined
+// further down this file but available by the time this actually runs) — so a batch's
+// start time is always one of the exact hours trainer_slots can hold a row for.
+function buildBatchTimeOptions(){
+  const sel=document.getElementById('m_b_time_start');
+  if(sel && !sel.children.length) sel.innerHTML=AVAIL_HOURS.map(h=>`<option value="${h}">${_availSlotLabel(h)}</option>`).join('');
+}
 function typeChanged(){
   const c=courseById[document.getElementById('m_b_type').value];
   const hint=document.getElementById('m_b_hint');
@@ -2062,36 +2110,96 @@ async function saveBatchEdit(){
   closeModal('batchEdit');
   await loadHeadView();await loadStats();await loadLive();
 }
-// Trainer availability / conflict check for batch creation — compares the picked
-// trainer + days + class time against that trainer's OTHER active batches (recurring
-// weekly commitments, same source of truth the Schedule tab already reads:
-// batches.day_pattern + time_slot). Distinct from the Coach Availability grid's
-// trainer_slots system, which is per-specific-date — batches are recurring weekly
-// commitments, so the conflict check compares against other batches, not one-off slots.
-function checkBatchTrainerConflict(){
+// Trainer availability check for batch creation. Two layers, both against real data —
+// never hardcoded, always keyed by trainer.id, never by name:
+//  1. That trainer's OTHER active batches (recurring weekly commitments — batches run for
+//     months, well beyond how far ahead trainer_slots is usually marked, so this is the
+//     backstop for the long-term recurring pattern).
+//  2. The trainer's actual marked availability in trainer_slots for this batch's Start
+//     Date + Class Start Time — the SAME table/rows the Coach Availability grid reads and
+//     writes, queried here directly (see computeTrainerAvailabilityMap). No row at all for
+//     that date+hour means "not set" — the trainer hasn't confirmed they're free, so this
+//     blocks too, same as an explicit 'booked' row.
+// Returns null if clear to book, or { reason, message } if blocked.
+async function checkBatchTrainerConflict(){
   const out = document.getElementById('m_b_avail');
   if (!out) return null;
   const trainerSel = document.getElementById('m_b_trainer');
   const trainerId = trainerSel?.value||'';
   const days = [...document.querySelectorAll('#m_b_days .dchip.on')].map(x=>x.dataset.d);
-  const timeSlot = (document.getElementById('m_b_time')?.value||'').trim();
-  if (!trainerId || !days.length || !timeSlot) { out.textContent=''; return null; }
-  const trainerName = trainerSel.options[trainerSel.selectedIndex]?.text || '';
+  const hour = document.getElementById('m_b_time_start')?.value||'';
+  const startDate = document.getElementById('m_b_start')?.value||'';
+  if (!trainerId || !days.length || !hour) { out.textContent=''; return null; }
+  // Real name from the trainer record itself, by id — never parsed out of the option's
+  // display text (which can carry a "(courses not set)"/" — Available" suffix).
+  const trainerName = (_allActiveTrainers.find(t=>String(t.id)===String(trainerId))||{}).name || '';
+  const timeLabel = (typeof _availSlotLabel === 'function') ? _availSlotLabel(hour) : hour;
+  // Just the formatted START time (e.g. "8:00 AM") — matched against the START of other
+  // batches' stored time_slot strings below. Duration-independent on purpose: two batches
+  // starting at the same hour conflict regardless of whether their durations differ, and
+  // this is the exact "start" substring formatBatchTimeRange() puts at the front of every
+  // time_slot this form saves, so same-hour batches always match reliably.
+  const startLabel = formatBatchTimeRange(hour, 0).split(' – ')[0];
+
+  // Layer 1 — recurring weekly overlap against this trainer's other batches.
   const others = (window._allBatchesFull||[]).filter(b => String(b.trainer_id)===String(trainerId) && b.status!=='inactive' && b.status!=='closed');
-  const conflict = others.find(b => {
+  const recurringConflict = others.find(b => {
     const otherDays = (b.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(d=>days.includes(d));
-    return otherDays.length && (b.time_slot||'').trim().toLowerCase() === timeSlot.toLowerCase();
+    return otherDays.length && (b.time_slot||'').toLowerCase().includes(startLabel.toLowerCase());
   });
-  if (conflict) {
-    out.innerHTML = `⚠ Trainer unavailable at this time — already teaching "<b>${esc(conflict.name)}</b>" (${esc(conflict.day_pattern||'')} · ${esc(conflict.time_slot||'')}). Please select another time or Trainer.`;
+  if (recurringConflict) {
+    const msg = `⚠ Trainer unavailable — already teaching "${recurringConflict.name}" (${recurringConflict.day_pattern||''} · ${recurringConflict.time_slot||''}). Please select another time or Trainer.`;
+    out.innerHTML = `⚠ Trainer unavailable — already teaching "<b>${esc(recurringConflict.name)}</b>" (${esc(recurringConflict.day_pattern||'')} · ${esc(recurringConflict.time_slot||'')}). Please select another time or Trainer.`;
     out.style.color = 'var(--yellow)';
-    return conflict;
+    return { reason: 'other-batch', message: msg };
   }
+
+  // Layer 2 — the trainer's real marked availability for the batch's Start Date, from
+  // trainer_slots (same data the Coach Availability grid shows).
+  if (startDate) {
+    const availMap = await computeTrainerAvailabilityMap(startDate, hour);
+    const status = availMap.get(String(trainerId));
+    if (status === 'booked') {
+      const msg = `⚠ ${trainerName} already has another class booked on ${startDate} at ${timeLabel}. Please select another time or Trainer.`;
+      out.innerHTML = msg; out.style.color = 'var(--yellow)';
+      return { reason: 'booked', message: msg };
+    }
+    if (status !== 'available') {
+      const msg = `⚠ ${trainerName} has not marked themselves available on ${startDate} at ${timeLabel} yet. Ask them to mark availability first (Coach Availability), or pick another time/Trainer.`;
+      out.innerHTML = msg; out.style.color = 'var(--yellow)';
+      return { reason: 'not-set', message: msg };
+    }
+  }
+
   out.innerHTML = `✓ ${esc(trainerName)} is available at this time. Preparation buffer: available. Conflict: none.`;
   out.style.color = 'var(--green)';
   return null;
 }
+// Fires on any schedule field change (Start Date, Class Start Time, day chips) — refreshes
+// the Trainer/Coach dropdown's "— Available/Unavailable/Not set" labels AND re-runs the
+// conflict check, so the two always agree with each other and with what's actually in
+// trainer_slots at that moment.
+async function onBatchScheduleFieldChanged(){
+  const courseName = courseById[document.getElementById('m_b_type')?.value]?.name || null;
+  const trainerSel = document.getElementById('m_b_trainer');
+  await refreshBatchTrainerOptionsForCourse(courseName, trainerSel?.value||null);
+  await checkBatchTrainerConflict();
+}
 
+// Formats a batch's Class Start Time (an AVAIL_HOURS value, e.g. "08:00") + its duration
+// in minutes into the same human-readable range string batches.time_slot has always stored
+// (e.g. "8:00 AM – 9:30 AM") — display-only; the real, queryable value used for the
+// trainer_slots availability check is the raw hour itself, kept in m_b_time_start.
+function formatBatchTimeRange(hourStr, durationMinutes){
+  const [h,m] = (hourStr||'0:0').split(':').map(Number);
+  const fmt = mins => {
+    const hh = Math.floor(mins/60)%24, mm = mins%60;
+    const h12 = ((hh+11)%12)+1;
+    return h12+':'+String(mm).padStart(2,'0')+' '+(hh<12?'AM':'PM');
+  };
+  const startTotal = h*60+(m||0);
+  return fmt(startTotal)+' – '+fmt(startTotal+(durationMinutes||60));
+}
 async function saveBatch(){
   if (!requireHeadAccess()) return;
   const name = document.getElementById('m_b_name').value.trim();
@@ -2100,9 +2208,10 @@ async function saveBatch(){
   const c = courseById[course_id];
   const days=[...document.querySelectorAll('#m_b_days .dchip.on')].map(x=>x.dataset.d);
   const mc=document.getElementById('m_b_mc').value;
-  const time_slot=document.getElementById('m_b_time').value.trim();
+  const startHour=document.getElementById('m_b_time_start').value||'';
   const class_duration_minutes=parseInt(document.getElementById('m_b_duration').value)||60;
   const prep_buffer_minutes=parseInt(document.getElementById('m_b_buffer').value)||0;
+  const time_slot=startHour?formatBatchTimeRange(startHour,class_duration_minutes):'';
   const sessions_total=parseInt(document.getElementById('m_b_sessions').value)||(c?c.sessions_total:null)||null;
   const capacity=parseInt(document.getElementById('m_b_cap').value)||(c?c.max_students:null)||null;
   const start_date=document.getElementById('m_b_start').value||null;
@@ -2111,26 +2220,36 @@ async function saveBatch(){
   if(!name){alert('Batch needs a name.');return;}
   if(!course_id){alert('Pick a course. Define one in the Courses section first.');return;}
   if(!days.length){alert('Pick at least one class day.');return;}
+  if(!startHour){alert('Pick a class start time.');return;}
   // Every batch needs a unique name — it's how the batch gets identified everywhere else
   // (Coach profile, Sales visibility, reports), so a silent duplicate would be genuinely
   // ambiguous, not just untidy.
   const {data:dupe}=await sb.from('batches').select('id').ilike('name',name).limit(1);
   if(dupe&&dupe.length){alert(`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
-  // Hard block on a trainer double-booking, same "never allow conflicting schedules"
-  // backstop already used for the Coach Availability slot system.
-  if (trainer_id && time_slot) {
-    const conflict = checkBatchTrainerConflict();
-    if (conflict) { alert('This trainer is already booked at this day/time (batch "'+conflict.name+'"). Pick a different time or trainer.'); return; }
+  // Hard block on a trainer conflict — checked against BOTH their other recurring batches
+  // AND their real marked availability in trainer_slots (see checkBatchTrainerConflict).
+  // Never silently creates a conflicting booking; the Head picks another time/Trainer instead.
+  if (trainer_id) {
+    const conflict = await checkBatchTrainerConflict();
+    if (conflict) { alert(conflict.message); return; }
   }
   const day_pattern=days.join(', ')+(mc?` · MC ${mc}`:'');
-  const trainerSel=document.getElementById('m_b_trainer');
-  const trainer_name=trainerSel.value?((trainerSel.options[trainerSel.selectedIndex]||{}).text||null):null;
+  // Real name from the trainer record itself, by id — never parsed out of the option's
+  // display text, which can carry a "(courses not set)"/" — Available" UI-only suffix.
+  const trainer_name=trainer_id?((_allActiveTrainers.find(t=>String(t.id)===String(trainer_id))||{}).name||null):null;
   const rec={ name, trainer_id, trainer_name, course_id, programme:(c?c.name:null), day_pattern, time_slot, class_duration_minutes, prep_buffer_minutes, sessions_total, capacity, start_date, expected_completion_date, notes, batch_type:(c?(c.code||c.name):null), status:'active' };
   const {data:newBatch,error}=await sb.from('batches').insert(rec).select().single();
   if(error){alert('Save failed: '+error.message);return;}
   const picked=[...document.querySelectorAll('#m_b_students input:checked')].map(x=>x.value);
   if(picked.length)await assignStudents(picked,newBatch);
-  document.getElementById('m_b_name').value=''; document.getElementById('m_b_time').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value=''; document.getElementById('m_b_duration').value='60'; document.getElementById('m_b_buffer').value='0';
+  // Book the matching trainer_slots row too, if the trainer had marked it available — same
+  // "assign a class into an already-available slot" pattern confirmAssignSlot() uses on the
+  // Coach Availability page, so a batch created here shows up there as booked, not just here.
+  if (trainer_id && start_date && startHour) {
+    const { data: slotRow } = await sb.from('trainer_slots').select('id,status').eq('trainer_id',trainer_id).eq('slot_date',start_date).eq('start_time',startHour).maybeSingle();
+    if (slotRow && slotRow.status==='available') await sb.from('trainer_slots').update({status:'booked',batch_id:newBatch.id}).eq('id',slotRow.id);
+  }
+  document.getElementById('m_b_name').value=''; document.getElementById('m_b_time_start').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value=''; document.getElementById('m_b_duration').value='60'; document.getElementById('m_b_buffer').value='0';
   document.querySelectorAll('#m_b_days .dchip.on').forEach(x=>x.classList.remove('on'));
   document.getElementById('m_b_students').innerHTML='';
   document.getElementById('m_b_avail').textContent='';
