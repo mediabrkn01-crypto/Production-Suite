@@ -337,6 +337,13 @@ details[open] .rawsum::before{content:'▾ '}
              hiding rows client-side. -->
         <button class="acad-nav-link sidebar-link" id="nav-acad-availability" onclick="acadSwitchTab('availability')"><i data-lucide="calendar-clock" style="width:14px;height:14px"></i> <span id="nav-acad-availability-label">Coach Availability</span></button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-live" onclick="acadSwitchTab('live')"><i data-lucide="layers" style="width:14px;height:14px"></i> <span id="nav-acad-live-label">Batches</span></button>
+        <!-- A batch moves here automatically once completed_sessions >= total_sessions (see
+             loadLive()'s progressOf()) — never a hardcoded batch name, and never deleted from
+             the active list, just rendered in this container instead. Same trainer_name-
+             scoped data window._liveBatches already used for "Batches"/"Student Attendance"
+             above, so a Trainer only ever sees their own past batches here (Head sees all),
+             with no separate query or permission logic needed. -->
+        <button class="acad-nav-link sidebar-link" id="nav-acad-previous" onclick="acadSwitchTab('previous')"><i data-lucide="history" style="width:14px;height:14px"></i> Previous Classes</button>
         <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-createbatch" onclick="acadSwitchTab('createbatch')"><i data-lucide="square-plus" style="width:14px;height:14px"></i> Create Batch</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-students" onclick="acadSwitchTab('students')"><i data-lucide="graduation-cap" style="width:14px;height:14px"></i> <span id="nav-acad-students-label">Students</span></button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-classes" onclick="acadSwitchTab('classes')"><i data-lucide="presentation" style="width:14px;height:14px"></i> <span id="nav-acad-classes-label">Classes</span></button>
@@ -486,6 +493,18 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="mhint" style="margin-bottom:12px">Batch management and details only — to add or edit students, use the Students tab.</div>
           <table><thead><tr><th>Batch Name</th><th>Trainer</th><th>Course</th><th>Schedule</th><th>Students</th><th>Status</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead>
             <tbody id="batchTable"></tbody></table>
+        </div>
+      </div>
+
+      <!-- Previous Classes — completed batches only (loadLive() splits active/previous by
+           real session progress, see the comment there), kept out of the main active list so
+           it doesn't keep growing forever. Historical data (attendance, roster, progress) is
+           never deleted, just rendered here via the same card() component instead. -->
+      <div class="acad-tab" id="tab-acad-previous">
+        <div class="section">
+          <h2>Previous Classes</h2>
+          <div class="lv-note">Batches that have reached their full session count. Attendance and student history are preserved — nothing here is deleted.</div>
+          <div id="previousClasses" class="loading">Loading…</div>
         </div>
       </div>
 
@@ -1331,20 +1350,36 @@ async function loadLive(){
     if(baseQuery){const {data:bb}=await baseQuery;
       (bb||[]).forEach(function(b){baseMap[b.name]=+b.baseline_sessions||0;});}
   }catch(e){}
+  // Completion is judged by actual session progress (completed_sessions >= total_sessions),
+  // not the old planned_end_date-vs-today comparison \u2014 that field is frequently unset (e.g.
+  // Elite batches), which is exactly why a 100%-done batch like "Elite \u2014 Mounish" used to
+  // stay stuck in the active list instead of moving to Previous Classes. Computed once here,
+  // reused unchanged inside card() below (same formula, no behavior change to the numbers
+  // themselves) so both the classification and the displayed progress bar always agree.
+  const progressOf = b => {
+    const total=b.elite?20:32; const marked=(doneMap[b.name]||new Set()).size;
+    const base=(baseMap[b.raw||b.name])||0;
+    const dn=Math.min(total,base+marked);
+    return { total, dn, base, marked, pct: Math.min(100,Math.round(dn/total*100)) };
+  };
   const all=Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
-  const active=all.filter(b=>!b.end||b.end>=today);
-  const done=all.filter(b=>b.end&&b.end<today);
-  window._liveBatches=active.concat(done);
+  const active=all.filter(b=>progressOf(b).dn < progressOf(b).total);
+  // Previous Classes, newest-completed first \u2014 no real "completion date" is tracked
+  // anywhere in this data model, so planned_end_date (when set) is the closest real signal
+  // available; batches without one (common for Elite) sort after ones that do, by name.
+  const previous=all.filter(b=>progressOf(b).dn >= progressOf(b).total)
+    .sort((a,b)=> (b.end||'').localeCompare(a.end||'') || a.name.localeCompare(b.name));
+  window._liveBatches=active.concat(previous);
   // Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance,
   // same Head-only click-to-view-student behavior), cleaner presentation: a real header row
   // with a course badge, the roster as individual chips instead of a run-on dot-separated
   // string, and a taller progress bar with its own percentage label instead of just a
   // tiny caption underneath. Uses existing tokens only (.badge, --gk gradient, --tx*) \u2014
-  // no new component, no new colors.
-  const card=(b,i)=>{
-    const total=b.elite?20:32; const marked=(doneMap[b.name]||new Set()).size;
-    const base=(window._baseMap&&window._baseMap[b.raw||b.name])||0;
-    const dn=Math.min(total,base+marked); const pct=Math.min(100,Math.round(dn/total*100));
+  // no new component, no new colors. isPrevious hides the live-editing actions (Mark
+  // Attendance/Rename/Set Progress don't mean anything for a finished batch) and shows a
+  // Completed badge instead \u2014 same card, not a second component to keep in sync.
+  const card=(b,i,isPrevious)=>{
+    const {total,dn,pct,base,marked}=progressOf(b);
     const nameHtml = (isHead&&b.elite) ? `<span style="cursor:pointer" onclick="openStu(${i},0)">${esc(b.name)}</span>` : esc(b.name);
     const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
       b.students.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:var(--tx2);${isHead?'cursor:pointer':''}" ${isHead?`onclick="openStu(${i},${j})"`:''}><span class="acad-avatar-dot" style="width:18px;height:18px;font-size:8.5px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(s.name)}</span>`).join('')
@@ -1359,10 +1394,12 @@ async function loadLive(){
           </div>
           <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
         </div>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center">
+          ${isPrevious ? '<span class="badge b-active">Completed</span>' : `
           ${isHead&&!b.elite?`<button class="act-btn" onclick="renameBatch(${i})">Rename</button>`:''}
           ${isHead?`<button class="act-btn" onclick="setBaseline(${i})">Set Progress</button>`:''}
           <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
+          `}
         </div>
       </div>
       ${roster}
@@ -1378,9 +1415,13 @@ async function loadLive(){
     </div>`;
   };
   const el=document.getElementById('liveBatches'); el.className='';
-  let html=active.length?active.map(function(b,i){return card(b,i);}).join(''):'<div class="empty">No active batches for you.</div>';
-  if(done.length){html+='<details style="margin-top:14px"><summary style="cursor:pointer;opacity:.6;font-size:13px">Completed / past batches ('+done.length+')</summary><div style="margin-top:10px">'+done.map(function(b,i){return card(b,active.length+i);}).join('')+'</div></details>';}
-  el.innerHTML=html;
+  el.innerHTML = active.length?active.map(function(b,i){return card(b,i,false);}).join(''):'<div class="empty">No active batches for you.</div>';
+  // Previous Classes \u2014 its own tab/nav item now (see acadSwitchTab('previous')), not an
+  // inline <details> at the bottom of the active list. Indices continue from active.length
+  // since window._liveBatches is still the one combined active+previous array every
+  // onclick handler above (openAtt/openStu/renameBatch/setBaseline) already indexes into.
+  const prevEl=document.getElementById('previousClasses');
+  if (prevEl) prevEl.innerHTML = previous.length ? previous.map(function(b,i){return card(b,active.length+i,true);}).join('') : '<div class="empty">No completed batches yet.</div>';
 }
 async function setBaseline(i){
   if(!requireHeadAccess())return;
