@@ -343,6 +343,10 @@ details[open] .rawsum::before{content:'▾ '}
         <button class="acad-nav-link sidebar-link" id="nav-acad-courses" onclick="acadSwitchTab('courses')"><i data-lucide="book-open" style="width:14px;height:14px"></i> Courses</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-schedule" onclick="acadSwitchTab('schedule')"><i data-lucide="calendar-range" style="width:14px;height:14px"></i> <span id="nav-acad-schedule-label">Schedule</span></button>
         <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-reports" onclick="acadSwitchTab('reports')"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Reports</button>
+        <!-- role-real-head-only, not role-head-only — a delegated Trainer must never be able
+             to create/revoke a delegation for themselves (spec item 18), even though they
+             correctly get every OTHER Head-only tab during their active window. -->
+        <button class="acad-nav-link sidebar-link role-real-head-only hidden" id="nav-acad-delegation" onclick="acadSwitchTab('delegation')"><i data-lucide="user-cog" style="width:14px;height:14px"></i> Delegate Academic Head</button>
         <!-- Academic operational items — these are department modules (a coach's own batch
              work, task queue, session log), not personal employee-HR items, so they stay in
              the ACADEMIC group rather than under My Workspace, which is reserved for the
@@ -453,6 +457,9 @@ details[open] .rawsum::before{content:'▾ '}
       </div>
 
       <div class="acad-tab on" id="tab-acad-dashboard">
+        <!-- Only rendered/shown while this login has an active Temporary Academic Head
+             delegation (see renderDelegationBanner()) — empty/hidden otherwise. -->
+        <div id="delegationBanner" class="hidden" style="margin-bottom:16px"></div>
         <div class="acad-dash-tiles" id="dashSummary"><div class="acad-stat-card"><div class="acad-stat-icon">…</div><div><div class="val">…</div><div class="lbl">Loading</div></div></div></div>
         <div class="dash-grid" id="dashLeaveAvailRow" style="grid-template-columns:repeat(2,1fr)">
           <div class="section dash-card" id="acadOnLeaveSection"><h3>Coaches On Leave Today</h3><div id="dashOnLeave" class="loading">Loading…</div></div>
@@ -721,8 +728,13 @@ details[open] .rawsum::before{content:'▾ '}
                that one table regardless of which of the two ways a slot was added. -->
           <div class="subhead" style="margin:22px 0 10px">Custom Time</div>
           <div class="mrow" style="align-items:flex-end">
-            <label class="lv-field" style="flex:1"><span>Start Time</span><input type="time" id="customAvailStart"/></label>
-            <label class="lv-field" style="flex:1"><span>End Time</span><input type="time" id="customAvailEnd"/></label>
+            <!-- readonly, not type="time" — tapping opens the themed analog clock picker
+                 (#modalClockPicker) instead of the browser's native square popup. The input
+                 itself still holds the real 24h "HH:MM" value (writeClockResult() sets
+                 .value directly) — addCustomAvailability() below reads it exactly the same
+                 way it always did, no other code needed to change. -->
+            <label class="lv-field" style="flex:1"><span>Start Time</span><input type="text" id="customAvailStart" readonly placeholder="Tap to set" style="cursor:pointer" onclick="openClockPicker('customAvailStart')"/></label>
+            <label class="lv-field" style="flex:1"><span>End Time</span><input type="text" id="customAvailEnd" readonly placeholder="Tap to set" style="cursor:pointer" onclick="openClockPicker('customAvailEnd')"/></label>
             <button class="lv-apply" style="white-space:nowrap" onclick="addCustomAvailability()">+ Add Availability</button>
           </div>
           <div class="subhead" style="margin:18px 0 8px">Added Custom Times</div>
@@ -803,8 +815,74 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="section dash-card"><h3>Batches by Status</h3><div id="reportBatchStatus" class="loading">Loading…</div></div>
         </div>
       </div>
+
+      <!-- Delegate Academic Head — real-Head-only, see the sidebar nav item's own comment.
+           A delegated Trainer gets every OTHER Head tab during their window but never this
+           one, so they can't create a delegation for themselves or revoke the real Head's. -->
+      <div class="acad-tab" id="tab-acad-delegation">
+        <div class="section role-real-head-only hidden">
+          <h2>Delegate Academic Head <button onclick="openDelegationModal()">+ Delegate Academic Head</button></h2>
+          <div class="lv-note">Temporarily hand off Academic Head access to a Trainer/Coach for a specific date/time window — e.g. while you're on leave. Their own account/role is never changed; access is granted only for the window below and expires automatically.</div>
+          <table><thead><tr><th>Delegated To</th><th>Window</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead>
+            <tbody id="delegationTable"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
     </div>
 </div>
+
+<!-- Temporary Academic Head delegation modal — in-app, not browser confirm()/alert(). -->
+<div class="modal-bg" id="modalDelegation"><div class="modal" style="width:440px">
+  <h3>Temporary Academic Head</h3>
+  <label class="lv-field lv-grow" style="margin-bottom:9px"><span>Delegate To</span>
+    <select id="deleg_trainer"><option value="">— Select Trainer / Coach —</option></select>
+  </label>
+  <div class="mrow">
+    <label class="lv-field" style="flex:1"><span>Start Date</span><input type="date" id="deleg_start_date"/></label>
+    <label class="lv-field" style="flex:1"><span>Start Time</span><input type="time" id="deleg_start_time"/></label>
+  </div>
+  <div class="mrow">
+    <label class="lv-field" style="flex:1"><span>End Date</span><input type="date" id="deleg_end_date"/></label>
+    <label class="lv-field" style="flex:1"><span>End Time</span><input type="time" id="deleg_end_time"/></label>
+  </div>
+  <label class="lv-field lv-grow" style="margin-bottom:9px"><span>Reason / Notes (optional)</span><textarea id="deleg_notes" style="min-height:50px"></textarea></label>
+  <div class="mhint">Grants Academic Head access only — never HR, Payroll, or Media/Production permissions.</div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="document.getElementById('modalDelegation').classList.remove('on')">Cancel</button>
+    <button class="btn-save" onclick="saveDelegation()">Delegate Access</button>
+  </div>
+</div></div>
+
+<!-- Revoke confirmation — in-app, not browser confirm(). -->
+<div class="modal-bg" id="modalRevokeDelegation"><div class="modal" style="width:380px">
+  <h3>Revoke Access?</h3>
+  <p style="font-size:13px;color:var(--tx2);margin-bottom:16px" id="revokeDelegationText"></p>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="document.getElementById('modalRevokeDelegation').classList.remove('on')">Cancel</button>
+    <button class="btn-save" style="background:var(--brand-3)" onclick="confirmRevokeDelegation()">Revoke Access</button>
+  </div>
+</div></div>
+
+<!-- Analog clock time picker — themed to match this dark UI (no native/light system popup),
+     used by Custom Time's Start/End Time fields. Tap a number, or drag the hand, to pick the
+     hour, then the minute; AM/PM toggles below. Large touch targets throughout for mobile/
+     WebView use (spec item 3). -->
+<div class="modal-bg" id="modalClockPicker"><div class="modal" style="width:320px;text-align:center">
+  <h3 style="margin-bottom:10px">Select Time</h3>
+  <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:18px">
+    <span id="clockReadoutHour" onclick="switchClockMode('hour')" style="font-size:34px;font-weight:700;cursor:pointer;padding:2px 8px;border-radius:8px" ></span>
+    <span style="font-size:34px;font-weight:700;color:var(--tx3)">:</span>
+    <span id="clockReadoutMinute" onclick="switchClockMode('minute')" style="font-size:34px;font-weight:700;cursor:pointer;padding:2px 8px;border-radius:8px"></span>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-left:8px">
+      <button id="clockAmBtn" onclick="setClockPeriod('AM')" class="act-btn" style="padding:4px 10px;font-size:11px">AM</button>
+      <button id="clockPmBtn" onclick="setClockPeriod('PM')" class="act-btn" style="padding:4px 10px;font-size:11px">PM</button>
+    </div>
+  </div>
+  <svg id="clockFaceSvg" viewBox="0 0 220 220" style="width:260px;height:260px;touch-action:none;user-select:none;-webkit-user-select:none"></svg>
+  <div class="modal-actions" style="margin-top:16px">
+    <button class="btn-cancel" onclick="document.getElementById('modalClockPicker').classList.remove('on')">Cancel</button>
+    <button class="btn-save" onclick="confirmClockPicker()">Confirm</button>
+  </div>
+</div></div>
 
 <!-- Batch Details — read-only summary, opened from the Batches tab. Editing/students stay
      in their own dedicated places (Edit Batch modal, Students tab) per the ownership split. -->
@@ -1001,11 +1079,113 @@ const ACADEMIC_ROLES = ['founder','academic_head','trainer'];
 
 // ══ HARD PERMISSION GUARD — checked inside every write function, not just hidden buttons ══
 function requireHeadAccess(){
-  if (!currentUser || (currentUser.role !== 'founder' && currentUser.role !== 'academic_head')) {
+  // isCurrentlyAcademicHead() also covers an active Temporary Academic Head delegation, so a
+  // delegated Trainer can actually perform Head write actions (assign classes, rename
+  // batches, etc.) during their window — the same check every Head-only write in this file
+  // already goes through, not a second copy of the role logic.
+  if (!currentUser || !isCurrentlyAcademicHead()) {
     alert('Access denied. Only the Founder or Academic Head can do this.');
     return false;
   }
   return true;
+}
+
+// ── Temporary Academic Head delegation — UI ──
+// "Delegated To" only ever offers active trainers/coaches already synced from HR (division
+// = education), the exact same trainers table every other Academic Trainer picker in this
+// file already reads — no separate list, so HR employees, Media staff, inactive trainers,
+// and students are excluded automatically, not by a second filter someone could forget here.
+async function loadDelegationTab(){
+  const realHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  if (!realHead) return; // section itself is role-real-head-only and hidden anyway; don't fetch for anyone else
+  try {
+    const { data: rows } = await sb.from('academic_head_delegations').select('*, trainers(name)').order('created_at', { ascending: false });
+    const now = new Date();
+    document.getElementById('delegationTable').innerHTML = (rows||[]).length ? (rows||[]).map(d => {
+      const start = new Date(d.start_datetime), end = new Date(d.end_datetime);
+      const status = d.status === 'revoked' ? 'Revoked' : (now < start ? 'Upcoming' : (now > end ? 'Expired' : 'Active'));
+      const canRevoke = d.status === 'active' && now <= end;
+      return `<tr><td>${esc(d.delegate_name || d.trainers?.name || '—')}</td>
+        <td>${start.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})} → ${end.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
+        <td><span class="badge ${status==='Active'?'b-active':'b-inactive'}">${status}</span></td>
+        <td style="max-width:200px;white-space:pre-wrap;font-size:11.5px;color:var(--tx3)">${esc(d.notes||'—')}</td>
+        <td>${canRevoke ? `<button class="act-btn" onclick="revokeDelegation('${d.id}','${esc((d.delegate_name||'').replace(/'/g,"\\'"))}')" style="border-color:rgba(255,5,82,.4);color:var(--brand-3)">Revoke</button>` : ''}</td></tr>`;
+    }).join('') : '<tr><td colspan="5" class="empty">No delegations yet.</td></tr>';
+  } catch(e) { document.getElementById('delegationTable').innerHTML = `<tr><td colspan="5" class="empty">Could not load delegations: ${esc(e.message)} — run coach-scheduling-schema.sql Phase 7 in Supabase if this table doesn't exist yet.</td></tr>`; }
+}
+async function openDelegationModal(){
+  if (!requireHeadAccess()) return;
+  const { data: trainers } = await sb.from('trainers').select('id,name').eq('status','active').order('name');
+  document.getElementById('deleg_trainer').innerHTML = '<option value="">— Select Trainer / Coach —</option>' + (trainers||[]).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  document.getElementById('deleg_start_date').value=''; document.getElementById('deleg_start_time').value='';
+  document.getElementById('deleg_end_date').value=''; document.getElementById('deleg_end_time').value='';
+  document.getElementById('deleg_notes').value='';
+  document.getElementById('modalDelegation').classList.add('on');
+}
+async function saveDelegation(){
+  if (!requireHeadAccess()) return;
+  const trainerId = document.getElementById('deleg_trainer').value;
+  const trainerName = document.getElementById('deleg_trainer').selectedOptions[0]?.textContent || '';
+  const sd = document.getElementById('deleg_start_date').value, st = document.getElementById('deleg_start_time').value;
+  const ed = document.getElementById('deleg_end_date').value, et = document.getElementById('deleg_end_time').value;
+  const notes = document.getElementById('deleg_notes').value.trim();
+  if (!trainerId) { showToast('warning','Pick who you\'re delegating to.'); return; }
+  if (!sd || !st || !ed || !et) { showToast('warning','Pick both a start and an end date/time.'); return; }
+  const startDt = new Date(`${sd}T${st}:00`), endDt = new Date(`${ed}T${et}:00`);
+  if (endDt <= startDt) { showToast('warning','End must be after Start.'); return; }
+  try{
+    const { data: created, error } = await sb.from('academic_head_delegations').insert({
+      academic_head_employee_id: null, // hr_employees.id for the real Head isn't resolved on this page today (this file matches trainers by name, not employee_id, throughout) — academic_head_name + created_by (the real Head's own login) are what every check/display actually uses
+      academic_head_name: currentUser.name,
+      delegate_trainer_id: trainerId,
+      delegate_name: trainerName,
+      start_datetime: startDt.toISOString(),
+      end_datetime: endDt.toISOString(),
+      status: 'active',
+      notes: notes || null,
+      created_by: currentUser.username || currentUser.name,
+    }).select().single();
+    if (error) throw error;
+    await sb.from('academic_delegation_audit').insert({ delegation_id: created.id, action: 'created', actor: currentUser.name, detail: `Delegated Academic Head access to ${trainerName}, ${startDt.toLocaleString('en-IN')} → ${endDt.toLocaleString('en-IN')}` });
+    showToast('success','Academic Head access delegated');
+    document.getElementById('modalDelegation').classList.remove('on');
+    loadDelegationTab();
+  }catch(e){ showToast('error','Could not save delegation: '+e.message); }
+}
+let _revokeDelegationId = null;
+function revokeDelegation(id, name){
+  if (!requireHeadAccess()) return;
+  _revokeDelegationId = id;
+  document.getElementById('revokeDelegationText').textContent = `Revoke ${name}'s Temporary Academic Head access now? They'll return to Trainer-only access immediately.`;
+  document.getElementById('modalRevokeDelegation').classList.add('on');
+}
+async function confirmRevokeDelegation(){
+  if (!requireHeadAccess() || !_revokeDelegationId) return;
+  try{
+    await sb.from('academic_head_delegations').update({ status:'revoked', revoked_at: new Date().toISOString() }).eq('id', _revokeDelegationId);
+    await sb.from('academic_delegation_audit').insert({ delegation_id: _revokeDelegationId, action: 'revoked', actor: currentUser.name });
+    showToast('success','Delegation revoked');
+    document.getElementById('modalRevokeDelegation').classList.remove('on');
+    _revokeDelegationId = null;
+    loadDelegationTab();
+  }catch(e){ showToast('error','Could not revoke: '+e.message); }
+}
+// Shows/hides the Overview dashboard banner for whoever is CURRENTLY viewing the page under
+// an active delegation — reads window._activeDelegation, refreshed by refreshActiveDelegation()
+// at boot and every ~60s after (see boot()), so this reflects the live database window, not
+// a value computed once at login and never revisited.
+function renderDelegationBanner(){
+  const el = document.getElementById('delegationBanner');
+  if (!el) return;
+  const d = window._activeDelegation;
+  if (!d) { el.classList.add('hidden'); el.innerHTML=''; return; }
+  const until = new Date(d.end_datetime).toLocaleString('en-IN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'});
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="card" style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-color:rgba(124,58,237,.35)">
+    <i data-lucide="shield-check" style="width:16px;height:16px;color:var(--purple)"></i>
+    <div><div style="font-size:12.5px;font-weight:700;color:var(--tx)">Temporary Academic Head Access</div><div style="font-size:11px;color:var(--tx3)">Until ${until}${d.academic_head_name?' · delegated by '+esc(d.academic_head_name):''}</div></div>
+  </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // Kept only as a defensive fallback — normal flow never shows the #login div
@@ -1287,14 +1467,46 @@ function acadApplyRoleLabels(isHead){
   set('nav-acad-schedule-label', isHead ? 'Schedule' : 'My Calendar');
   set('tab-acad-schedule-label', isHead ? 'Weekly Timetable' : 'My Weekly Calendar');
 }
+// ── Temporary Academic Head delegation ──
+// window._activeDelegation holds the CURRENT trainer's own active delegation row (or null),
+// refreshed from the database — never a stored flag on the trainer/employee record itself,
+// and never inferred from a frontend timer alone. "Active" means: a row exists for this
+// trainer, status is still 'active' (not explicitly revoked), and right now falls inside
+// [start_datetime, end_datetime]. Once now() moves past end_datetime the row simply stops
+// matching this query on its own — that's the entire expiry mechanism, no separate "mark
+// expired" write needed anywhere.
+window._activeDelegation = null;
+async function refreshActiveDelegation(){
+  if (!window._myTrainerId) { window._activeDelegation = null; return; }
+  try {
+    const nowIso = new Date().toISOString();
+    const { data } = await sb.from('academic_head_delegations').select('*')
+      .eq('delegate_trainer_id', window._myTrainerId).eq('status', 'active')
+      .lte('start_datetime', nowIso).gte('end_datetime', nowIso).limit(1);
+    window._activeDelegation = (data && data[0]) || null;
+  } catch (e) { console.warn('Could not check delegation status:', e.message); window._activeDelegation = null; }
+}
+// The one function every Head-only check in this file should read from — real Head by
+// hr_employees/trainers role, OR a currently-active delegation. Never the other way around:
+// this NEVER changes currentUser.role itself, so a delegated Trainer's own account/identity
+// is completely unaffected once the window closes (see spec item 15 — "do not overwrite
+// role=trainer with role=academic_head").
+function isCurrentlyAcademicHead(){
+  return currentUser.role === 'founder' || currentUser.role === 'academic_head' || !!window._activeDelegation;
+}
 function applyAcadRoleGates(){
-  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  const isHead = isCurrentlyAcademicHead();
   const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
   const isRestricted = !isHead && currentUser.role !== 'trainer';
   document.querySelectorAll('.role-head-only').forEach(el => isHead ? el.classList.remove('hidden') : el.remove());
   document.querySelectorAll('.role-trainer-only').forEach(el => el.classList.toggle('hidden', !isTrainerCapable));
   document.querySelectorAll('.role-nontrainer-only').forEach(el => el.classList.toggle('hidden', isTrainerCapable));
   document.querySelectorAll('.role-restricted-only').forEach(el => el.classList.toggle('hidden', !isRestricted));
+  // Delegation management itself is real-Head-only, never extended to a delegated Trainer —
+  // a Trainer must never be able to create/revoke a delegation for themselves (spec item 18).
+  // Separate class from .role-head-only for exactly that reason.
+  const realHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  document.querySelectorAll('.role-real-head-only').forEach(el => el.classList.toggle('hidden', !realHead));
   return { isHead, isTrainerCapable, isRestricted };
 }
 async function boot(){
@@ -1322,8 +1534,34 @@ async function boot(){
   document.getElementById('acad-logout-label').textContent = 'Log Out';
   document.getElementById('acad-backlink-btn').style.display = 'inline-flex';
 
+  // Resolve this login's own trainer_id, and check for an active delegation, BEFORE the
+  // first (and only) call to applyAcadRoleGates() below — that function permanently REMOVES
+  // .role-head-only elements from the DOM when it decides someone isn't currently a Head, so
+  // checking delegation status any later than this would be too late to un-hide them even if
+  // the delegation turns out to be active. loadTrainerView() further down re-fetches the same
+  // trainer row for its own (larger) set of queries — a small duplicate lookup, traded for
+  // correctness on the DOM-removal timing above.
+  if (currentUser.role === 'trainer' || currentUser.role === 'academic_head') {
+    try {
+      const { data: myTrainerRow } = await sb.from('trainers').select('id').ilike('name', currentUser.name).maybeSingle();
+      window._myTrainerId = myTrainerRow ? myTrainerRow.id : null;
+    } catch (e) { window._myTrainerId = null; }
+  }
+  await refreshActiveDelegation();
+  // Re-checks roughly once a minute for as long as this tab stays open — the delegation
+  // itself always expires purely by its own end_datetime falling out of the live query in
+  // refreshActiveDelegation(), this interval just makes an ALREADY-open session notice that
+  // within the same session, matching "no manual revoke required after the end time"
+  // without needing a page reload to pick it up.
+  if (!window._acadDelegationInterval) window._acadDelegationInterval = setInterval(async () => {
+    const before = !!window._activeDelegation;
+    await refreshActiveDelegation();
+    if (before !== !!window._activeDelegation) { applyAcadRoleGates(); renderDelegationBanner(); }
+  }, 60000);
+
   const { isHead, isTrainerCapable, isRestricted } = applyAcadRoleGates();
   acadApplyRoleLabels(isHead);
+  renderDelegationBanner();
 
   if (isHead) {
     await loadHeadView(); // also loads Trainers table + Courses (see loadHeadView)
@@ -1358,6 +1596,7 @@ async function boot(){
   // Reports is a company-wide aggregate page with no "My Reports" equivalent — Head-only,
   // not fetched at all for a Trainer (the nav item itself is also hidden, see the sidebar).
   if (isHead) loadReportsTab();
+  loadDelegationTab(); // no-ops for anyone who isn't the REAL Head (see there) — a delegated Trainer never reaches this tab's data
   loadMyProfileTab();
   loadAnnouncementsTab();
   loadDocumentsTab();
@@ -1408,7 +1647,7 @@ function acadStatTile(icon, color, val, lbl, onClick, trend) {
   </div>`;
 }
 async function loadAcadDashboard(){
-  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
   const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
   const countRows = (sel) => {
     const rows = document.querySelectorAll(sel);
@@ -1852,7 +2091,7 @@ async function renderAvailabilityGrid(){
   const wrap = document.getElementById('availGridWrap');
   const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
   if (!wrap) return;
-  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
   // A Trainer must never see the team grid — not just have it visually hidden, the query
   // itself never fetches another coach's row or slots. Only the Head branch below fetches
   // every active trainer; a Trainer gets ONE row (their own), which is also all
@@ -2002,8 +2241,12 @@ async function addCustomAvailability(){
   const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
   if (!me) { showToast('error','No coach profile linked to your login yet.'); return; }
   const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
-  const start = document.getElementById('customAvailStart')?.value;
-  const end = document.getElementById('customAvailEnd')?.value;
+  // The input's visible .value is the human "10:30 AM" display text written by the clock
+  // picker; the real 24h "HH:MM" it stores internally lives in data-time24 (see
+  // writeClockResult()) — same contract this function always had, just reading from the
+  // dataset now instead of a native <input type="time">'s .value.
+  const start = document.getElementById('customAvailStart')?.dataset.time24;
+  const end = document.getElementById('customAvailEnd')?.dataset.time24;
   if (!start || !end) { showToast('warning','Pick both a start and an end time.'); return; }
   const startMin = _timeToMinutes(start), endMin = _timeToMinutes(end);
   if (endMin <= startMin) { showToast('warning','End Time must be after Start Time.'); return; }
@@ -2022,8 +2265,8 @@ async function addCustomAvailability(){
     await sb.from('trainer_slots').insert({ trainer_id: me.id, slot_date: date, start_time: start, end_time: end, status: 'available' });
     showToast('success','Custom availability saved');
   }catch(e){ showToast('error','Could not save availability: '+e.message); return; }
-  document.getElementById('customAvailStart').value='';
-  document.getElementById('customAvailEnd').value='';
+  document.getElementById('customAvailStart').value=''; document.getElementById('customAvailStart').dataset.time24='';
+  document.getElementById('customAvailEnd').value=''; document.getElementById('customAvailEnd').dataset.time24='';
   renderAvailabilityGrid();
 }
 async function removeCustomSlot(id){
@@ -2035,6 +2278,114 @@ async function removeCustomSlot(id){
     showToast('success','Custom availability removed');
   }catch(e){ showToast('error','Could not remove availability: '+e.message); return; }
   renderAvailabilityGrid();
+}
+
+// ── Analog clock time picker ──
+// _clockTarget: which input (customAvailStart/customAvailEnd) this picker is currently
+// editing. _clockHour is always 1-12 (12-hour face); _clockPeriod is 'AM'/'PM'; the two
+// combine with _clockMinute into the real 24h value only at confirm time.
+let _clockTarget = null, _clockMode = 'hour', _clockHour = 12, _clockMinute = 0, _clockPeriod = 'AM';
+function openClockPicker(targetId){
+  _clockTarget = targetId;
+  const existing = document.getElementById(targetId)?.dataset.time24;
+  if (existing) {
+    const [h24, m] = existing.split(':').map(Number);
+    _clockHour = ((h24 + 11) % 12) + 1; _clockMinute = m; _clockPeriod = h24 < 12 ? 'AM' : 'PM';
+  } else {
+    const now = new Date();
+    _clockHour = ((now.getHours() + 11) % 12) + 1; _clockMinute = 0; _clockPeriod = now.getHours() < 12 ? 'AM' : 'PM';
+  }
+  _clockMode = 'hour';
+  document.getElementById('modalClockPicker').classList.add('on');
+  renderClockPicker();
+}
+function switchClockMode(mode){ _clockMode = mode; renderClockPicker(); }
+function setClockPeriod(p){ _clockPeriod = p; renderClockPicker(); }
+// Shared by both numbers-you-can-tap AND drag — an angle in degrees (0 = 12 o'clock /
+// straight up, increasing clockwise) maps directly to an hour or minute value; tapping a
+// number and dragging the hand to the same angle produce the identical result.
+function _angleToHour(deg){ return Math.round(deg/30) % 12 || 12; }
+function _angleToMinute(deg){ return Math.round(deg/6) % 60; }
+function _pointerAngleDeg(svg, clientX, clientY){
+  const rect = svg.getBoundingClientRect();
+  const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+  const dx = clientX - cx, dy = clientY - cy;
+  let deg = Math.atan2(dx, -dy) * 180/Math.PI; // atan2(x,-y): 0deg = straight up, clockwise-positive
+  if (deg < 0) deg += 360;
+  return deg;
+}
+function renderClockPicker(){
+  const hourEl = document.getElementById('clockReadoutHour');
+  const minEl = document.getElementById('clockReadoutMinute');
+  hourEl.textContent = String(_clockHour);
+  minEl.textContent = String(_clockMinute).padStart(2,'0');
+  hourEl.style.background = _clockMode==='hour' ? 'rgba(255,107,6,.18)' : 'transparent';
+  hourEl.style.color = _clockMode==='hour' ? 'var(--brand-1)' : 'var(--tx)';
+  minEl.style.background = _clockMode==='minute' ? 'rgba(255,107,6,.18)' : 'transparent';
+  minEl.style.color = _clockMode==='minute' ? 'var(--brand-1)' : 'var(--tx)';
+  document.getElementById('clockAmBtn').style.background = _clockPeriod==='AM' ? 'var(--gk)' : '';
+  document.getElementById('clockAmBtn').style.color = _clockPeriod==='AM' ? '#fff' : '';
+  document.getElementById('clockAmBtn').style.borderColor = _clockPeriod==='AM' ? 'transparent' : '';
+  document.getElementById('clockPmBtn').style.background = _clockPeriod==='PM' ? 'var(--gk)' : '';
+  document.getElementById('clockPmBtn').style.color = _clockPeriod==='PM' ? '#fff' : '';
+  document.getElementById('clockPmBtn').style.borderColor = _clockPeriod==='PM' ? 'transparent' : '';
+
+  const cx=110, cy=110, r=88, numR=72;
+  const svg = document.getElementById('clockFaceSvg');
+  const isHourMode = _clockMode==='hour';
+  const selectedVal = isHourMode ? _clockHour : _clockMinute;
+  const selectedAngle = isHourMode ? (_clockHour%12)*30 : _clockMinute*6;
+  const handX = cx + (numR-4)*Math.sin(selectedAngle*Math.PI/180);
+  const handY = cy - (numR-4)*Math.cos(selectedAngle*Math.PI/180);
+
+  // Numbers: hour mode shows 1–12 at their standard clock positions; minute mode shows
+  // 00,05,10…55 at the same 12 positions (0 sits where 12 does).
+  const marks = isHourMode
+    ? Array.from({length:12},(_,i)=>({label:String(i+1), value:i+1, angle:(i+1)%12*30}))
+    : Array.from({length:12},(_,i)=>({label:String(i*5).padStart(2,'0'), value:i*5, angle:i*30}));
+  const numbersSvg = marks.map(m => {
+    const x = cx + numR*Math.sin(m.angle*Math.PI/180), y = cy - numR*Math.cos(m.angle*Math.PI/180);
+    const active = m.value === selectedVal;
+    return `<circle cx="${x}" cy="${y}" r="16" fill="${active?'var(--brand-1)':'rgba(255,255,255,.05)'}" style="cursor:pointer" onpointerdown="_clockPick(${m.value})"/>
+      <text x="${x}" y="${y+5}" text-anchor="middle" font-size="14" font-weight="600" fill="${active?'#fff':'var(--tx2)'}" style="pointer-events:none">${m.label}</text>`;
+  }).join('');
+
+  svg.innerHTML = `
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)"/>
+    <line x1="${cx}" y1="${cy}" x2="${handX}" y2="${handY}" stroke="var(--brand-1)" stroke-width="2.5"/>
+    <circle cx="${cx}" cy="${cy}" r="4" fill="var(--brand-1)"/>
+    <circle cx="${handX}" cy="${handY}" r="5" fill="var(--brand-1)"/>
+    ${numbersSvg}
+  `;
+  // Drag support on the face itself (not just tapping a fixed number) — lets a finger/mouse
+  // sweep to any angle, snapping to the nearest hour/5-min tick via _angleToHour/_angleToMinute,
+  // same as tapping that number directly would.
+  svg.onpointerdown = (e) => {
+    svg.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const deg = _pointerAngleDeg(svg, ev.clientX, ev.clientY);
+      _clockPick(isHourMode ? _angleToHour(deg) : _angleToMinute(deg), true);
+    };
+    move(e);
+    svg.onpointermove = move;
+    svg.onpointerup = () => { svg.onpointermove = null; if (isHourMode) switchClockMode('minute'); };
+  };
+}
+// fromDrag=true skips the auto-advance-to-minutes-on-tap behavior while actively dragging
+// (pointerup above handles the mode switch once, instead of on every intermediate move).
+function _clockPick(value, fromDrag){
+  if (_clockMode==='hour') { _clockHour = value; if (!fromDrag) { renderClockPicker(); switchClockMode('minute'); return; } }
+  else { _clockMinute = value; }
+  renderClockPicker();
+}
+function confirmClockPicker(){
+  if (!_clockTarget) return;
+  let h24 = _clockHour % 12; if (_clockPeriod === 'PM') h24 += 12;
+  const time24 = String(h24).padStart(2,'0')+':'+String(_clockMinute).padStart(2,'0');
+  const input = document.getElementById(_clockTarget);
+  input.dataset.time24 = time24;
+  input.value = _formatTime12(time24);
+  document.getElementById('modalClockPicker').classList.remove('on');
 }
 
 // Head clicks an open (green) cell → confirm which batch fills it. Conflict prevention:
@@ -2105,7 +2456,7 @@ async function confirmAssignSlot(){
 // ============================================================================
 async function loadClassesTab(){
   try{
-    const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+    const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
     const today = new Date().toISOString().slice(0,10);
     const soon = new Date(); soon.setDate(soon.getDate()+7);
     const soonStr = soon.toISOString().slice(0,10);
@@ -2138,7 +2489,7 @@ async function loadClassesTab(){
 let _allStudents = [];
 async function loadStudentsTab(){
   try{
-    const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+    const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
     // Scoped at the query level for a Trainer — trainer_name is the same field students'
     // own batch-assignment already keys off of (see assignStudents()/saveBatch()), and the
     // same match loadLive() already used client-side; pushed into the query itself here so
@@ -2192,7 +2543,7 @@ function renderStudentsTable(){
 // ============================================================================
 async function loadScheduleTab(){
   try{
-    const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+    const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
     let query = sb.from('batches').select('*').eq('status','active');
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const {data:batches} = await query;

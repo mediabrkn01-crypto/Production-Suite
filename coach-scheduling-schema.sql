@@ -113,3 +113,43 @@ alter table batches add column if not exists batch_structure_version text;
 -- after this migration) are implicitly "the batch's one class stream", same meaning as today;
 -- only rows written by the legacy-data migration set it explicitly.
 alter table attendance add column if not exists session_type text;
+
+-- ============ Phase 7 — Temporary Academic Head delegation ============
+-- Run in the ACADEMIC project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- Lets an Academic Head hand off Head-level access to a specific Trainer/Coach for a
+-- specific time window (e.g. while on leave) WITHOUT changing that Trainer's actual role —
+-- hr_employees/trainers.role is never touched by this feature at all; "is this person
+-- currently an effective Head" is always computed live from this table (does an active,
+-- non-revoked row exist whose window contains right now), never stored as a flag on the
+-- trainer/employee record itself. That's what makes expiry automatic: once now() passes
+-- end_datetime, the row simply stops matching that live query — no cron/backend job, no
+-- separate "expire" write needed. status distinguishes an explicit early revoke from a
+-- delegation that's merely outside its own time window (both read as "not currently active"
+-- to every permission check, but only 'revoked' means a Head deliberately cut it short).
+create table if not exists academic_head_delegations (
+  id uuid primary key default gen_random_uuid(),
+  academic_head_employee_id uuid,          -- hr_employees.id of the delegating Head
+  academic_head_name text,                 -- denormalized for display, same convention batches.trainer_name already uses alongside trainer_id
+  delegate_trainer_id uuid references trainers(id) on delete cascade,
+  delegate_name text,
+  start_datetime timestamptz not null,
+  end_datetime timestamptz not null,
+  status text not null default 'active',   -- 'active' | 'revoked' — see comment above; NOT 'expired' (that's derived from end_datetime, not stored)
+  notes text,
+  created_by text,                         -- the real Head's own login, so a delegated trainer can never be mistaken for having created it
+  created_at timestamptz not null default now(),
+  revoked_at timestamptz
+);
+create index if not exists academic_head_delegations_delegate_idx on academic_head_delegations (delegate_trainer_id, status, start_datetime, end_datetime);
+
+-- Academic-only audit trail for delegation create/revoke — deliberately not the old
+-- app-wide "Recent Activity" panel (see spec: "Do not reintroduce the old global Recent
+-- Activity panel"), just this one feature's own history.
+create table if not exists academic_delegation_audit (
+  id uuid primary key default gen_random_uuid(),
+  delegation_id uuid references academic_head_delegations(id) on delete cascade,
+  action text not null,   -- 'created' | 'revoked'
+  actor text,
+  detail text,
+  created_at timestamptz not null default now()
+);
