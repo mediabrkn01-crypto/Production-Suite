@@ -499,8 +499,8 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="section">
           <h2>Courses <button onclick="openCourse()" class="role-head-only hidden">+ Define Course</button></h2>
           <div class="mhint" style="margin-bottom:12px">Define once, reuse for every batch. Sessions, duration, capacity and default days — all editable anytime, even midway through a running course.</div>
-          <table><thead><tr><th>Course</th><th>Type</th><th>Sessions</th><th>Duration</th><th>Capacity</th><th>Default Days</th><th>Actions</th></tr></thead>
-            <tbody id="courseTable"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Course</th><th>Type</th><th>Sessions</th><th>Duration</th><th>Capacity</th><th>Default Days</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="courseTable"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -508,7 +508,7 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="section">
           <h2>Trainers</h2>
           <div class="lv-note">Synced automatically from HR (Department = Education) — the Academic module never creates or edits employee records directly. To add, remove, or change a Trainer/Coach, use HR → Employees.</div>
-          <table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Type</th><th>Active Batches</th><th>Weekly Load</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="trainerTable"></tbody></table>
         </div>
       </div>
@@ -521,6 +521,13 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
         <div class="section role-trainer-only hidden">
           <h2>My Assigned Tasks</h2>
+          <!-- Filter over the same rows already fetched — not a new status/priority field,
+               just a toggle over the existing `status` text (open = anything not "completed"). -->
+          <div class="daychips" id="myTasksFilter">
+            <div class="dchip on" data-filter="all" onclick="filterMyTasks('all')">All</div>
+            <div class="dchip" data-filter="open" onclick="filterMyTasks('open')">Open</div>
+            <div class="dchip" data-filter="completed" onclick="filterMyTasks('completed')">Completed</div>
+          </div>
           <table><thead><tr><th>Task</th><th>Assigned By</th><th>Due</th><th>Status</th></tr></thead>
             <tbody id="myTasks"></tbody></table>
         </div>
@@ -732,6 +739,7 @@ details[open] .rawsum::before{content:'▾ '}
 
       <!-- Reports — simple, real aggregate stats (coach utilization, batch fill rate). -->
       <div class="acad-tab" id="tab-acad-reports">
+        <div class="acad-dash-tiles" id="reportsSummaryTiles"></div>
         <div class="dash-grid">
           <div class="section dash-card"><h3>Coach Utilization</h3><div id="reportCoachUtil" class="loading">Loading…</div></div>
           <div class="section dash-card"><h3>Batch Fill Rate</h3><div id="reportBatchFill" class="loading">Loading…</div></div>
@@ -1392,9 +1400,29 @@ async function loadAcadDashboard(){
       document.getElementById('acadUpcomingAvailSection').style.display = 'none';
     }
 
-    document.getElementById('dashToday').innerHTML = activeBatches.length
-      ? activeBatches.slice(0, 8).map(b => `<div class="dash-row"><span>${esc(b.name)}</span><span style="color:var(--tx3)">${esc(b.trainer || '—')}</span></div>`).join('')
-      : '<div class="empty">No active batches right now.</div>';
+    // "Today's Schedule" — the actual `sessions` rows for today (real scheduled classes,
+    // same source/scoping loadClassesTab() uses below), not just "which batches are
+    // currently active" — gives a genuine per-class status dot instead of a plain list.
+    try {
+      let sessQuery = sb.from('sessions').select('*, batches(name)').eq('session_date', today);
+      if (!isHead) {
+        const myId = window._myTrainerId;
+        const { data: myB } = myId ? await sb.from('batches').select('id').eq('trainer_id', myId) : { data: [] };
+        const myIds = (myB||[]).map(b=>b.id);
+        sessQuery = myIds.length ? sessQuery.in('batch_id', myIds) : null;
+      }
+      const { data: todaySessions } = sessQuery ? await sessQuery : { data: [] };
+      const dotColor = s => s.status === 'completed' ? 'var(--green)' : (s.status === 'in_progress' ? 'var(--brand-1)' : 'var(--blue)');
+      document.getElementById('dashToday').innerHTML = (todaySessions||[]).length
+        ? todaySessions.slice(0, 8).map(s => `<div class="dash-row"><span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(s)};margin-right:8px"></span>${esc(s.batches?.name || s.type || 'Session')}</span><span style="color:var(--tx3)">${esc(s.status||'scheduled')}</span></div>`).join('')
+        : '<div class="empty">No classes scheduled today.</div>';
+    } catch (e) {
+      // Fall back to the batch-list view if `sessions` isn't reachable for some reason —
+      // still real data (active batches), just less specific than per-class scheduling.
+      document.getElementById('dashToday').innerHTML = activeBatches.length
+        ? activeBatches.slice(0, 8).map(b => `<div class="dash-row"><span>${esc(b.name)}</span><span style="color:var(--tx3)">${esc(b.trainer || '—')}</span></div>`).join('')
+        : '<div class="empty">No active batches right now.</div>';
+    }
 
     if (isTrainerCapable) {
       const pendingRows = Array.from(document.querySelectorAll('#myTasks tr')).filter(r => r.children.length >= 4 && /pending|in.progress/i.test(r.children[3].textContent));
@@ -1491,12 +1519,30 @@ async function loadTrainersTable(){
   // either; this guard is defense-in-depth in case something else ever calls it directly.
   if (currentUser.role !== 'founder' && currentUser.role !== 'academic_head') return;
   await acadSyncTrainersFromHRLocal();
-  const { data: trainers } = await sb.from('trainers').select('*').order('created_at');
-  document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => `
-    <tr><td>${t.name}</td><td>${t.type}</td>
+  const [{ data: trainers }, { data: allBatches }] = await Promise.all([
+    sb.from('trainers').select('*').order('created_at'),
+    sb.from('batches').select('trainer_id,status,class_duration_minutes,day_pattern').eq('status','active'),
+  ]);
+  // Active Batches + Weekly Load are both real, computed from this Head-only fetch (already
+  // company-wide, same visibility this table always had) — not invented numbers. Weekly load
+  // = class length × how many weekdays each active batch actually runs (day_pattern is a
+  // comma-joined weekday list, e.g. "Mon, Wed, Fri" → 3 sessions/week for that batch).
+  const byTrainer = {};
+  (allBatches||[]).forEach(b => {
+    if (!b.trainer_id) return;
+    const days = (b.day_pattern||'').split(',').map(s=>s.trim()).filter(Boolean).filter(d=>!/^MC\b/i.test(d)).length || 1;
+    const hrs = ((b.class_duration_minutes||60)/60) * days;
+    const rec = byTrainer[b.trainer_id] || { count: 0, hrs: 0 };
+    rec.count++; rec.hrs += hrs;
+    byTrainer[b.trainer_id] = rec;
+  });
+  document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => {
+    const load = byTrainer[t.id] || { count: 0, hrs: 0 };
+    return `<tr><td><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((t.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(t.name)}</div></td><td>${t.type==='pt'?'Part-time':'Full-time'}</td>
+    <td>${load.count}</td><td>${load.hrs?Math.round(load.hrs)+'h':'0h'}</td>
     <td><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td>
-    <td><button class="act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>
-  `).join('') || '<tr><td colspan="4" class="empty">No trainers yet</td></tr>';
+    <td><button class="act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">No trainers yet</td></tr>';
 }
 // ============================================================================
 // Native "My Workspace" common items — My Profile, Announcements, My Documents,
@@ -1955,11 +2001,36 @@ async function loadScheduleTab(){
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const {data:batches} = await query;
     const rows = batches||[];
-    document.getElementById('scheduleGrid').innerHTML = rows.length ? `
-      <table><thead><tr><th>Batch</th><th>Coach</th><th>Days</th><th>Time Slot</th></tr></thead><tbody>
-        ${rows.map(b=>`<tr><td>${esc(b.name)}</td><td>${esc(b.trainer_name||'—')}</td><td>${esc(b.day_pattern||'—')}</td><td>${esc(b.time_slot||'—')}</td></tr>`).join('')}
-      </tbody></table>
-    ` : '<div class="empty">No active batches to schedule.</div>';
+    if (!rows.length) { document.getElementById('scheduleGrid').innerHTML = '<div class="empty">No active batches to schedule.</div>'; return; }
+    // Real Mon–Sun grid, not a plain list — day_pattern is the same comma-joined weekday
+    // string saveBatch() already writes (e.g. "Mon, Wed, Fri · MC Sat"); parsed here into
+    // which day-columns each batch's block actually appears under. A batch with no
+    // day_pattern at all (shouldn't normally happen — Create Batch requires picking days)
+    // falls into an "Unscheduled" row below the grid rather than being silently dropped.
+    const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const byDay = {}; DAYS.forEach(d=>byDay[d]=[]);
+    const unscheduled = [];
+    rows.forEach(b=>{
+      const tokens = (b.day_pattern||'').split(',').map(s=>s.trim()).filter(Boolean);
+      const dayTokens = tokens.filter(t=>DAYS.includes(t.replace(/\s*·.*$/,'').trim()));
+      if (!dayTokens.length) { unscheduled.push(b); return; }
+      dayTokens.forEach(d=>{ const day=d.replace(/\s*·.*$/,'').trim(); if(byDay[day]) byDay[day].push(b); });
+    });
+    const colorFor = i => ['var(--brand-3)','var(--blue)','var(--purple)','var(--green)','var(--orange)'][i%5];
+    document.getElementById('scheduleGrid').innerHTML = `
+      <div style="overflow-x:auto">
+      <table style="min-width:900px"><thead><tr>${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
+      <tbody><tr>${DAYS.map(day=>`<td style="vertical-align:top;padding:8px 6px">${
+        byDay[day].length ? byDay[day].map((b,i)=>`
+          <div style="background:${colorFor(i)}22;border:1px solid ${colorFor(i)}55;border-radius:8px;padding:8px;margin-bottom:6px;font-size:11px">
+            <div style="font-weight:700;color:var(--tx)">${esc(b.name)}</div>
+            <div style="color:var(--tx3);margin-top:2px">${esc(b.trainer_name||'—')}</div>
+            <div style="color:var(--tx3)">${esc(b.time_slot||'—')}</div>
+          </div>`).join('') : '<div class="empty" style="padding:6px 0;font-size:10px">—</div>'
+      }</td>`).join('')}</tr></tbody></table>
+      </div>
+      ${unscheduled.length ? `<div class="mhint" style="margin-top:12px">Unscheduled: ${unscheduled.map(b=>esc(b.name)).join(', ')}</div>` : ''}
+    `;
   }catch(e){ console.warn('Schedule tab failed to load:', e.message); }
 }
 
@@ -1990,6 +2061,18 @@ async function loadReportsTab(){
       return `<div class="dash-row"><span>${esc(b.name)}</span><span style="color:var(--tx3)">${enrolled}${cap?(' / '+cap+' ('+pct+'%)'):' enrolled'}</span></div>`;
     }).join('');
     document.getElementById('reportBatchFill').innerHTML = fillRows || '<div class="empty">No active batches.</div>';
+
+    // Same three real numbers just computed above, surfaced as headline stat tiles (same
+    // acadStatTile() component used on the Overview dashboard) — not new metrics, just a
+    // more prominent presentation of what the cards below already show in detail.
+    const capped = activeBatches.filter(b=>b.capacity);
+    const avgFillPct = capped.length ? Math.round(capped.reduce((sum,b)=>sum+Math.min(100,((byBatch[b.name]||0)/b.capacity)*100),0)/capped.length) : 0;
+    document.getElementById('reportsSummaryTiles').innerHTML = [
+      acadStatTile('user-check', '#3b82f6', utilPct+'%', 'Coach Utilization', "acadSwitchTab('trainers')"),
+      acadStatTile('percent', '#10b981', avgFillPct+'%', 'Avg. Batch Fill Rate', "acadSwitchTab('live')"),
+      acadStatTile('layers', '#ff0552', activeBatches.length, 'Active Batches', "acadSwitchTab('live')"),
+    ].join('');
+    lucide.createIcons();
 
     const byStatus = {};
     allBatches.forEach(b=>{ const k=b.status||'unknown'; byStatus[k]=(byStatus[k]||0)+1; });
@@ -2028,6 +2111,18 @@ async function loadHeadView(){
   await loadCourses();
 }
 
+// My Assigned Tasks — filter + badge over the same rows already fetched by
+// loadTrainerView() (window._myTasksAll), not a new query or a new "priority" field, just a
+// status-text-based Open/Completed toggle matching the reference design's tab control.
+function renderMyTasks(filter){
+  document.querySelectorAll('#myTasksFilter .dchip').forEach(c=>c.classList.toggle('on', c.dataset.filter===filter));
+  const all = window._myTasksAll||[];
+  const rows = filter==='all' ? all : all.filter(t => filter==='completed' ? /completed|done/i.test(t.status||'') : !/completed|done/i.test(t.status||''));
+  document.getElementById('myTasks').innerHTML = rows.map(t => `
+    <tr><td>${esc(t.task)}</td><td>${esc(t.assigned_by||'—')}</td><td>${t.due_date||'—'}</td><td><span class="badge ${/completed|done/i.test(t.status||'')?'b-active':'b-inactive'}">${esc(t.status||'—')}</span></td></tr>
+  `).join('') || `<tr><td colspan="4" class="empty">${all.length?'No tasks match this filter.':'No tasks assigned'}</td></tr>`;
+}
+function filterMyTasks(filter){ renderMyTasks(filter); }
 async function loadTrainerView(){
   const { data: myTrainer } = await sb.from('trainers').select('*').ilike('name', currentUser.name).single();
   if (!myTrainer) return;
@@ -2055,13 +2150,12 @@ async function loadTrainerView(){
   }).join('') || '<tr><td colspan="6" class="empty">No batches assigned yet</td></tr>';
 
   const { data: tasks } = await sb.from('assignments').select('*').eq('trainer_id', myTrainer.id).order('due_date');
-  document.getElementById('myTasks').innerHTML = (tasks||[]).map(t => `
-    <tr><td>${t.task}</td><td>${t.assigned_by||'—'}</td><td>${t.due_date||'—'}</td><td>${t.status}</td></tr>
-  `).join('') || '<tr><td colspan="4" class="empty">No tasks assigned</td></tr>';
+  window._myTasksAll = tasks||[];
+  renderMyTasks('all');
 
   const { data: logs } = await sb.from('sessions').select('*, students(name)').eq('logged_by', currentUser.name).order('session_date',{ascending:false}).limit(20);
   document.getElementById('myLogs').innerHTML = (logs||[]).map(l => `
-    <tr><td>${l.students?.name||'—'}</td><td>${l.session_date}</td><td>${l.type}</td><td>${l.status}</td><td>${l.notes||''}</td></tr>
+    <tr><td>${l.students?.name||'—'}</td><td>${l.session_date}</td><td>${esc(l.type)}</td><td><span class="badge ${l.status==='completed'?'b-active':'b-inactive'}">${esc(l.status||'—')}</span></td><td>${esc(l.notes||'')}</td></tr>
   `).join('') || '<tr><td colspan="5" class="empty">No sessions logged yet</td></tr>';
 
   const batchSelect = document.getElementById('m_s_batch');
@@ -2182,16 +2276,17 @@ async function loadCourses(){
 function renderCourseTable(){
   const el=document.getElementById('courseTable'); if(!el)return;
   el.innerHTML=COURSE_ROWS.map(c=>`
-    <tr><td>${esc(c.name)}${c.active===false?' <span class="badge b-inactive">off</span>':''}</td>
+    <tr><td>${esc(c.name)}</td>
     <td>${c.type==='one-on-one'?'1:1':(c.type==='recorded'?'Recorded':'Group')}</td>
     <td>${c.type==='recorded'?'—':(c.sessions_total||'—')}</td>
     <td>${c.duration_days?c.duration_days+'d'+(c.type==='recorded'?' validity':''):'—'}</td>
     <td>${c.type==='recorded'?'—':(c.type==='one-on-one'?'1':(c.max_students||'—'))}</td>
     <td>${esc(c.default_days||'—')}${c.mc_day?' · MC '+esc(c.mc_day):''}</td>
+    <td><span class="badge ${c.active===false?'b-inactive':'b-active'}">${c.active===false?'Legacy':'Active'}</span></td>
     <td><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
     <button class="act-btn" onclick="toggleCourse('${c.id}')">${c.active===false?'Enable':'Disable'}</button>
     <button class="act-btn" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>
-  `).join('')||'<tr><td colspan="7" class="empty">No courses yet — define your first course.</td></tr>';
+  `).join('')||'<tr><td colspan="8" class="empty">No courses yet — define your first course.</td></tr>';
 }
 function populateCourseSelect(){
   const sel=document.getElementById('m_b_type'); if(!sel)return;
