@@ -2446,6 +2446,12 @@
             // legacy chat-avatar upload above, everywhere the person's own avatar is shown.
             hrFetchAndApplyMyPhoto();
 
+            // Not awaited — the Pipeline table (from syncLedgerEngine above) already rendered
+            // with whatever was in hrEmployees at that moment; re-render once the self/team HR
+            // records actually arrive so the Assigned Creator column's designation line fills
+            // in shortly after, without delaying the Pipeline's own first paint.
+            ensureHRDataLoaded().then(() => { if (typeof renderTableRows === 'function') renderTableRows(); }).catch(() => {});
+
             // Captured ONCE, before any async work below, and threaded through explicitly
             // rather than re-reading location.search later — checkAcademicAccess() is async
             // and un-awaited-by-callers elsewhere, so a second read after an await could see
@@ -2453,10 +2459,21 @@
             // wrongly concluding no deep link was requested and redirecting away regardless.
             const deepLinkTab = new URLSearchParams(location.search).get('tab');
 
+            // Sidebar role label — set to the generic system-role label FIRST, as a fallback
+            // for accounts with no linked HR record at all. checkAcademicAccess() below (which
+            // runs after this and IS awaited) overwrites this with the employee's real HR
+            // title (e.g. "Video Editor", "Academic Head") whenever one is on file — this
+            // ordering must stay generic-first/real-title-second, or the real title gets
+            // silently stomped back to the generic label right after it's set (that was the
+            // actual bug: this same assignment used to run AFTER checkAcademicAccess()).
+            const userRoleEl = document.getElementById('sidebar-user-role');
+            if (userRoleEl) userRoleEl.textContent = activeRole === 'admin' ? 'HR' : activeRole === 'manager' ? 'Manager' : activeRole === 'social_media' ? 'Employee' : 'Employee';
+
             // Reveals the Academic Module sidebar link if — and only if — HR has this
             // employee's record set to the Education division. Awaited (unlike the old
             // fire-and-forget call) so its redirect-or-not decision is fully resolved before
-            // anything below touches the URL or reveals the app frame.
+            // anything below touches the URL or reveals the app frame. Also applies the
+            // employee's real HR title to the sidebar role label above, when one is on file.
             await checkAcademicAccess(deepLinkTab);
 
             document.getElementById('auth-loading-screen')?.classList.add('hidden');
@@ -2500,8 +2517,7 @@
             const initials = (activeUser || 'U').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
             const avatarEl = document.getElementById('sidebar-user-avatar');
             if (avatarEl) avatarEl.textContent = initials;
-            const userRoleEl = document.getElementById('sidebar-user-role');
-            if (userRoleEl) userRoleEl.textContent = activeRole === 'admin' ? 'HR' : activeRole === 'manager' ? 'Manager' : activeRole === 'social_media' ? 'Employee' : 'Employee';
+            // (sidebar-user-role is set earlier, before checkAcademicAccess() — see there for why)
             // Update active-user-display for the new sidebar
             const audEl = document.getElementById('active-user-display');
             if (audEl) audEl.textContent = activeUser || '';
@@ -5237,12 +5253,21 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     ? `<br><span class="text-white/70/70 text-[10px]">Assigned by: ${t.assignedBy}</span>`
                     : '';
 
+                // Shows the creator's real HR designation (e.g. "Video Editor") — never the
+                // generic employment-status label. Only appears once hrEmployees has that
+                // person's record (self, or a manager's own team) — see the fire-and-forget
+                // ensureHRDataLoaded()+renderTableRows() call in launchSession().
+                const creatorDesignation = (typeof hrDesignationForEmail === 'function') ? hrDesignationForEmail(t.employeeEmail) : null;
+                const creatorDesignationLine = creatorDesignation
+                    ? `<br><span class="text-[#4a5182] text-[10px]">${creatorDesignation}</span>`
+                    : '';
+
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-transparent/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
                     <td class="py-3 px-4 font-bold text-white sticky left-0 bg-transparent z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
-                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-[#4a5182] text-[10px]">${t.employeeEmail}</span></td>
+                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-[#4a5182] text-[10px]">${t.employeeEmail}</span>${creatorDesignationLine}</td>
                     <td class="py-3 px-4 text-[#6b74a0] max-w-xs truncate cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</td>
                     <td class="py-3 px-4 text-[#6b74a0] font-mono">${t.assignedDate}</td>
                     <td class="py-3 px-4 text-white/70 font-mono font-semibold">${t.date}</td>

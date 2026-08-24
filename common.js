@@ -1192,6 +1192,21 @@ async function acadSyncTrainersFromHR(){
             return hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
         }
 
+// ── hrDesignationForEmail: real job title for a person shown by email elsewhere in the UI
+// (e.g. the Pipeline's "Assigned Creator" column) — never the generic employment-status/
+// system-role label. Looks up hrEmployees (self + team, in a self-service session) by
+// portal_email and reuses the same hrRoleDisplay() the sidebar role label uses, so both
+// places agree on one real title per employee, sourced from HR — never hardcoded. Returns
+// null (not a placeholder string) when no match/title is found, so callers can decide their
+// own fallback (blank line vs. omitting it entirely) instead of this guessing for them.
+        function hrDesignationForEmail(email) {
+            if (!email) return null;
+            const e = hrEmployees.find(x => (x.portal_email || '').toLowerCase() === email.trim().toLowerCase());
+            if (!e) return null;
+            const label = hrRoleDisplay(e);
+            return (label && label !== '—') ? label : null;
+        }
+
 // ── ensureHRDataLoaded (orig line 11448) ──
         async function ensureHRDataLoaded() {
             if (!myHRDataLoaded) { await loadMyHRData(); }
