@@ -1027,7 +1027,13 @@ function applyCurrentUserProfileToDOM(profile) {
         if (sidebarAvatarMobile) sidebarAvatarMobile.innerHTML = hrAvatarHTML(profile.raw, 26);
     }
     if (profile.designation) {
-        ['sidebar-user-role', 'sidebar-user-role-mobile', 'hr-active-role-display', 'hr-topbar-role'].forEach(id => {
+        // user-role-badge (index.html's top sidebar identity block, under "Media Suite") used
+        // to be set separately in launchSession() as `${activeRole} scope` — generic text like
+        // "employee scope" instead of the person's actual HR designation, and inconsistent
+        // with the Academic module's own sidebar header. Added here so it's set by the same
+        // one shared profile write every other designation display already goes through,
+        // instead of a second, differently-sourced value racing with this one.
+        ['sidebar-user-role', 'sidebar-user-role-mobile', 'hr-active-role-display', 'hr-topbar-role', 'user-role-badge'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = profile.designation;
         });
