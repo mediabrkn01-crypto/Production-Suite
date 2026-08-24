@@ -711,6 +711,18 @@ details[open] .rawsum::before{content:'▾ '}
           <h2>My Slots for This Date</h2>
           <div class="lv-note">Click a slot to mark yourself available. Click again to remove it. Booked slots (already assigned to a batch) can't be removed here — ask the Academic Head to reassign first.</div>
           <div id="availMyToggleGrid" class="loading" style="margin-top:10px">Loading…</div>
+          <!-- Custom Time — additional to the quick hourly slots above, not a replacement.
+               Writes into the exact same trainer_slots table/row shape (trainer_id, slot_date,
+               start_time, end_time, status) — the Academic Head's Coach Availability reads
+               that one table regardless of which of the two ways a slot was added. -->
+          <div class="subhead" style="margin:22px 0 10px">Custom Time</div>
+          <div class="mrow" style="align-items:flex-end">
+            <label class="lv-field" style="flex:1"><span>Start Time</span><input type="time" id="customAvailStart"/></label>
+            <label class="lv-field" style="flex:1"><span>End Time</span><input type="time" id="customAvailEnd"/></label>
+            <button class="lv-apply" style="white-space:nowrap" onclick="addCustomAvailability()">+ Add Availability</button>
+          </div>
+          <div class="subhead" style="margin:18px 0 8px">Added Custom Times</div>
+          <div id="customAvailList" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
       </div>
 
@@ -1897,6 +1909,25 @@ async function renderAvailabilityGrid(){
         }</tr>`;
       }).join('')}
     </tbody></table>`;
+    // Custom Time ranges (non-whole-hour trainer_slots rows, e.g. 10:30–12:15) don't align
+    // to the grid's fixed hourly columns above, so they'd otherwise be invisible to the
+    // Head entirely — listed separately here instead, same click-to-assign flow as an open
+    // grid cell (openAssignSlot/confirmAssignSlot don't care whether start_time is a whole
+    // hour or not, only the grid's own cell lookup does).
+    const customRows = _availSlotsForDate.filter(s => !AVAIL_HOURS.includes(s.start_time)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+    if (customRows.length) {
+      wrap.innerHTML += `<div class="subhead" style="margin:18px 0 8px">Custom Time Ranges</div><div style="display:flex;flex-direction:column;gap:8px">${
+        customRows.map(s => {
+          const t = _availTrainers.find(x=>String(x.id)===String(s.trainer_id));
+          const label = `${_formatTime12(s.start_time)}–${_formatTime12(s.end_time)}`;
+          const open = s.status === 'available';
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;background:${s.status==='booked'?'rgba(255,5,82,.1)':'rgba(16,185,129,.1)'};border:1px solid ${s.status==='booked'?'rgba(255,5,82,.25)':'rgba(16,185,129,.25)'}">
+            <span style="font-size:12.5px;color:var(--tx)">${esc(t?t.name:'Unknown coach')} · ${label} · ${s.status==='booked'?('Booked'+(s._batchName?': '+esc(s._batchName):'')):'Available'}</span>
+            ${open ? `<button class="act-btn" onclick="openAssignSlot('${s.trainer_id}','${esc(t?t.name:'').replace(/'/g,"\\'")}','${date}','${s.start_time}','${label}')">Assign</button>` : ''}
+          </div>`;
+        }).join('')
+      }</div>`;
+    }
   }catch(e){ wrap.innerHTML = '<div class="empty">Could not load availability: '+esc(e.message)+'</div>'; }
   renderMyAvailabilityToggle(date);
 }
@@ -1908,7 +1939,7 @@ async function renderMyAvailabilityToggle(date){
   const grid = document.getElementById('availMyToggleGrid');
   if (!grid) return;
   const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
-  if (!me) { grid.innerHTML = '<div class="empty">No coach profile linked to your login yet — ask HR to link your portal email.</div>'; return; }
+  if (!me) { grid.innerHTML = '<div class="empty">No coach profile linked to your login yet — ask HR to link your portal email.</div>'; const cl=document.getElementById('customAvailList'); if(cl) cl.innerHTML=''; return; }
   grid.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${AVAIL_HOURS.map(h=>{
     const slot = _availSlotsForDate.find(s=>String(s.trainer_id)===String(me.id) && s.start_time===h);
     const booked = slot && slot.status==='booked';
@@ -1919,6 +1950,7 @@ async function renderMyAvailabilityToggle(date){
       ${_availSlotLabel(h)}<br>${booked?('Booked'+(slot._batchName?': '+esc(slot._batchName):'')):(available?'Available (click to remove)':'Click to add')}
     </button>`;
   }).join('')}</div>`;
+  renderCustomAvailList();
 }
 async function toggleMySlot(trainerId, date, start){
   const existing = _availSlotsForDate.find(s=>String(s.trainer_id)===String(trainerId) && s.start_time===start);
@@ -1934,15 +1966,81 @@ async function toggleMySlot(trainerId, date, start){
   renderAvailabilityGrid();
 }
 
+// ── Custom Time — additional way to add availability beyond the fixed hourly slots above.
+// Same table, same trainer_id/date scoping as toggleMySlot() — a "custom" row is just any
+// trainer_slots row whose start_time isn't one of the 24 whole-hour values, so no new column
+// is needed to tell the two apart; rendered separately here because the hourly grid above
+// can only display exact-hour cells, not an arbitrary 10:30–12:15 range.
+function _formatTime12(hhmm){
+  const [h,m] = hhmm.split(':').map(Number);
+  const h12 = ((h+11)%12)+1;
+  return h12+':'+String(m).padStart(2,'0')+(h<12?'AM':'PM');
+}
+function _timeToMinutes(hhmm){ const [h,m]=hhmm.split(':').map(Number); return h*60+m; }
+function renderCustomAvailList(){
+  const el = document.getElementById('customAvailList');
+  if (!el) return;
+  const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
+  const mine = me ? _availSlotsForDate.filter(s => String(s.trainer_id)===String(me.id) && !AVAIL_HOURS.includes(s.start_time)) : [];
+  mine.sort((a,b)=>a.start_time.localeCompare(b.start_time));
+  el.innerHTML = mine.length ? mine.map(s => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;background:${s.status==='booked'?'rgba(255,5,82,.1)':'rgba(16,185,129,.1)'};border:1px solid ${s.status==='booked'?'rgba(255,5,82,.25)':'rgba(16,185,129,.25)'}">
+      <span style="font-size:12.5px;color:var(--tx)">${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}${s.status==='booked'?' · Booked'+(s._batchName?': '+esc(s._batchName):''):' · Available'}</span>
+      ${s.status==='booked' ? '<span style="font-size:10.5px;color:var(--tx3)">Contact Academic Head to reschedule</span>' : `<button class="act-btn" onclick="removeCustomSlot('${s.id}')">Remove</button>`}
+    </div>`).join('') : '<div class="empty" style="padding:10px 0">No custom time ranges added for this date.</div>';
+}
+async function addCustomAvailability(){
+  const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
+  if (!me) { showToast('error','No coach profile linked to your login yet.'); return; }
+  const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
+  const start = document.getElementById('customAvailStart')?.value;
+  const end = document.getElementById('customAvailEnd')?.value;
+  if (!start || !end) { showToast('warning','Pick both a start and an end time.'); return; }
+  const startMin = _timeToMinutes(start), endMin = _timeToMinutes(end);
+  if (endMin <= startMin) { showToast('warning','End Time must be after Start Time.'); return; }
+  // Overlap check against EVERY existing slot this trainer has on this date — both the
+  // fixed hourly ones and any other custom range already added — not just other custom
+  // ones, so a custom 10:30–12:15 can't silently double-book the 11:00–12:00 quick slot.
+  const mine = _availSlotsForDate.filter(s => String(s.trainer_id)===String(me.id));
+  for (const s of mine) {
+    const sStart = _timeToMinutes(s.start_time), sEnd = _timeToMinutes(s.end_time);
+    if (startMin < sEnd && endMin > sStart) {
+      showToast('warning', `This time overlaps with an existing availability range (${_formatTime12(s.start_time)}–${_formatTime12(s.end_time)}).`);
+      return;
+    }
+  }
+  try{
+    await sb.from('trainer_slots').insert({ trainer_id: me.id, slot_date: date, start_time: start, end_time: end, status: 'available' });
+    showToast('success','Custom availability saved');
+  }catch(e){ showToast('error','Could not save availability: '+e.message); return; }
+  document.getElementById('customAvailStart').value='';
+  document.getElementById('customAvailEnd').value='';
+  renderAvailabilityGrid();
+}
+async function removeCustomSlot(id){
+  const slot = _availSlotsForDate.find(s => String(s.id)===String(id));
+  if (!slot) return;
+  if (slot.status === 'booked') { showToast('warning','This slot has an assigned class. Contact Academic Head to reschedule.'); return; }
+  try{
+    await sb.from('trainer_slots').delete().eq('id', id);
+    showToast('success','Custom availability removed');
+  }catch(e){ showToast('error','Could not remove availability: '+e.message); return; }
+  renderAvailabilityGrid();
+}
+
 // Head clicks an open (green) cell → confirm which batch fills it. Conflict prevention:
 // the slot must still exist as an unbooked 'available' row (re-checked at write time, not
 // just trusted from the last render) — if someone else booked it a moment ago, this fails
 // loudly instead of silently double-booking.
-async function openAssignSlot(trainerId, trainerName, date, start){
+async function openAssignSlot(trainerId, trainerName, date, start, label){
   _assignSlotCtx = { trainerId, trainerName, date, start };
   document.getElementById('assignSlotCoach').textContent = trainerName;
   document.getElementById('assignSlotDate').textContent = date;
-  document.getElementById('assignSlotTime').textContent = _availSlotLabel(start);
+  // label is optional — the main hourly grid never passes one (its cells are always exactly
+  // one of the 24 AVAIL_HOURS values, so _availSlotLabel(start) is correct there); the Custom
+  // Time list below passes its own "10:30AM–12:15PM" label since _availSlotLabel() only knows
+  // how to format a whole hour.
+  document.getElementById('assignSlotTime').textContent = label || _availSlotLabel(start);
   const { data: batches } = await sb.from('batches').select('id,name,status').eq('status','active').order('name');
   const sel = document.getElementById('assignSlotBatch');
   sel.innerHTML = '<option value="">— Select batch —</option>' + (batches||[]).map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
