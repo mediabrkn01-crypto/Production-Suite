@@ -1575,6 +1575,28 @@ function applyAcadRoleGates(){
   return { isHead, isTrainerCapable, isRestricted };
 }
 async function boot(){
+  // Celebration engine (common.js) — deliberately the FIRST thing boot() does, called
+  // independently (not awaited, not nested after the rest of this function) so a failure
+  // anywhere later in boot()'s long chain of loadXTab() calls can never prevent it from
+  // running. It previously sat at the very END of this function — if any earlier awaited
+  // call threw an uncaught exception (this page's own console has shown unrelated 400s from
+  // other queries), execution stops there and every line after it, including the celebration
+  // check, simply never runs — with no error of its own, which is exactly why it could fail
+  // completely silently. Only needs currentUser (already set by every caller before boot()
+  // runs) plus its own independent fetch via _acadGetMyHREmployeeRecord()/mediaHrDB — no
+  // dependency on anything else in this function succeeding.
+  if (typeof runAcadCelebrationCheck === 'function') {
+    runAcadCelebrationCheck();
+    // Re-check periodically (not just once at boot) — a celebration HR creates while this
+    // trainer already has the page open must still reach them without a full reload, same as
+    // index.html's own 20s-throttled poll. boot() can run more than once per page (alternate
+    // login paths) — guarded so a second boot() never stacks a second interval.
+    if (!window._acadCelebrationIntervalSet) {
+      window._acadCelebrationIntervalSet = true;
+      setInterval(runAcadCelebrationCheck, 60000);
+    }
+  }
+
   document.getElementById('greeting').textContent = 'Welcome, ' + currentUser.name;
   document.getElementById('rolepill').textContent = currentUser.role.replace('_',' ');
 
@@ -1670,22 +1692,6 @@ async function boot(){
   loadAttendanceCalendar();
   loadLeaveBalances();
   if (typeof lucide !== 'undefined') lucide.createIcons();
-  // Celebration engine (common.js) — same shared birthday/anniversary/festival popup+banner
-  // as index.html and hr.html, using the existing HR-record lookup this page already has.
-  // Birthday/anniversary need only that record (me.dob/me.joining_date), but HR-configured
-  // company-wide events (hrCelebrationEvents) are otherwise never fetched on this page at all
-  // — academics.html doesn't call loadMyHRData() for anything else, so fetch just this one
-  // table directly rather than pulling in loadMyHRData()'s full attendance/leave/payroll set.
-  runAcadCelebrationCheck();
-  // Re-check periodically (not just once at boot) — a celebration HR creates while this
-  // trainer already has the page open must still reach them without a full reload, same as
-  // index.html's own 20s-throttled poll. 60s is plenty for something that's date-scoped to
-  // begin with (spec item 1/12). boot() can run more than once per page (alternate login
-  // paths) — guarded so a second boot() never stacks a second interval.
-  if (!window._acadCelebrationIntervalSet) {
-    window._acadCelebrationIntervalSet = true;
-    setInterval(runAcadCelebrationCheck, 60000);
-  }
 }
 
 function runAcadCelebrationCheck() {
@@ -1701,6 +1707,12 @@ function runAcadCelebrationCheck() {
       hrCelebrationEvents = [];
     }
     runCelebrationQueue(me);
+  }).catch(e => {
+    // Previously this promise chain had no .catch() at all — a failure in
+    // _acadGetMyHREmployeeRecord() itself (e.g. loadCurrentUserProfile throwing) would surface
+    // only as a generic "Uncaught (in promise)" line with nothing celebration-specific to grep
+    // for, easy to miss among this page's other console noise.
+    console.error('Celebration engine: could not resolve this employee\'s HR record —', e.message);
   });
 }
 
