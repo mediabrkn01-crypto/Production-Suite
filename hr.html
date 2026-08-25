@@ -30,6 +30,11 @@
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- jsPDF's autoTable plugin — only new dependency added for the Attendance Report export
+         (spec: PDF required). Same jsPDF instance already loaded/used for payslips; autoTable
+         is what makes a wide day-by-day grid (up to 31 day columns) exportable cleanly instead
+         of manually drawing every cell by hand. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style>
@@ -979,12 +984,23 @@
                             <h1 class="text-xl font-bold tracking-tight">Monthly Attendance Overview</h1>
                             <p class="text-[#6b74a0] text-xs mt-1">View and track everyone's attendance for the selected month.</p>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center">
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                             <button onclick="shiftHRAttReportMonth(-1)" class="hr-select" style="cursor:pointer;padding:8px 12px">‹</button>
                             <input id="hr-att-month" type="month" class="hr-input" onchange="renderHRMonthlyAttendance()">
                             <button onclick="shiftHRAttReportMonth(1)" class="hr-select" style="cursor:pointer;padding:8px 12px">›</button>
+                            <!-- Compact action menu on mobile (spec item 12) — same single button either
+                                 way, just narrower/icon-only below the sm breakpoint so it never pushes the
+                                 month controls into a second wrapped row on a phone. -->
+                            <button onclick="hrDownloadAttendanceReportPDF()" id="hr-att-download-btn" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider flex items-center gap-1.5" style="white-space:nowrap">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Download Report</span>
+                            </button>
                         </div>
                     </div>
+
+                    <!-- Holiday / Official Event summary for the selected month — real HR calendar
+                         data (hr_holidays / hr_official_events), never hardcoded, and re-rendered by
+                         renderHRMonthlyAttendance() itself so it always tracks the month filter above. -->
+                    <div id="hr-att-report-events" class="card glass-card p-3 rounded-2xl hidden"></div>
 
                     <div id="hr-att-report-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
 
@@ -996,12 +1012,13 @@
                         <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
                         <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
                         <span><b class="text-purple-400">H</b> = Holiday</span>
+                        <span><b class="text-cyan-400">OE</b> = Official Event</span>
                     </div>
 
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <div id="hr-att-monthly-report"></div>
                     </div>
-                    <p class="text-[10px] text-[#4a5182]">All times are shown in local time. Averages are calculated based on present days only.</p>
+                    <p class="text-[10px] text-[#4a5182]">All times are shown in local time. Averages are calculated based on present days only. Hover a Holiday (H) or Official Event (OE) cell for details.</p>
                 </div>
 
                 <!-- ══ HR WORKFORCE REPORT — one complete view of every employee HR has ever
@@ -3297,9 +3314,14 @@
         }
 
 // ── renderHRMonthlyAttendance (orig line 9579) ──
-        function renderHRMonthlyAttendance() {
-            const month = document.getElementById('hr-att-month').value;
-            if (!month) return;
+        // Single source of truth for the Monthly Attendance Overview — used by BOTH the
+        // on-screen render (renderHRMonthlyAttendance) and the PDF export
+        // (hrDownloadAttendanceReportPDF) below, so the export can never show different
+        // numbers than what HR is actually looking at (spec item 10: "same data source").
+        // Nothing about hrAttDayCode/hrCalculatePayrollForMonth themselves changed — this is
+        // purely the existing computation lifted out of the render function so a second
+        // caller can reuse it instead of re-deriving the same figures a different way.
+        function hrComputeMonthlyAttendanceReportData(month) {
             const todayStr = new Date().toISOString().slice(0,10);
             const [y, m] = month.split('-').map(Number);
             const daysInMonth = new Date(y, m, 0).getDate();
@@ -3369,6 +3391,33 @@
             const allHourRecs = empRows.filter(r => r.avgHours !== '—');
             const overallAvgHours = allHourRecs.length ? (allHourRecs.reduce((s,r) => s + parseFloat(r.avgHours), 0) / allHourRecs.length) : 0;
             const workDays = dayNums.filter(d => { const dow = new Date(y, m-1, d).getDay(); return !hrIsWeeklyOff(dow); }).length;
+
+            // Holiday / Official Event summary for this month (spec items 1-3) — real
+            // hr_holidays / hr_official_events rows for the selected month, never hardcoded
+            // festival names. Sorted together by date so the summary reads chronologically
+            // regardless of which table a given day's entry came from.
+            const monthHolidays = hrHolidays.filter(h => (h.holiday_date || '').startsWith(month))
+                .map(h => ({ date: h.holiday_date, name: h.name || 'Holiday', type: h.type || 'Holiday', kind: 'holiday' }));
+            const monthEvents = hrOfficialEvents.filter(ev => (ev.event_date || '').startsWith(month))
+                .map(ev => ({ date: ev.event_date, name: ev.title || 'Official Event', type: `Official Company Event · ${ev.paid === false ? 'Unpaid' : 'Paid'} Day`, kind: 'event' }));
+            const monthCalendarEntries = [...monthHolidays, ...monthEvents].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+
+            return {
+                y, m, month, todayStr, daysInMonth, dayNums, dowLabels, active, empRows,
+                dailyPresent, dailyAbsent, dailyLate, dailyPct,
+                totalPresentDays, totalAbsentDays, totalLateDays, totalApplicable, overallAvgHours, workDays,
+                monthCalendarEntries
+            };
+        }
+
+        function renderHRMonthlyAttendance() {
+            const month = document.getElementById('hr-att-month').value;
+            if (!month) return;
+            const rpt = hrComputeMonthlyAttendanceReportData(month);
+            const { y, m, daysInMonth, dayNums, dowLabels, empRows, dailyPresent, dailyAbsent, dailyLate, dailyPct,
+                totalPresentDays, totalAbsentDays, totalLateDays, totalApplicable, overallAvgHours, workDays,
+                active, monthCalendarEntries } = rpt;
+
             document.getElementById('hr-att-report-stats').innerHTML = [
                 { label: 'Total Employees', num: active.length },
                 { label: 'Present Days', num: totalPresentDays + (totalApplicable ? ` (${Math.round(totalPresentDays/totalApplicable*100)}%)` : '') },
@@ -3378,16 +3427,46 @@
                 { label: 'Total Work Days', num: workDays }
             ].map(s => `<div class="hr-stat-card"><div class="num" style="font-size:16px">${s.num}</div><div class="label">${s.label}</div></div>`).join('');
 
+            // Compact Holiday/Special Day summary above the table (spec item 2) — hidden
+            // entirely when the month has none, rather than showing an empty section.
+            const eventsEl = document.getElementById('hr-att-report-events');
+            if (eventsEl) {
+                eventsEl.classList.toggle('hidden', monthCalendarEntries.length === 0);
+                if (monthCalendarEntries.length) {
+                    const monthLabel = new Date(y, m-1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }).toUpperCase();
+                    eventsEl.innerHTML = `
+                        <div style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#6b74a0;text-transform:uppercase;margin-bottom:8px">${monthLabel} — Holidays &amp; Special Days</div>
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                            ${monthCalendarEntries.map(en => {
+                                const d = new Date(en.date + 'T00:00:00');
+                                const dLabel = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                                return `<div style="display:flex;align-items:baseline;gap:10px;font-size:12px">
+                                    <span style="color:#a5adcf;font-weight:700;min-width:52px">${dLabel}</span>
+                                    <span style="color:#fff;font-weight:600">${en.name}</span>
+                                    <span style="color:${en.kind === 'event' ? '#22d3ee' : '#c084fc'}">· ${en.type}</span>
+                                </div>`;
+                            }).join('')}
+                        </div>`;
+                }
+            }
+
             // Grid table
             const codeClass = c => c ? `hr-att-cell-${c}` : 'hr-att-cell-blank';
             const codeLabel = c => c || '—';
-            // OE cells get a tooltip with the actual event title, e.g. "Onam Celebration ·
-            // Official Company Event · Paid Day" — looked up per-cell (employee, date) since
-            // the same OE code can represent different events on different dates/departments.
+            // OE/H cells get a tooltip with the actual event/holiday name, e.g. "Onam
+            // Celebration · Official Company Event · Paid Day" or "Independence Day · Public
+            // Holiday" — looked up per-cell (employee, date) since the same code can represent
+            // different events/holidays on different dates/departments.
             const cellTitle = (emp, c) => {
-                if (c.code !== 'OE') return '';
-                const ev = hrOfficialEventFor(emp, c.date);
-                return ev ? ` title="${(ev.title || 'Official Event').replace(/"/g,'&quot;')} · Official Company Event · ${ev.paid === false ? 'Unpaid' : 'Paid'} Day"` : '';
+                if (c.code === 'OE') {
+                    const ev = hrOfficialEventFor(emp, c.date);
+                    return ev ? ` title="${(ev.title || 'Official Event').replace(/"/g,'&quot;')} · Official Company Event · ${ev.paid === false ? 'Unpaid' : 'Paid'} Day"` : '';
+                }
+                if (c.code === 'H') {
+                    const hol = hrHolidays.find(h => h.holiday_date === c.date);
+                    return hol ? ` title="${(hol.name || 'Holiday').replace(/"/g,'&quot;')} · ${(hol.type || 'Holiday').replace(/"/g,'&quot;')}"` : '';
+                }
+                return '';
             };
             document.getElementById('hr-att-monthly-report').innerHTML = `
                 <table class="hr-att-grid">
@@ -3441,6 +3520,99 @@
                     </tfoot>` : ''}
                 </table>`;
             if (window.lucide) lucide.createIcons();
+        }
+
+        // Attendance Report PDF export (spec items 6-11). Reuses
+        // hrComputeMonthlyAttendanceReportData(month) — the exact same computation the screen
+        // just rendered from — so the export can never disagree with what's on screen (item
+        // 10), and always exports whatever month is currently selected in hr-att-month (item
+        // 9), never "today" regardless of what's being viewed.
+        async function hrDownloadAttendanceReportPDF() {
+            const month = document.getElementById('hr-att-month')?.value;
+            if (!month) return;
+            if (!window.jspdf || !window.jspdf.jsPDF) { if (window.showToast) showToast('error', 'PDF library did not load — check your connection and try again.'); return; }
+            const btn = document.getElementById('hr-att-download-btn');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            try {
+                const rpt = hrComputeMonthlyAttendanceReportData(month);
+                const { y, m, dayNums, empRows, totalPresentDays, totalAbsentDays, totalLateDays, totalApplicable, overallAvgHours, workDays, active, monthCalendarEntries } = rpt;
+                const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+                const pageWidth = doc.internal.pageSize.getWidth();
+                let cursorY = 40;
+
+                doc.setFontSize(16); doc.setFont(undefined, 'bold');
+                doc.text('Broken English LLP / HR', 40, cursorY);
+                doc.setFontSize(12); doc.setFont(undefined, 'normal');
+                cursorY += 20;
+                doc.text(`Attendance Report — Month: ${monthLabel}`, 40, cursorY);
+                cursorY += 24;
+
+                // Summary block (spec item 8)
+                doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Summary', 40, cursorY);
+                doc.setFont(undefined, 'normal');
+                const summaryLines = [
+                    `Total Employees: ${active.length}`,
+                    `Present Days: ${totalPresentDays}${totalApplicable ? ` (${Math.round(totalPresentDays/totalApplicable*100)}%)` : ''}`,
+                    `Absent Days: ${totalAbsentDays}${totalApplicable ? ` (${Math.round(totalAbsentDays/totalApplicable*100)}%)` : ''}`,
+                    `Late Days: ${totalLateDays}`,
+                    `Average Work Hours: ${overallAvgHours ? overallAvgHours.toFixed(2).replace(/\.00$/,'') + 'h' : '—'}`,
+                    `Total Work Days: ${workDays}`
+                ];
+                cursorY += 14;
+                doc.setFontSize(9);
+                summaryLines.forEach((line, i) => doc.text(line, 40 + (i % 3) * 220, cursorY + Math.floor(i / 3) * 14));
+                cursorY += Math.ceil(summaryLines.length / 3) * 14 + 16;
+
+                // Holiday / Special Day summary (spec item 8) — same real hr_holidays/
+                // hr_official_events rows shown on screen, not re-derived differently.
+                if (monthCalendarEntries.length) {
+                    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Holiday / Special Day Summary', 40, cursorY);
+                    doc.autoTable({
+                        startY: cursorY + 6,
+                        head: [['Date', 'Event Name', 'Type']],
+                        body: monthCalendarEntries.map(en => [new Date(en.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), en.name, en.type]),
+                        theme: 'grid', styles: { fontSize: 8, cellPadding: 4 }, headStyles: { fillColor: [30, 30, 40] },
+                        margin: { left: 40, right: 40 }
+                    });
+                    cursorY = doc.lastAutoTable.finalY + 20;
+                } else {
+                    doc.setFontSize(9); doc.text('No holidays or official events recorded for this month.', 40, cursorY);
+                    cursorY += 20;
+                }
+
+                // Employee Attendance Table (spec item 8) — Employee ID, Name, one column per
+                // day (the same codes shown on screen), then Present/Absent/Late/Avg Hours.
+                doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('Employee Attendance', 40, cursorY);
+                doc.autoTable({
+                    startY: cursorY + 6,
+                    head: [['ID', 'Name', ...dayNums.map(String), 'Present', 'Absent', 'Late', 'Avg Hours']],
+                    body: empRows.map(r => [r.emp.employee_id || '—', r.emp.full_name, ...r.codes.map(c => c.code || '—'), r.present, r.absent, r.late, r.avgHours]),
+                    theme: 'grid', styles: { fontSize: 6.5, cellPadding: 2, halign: 'center' },
+                    columnStyles: { 0: { halign: 'left', cellWidth: 34 }, 1: { halign: 'left', cellWidth: 70 } },
+                    headStyles: { fillColor: [30, 30, 40], fontSize: 6.5 },
+                    margin: { left: 40, right: 40 }
+                });
+                cursorY = doc.lastAutoTable.finalY + 20;
+
+                // Legend (spec item 8) — exact same code set shown on screen.
+                if (cursorY > doc.internal.pageSize.getHeight() - 60) { doc.addPage('a4', 'landscape'); cursorY = 40; }
+                doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.text('Legend', 40, cursorY);
+                doc.setFont(undefined, 'normal'); doc.setFontSize(8);
+                doc.text('P = Present   A = Absent   L = Late   AL = Afternoon Login   PL = Paid Leave   UL = Unpaid Leave   WO = Weekly Off   H = Holiday   OE = Official Event', 40, cursorY + 14, { maxWidth: pageWidth - 80 });
+
+                // Filename per spec item 11 — e.g. Broken-English-Attendance-August-2026.pdf
+                const monthName = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+                doc.save(`Broken-English-Attendance-${monthName}-${y}.pdf`);
+                await pushLogEntry(`HR exported the Attendance Report PDF for ${monthLabel}`);
+            } catch (e) {
+                console.error('Attendance Report PDF export failed:', e);
+                if (window.showToast) showToast('error', 'Could not generate the PDF: ' + e.message); else alert('Could not generate the PDF: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
         }
 
 // hrLeaveSubmittedInfo — the real submitted-on date/time for a leave request, from its own
