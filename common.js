@@ -2322,15 +2322,6 @@ function hrOfficialEventFor(employee, dateStr) {
             return years >= 1 ? years : null;
         }
 
-        const CELEBRATION_THEMES = {
-            confetti: { pieces: ['🎉','🎈','🎊','✨','🎂'], icon: '🎉' },
-            balloons: { pieces: ['🎈','🎉','✨','🎊'], icon: '🎈' },
-            floral:   { pieces: ['🌼','🌸','🪔','✨'], icon: '🌼' },
-            tricolor: { pieces: ['🇮🇳','🎉','✨'], icon: '🇮🇳' },
-            snow:     { pieces: ['❄️','✨','🎄'], icon: '🎄' },
-            gold:     { pieces: ['🏆','✨','🎉'], icon: '🏆' }
-        };
-
         // A company-wide event is "active" today either on its actual event_date, or — if HR
         // set an advance_start_date — anywhere in [advance_start_date, event_date). Returns
         // 'actual' | 'advance' | null. Purely date-driven, never hardcoded into page JS (spec
@@ -2347,11 +2338,21 @@ function hrOfficialEventFor(employee, dateStr) {
             return !ev.applies_to || ev.applies_to === 'all' || ev.applies_to === employee.division;
         }
 
+        // Birthday/Work Anniversary artwork isn't tied to a date row — it's a reusable
+        // "template" HR uploads once (event_type = 'birthday' | 'work_anniversary', no
+        // event_date), applied to every employee whenever their own personal event is true
+        // today. Only ever looked up by type, never by date.
+        function hrFindCelebrationTemplate(type) {
+            return (hrCelebrationEvents || []).find(ev => ev.event_type === type) || null;
+        }
+
         // Every celebration item relevant to this employee today — personal (birthday, work
         // anniversary) first, then HR-configured company-wide events. Each item is fully
-        // self-describing (title/message/bannerMessage/theme/enabled flags) so the queue/
-        // banner renderers below never need to know the difference between a birthday and a
-        // festival.
+        // self-describing (title/popupImage/bannerImage/enabled flags/artworkMode) so the
+        // queue/banner renderers below never need to know the difference between a birthday
+        // and a festival. title/message are still generated (used for the Notification Center
+        // text list, which stays plain text) but the popup/banner SURFACES are image-only —
+        // see spec item 1: "Do NOT generate celebration visuals using plain HTML text boxes."
         function computeTodaysCelebrations(me) {
             if (!me) return [];
             const items = [];
@@ -2359,34 +2360,43 @@ function hrOfficialEventFor(employee, dateStr) {
             const firstName = (me.full_name || activeUser || 'there').trim().split(' ')[0];
 
             if (isBirthdayToday(me.dob)) {
+                const tpl = hrFindCelebrationTemplate('birthday');
                 items.push({
-                    key: `birthday_${todayStr}`, type: 'birthday', theme: 'confetti',
-                    title: `Happy Birthday, ${firstName}!`,
+                    key: `birthday_${todayStr}`, type: 'birthday',
+                    title: `Happy Birthday, ${firstName}!`, captionName: firstName,
                     message: 'Wishing you a wonderful year ahead filled with happiness and success 🎂',
                     bannerMessage: `🎂 Happy Birthday, ${firstName}! Have a wonderful day 🎉`,
-                    popupEnabled: true, bannerEnabled: true
+                    popupImage: tpl?.popup_image_base64 || null, bannerImage: tpl?.banner_image_base64 || null,
+                    artworkMode: tpl?.artwork_mode || 'complete',
+                    popupEnabled: tpl ? tpl.popup_enabled !== false : true, bannerEnabled: tpl ? tpl.banner_enabled !== false : true
                 });
             }
             const years = isAnniversaryToday(me.joining_date);
             if (years) {
                 const yearLabel = years === 1 ? '1 Year' : `${years} Years`;
+                const tpl = hrFindCelebrationTemplate('work_anniversary');
                 items.push({
-                    key: `anniversary_${todayStr}`, type: 'work_anniversary', theme: 'gold',
-                    title: `Happy Work Anniversary, ${firstName}!`,
+                    key: `anniversary_${todayStr}`, type: 'work_anniversary',
+                    title: `Happy Work Anniversary, ${firstName}!`, captionName: `${firstName} · ${yearLabel}`,
                     message: `Thank you for being an important part of our journey — ${yearLabel} at Broken English 🎉`,
                     bannerMessage: `🏆 Happy Work Anniversary, ${firstName}! ${yearLabel} and counting 🎉`,
-                    popupEnabled: true, bannerEnabled: true
+                    popupImage: tpl?.popup_image_base64 || null, bannerImage: tpl?.banner_image_base64 || null,
+                    artworkMode: tpl?.artwork_mode || 'complete',
+                    popupEnabled: tpl ? tpl.popup_enabled !== false : true, bannerEnabled: tpl ? tpl.banner_enabled !== false : true
                 });
             }
             (hrCelebrationEvents || []).forEach(ev => {
+                if (ev.event_type === 'birthday' || ev.event_type === 'work_anniversary') return; // those are templates, handled above — never date-matched
                 const status = hrCelebrationStatusForToday(ev);
                 if (!status || !hrCelebrationApplies(ev, me)) return;
                 const titleText = `${status === 'advance' ? 'Advance ' : ''}${ev.title}!`;
                 items.push({
-                    key: `event_${ev.id}_${todayStr}`, type: ev.event_type || 'custom', theme: ev.animation_style || 'confetti',
-                    title: `${ev.icon ? ev.icon + ' ' : ''}${titleText}`,
+                    key: `event_${ev.id}_${todayStr}`, type: ev.event_type || 'custom',
+                    title: `${ev.icon ? ev.icon + ' ' : ''}${titleText}`, captionName: null,
                     message: ev.message || `Wishing you a wonderful ${ev.title}!`,
                     bannerMessage: ev.banner_message || ev.message || `${ev.icon ? ev.icon + ' ' : ''}${titleText}`,
+                    popupImage: ev.popup_image_base64 || null, bannerImage: ev.banner_image_base64 || null,
+                    artworkMode: 'complete',
                     popupEnabled: ev.popup_enabled !== false, bannerEnabled: ev.banner_enabled !== false
                 });
             });
@@ -2410,54 +2420,52 @@ function hrOfficialEventFor(employee, dateStr) {
             if (_celebrationCSSInjected || document.getElementById('be-celeb-styles')) { _celebrationCSSInjected = true; return; }
             const style = document.createElement('style');
             style.id = 'be-celeb-styles';
+            // Popup: the designer image IS the surface — object-fit:contain so it's never
+            // stretched/cropped, capped to 90vw/85vh (spec item 7), a single ✕ overlaid in the
+            // corner (the one thing the spec's own mockup shows sitting over the artwork).
+            // Banner: width:100%/height:auto so it scales without ever stretching vertically
+            // (spec item 5/6), rendered inside each page's own #celebration-banner-slot — part
+            // of the dashboard content area, not a floating toast (spec item 16).
             style.textContent = `
                 .be-celeb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:95;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
                 .be-celeb-overlay.hidden{display:none}
-                .be-celeb-card{background:#12162a;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:32px 24px;width:100%;max-width:380px;text-align:center;position:relative;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6)}
-                .be-celeb-close{position:absolute;top:12px;right:12px;background:none;border:none;color:#808a9d;cursor:pointer;padding:6px;font-size:16px;line-height:1;z-index:2}
-                .be-celeb-close:hover{color:#fff}
-                .be-celeb-icon{font-size:48px;margin-bottom:12px}
-                .be-celeb-title{font-size:20px;font-weight:800;color:#fff;margin-bottom:6px}
-                .be-celeb-message{font-size:12.5px;color:#a5adcf;margin-bottom:20px;line-height:1.5}
-                .be-celeb-cta{background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:11px;font-weight:700;padding:11px 24px;border-radius:12px;text-transform:uppercase;letter-spacing:.05em;border:none;cursor:pointer}
-                .be-celeb-confetti{position:absolute;inset:0;pointer-events:none}
-                .be-celeb-confetti span{position:absolute;top:-10%;font-size:16px;animation:be-celeb-fall 2.6s ease-in forwards;opacity:.9}
-                @keyframes be-celeb-fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(320px) rotate(360deg);opacity:0}}
-                .be-celeb-banner-host{position:fixed;top:70px;left:20px;z-index:90;display:flex;flex-direction:column;gap:8px;max-width:min(360px,calc(100vw - 40px));pointer-events:none}
-                .be-celeb-banner{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;background:#12162a;border:1px solid rgba(255,255,255,.1);border-left:3px solid #ff6b06;border-radius:10px;padding:10px 12px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:12.5px;color:#e6e9f5}
-                .be-celeb-banner button{background:none;border:none;color:#808a9d;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px}
-                @media (max-width:480px){.be-celeb-banner-host{left:12px;right:12px;max-width:none;top:64px}.be-celeb-card{padding:24px 18px}}
+                .be-celeb-imgwrap{position:relative;max-width:90vw;max-height:85vh;line-height:0}
+                .be-celeb-imgwrap img{display:block;max-width:90vw;max-height:85vh;width:auto;height:auto;object-fit:contain;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+                .be-celeb-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;backdrop-filter:blur(3px)}
+                .be-celeb-close:hover{background:rgba(10,12,20,.85)}
+                .be-celeb-caption{text-align:center;color:#fff;font-weight:700;font-size:14px;margin-top:10px;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+                .be-celeb-loading{width:90vw;max-width:340px;aspect-ratio:4/5;border-radius:14px;background:#12162a;display:flex;align-items:center;justify-content:center}
+                .be-celeb-spinner{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:#ff6b06;animation:be-celeb-spin .8s linear infinite}
+                @keyframes be-celeb-spin{to{transform:rotate(360deg)}}
+                .be-celeb-banner-slot{width:100%;position:relative}
+                .be-celeb-banner-slot img{display:block;width:100%;height:auto;border-radius:12px}
+                .be-celeb-banner-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.55);border:none;color:#fff;cursor:pointer;width:26px;height:26px;border-radius:50%;font-size:13px;line-height:1}
+                .be-celeb-banner-item{position:relative;margin-bottom:10px}
+                .be-celeb-banner-item:last-child{margin-bottom:0}
             `;
             document.head.appendChild(style);
             _celebrationCSSInjected = true;
         }
 
+        // The banner renders inside each page's own #celebration-banner-slot — a small static
+        // div each page places at the top of its dashboard content (spec item 16: "part of the
+        // dashboard content/header area", not a floating toast). Falls back to creating one
+        // fixed near the top of the viewport only if a page hasn't added the slot.
         function ensureCelebrationBannerHost() {
-            let host = document.getElementById('celebration-banner-host');
-            if (!host) {
-                host = document.createElement('div');
-                host.id = 'celebration-banner-host';
-                host.className = 'be-celeb-banner-host';
-                document.body.appendChild(host);
-            }
+            let host = document.getElementById('celebration-banner-slot');
+            if (host) return host;
+            host = document.createElement('div');
+            host.id = 'celebration-banner-slot';
+            host.className = 'be-celeb-banner-slot';
+            host.style.cssText = 'position:fixed;top:64px;left:12px;right:12px;z-index:90;max-width:480px;margin:0 auto';
+            document.body.appendChild(host);
             return host;
         }
 
         function ensureCelebrationDOM() {
             ensureCelebrationCSS();
             if (!document.getElementById('celebration-popup-overlay')) {
-                document.body.insertAdjacentHTML('beforeend', `
-                    <div id="celebration-popup-overlay" class="be-celeb-overlay hidden">
-                        <div class="be-celeb-card">
-                            <div id="celebration-confetti" class="be-celeb-confetti" aria-hidden="true"></div>
-                            <button onclick="closeCelebrationPopup()" class="be-celeb-close" aria-label="Close">✕</button>
-                            <div class="be-celeb-icon" id="celebration-popup-icon">🎉</div>
-                            <h2 class="be-celeb-title" id="celebration-popup-title"></h2>
-                            <p class="be-celeb-message" id="celebration-popup-message"></p>
-                            <button onclick="closeCelebrationPopup()" class="be-celeb-cta">Have a Great Day!</button>
-                        </div>
-                    </div>
-                `);
+                document.body.insertAdjacentHTML('beforeend', `<div id="celebration-popup-overlay" class="be-celeb-overlay hidden"></div>`);
             }
             ensureCelebrationBannerHost();
         }
@@ -2465,24 +2473,29 @@ function hrOfficialEventFor(employee, dateStr) {
         // Queue so multiple events on the same day (e.g. a birthday + a company festival) never
         // show two full-screen popups at once (spec item 13) — one at a time, in order, with a
         // brief pause between. Banners, unlike the popup, aren't queued — every active,
-        // not-yet-dismissed-today event gets its own small banner simultaneously, since those
-        // are meant to coexist quietly rather than interrupt one another.
+        // not-yet-dismissed-today event gets its own banner simultaneously, since those are
+        // meant to coexist quietly rather than interrupt one another.
         let _celebrationQueue = [];
         function runCelebrationQueue(me) {
             const items = computeTodaysCelebrations(me);
             if (!items.length) return;
             ensureCelebrationDOM();
-            // Notification Center entry per item per day — addNotif already dedupes by its own
-            // id (built from `key` here), so calling this on every poll is safe and never spams.
+            // Notification Center entry per item per day (plain text, unaffected by whether
+            // artwork is configured) — addNotif already dedupes by its own id (built from
+            // `key` here), so calling this on every poll is safe and never spams.
             items.forEach(it => {
                 if (typeof addNotif === 'function') {
                     const notifType = it.type === 'birthday' ? 'birthday' : it.type === 'work_anniversary' ? 'work_anniversary' : 'celebration';
                     addNotif(notifType, it.bannerMessage || it.message, null, it.key);
                 }
             });
-            _celebrationQueue = items.filter(it => it.popupEnabled && !hasSeenCelebrationPopup(it.key));
+            // "If Popup Image is missing: Do not show popup." (spec item 9) — an item with no
+            // popupImage never enters the queue at all, rather than falling back to a generic
+            // text popup.
+            _celebrationQueue = items.filter(it => it.popupEnabled && it.popupImage && !hasSeenCelebrationPopup(it.key));
             showNextCelebrationPopup();
-            renderCelebrationBanners(items.filter(it => it.bannerEnabled && !isCelebrationBannerDismissed(it.key)));
+            // Same rule for the banner — no bannerImage, no banner surface.
+            renderCelebrationBanners(items.filter(it => it.bannerEnabled && it.bannerImage && !isCelebrationBannerDismissed(it.key)));
         }
 
         function showNextCelebrationPopup() {
@@ -2490,41 +2503,49 @@ function hrOfficialEventFor(employee, dateStr) {
             const overlay = document.getElementById('celebration-popup-overlay');
             if (!overlay || !overlay.classList.contains('hidden')) return; // one at a time — closeCelebrationPopup re-calls this once the current one is dismissed
             const item = _celebrationQueue[0];
-            const theme = CELEBRATION_THEMES[item.theme] || CELEBRATION_THEMES.confetti;
-            document.getElementById('celebration-popup-icon').textContent = theme.icon;
-            document.getElementById('celebration-popup-title').textContent = item.title;
-            document.getElementById('celebration-popup-message').textContent = item.message;
-            const confettiEl = document.getElementById('celebration-confetti');
-            if (confettiEl) {
-                confettiEl.innerHTML = Array.from({ length: 16 }).map(() => {
-                    const left = Math.round(Math.random() * 100);
-                    const delay = (Math.random() * 0.6).toFixed(2);
-                    const dur = (2 + Math.random() * 1.2).toFixed(2);
-                    const emoji = theme.pieces[Math.floor(Math.random() * theme.pieces.length)];
-                    return `<span style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s">${emoji}</span>`;
-                }).join('');
-            }
+            // Loading state (spec item 18): show a small spinner, not a giant blank/broken
+            // modal, while the image decodes; preload via a plain Image() first so the overlay
+            // never flashes an empty box. If the image fails to load, skip this item safely —
+            // mark it seen and move straight to the next queued item (or just close).
+            overlay.innerHTML = `<div class="be-celeb-loading"><div class="be-celeb-spinner"></div></div>`;
             overlay.classList.remove('hidden');
+            const preload = new Image();
+            preload.onload = () => {
+                if (_celebrationQueue[0] !== item) return; // superseded (closed/advanced) while loading
+                const captionHtml = item.artworkMode === 'template' && item.captionName
+                    ? `<div class="be-celeb-caption">${item.captionName}</div>` : '';
+                overlay.innerHTML = `
+                    <div>
+                        <div class="be-celeb-imgwrap">
+                            <img src="${item.popupImage}" alt="${item.title}">
+                            <button onclick="closeCelebrationPopup()" class="be-celeb-close" aria-label="Close">✕</button>
+                        </div>
+                        ${captionHtml}
+                    </div>
+                `;
+            };
+            preload.onerror = () => {
+                if (_celebrationQueue[0] !== item) return;
+                closeCelebrationPopup(); // skip this one safely — never leave a broken-image modal open
+            };
+            preload.src = item.popupImage;
         }
 
         function closeCelebrationPopup() {
             const overlay = document.getElementById('celebration-popup-overlay');
             overlay?.classList.add('hidden');
+            if (overlay) overlay.innerHTML = ''; // destroy the loaded image/DOM once closed rather than leaving it sitting there all day (spec item 19)
             const item = _celebrationQueue.shift();
             if (item) markCelebrationPopupSeen(item.key);
-            // Destroy the animation once closed rather than leaving 16 animated spans sitting in
-            // the DOM all day (spec item 19 — only run celebration animation while active).
-            const confettiEl = document.getElementById('celebration-confetti');
-            if (confettiEl) confettiEl.innerHTML = '';
             if (_celebrationQueue.length) setTimeout(showNextCelebrationPopup, 300);
         }
 
         function renderCelebrationBanners(items) {
             const host = ensureCelebrationBannerHost();
             host.innerHTML = items.map(it => `
-                <div id="celeb-banner-${it.key}" class="be-celeb-banner">
-                    <span style="flex:1">${it.bannerMessage}</span>
-                    <button onclick="dismissCelebrationBanner('${it.key}')" aria-label="Dismiss">✕</button>
+                <div id="celeb-banner-${it.key}" class="be-celeb-banner-item">
+                    <img src="${it.bannerImage}" alt="${it.title}" loading="lazy" onerror="this.closest('.be-celeb-banner-item')?.remove()">
+                    <button onclick="dismissCelebrationBanner('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button>
                 </div>
             `).join('');
         }

@@ -778,6 +778,10 @@
 
                 <!-- HR: DASHBOARD -->
                 <div id="hr-sub-dashboard" class="space-y-6">
+                    <!-- Celebration banner slot — see common.js's Celebration Engine
+                         (runCelebrationQueue/renderCelebrationBanners). Part of the dashboard
+                         content area, not a floating toast. Empty/collapsed by default. -->
+                    <div id="celebration-banner-slot" class="be-celeb-banner-slot"></div>
                     <!-- "Heads up" banner — only shown when there's something to act on -->
                     <div id="hr-dash-pending-banner" class="hidden rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style="background:linear-gradient(90deg,rgba(255,107,6,0.12),rgba(255,5,82,0.05));border:1px solid rgba(255,107,6,0.25)">
                         <div class="flex items-center gap-2.5">
@@ -1704,51 +1708,68 @@
                 <button onclick="closeHRCelebrationModal()" class="hr-icon-btn">✕</button>
             </div>
             <div class="space-y-3">
-                <div><label class="hr-field-label">Title</label><input id="hr-cel-title" placeholder="e.g. Onam" class="hr-input w-full"></div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div><label class="hr-field-label">Event Name</label><input id="hr-cel-title" placeholder="e.g. Onam" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Event Type</label>
+                    <select id="hr-cel-type" onchange="hrUpdateCelebrationFormVisibility()" class="hr-select w-full">
+                        <option value="festival">Festival</option>
+                        <option value="national_day">National Day</option>
+                        <option value="company_event">Company Event</option>
+                        <option value="custom">Custom</option>
+                        <option value="birthday">🎂 Employee Birthday (applies to every employee's own birthday)</option>
+                        <option value="work_anniversary">🏆 Work Anniversary (applies to every employee's own anniversary)</option>
+                    </select>
+                </div>
+                <div id="hr-cel-date-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                     <div><label class="hr-field-label">Event Date</label><input id="hr-cel-date" type="date" class="hr-input w-full"></div>
                     <div><label class="hr-field-label">Advance Wishes Start (optional)</label><input id="hr-cel-advance-date" type="date" class="hr-input w-full"></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <div><label class="hr-field-label">Type</label>
-                        <select id="hr-cel-type" class="hr-select w-full">
-                            <option value="festival">Festival</option>
-                            <option value="national_day">National Day</option>
-                            <option value="company_event">Company Event</option>
-                            <option value="custom">Custom</option>
-                        </select>
-                    </div>
-                    <div><label class="hr-field-label">Applies To</label>
-                        <select id="hr-cel-applies-to" class="hr-select w-full">
-                            <option value="all">All Employees</option>
-                            <option value="production">Production House</option>
-                            <option value="education">Education</option>
-                            <option value="sales">Sales</option>
-                            <option value="hr">HR</option>
-                            <option value="accounts">Accounts</option>
-                            <option value="other">Administration</option>
-                        </select>
-                    </div>
+                <div><label class="hr-field-label">Applies To</label>
+                    <select id="hr-cel-applies-to" class="hr-select w-full">
+                        <option value="all">All Employees</option>
+                        <option value="production">Production House</option>
+                        <option value="education">Education</option>
+                        <option value="sales">Sales</option>
+                        <option value="hr">HR</option>
+                        <option value="accounts">Accounts</option>
+                        <option value="other">Administration</option>
+                    </select>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <div><label class="hr-field-label">Icon (single emoji, optional)</label><input id="hr-cel-icon" placeholder="🌼" maxlength="4" class="hr-input w-full"></div>
-                    <div><label class="hr-field-label">Animation Style</label>
-                        <select id="hr-cel-animation" class="hr-select w-full">
-                            <option value="confetti">Confetti</option>
-                            <option value="balloons">Balloons</option>
-                            <option value="floral">Floral</option>
-                            <option value="tricolor">Tricolor</option>
-                            <option value="snow">Snow / Festive Lights</option>
-                            <option value="gold">Gold / Milestone</option>
-                        </select>
-                    </div>
+                <div id="hr-cel-artwork-mode-row" class="hidden"><label class="hr-field-label">Artwork Mode</label>
+                    <select id="hr-cel-artwork-mode" class="hr-select w-full">
+                        <option value="complete">Complete Artwork (image shown exactly, no overlay)</option>
+                        <option value="template">Template + Dynamic Employee Data (caption with the employee's name below the image)</option>
+                    </select>
                 </div>
-                <div><label class="hr-field-label">Popup Message</label><textarea id="hr-cel-message" rows="2" class="hr-input w-full" placeholder="Wishing you and your family a joyful and prosperous Onam."></textarea></div>
-                <div><label class="hr-field-label">Banner Message (optional — falls back to popup message)</label><input id="hr-cel-banner-message" class="hr-input w-full" placeholder="🌼 Happy Onam! Wishing you and your family a joyful Onam."></div>
+
+                <!-- Designer-uploaded artwork is the source of truth — the app never generates
+                     celebration visuals from text. Recommended sizes shown per spec item 11,
+                     never enforced (the popup/banner both scale responsively either way). -->
+                <div>
+                    <label class="hr-field-label">Popup Image <span style="color:#4a5182;text-transform:none;font-weight:400">— recommended 1080×1350 or 1080×1080</span></label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;padding:8px 10px">
+                        <input type="file" id="hr-cel-popup-file" accept="image/*" class="hidden" onchange="handleHRCelebrationImageUpload(event,'hr-cel-popup-image','hr-cel-popup-preview',1080,'hr-cel-popup-status')">
+                        <span style="font-size:11px;color:#a5adcf">Choose Image…</span>
+                        <span id="hr-cel-popup-status" style="font-size:10px;color:#6b74a0;margin-left:auto"></span>
+                    </label>
+                    <div id="hr-cel-popup-preview" style="margin-top:6px"></div>
+                    <input type="hidden" id="hr-cel-popup-image">
+                </div>
+                <div>
+                    <label class="hr-field-label">Top Banner Image <span style="color:#4a5182;text-transform:none;font-weight:400">— recommended 1920×400 (wide)</span></label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;padding:8px 10px">
+                        <input type="file" id="hr-cel-banner-file" accept="image/*" class="hidden" onchange="handleHRCelebrationImageUpload(event,'hr-cel-banner-image','hr-cel-banner-preview',1920,'hr-cel-banner-status')">
+                        <span style="font-size:11px;color:#a5adcf">Choose Image…</span>
+                        <span id="hr-cel-banner-status" style="font-size:10px;color:#6b74a0;margin-left:auto"></span>
+                    </label>
+                    <div id="hr-cel-banner-preview" style="margin-top:6px"></div>
+                    <input type="hidden" id="hr-cel-banner-image">
+                </div>
+
                 <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-cel-popup-enabled" checked style="accent-color:#ff6b06"> Popup Enabled</label>
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-cel-banner-enabled" checked style="accent-color:#ff6b06"> Banner Enabled</label>
                 </div>
+                <div><label class="hr-field-label">Icon (single emoji, optional — used in the events list and Notification Center text)</label><input id="hr-cel-icon" placeholder="🌼" maxlength="4" class="hr-input w-full"></div>
             </div>
             <button onclick="saveHRCelebration()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Celebration</button>
         </div>
@@ -4400,14 +4421,33 @@
             document.getElementById('hr-cel-advance-date').value = '';
             document.getElementById('hr-cel-type').value = 'festival';
             document.getElementById('hr-cel-applies-to').value = 'all';
+            document.getElementById('hr-cel-artwork-mode').value = 'complete';
             document.getElementById('hr-cel-icon').value = '';
-            document.getElementById('hr-cel-animation').value = 'confetti';
-            document.getElementById('hr-cel-message').value = '';
-            document.getElementById('hr-cel-banner-message').value = '';
+            document.getElementById('hr-cel-popup-image').value = '';
+            document.getElementById('hr-cel-banner-image').value = '';
+            document.getElementById('hr-cel-popup-preview').innerHTML = '';
+            document.getElementById('hr-cel-banner-preview').innerHTML = '';
+            document.getElementById('hr-cel-popup-status').textContent = '';
+            document.getElementById('hr-cel-banner-status').textContent = '';
+            document.getElementById('hr-cel-popup-file').value = '';
+            document.getElementById('hr-cel-banner-file').value = '';
             document.getElementById('hr-cel-popup-enabled').checked = true;
             document.getElementById('hr-cel-banner-enabled').checked = true;
+            hrUpdateCelebrationFormVisibility();
             document.getElementById('hr-celebration-modal').classList.remove('hidden');
             document.getElementById('hr-celebration-modal').classList.add('flex');
+        }
+
+// ── hrUpdateCelebrationFormVisibility ──
+        // Birthday/Work Anniversary are "template" events — applied to every employee's own
+        // personal date, computed live, never scheduled on a specific calendar date — so the
+        // Event Date/Advance Start fields make no sense for them and are hidden. Artwork Mode
+        // (Complete Artwork vs a name caption underneath) only matters for those two types.
+        function hrUpdateCelebrationFormVisibility() {
+            const type = document.getElementById('hr-cel-type').value;
+            const isPersonal = type === 'birthday' || type === 'work_anniversary';
+            document.getElementById('hr-cel-date-row').classList.toggle('hidden', isPersonal);
+            document.getElementById('hr-cel-artwork-mode-row').classList.toggle('hidden', !isPersonal);
         }
 
 // ── closeHRCelebrationModal ──
@@ -4416,28 +4456,92 @@
             document.getElementById('hr-celebration-modal').classList.remove('flex');
         }
 
+// ── handleHRCelebrationImageUpload ──
+        // Same downscale-then-base64 pattern already used for employee photos
+        // (handleHREmpPhotoUpload) — the current architecture already explicitly stores
+        // images this way, so this reuses that precedent rather than standing up a separate
+        // file-storage integration. maxDim caps the LONGEST edge (so a wide banner and a tall
+        // popup image both scale sensibly from the same function) — never enforces an exact
+        // pixel size, per spec item 11.
+        function handleHRCelebrationImageUpload(event, targetInputId, previewElId, maxDim, statusElId) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) { showToast('warning', 'Please choose an image file.'); return; }
+            const statusEl = document.getElementById(statusElId);
+            if (statusEl) statusEl.textContent = 'Processing...';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+                    else if (height >= width && height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+                    document.getElementById(targetInputId).value = dataUrl;
+                    hrRenderCelebrationImagePreview(previewElId, dataUrl, targetInputId, statusElId);
+                    if (statusEl) statusEl.textContent = `Ready (${Math.round(dataUrl.length / 1024)} KB)`;
+                };
+                img.onerror = () => { if (statusEl) statusEl.textContent = 'Could not read that image.'; };
+                img.src = e.target.result;
+            };
+            reader.onerror = () => { if (statusEl) statusEl.textContent = 'Could not read that file.'; };
+            reader.readAsDataURL(file);
+        }
+
+// ── hrRenderCelebrationImagePreview / hrClearCelebrationImage — preview + Replace/Delete ──
+        function hrRenderCelebrationImagePreview(previewElId, dataUrl, targetInputId, statusElId) {
+            const el = document.getElementById(previewElId);
+            if (!el) return;
+            if (!dataUrl) { el.innerHTML = ''; return; }
+            el.innerHTML = `
+                <div style="position:relative;display:inline-block;max-width:100%">
+                    <img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:8px;display:block;object-fit:contain">
+                    <button type="button" onclick="hrClearCelebrationImage('${targetInputId}','${previewElId}','${statusElId}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button>
+                </div>
+            `;
+        }
+        function hrClearCelebrationImage(targetInputId, previewElId, statusElId) {
+            document.getElementById(targetInputId).value = '';
+            document.getElementById(previewElId).innerHTML = '';
+            const statusEl = document.getElementById(statusElId);
+            if (statusEl) statusEl.textContent = '';
+        }
+
 // ── saveHRCelebration ──
         // Writes a structured hr_celebration_events row — nothing here hardcodes a festival
-        // date or an employee's wishes; the celebration engine (common.js) reads this table
-        // live and computes who sees what, when, exactly like hr_official_events already does
-        // for attendance. Advance Wishes Start is optional — leave it blank for an event that
-        // should only ever show on its own actual date.
+        // date, an employee's wishes, or any artwork file path (spec item 19). The celebration
+        // engine (common.js) reads this table live and computes who sees what, when, exactly
+        // like hr_official_events already does for attendance. Advance Wishes Start is
+        // optional — leave it blank for an event that should only ever show on its own actual
+        // date. A birthday/work_anniversary "template" row has no event_date at all (it's not
+        // scheduled — it applies to every employee's own personal date), and this app only
+        // ever expects ONE such row per type (hrFindCelebrationTemplate takes the first match)
+        // — creating a second is blocked with a clear message rather than silently ignored.
         async function saveHRCelebration() {
             const title = document.getElementById('hr-cel-title').value.trim();
-            const event_date = document.getElementById('hr-cel-date').value;
-            const advance_start_date = document.getElementById('hr-cel-advance-date').value || null;
             const event_type = document.getElementById('hr-cel-type').value;
+            const isPersonal = event_type === 'birthday' || event_type === 'work_anniversary';
+            const event_date = isPersonal ? null : document.getElementById('hr-cel-date').value;
+            const advance_start_date = isPersonal ? null : (document.getElementById('hr-cel-advance-date').value || null);
             const applies_to = document.getElementById('hr-cel-applies-to').value;
+            const artwork_mode = isPersonal ? document.getElementById('hr-cel-artwork-mode').value : 'complete';
             const icon = document.getElementById('hr-cel-icon').value.trim() || null;
-            const animation_style = document.getElementById('hr-cel-animation').value;
-            const message = document.getElementById('hr-cel-message').value.trim() || null;
-            const banner_message = document.getElementById('hr-cel-banner-message').value.trim() || null;
+            const popup_image_base64 = document.getElementById('hr-cel-popup-image').value || null;
+            const banner_image_base64 = document.getElementById('hr-cel-banner-image').value || null;
             const popup_enabled = document.getElementById('hr-cel-popup-enabled').checked;
             const banner_enabled = document.getElementById('hr-cel-banner-enabled').checked;
-            if (!title || !event_date) { alert('Title and Event Date are required.'); return; }
-            if (advance_start_date && advance_start_date > event_date) { alert('Advance Wishes Start must be on or before the Event Date.'); return; }
+            if (!title) { alert('Event Name is required.'); return; }
+            if (!isPersonal && !event_date) { alert('Event Date is required.'); return; }
+            if (advance_start_date && event_date && advance_start_date > event_date) { alert('Advance Wishes Start must be on or before the Event Date.'); return; }
+            if (isPersonal && hrFindCelebrationTemplate(event_type)) {
+                alert(`A ${event_type === 'birthday' ? 'Birthday' : 'Work Anniversary'} template already exists — delete it first before adding a new one.`);
+                return;
+            }
             try {
-                await dbInstance.from('hr_celebration_events').insert([{ title, event_date, advance_start_date, event_type, applies_to, icon, animation_style, message, banner_message, popup_enabled, banner_enabled }]);
+                await dbInstance.from('hr_celebration_events').insert([{ title, event_date, advance_start_date, event_type, applies_to, icon, artwork_mode, popup_image_base64, banner_image_base64, popup_enabled, banner_enabled }]);
                 closeHRCelebrationModal();
                 await loadHRData();
                 renderHRCelebrations();
@@ -4455,17 +4559,19 @@
 // ── renderHRCelebrations ──
         function renderHRCelebrations() {
             const appliesToLabel = { all: 'All Employees', production: 'Production House', education: 'Education', sales: 'Sales', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
-            const typeLabel = { festival: 'Festival', national_day: 'National Day', company_event: 'Company Event', custom: 'Custom' };
-            const rows = [...(hrCelebrationEvents || [])].sort((a,b) => a.event_date.localeCompare(b.event_date));
+            const typeLabel = { festival: 'Festival', national_day: 'National Day', company_event: 'Company Event', custom: 'Custom', birthday: '🎂 Birthday (template)', work_anniversary: '🏆 Work Anniversary (template)' };
+            const rows = [...(hrCelebrationEvents || [])].sort((a,b) => (a.event_date || '9999').localeCompare(b.event_date || '9999'));
             document.getElementById('hr-celebrations-rows').innerHTML = rows.length ? rows.map(ev => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td data-label="Event Date" class="py-2.5 px-4 text-white font-semibold">${new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
-                    <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">${ev.icon ? ev.icon + ' ' : ''}${ev.title}</td>
+                    <td data-label="Event Date" class="py-2.5 px-4 text-white font-semibold">${ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : 'Every employee\'s own date'}</td>
+                    <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">
+                        ${ev.popup_image_base64 ? `<img src="${ev.popup_image_base64}" style="width:28px;height:28px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : ''}${ev.icon ? ev.icon + ' ' : ''}${ev.title}
+                    </td>
                     <td data-label="Type" class="py-2.5 px-4 text-[#a5adcf]">${typeLabel[ev.event_type] || ev.event_type}</td>
                     <td data-label="Advance Start" class="py-2.5 px-4 text-[#a5adcf]">${ev.advance_start_date ? new Date(ev.advance_start_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—'}</td>
                     <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
-                    <td data-label="Popup" class="py-2.5 px-4 text-[#a5adcf]">${ev.popup_enabled === false ? 'No' : 'Yes'}</td>
-                    <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : 'Yes'}</td>
+                    <td data-label="Popup" class="py-2.5 px-4 text-[#a5adcf]">${ev.popup_enabled === false ? 'No' : (ev.popup_image_base64 ? 'Yes' : 'No image')}</td>
+                    <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : (ev.banner_image_base64 ? 'Yes' : 'No image')}</td>
                     <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHRCelebration('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="8" class="py-8 text-center text-[#4a5182] text-xs">No celebrations added yet.</td></tr>`;

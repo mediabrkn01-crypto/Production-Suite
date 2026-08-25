@@ -199,3 +199,20 @@ create table if not exists hr_celebration_events (
   created_at timestamptz not null default now()
 );
 create index if not exists hr_celebration_events_date_idx on hr_celebration_events (event_date, applies_to);
+
+-- ============ Phase 10 — Designer artwork for celebrations (popup/banner images) ============
+-- Run in the MEDIA SUITE project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent
+-- — safe to run whether or not Phase 9 has already been applied.
+-- Adds designer-uploaded artwork to each celebration, and relaxes event_date to nullable so a
+-- row can represent a "template" event (event_type = 'birthday' or 'work_anniversary') that
+-- supplies the artwork used for EVERY employee's personal birthday/anniversary — those are
+-- still computed live off hr_employees.dob/joining_date (never duplicated here), this table
+-- only ever supplies the artwork for them, looked up by event_type rather than by date.
+alter table hr_celebration_events add column if not exists popup_image_base64 text;
+alter table hr_celebration_events add column if not exists banner_image_base64 text;
+-- 'complete' = render the uploaded image exactly, no overlay (default, per spec item 14).
+-- 'template' = birthday/work_anniversary only — the image is a reusable design with the
+-- employee's name captioned below it (never overlaid on top of the artwork itself, since
+-- there's no designer-defined safe-area coordinate system here).
+alter table hr_celebration_events add column if not exists artwork_mode text not null default 'complete';
+alter table hr_celebration_events alter column event_date drop not null;
