@@ -216,3 +216,11 @@ alter table hr_celebration_events add column if not exists banner_image_base64 t
 -- there's no designer-defined safe-area coordinate system here).
 alter table hr_celebration_events add column if not exists artwork_mode text not null default 'complete';
 alter table hr_celebration_events alter column event_date drop not null;
+
+-- ============ Phase 11 — Celebration event end date (real date-range expiry) ============
+-- Run in the MEDIA SUITE project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- Previously an event was only ever "active" on the exact event_date (a single day) or during
+-- its advance window before that — there was no way for HR to make a celebration span more
+-- than one actual day (e.g. a 2-day festival) with an explicit end. event_end_date defaults to
+-- event_date when not set, so every existing single-day event keeps behaving exactly as before.
+alter table hr_celebration_events add column if not exists event_end_date date;

@@ -1246,7 +1246,7 @@
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
                             <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                <th class="py-3 px-4">Event Date</th><th class="py-3 px-4">Title</th><th class="py-3 px-4">Type</th><th class="py-3 px-4">Advance Start</th><th class="py-3 px-4">Applies To</th><th class="py-3 px-4">Popup</th><th class="py-3 px-4">Banner</th><th class="py-3 px-4 text-center">Actions</th>
+                                <th class="py-3 px-4">Event Dates</th><th class="py-3 px-4">Title</th><th class="py-3 px-4">Type</th><th class="py-3 px-4">Advance Start</th><th class="py-3 px-4">Applies To</th><th class="py-3 px-4">Popup</th><th class="py-3 px-4">Banner</th><th class="py-3 px-4 text-center">Actions</th>
                             </tr></thead>
                             <tbody id="hr-celebrations-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
@@ -1307,7 +1307,10 @@
                         </div>
                     </div>
 
-                    <h2 class="text-sm font-bold tracking-tight pt-2">System Notifications</h2>
+                    <div class="flex items-center justify-between pt-2">
+                        <h2 class="text-sm font-bold tracking-tight">System Notifications</h2>
+                        <button onclick="hrClearAllNotifications()" class="text-[11px] font-bold text-[#6b74a0] hover:text-white" style="background:none;border:none;cursor:pointer">Clear All</button>
+                    </div>
                     <div id="hr-notifications-list" class="space-y-2"></div>
                 </div>
             </div>
@@ -1704,9 +1707,10 @@
     <div id="hr-celebration-modal" class="hr-modal-overlay hidden">
         <div class="hr-modal" style="max-width:460px">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold text-white">Add Celebration / Special Day</h3>
+                <h3 class="text-lg font-bold text-white" id="hr-celebration-modal-title">Add Celebration / Special Day</h3>
                 <button onclick="closeHRCelebrationModal()" class="hr-icon-btn">✕</button>
             </div>
+            <input type="hidden" id="hr-cel-editing-id">
             <div class="space-y-3">
                 <div><label class="hr-field-label">Event Name</label><input id="hr-cel-title" placeholder="e.g. Onam" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Event Type</label>
@@ -1719,8 +1723,9 @@
                         <option value="work_anniversary">🏆 Work Anniversary (applies to every employee's own anniversary)</option>
                     </select>
                 </div>
-                <div id="hr-cel-date-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <div><label class="hr-field-label">Event Date</label><input id="hr-cel-date" type="date" class="hr-input w-full"></div>
+                <div id="hr-cel-date-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+                    <div><label class="hr-field-label">Event Start Date</label><input id="hr-cel-date" type="date" class="hr-input w-full"></div>
+                    <div><label class="hr-field-label">Event End Date (optional)</label><input id="hr-cel-end-date" type="date" class="hr-input w-full"></div>
                     <div><label class="hr-field-label">Advance Wishes Start (optional)</label><input id="hr-cel-advance-date" type="date" class="hr-input w-full"></div>
                 </div>
                 <div><label class="hr-field-label">Applies To</label>
@@ -1771,7 +1776,7 @@
                 </div>
                 <div><label class="hr-field-label">Icon (single emoji, optional — used in the events list and Notification Center text)</label><input id="hr-cel-icon" placeholder="🌼" maxlength="4" class="hr-input w-full"></div>
             </div>
-            <button onclick="saveHRCelebration()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Celebration</button>
+            <button onclick="saveHRCelebration()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5" id="hr-celebration-modal-save-btn">Save Celebration</button>
         </div>
     </div>
 
@@ -2185,7 +2190,11 @@
             const topBadge = document.getElementById('hr-topbar-notif-badge');
             const topBadgeMobile = document.getElementById('hr-topbar-notif-badge-mobile');
             if (typeof hrComputeNotifications === 'function') {
-                const n = hrComputeNotifications().filter(x => x.type === 'action').length;
+                // Same dismissed-keys filter renderHRNotifications() uses — without it, Clear
+                // All only emptied the sidebar/panel list while this topbar badge kept counting
+                // every notification as if nothing had been cleared.
+                const dismissed = typeof hrGetDismissedNotifKeys === 'function' ? hrGetDismissedNotifKeys() : new Set();
+                const n = hrComputeNotifications().filter(x => x.type === 'action' && !dismissed.has(x.key)).length;
                 if (topBadge) { topBadge.textContent = n > 99 ? '99+' : n; topBadge.style.display = n > 0 ? 'flex' : 'none'; }
                 if (topBadgeMobile) { topBadgeMobile.textContent = n > 99 ? '99+' : n; topBadgeMobile.classList.toggle('hidden', n === 0); }
             }
@@ -3870,31 +3879,37 @@
         }
 
 // ── hrComputeNotifications (orig line 10261) ──
+        // Every notif gets a stable `key`, built from the underlying fact it represents (an
+        // employee id, a leave request id, today's date for the daily "not marked" checks) —
+        // never a timestamp, so the same still-true condition always produces the same key
+        // across recomputations. That's what makes "Clear All"/dismiss actually stick: it's
+        // this key that gets recorded as dismissed, not the notif object itself, which is
+        // rebuilt fresh on every call.
         function hrComputeNotifications() {
             const notifs = [];
             const now = new Date();
             const sevenDaysAgo = new Date(now.getTime() - 7*86400000);
+            const todayStr = now.toISOString().slice(0,10);
             hrEmployees.forEach(e => {
                 if (e.created_at && new Date(e.created_at) >= sevenDaysAgo) {
-                    notifs.push({ icon: 'user-plus', text: `New employee added: ${e.full_name}`, time: e.created_at, type: 'info', employeeId: e.id });
+                    notifs.push({ key: `newemp_${e.id}`, icon: 'user-plus', text: `New employee added: ${e.full_name}`, time: e.created_at, type: 'info', employeeId: e.id });
                 }
             });
             hrLeaveRequests.forEach(r => {
                 if (r.status === 'pending') {
-                    notifs.push({ icon: 'calendar-x', text: `New leave request from ${hrEmpName(r.employee_id)} (${r.leave_type})`, time: r.requested_at, type: 'action', employeeId: r.employee_id });
+                    notifs.push({ key: `leavepending_${r.id}`, icon: 'calendar-x', text: `New leave request from ${hrEmpName(r.employee_id)} (${r.leave_type})`, time: r.requested_at, type: 'action', employeeId: r.employee_id });
                 } else if (r.decided_at && new Date(r.decided_at) >= sevenDaysAgo) {
-                    notifs.push({ icon: r.status === 'approved' ? 'check-circle' : 'x-circle', text: `Leave ${r.status} for ${hrEmpName(r.employee_id)}`, time: r.decided_at, type: 'info', employeeId: r.employee_id });
+                    notifs.push({ key: `leavedecided_${r.id}`, icon: r.status === 'approved' ? 'check-circle' : 'x-circle', text: `Leave ${r.status} for ${hrEmpName(r.employee_id)}`, time: r.decided_at, type: 'info', employeeId: r.employee_id });
                 }
             });
-            const todayStr = now.toISOString().slice(0,10);
             const activeIds = new Set(hrEmployees.filter(e => e.employment_status === 'active').map(e => e.id));
             const markedToday = new Set(hrAttendance.filter(a => a.att_date === todayStr).map(a => a.employee_id));
             const onLeaveToday = new Set(hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr).map(r => r.employee_id));
             hrEmployees.filter(e => activeIds.has(e.id) && !markedToday.has(e.id) && !onLeaveToday.has(e.id)).forEach(e => {
-                notifs.push({ icon: 'alert-triangle', text: `Attendance not marked today for ${e.full_name}`, time: now.toISOString(), type: 'action', employeeId: e.id });
+                notifs.push({ key: `attmissing_${e.id}_${todayStr}`, icon: 'alert-triangle', text: `Attendance not marked today for ${e.full_name}`, time: now.toISOString(), type: 'action', employeeId: e.id });
             });
             const pendingPayroll = hrPayroll.filter(p => p.payment_status === 'pending');
-            if (pendingPayroll.length) notifs.push({ icon: 'wallet', text: `${pendingPayroll.length} payroll ${pendingPayroll.length===1?'entry':'entries'} pending payment`, time: now.toISOString(), type: 'action' });
+            if (pendingPayroll.length) notifs.push({ key: `payrollpending_${todayStr}`, icon: 'wallet', text: `${pendingPayroll.length} payroll ${pendingPayroll.length===1?'entry':'entries'} pending payment`, time: now.toISOString(), type: 'action' });
 
             // Probation ending soon (within next 14 days)
             hrEmployees.filter(e => e.employment_status === 'active' && e.probation_months).forEach(e => {
@@ -3902,20 +3917,53 @@
                 if (!endDate) return;
                 const daysAway = Math.round((new Date(endDate) - now) / 86400000);
                 if (daysAway >= 0 && daysAway <= 14) {
-                    notifs.push({ icon: 'user-check', text: `Probation Period Ending Soon — ${e.full_name}'s probation ends on ${new Date(endDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`, time: now.toISOString(), type: 'action', employeeId: e.id });
+                    notifs.push({ key: `probation_${e.id}`, icon: 'user-check', text: `Probation Period Ending Soon — ${e.full_name}'s probation ends on ${new Date(endDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`, time: now.toISOString(), type: 'action', employeeId: e.id });
                 }
             });
             return notifs.sort((a,b) => new Date(b.time) - new Date(a.time));
         }
 
+// ── HR notification dismiss state — per-admin (activeEmail), localStorage-backed, same
+// pattern the employee-side bell already uses (_readNotifIds in common.js) rather than a
+// second, differently-shaped mechanism. Dismissing/clearing never touches any other admin's
+// view — each admin login has its own key. ──
+        function _hrNotifDismissedKey() { return `be_hr_notifs_dismissed_${(activeEmail || '').toLowerCase()}`; }
+        function hrGetDismissedNotifKeys() {
+            try { return new Set(JSON.parse(localStorage.getItem(_hrNotifDismissedKey()) || '[]')); }
+            catch (e) { return new Set(); }
+        }
+        function hrSaveDismissedNotifKeys(set) {
+            try { localStorage.setItem(_hrNotifDismissedKey(), JSON.stringify([...set].slice(-500))); }
+            catch (e) { /* localStorage unavailable/full — dismiss state just won't persist, notifications still render fine */ }
+        }
+        function hrDismissNotification(key) {
+            const dismissed = hrGetDismissedNotifKeys();
+            dismissed.add(key);
+            hrSaveDismissedNotifKeys(dismissed);
+            renderHRNotifications();
+            if (typeof renderHRDashboard === 'function') renderHRDashboard(); // keeps the topbar bell badge in sync immediately, not just the sidebar count
+        }
+        async function hrClearAllNotifications() {
+            const notifs = hrComputeNotifications();
+            if (!notifs.length) return;
+            if (!(await showConfirm('This clears your notification list — it will not affect other HR/admin logins, and any condition that\'s still true (like a pending leave request) can still show up again as a NEW notification later if it changes.', { title: 'Clear all notifications?', confirmLabel: 'Clear', danger: false }))) return;
+            const dismissed = hrGetDismissedNotifKeys();
+            notifs.forEach(n => dismissed.add(n.key));
+            hrSaveDismissedNotifKeys(dismissed);
+            renderHRNotifications();
+            if (typeof renderHRDashboard === 'function') renderHRDashboard();
+        }
+
 // ── renderHRNotifications (orig line 10298) ──
         function renderHRNotifications() {
-            const notifs = hrComputeNotifications();
+            const dismissed = hrGetDismissedNotifKeys();
+            const notifs = hrComputeNotifications().filter(n => !dismissed.has(n.key));
             document.getElementById('hr-notifications-list').innerHTML = notifs.length ? notifs.map(n => `
                 <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
                     ${n.employeeId ? hrAvatarForEmployeeId(n.employeeId, 22) : `<i data-lucide="${n.icon}" class="w-4 h-4 ${n.type==='action'?'text-orange-400':'text-[#6b74a0]'}"></i>`}
                     <span class="text-sm text-[#e6e9f5] flex-1">${n.text}</span>
                     <span class="text-[10px] text-[#4a5182]">${new Date(n.time).toLocaleDateString()}</span>
+                    <button onclick="hrDismissNotification('${n.key}')" class="hr-icon-btn" style="padding:2px" aria-label="Dismiss">✕</button>
                 </div>
             `).join('') : '<p class="text-[#4a5182] text-xs">No notifications right now.</p>';
             if (window.lucide) lucide.createIcons();
@@ -4416,24 +4464,33 @@
         }
 
 // ── openHRCelebrationModal ──
-        function openHRCelebrationModal() {
-            document.getElementById('hr-cel-title').value = '';
-            document.getElementById('hr-cel-date').value = '';
-            document.getElementById('hr-cel-advance-date').value = '';
-            document.getElementById('hr-cel-type').value = 'festival';
-            document.getElementById('hr-cel-applies-to').value = 'all';
-            document.getElementById('hr-cel-artwork-mode').value = 'complete';
-            document.getElementById('hr-cel-icon').value = '';
-            document.getElementById('hr-cel-popup-image').value = '';
-            document.getElementById('hr-cel-banner-image').value = '';
-            document.getElementById('hr-cel-popup-preview').innerHTML = '';
-            document.getElementById('hr-cel-banner-preview').innerHTML = '';
+        // No id (or omitted) -> blank form, Add mode. Pass an existing event's id -> the form
+        // is pre-filled from that row (including its images, so HR only ever replaces the ONE
+        // image that's wrong instead of re-uploading everything — spec item 8/9) and Save
+        // performs an UPDATE on that same row rather than creating a new one.
+        function openHRCelebrationModal(id) {
+            const editing = id ? (hrCelebrationEvents || []).find(ev => ev.id === id) : null;
+            document.getElementById('hr-cel-editing-id').value = editing ? editing.id : '';
+            document.getElementById('hr-celebration-modal-title').textContent = editing ? 'Edit Celebration / Special Day' : 'Add Celebration / Special Day';
+            document.getElementById('hr-celebration-modal-save-btn').textContent = editing ? 'Save Changes' : 'Save Celebration';
+            document.getElementById('hr-cel-title').value = editing?.title || '';
+            document.getElementById('hr-cel-date').value = editing?.event_date || '';
+            document.getElementById('hr-cel-end-date').value = editing?.event_end_date || '';
+            document.getElementById('hr-cel-advance-date').value = editing?.advance_start_date || '';
+            document.getElementById('hr-cel-type').value = editing?.event_type || 'festival';
+            document.getElementById('hr-cel-applies-to').value = editing?.applies_to || 'all';
+            document.getElementById('hr-cel-artwork-mode').value = editing?.artwork_mode || 'complete';
+            document.getElementById('hr-cel-icon').value = editing?.icon || '';
+            document.getElementById('hr-cel-popup-image').value = editing?.popup_image_base64 || '';
+            document.getElementById('hr-cel-banner-image').value = editing?.banner_image_base64 || '';
+            hrRenderCelebrationImagePreview('hr-cel-popup-preview', editing?.popup_image_base64 || '', 'hr-cel-popup-image', 'hr-cel-popup-status');
+            hrRenderCelebrationImagePreview('hr-cel-banner-preview', editing?.banner_image_base64 || '', 'hr-cel-banner-image', 'hr-cel-banner-status');
             document.getElementById('hr-cel-popup-status').textContent = '';
             document.getElementById('hr-cel-banner-status').textContent = '';
             document.getElementById('hr-cel-popup-file').value = '';
             document.getElementById('hr-cel-banner-file').value = '';
-            document.getElementById('hr-cel-popup-enabled').checked = true;
-            document.getElementById('hr-cel-banner-enabled').checked = true;
+            document.getElementById('hr-cel-popup-enabled').checked = editing ? editing.popup_enabled !== false : true;
+            document.getElementById('hr-cel-banner-enabled').checked = editing ? editing.banner_enabled !== false : true;
             hrUpdateCelebrationFormVisibility();
             document.getElementById('hr-celebration-modal').classList.remove('hidden');
             document.getElementById('hr-celebration-modal').classList.add('flex');
@@ -4522,10 +4579,12 @@
         // ever expects ONE such row per type (hrFindCelebrationTemplate takes the first match)
         // — creating a second is blocked with a clear message rather than silently ignored.
         async function saveHRCelebration() {
+            const editingId = document.getElementById('hr-cel-editing-id').value || null;
             const title = document.getElementById('hr-cel-title').value.trim();
             const event_type = document.getElementById('hr-cel-type').value;
             const isPersonal = event_type === 'birthday' || event_type === 'work_anniversary';
             const event_date = isPersonal ? null : document.getElementById('hr-cel-date').value;
+            const event_end_date = isPersonal ? null : (document.getElementById('hr-cel-end-date').value || null);
             const advance_start_date = isPersonal ? null : (document.getElementById('hr-cel-advance-date').value || null);
             const applies_to = document.getElementById('hr-cel-applies-to').value;
             const artwork_mode = isPersonal ? document.getElementById('hr-cel-artwork-mode').value : 'complete';
@@ -4535,14 +4594,25 @@
             const popup_enabled = document.getElementById('hr-cel-popup-enabled').checked;
             const banner_enabled = document.getElementById('hr-cel-banner-enabled').checked;
             if (!title) { alert('Event Name is required.'); return; }
-            if (!isPersonal && !event_date) { alert('Event Date is required.'); return; }
-            if (advance_start_date && event_date && advance_start_date > event_date) { alert('Advance Wishes Start must be on or before the Event Date.'); return; }
-            if (isPersonal && hrFindCelebrationTemplate(event_type)) {
-                alert(`A ${event_type === 'birthday' ? 'Birthday' : 'Work Anniversary'} template already exists — delete it first before adding a new one.`);
-                return;
+            if (!isPersonal && !event_date) { alert('Event Start Date is required.'); return; }
+            if (!isPersonal && event_end_date && event_end_date < event_date) { alert('Event End Date must be on or after the Event Start Date.'); return; }
+            if (advance_start_date && event_date && advance_start_date > event_date) { alert('Advance Wishes Start must be on or before the Event Start Date.'); return; }
+            // Only block the duplicate-template check when CREATING a new personal template —
+            // editing the existing one (editingId set, same row) must never trip over itself.
+            if (isPersonal && !editingId) {
+                const existing = hrFindCelebrationTemplate(event_type);
+                if (existing) {
+                    alert(`A ${event_type === 'birthday' ? 'Birthday' : 'Work Anniversary'} template already exists — edit it instead of creating a second one.`);
+                    return;
+                }
             }
+            const payload = { title, event_date, event_end_date, advance_start_date, event_type, applies_to, icon, artwork_mode, popup_image_base64, banner_image_base64, popup_enabled, banner_enabled };
             try {
-                await dbInstance.from('hr_celebration_events').insert([{ title, event_date, advance_start_date, event_type, applies_to, icon, artwork_mode, popup_image_base64, banner_image_base64, popup_enabled, banner_enabled }]);
+                if (editingId) {
+                    await dbInstance.from('hr_celebration_events').update(payload).eq('id', editingId);
+                } else {
+                    await dbInstance.from('hr_celebration_events').insert([payload]);
+                }
                 closeHRCelebrationModal();
                 await loadHRData();
                 renderHRCelebrations();
@@ -4564,7 +4634,7 @@
             const rows = [...(hrCelebrationEvents || [])].sort((a,b) => (a.event_date || '9999').localeCompare(b.event_date || '9999'));
             document.getElementById('hr-celebrations-rows').innerHTML = rows.length ? rows.map(ev => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td data-label="Event Date" class="py-2.5 px-4 text-white font-semibold">${ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : 'Every employee\'s own date'}</td>
+                    <td data-label="Event Dates" class="py-2.5 px-4 text-white font-semibold">${ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) + (ev.event_end_date && ev.event_end_date !== ev.event_date ? ' → ' + new Date(ev.event_end_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '') : 'Every employee\'s own date'}</td>
                     <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">
                         ${ev.popup_image_base64 ? `<img src="${ev.popup_image_base64}" style="width:28px;height:28px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : ''}${ev.icon ? ev.icon + ' ' : ''}${ev.title}
                     </td>
@@ -4573,7 +4643,7 @@
                     <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
                     <td data-label="Popup" class="py-2.5 px-4 text-[#a5adcf]">${ev.popup_enabled === false ? 'No' : (ev.popup_image_base64 ? 'Yes' : 'No image')}</td>
                     <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : (ev.banner_image_base64 ? 'Yes' : 'No image')}</td>
-                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHRCelebration('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
+                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="openHRCelebrationModal('${ev.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="deleteHRCelebration('${ev.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="8" class="py-8 text-center text-[#4a5182] text-xs">No celebrations added yet.</td></tr>`;
         }

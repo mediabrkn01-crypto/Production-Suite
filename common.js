@@ -2324,14 +2324,19 @@ function hrOfficialEventFor(employee, dateStr) {
             return years >= 1 ? years : null;
         }
 
-        // A company-wide event is "active" today either on its actual event_date, or — if HR
-        // set an advance_start_date — anywhere in [advance_start_date, event_date). Returns
+        // A company-wide event is "active" today either during its actual run
+        // [event_date, event_end_date] (event_end_date defaults to event_date itself, so a
+        // plain single-day event behaves exactly as before), or — if HR set an
+        // advance_start_date — anywhere in [advance_start_date, event_date). Returns
         // 'actual' | 'advance' | null. Purely date-driven, never hardcoded into page JS (spec
         // item 4/5) — HR changes the dates in the Celebrations admin UI, this just reads them.
+        // The day after event_end_date, this returns null and the event stops appearing on
+        // its own, on the very next check — no manual deletion needed (spec item 5).
         function hrCelebrationStatusForToday(ev) {
             const todayStr = new Date().toISOString().slice(0, 10);
             if (!ev.event_date) return null;
-            if (todayStr === ev.event_date) return 'actual';
+            const endDate = ev.event_end_date || ev.event_date;
+            if (todayStr >= ev.event_date && todayStr <= endDate) return 'actual';
             if (ev.advance_start_date && todayStr >= ev.advance_start_date && todayStr < ev.event_date) return 'advance';
             return null;
         }
@@ -2390,7 +2395,16 @@ function hrOfficialEventFor(employee, dateStr) {
             (hrCelebrationEvents || []).forEach(ev => {
                 if (ev.event_type === 'birthday' || ev.event_type === 'work_anniversary') return; // those are templates, handled above — never date-matched
                 const status = hrCelebrationStatusForToday(ev);
-                if (!status || !hrCelebrationApplies(ev, me)) return;
+                const applies = hrCelebrationApplies(ev, me);
+                // Diagnostic: previously a mismatch here (wrong date, or applies_to scoped to a
+                // department this employee isn't in) failed completely silently — no error, no
+                // banner, nothing to go on. Logging every candidate event's evaluation makes
+                // "why didn't I get the banner" answerable directly from the console instead of
+                // requiring code-reading or DB access.
+                if (!status || !applies) {
+                    console.info(`Celebration engine: "${ev.title}" (${ev.id}) not shown to ${me.full_name || 'this employee'} — ${!status ? `not active today (event_date=${ev.event_date}, event_end_date=${ev.event_end_date || ev.event_date}, advance_start_date=${ev.advance_start_date || 'none'})` : `applies_to="${ev.applies_to}" does not match this employee's division="${me.division}"`}.`);
+                    return;
+                }
                 const titleText = `${status === 'advance' ? 'Advance ' : ''}${ev.title}!`;
                 items.push({
                     key: `event_${ev.id}_${todayStr}`, type: ev.event_type || 'custom',
@@ -2497,6 +2511,7 @@ function hrOfficialEventFor(employee, dateStr) {
         let _celebrationQueue = [];
         function runCelebrationQueue(me) {
             const items = computeTodaysCelebrations(me);
+            console.info(`Celebration engine: checked for ${me?.full_name || 'unknown employee'} (division="${me?.division}") — ${(hrCelebrationEvents||[]).length} configured event(s) in hr_celebration_events, ${items.length} applicable today.`);
             if (!items.length) return;
             ensureCelebrationDOM();
             // Notification Center entry per item per day (plain text, unaffected by whether
