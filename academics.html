@@ -1677,24 +1677,38 @@ async function boot(){
   // didn't happen to scroll to) even though item 8 explicitly forbids showing them.
   if (isHead) await loadStats(); else { const sg = document.getElementById('statgrid'); if (sg) sg.style.display = 'none'; }
   initClock();
-  loadLeave();
+  // PERFORMANCE: every loadXTab() call that used to sit here (Availability, Classes,
+  // Students, Schedule, Reports, Delegation, My Profile, Announcements, Documents,
+  // Payslips, Team, My Leave [+ its own inner My Balances/My Requests], My Attendance
+  // calendar) fired unconditionally on every single boot(), whether or not that tab was
+  // ever opened — Students/Classes/Reports in particular can be large datasets. None of
+  // that data is shown on this Overview tab. It's now loaded lazily, on first visit to
+  // each tab (see ACAD_LAZY_TAB_LOADERS / acadSwitchTab below), and cached for the rest of
+  // the session so revisiting a tab is instant, not a re-fetch. Only what the Overview
+  // itself actually renders stays eager, below.
   await loadAcadDashboard();
-  loadAvailabilityTab();
-  loadClassesTab();
-  loadStudentsTab();
-  loadScheduleTab();
-  // Reports is a company-wide aggregate page with no "My Reports" equivalent — Head-only,
-  // not fetched at all for a Trainer (the nav item itself is also hidden, see the sidebar).
-  if (isHead) loadReportsTab();
-  loadDelegationTab(); // no-ops for anyone who isn't the REAL Head (see there) — a delegated Trainer never reaches this tab's data
-  loadMyProfileTab();
-  loadAnnouncementsTab();
-  loadDocumentsTab();
-  loadPayslipsTab();
-  loadTeamTab();
-  loadAttendanceCalendar();
-  loadLeaveBalances();
   if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// PERFORMANCE — lazy tab loading (see the comment in boot() above). Each entry is only
+// invoked the first time its tab is opened, then cached for the rest of the session
+// (_acadLazyTabLoaded) so switching back and forth is instant — same one-load-per-session
+// behavior these functions already had when they ran in boot(), just deferred until the data
+// is actually needed instead of racing every other query at login. Role-gating (isHead/
+// isRestricted/etc.) still lives inside each loader itself, unchanged — this table doesn't
+// duplicate or second-guess it.
+const ACAD_LAZY_TAB_LOADERS = {
+  availability: 'loadAvailabilityTab', classes: 'loadClassesTab', students: 'loadStudentsTab',
+  schedule: 'loadScheduleTab', reports: 'loadReportsTab', delegation: 'loadDelegationTab',
+  profile: 'loadMyProfileTab', announcements: 'loadAnnouncementsTab', documents: 'loadDocumentsTab',
+  payslips: 'loadPayslipsTab', team: 'loadTeamTab', leave: 'loadLeave', attendance: 'loadAttendanceCalendar'
+};
+const _acadLazyTabLoaded = new Set();
+function acadEnsureTabLoaded(tab) {
+  const fnName = ACAD_LAZY_TAB_LOADERS[tab];
+  if (!fnName || _acadLazyTabLoaded.has(tab)) return;
+  _acadLazyTabLoaded.add(tab);
+  if (typeof window[fnName] === 'function') window[fnName]();
 }
 
 // ============================================================================
@@ -1954,6 +1968,9 @@ function acadSwitchTab(tab){
   document.querySelectorAll('.acad-tab').forEach(el => el.classList.remove('on'));
   document.getElementById('nav-acad-' + tab)?.classList.add('active');
   document.getElementById('tab-acad-' + tab)?.classList.add('on');
+  // PERFORMANCE: fetch this tab's data the first time it's actually opened, not back at
+  // boot() (see ACAD_LAZY_TAB_LOADERS) — cached after that, so switching back is instant.
+  if (typeof acadEnsureTabLoaded === 'function') acadEnsureTabLoaded(tab);
   // Availability tab always resets to its list view when navigated to fresh (not via
   // its own internal crumbs), so stale drill-down state never lingers between visits.
   if (tab === 'availability' && typeof availShowList === 'function') availShowList();
@@ -3943,7 +3960,9 @@ async function loadLeave(){
   }catch(e){el.className='';el.innerHTML='<div class="empty">Could not load HR leave data: '+esc(e.message)+'</div>';}
   loadMyLeaveHistory();
   loadLeaveBalances();
-  loadAttendanceCalendar();
+  // loadAttendanceCalendar() used to also fire from here — moved out (see
+  // ACAD_LAZY_TAB_LOADERS): My Attendance is its own separate tab, so opening My Leave no
+  // longer eagerly fetches a different tab's calendar data too.
 }
 async function loadMyLeaveHistory(){
   const body=document.getElementById('myLeaveHistory'); if(!body) return;
