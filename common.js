@@ -405,7 +405,16 @@ async function loadMyHRData() {
                 case 'payslip': return { icon: 'wallet', color: 'green', label: '💰 New Payslip Available', onClick: "switchTab('my-payslips');closeNotifPanel();" };
                 case 'leave_approved': return { icon: 'check-circle-2', color: 'green', label: '✅ Leave Approved', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "switchTab('my-leave');closeNotifPanel();" };
-                case 'announcement': return { icon: 'megaphone', color: 'orange', label: '📢 Company Announcement', onClick: null };
+                case 'announcement': {
+                    // n.id is always `announcement_<hr_announcements.id>` (see addNotif's taskId
+                    // convention) — recover the real id so clicking opens that exact announcement's
+                    // detail modal (openAnnouncementDetail already exists, used by the Announcements
+                    // tab) instead of doing nothing (spec: clicking must open a detail view, never a
+                    // dead click).
+                    const annId = typeof n.id === 'string' && n.id.startsWith('announcement_') ? n.id.slice('announcement_'.length) : null;
+                    const priorityLabel = n.priority === 'urgent' ? '🚨 Urgent Announcement' : n.priority === 'important' ? '⚠️ Important Announcement' : '📢 Company Announcement';
+                    return { icon: 'megaphone', color: n.priority === 'urgent' ? 'red' : 'orange', label: priorityLabel, onClick: annId ? `if(typeof openAnnouncementDetail==='function')openAnnouncementDetail('${annId}');` : null };
+                }
                 case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: null };
                 case 'birthday': return { icon: 'cake', color: 'orange', label: '🎂 Happy Birthday!', onClick: null };
                 case 'work_anniversary': return { icon: 'award', color: 'orange', label: '🏆 Work Anniversary', onClick: null };
@@ -428,15 +437,22 @@ async function loadMyHRData() {
         }
 
 // ── addNotif (orig line 6937) ──
-        function addNotif(type, topic, assignedTo, taskId) {
+        function addNotif(type, topic, assignedTo, taskId, priority) {
             // Stable ID per (type, task) — previously this was Date.now(), meaning a
             // regenerated notification for the SAME task always got a fresh id, so the
             // dismissed-ids set could never block it and cleared notifications kept
-            // coming back (especially on other devices with their own localStorage).
+            // coming back (especially on other devices with their own localStorage). This
+            // same id-stability is what also satisfies "no duplicate notifications" for
+            // announcements (id = `announcement_<hr_announcements.id>`) — re-publishing the
+            // same check (page refresh, module switch, the 20s poll) can never insert a
+            // second entry for the same announcement.
             const newId = taskId ? `${type}_${taskId}` : `${type}_${Date.now()}`;
             if (_readNotifIds.has(newId)) return; // permanently dismissed — never re-add
             if (notifications.some(n => n.id === newId)) return; // already showing
-            notifications.unshift({ id: newId, type, topic, assignedTo, time: new Date().toISOString() });
+            // priority (optional — currently only set by announcement delivery) travels with
+            // the notification itself so notifMeta() can render Urgent/Important differently
+            // using the exact same card layout, not a second component.
+            notifications.unshift({ id: newId, type, topic, assignedTo, time: new Date().toISOString(), priority: priority || null });
             saveNotifs();
             renderNotifBadges();
             renderDashboardNotifFeed();
@@ -633,28 +649,73 @@ async function loadMyHRData() {
             renderAnnouncementBadgeExtra();
         }
 
+        // Audience match — same division keys hr_celebration_events.applies_to already uses
+        // (production/education/sales/hr/accounts/other), or 'selected' matched against real
+        // hr_employees.id values, never against a name string. 'all' always matches.
+        function hrAnnouncementApplies(a, employee) {
+            const aud = a.audience || 'all';
+            if (aud === 'all') return true;
+            if (!employee) return false;
+            if (aud === 'selected') {
+                let ids = a.audience_employee_ids;
+                if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch (e) { ids = []; } }
+                return Array.isArray(ids) && ids.map(String).includes(String(employee.id));
+            }
+            return aud === employee.division;
+        }
+        // Optional scheduling — an announcement with a future start_at isn't delivered yet;
+        // one with a past end_at stops appearing as active anywhere (HR's own history list is
+        // unaffected — that always shows every row regardless of schedule).
+        function hrAnnouncementIsScheduledActive(a) {
+            const now = Date.now();
+            if (a.start_at && now < new Date(a.start_at).getTime()) return false;
+            if (a.end_at && now > new Date(a.end_at).getTime()) return false;
+            return true;
+        }
+        // The one place that resolves "which announcements does the CURRENT login actually
+        // receive" — used by the employee-facing list, the unread badge, and the notification
+        // bell delivery below, so all three can never disagree. Fails open (returns everything)
+        // if this login has no linked hr_employees record, rather than hiding every
+        // announcement from someone HR just hasn't linked yet.
+        async function getMyApplicableAnnouncements() {
+            try {
+                const profile = typeof loadCurrentUserProfile === 'function' ? await loadCurrentUserProfile() : null;
+                const me = profile ? profile.raw : null;
+                const scheduled = hrAnnouncements.filter(hrAnnouncementIsScheduledActive);
+                if (!me) return scheduled;
+                return scheduled.filter(a => hrAnnouncementApplies(a, me));
+            } catch (e) { return hrAnnouncements; }
+        }
+
 // ── renderAnnouncementBadgeExtra (orig line 7411) ──
-        function renderAnnouncementBadgeExtra() {
+        async function renderAnnouncementBadgeExtra() {
             if (typeof renderHRAnnouncementsSentList === 'function' && document.getElementById('hr-announcements-sent-list')) {
                 renderHRAnnouncementsSentList();
             }
-            renderAnnouncementBadge();
+            if (typeof hrRenderAnnouncementsAdminList === 'function' && document.getElementById('hr-announcements-admin-list')) {
+                hrRenderAnnouncementsAdminList();
+            }
+            await renderAnnouncementBadge();
             if (document.getElementById('tab-content-announcements') && !document.getElementById('tab-content-announcements').classList.contains('hidden')) {
-                renderEmployeeAnnouncementsList();
+                await renderEmployeeAnnouncementsList();
             }
         }
 
         // Announcement read-state is entirely server-side (hr_announcement_reads), unlike the
         // bell's local dismiss-tracking — so "unread" is always computed live, never stale.
-        function getUnreadAnnouncementIds() {
+        // Scoped to announcements that actually apply to this login (see
+        // getMyApplicableAnnouncements) — an announcement targeted at a different division was
+        // never something this employee needed to "read" in the first place.
+        async function getUnreadAnnouncementIds() {
             if (!activeEmail) return [];
             const myEmail = activeEmail.toLowerCase();
+            const mine = await getMyApplicableAnnouncements();
             const readIds = new Set(hrAnnouncementReads.filter(r => (r.employee_email || '').toLowerCase() === myEmail).map(r => String(r.announcement_id)));
-            return hrAnnouncements.filter(a => !readIds.has(String(a.id))).map(a => a.id);
+            return mine.filter(a => !readIds.has(String(a.id))).map(a => a.id);
         }
 
-        function renderAnnouncementBadge() {
-            const n = getUnreadAnnouncementIds().length;
+        async function renderAnnouncementBadge() {
+            const n = (await getUnreadAnnouncementIds()).length;
             [document.getElementById('announcements-badge-sidebar'), document.getElementById('announcements-badge-mobile')].forEach(b => {
                 if (!b) return;
                 b.textContent = n > 99 ? '99+' : n;
@@ -662,32 +723,35 @@ async function loadMyHRData() {
             });
         }
 
-        // Employee-facing Announcements tab — deliberately separate from the notification
-        // bell (see checkForHRNotifications, which no longer calls addNotif for these): these
-        // are persistent HR communications an employee should be able to browse and re-read,
-        // not a transient alert that gets dismissed and disappears.
-        function renderEmployeeAnnouncementsList() {
+        // Employee-facing Announcements tab — a persistent, browsable list an employee can
+        // revisit (separate from the transient notification bell below, which ALSO delivers
+        // these now — see checkForHRNotifications). Scoped to this login's own audience.
+        async function renderEmployeeAnnouncementsList() {
             const el = document.getElementById('announcements-list');
             if (!el) return;
             if (_announcementsTableMissing) {
                 el.innerHTML = `<p class="text-center text-red-300 text-xs py-8">Announcements aren't available right now — ask your admin to check the Supabase setup.</p>`;
                 return;
             }
-            if (!hrAnnouncements.length) {
+            const mine = await getMyApplicableAnnouncements();
+            if (!mine.length) {
                 el.innerHTML = `<p class="text-center text-[#4a5182] text-xs italic py-10">No announcements yet.</p>`;
                 return;
             }
-            const unreadIds = new Set(getUnreadAnnouncementIds().map(String));
-            el.innerHTML = hrAnnouncements.map(a => {
+            const unreadIds = new Set((await getUnreadAnnouncementIds()).map(String));
+            el.innerHTML = mine.map(a => {
                 const isUnread = unreadIds.has(String(a.id));
                 const dateLabel = new Date(a.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
                 const excerpt = (a.message || '').slice(0, 140) + ((a.message || '').length > 140 ? '…' : '');
+                const priorityTag = a.priority === 'urgent' ? `<span class="text-[9px] font-bold uppercase tracking-wide text-red-300 bg-red-500/10 border border-red-500/30 rounded px-1.5 py-0.5 shrink-0">Urgent</span>`
+                    : a.priority === 'important' ? `<span class="text-[9px] font-bold uppercase tracking-wide text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 shrink-0">Important</span>` : '';
                 return `<div onclick="openAnnouncementDetail('${a.id}')" class="card glass-card rounded-2xl p-4 cursor-pointer transition hover:border-orange-500/30 ${isUnread ? 'border-l-2 border-l-orange-500' : ''}" style="border-left-width:${isUnread ? '3px' : '1px'}">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2 flex-wrap mb-1">
                                 <i data-lucide="megaphone" class="w-3.5 h-3.5 text-orange-400 shrink-0"></i>
                                 <h3 class="text-sm font-bold text-white break-words">${a.title}</h3>
+                                ${priorityTag}
                                 ${a.category ? `<span class="text-[9px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded px-1.5 py-0.5 shrink-0">${a.category}</span>` : ''}
                                 ${isUnread ? `<span class="text-[9px] font-bold uppercase tracking-wide text-white bg-orange-500 rounded-full px-2 py-0.5 shrink-0">New</span>` : ''}
                             </div>
@@ -700,14 +764,39 @@ async function loadMyHRData() {
             if (window.lucide) lucide.createIcons();
         }
 
+        // Injected once if a page doesn't already have its own static copy (index.html does;
+        // hr.html doesn't) — same markup/classes either way, so clicking an announcement
+        // notification or list card opens an identical detail view on every page rather than a
+        // second, page-specific modal design.
+        function ensureAnnouncementDetailModal() {
+            if (document.getElementById('announcement-detail-modal')) return;
+            document.body.insertAdjacentHTML('beforeend', `
+                <div id="announcement-detail-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div class="w-full max-w-md rounded-2xl p-5" style="background:#12162a;border:1px solid rgba(255,255,255,.1)">
+                        <div class="flex items-start justify-between gap-3 mb-3">
+                            <div class="min-w-0">
+                                <span id="announcement-detail-category" class="hidden text-[9px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded px-1.5 py-0.5"></span>
+                                <h2 id="announcement-detail-title" class="text-lg font-bold text-white mt-1 break-words"></h2>
+                                <p id="announcement-detail-meta" class="text-[11px] text-[#a5adcf] mt-1"></p>
+                            </div>
+                            <button onclick="closeAnnouncementDetail()" style="background:none;border:none;cursor:pointer;color:#a5adcf;font-size:16px;line-height:1">✕</button>
+                        </div>
+                        <p id="announcement-detail-body" class="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words"></p>
+                    </div>
+                </div>
+            `);
+        }
+
         function openAnnouncementDetail(id) {
             const a = hrAnnouncements.find(x => String(x.id) === String(id));
             if (!a) return;
+            ensureAnnouncementDetailModal();
             const catEl = document.getElementById('announcement-detail-category');
             if (catEl) { catEl.textContent = a.category || ''; catEl.classList.toggle('hidden', !a.category); }
             const dateLabel = new Date(a.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const priorityLabel = a.priority === 'urgent' ? '🚨 Urgent · ' : a.priority === 'important' ? '⚠️ Important · ' : '';
             document.getElementById('announcement-detail-title').textContent = a.title;
-            document.getElementById('announcement-detail-meta').textContent = `Sent ${dateLabel}${a.created_by ? ' · ' + a.created_by : ''}`;
+            document.getElementById('announcement-detail-meta').textContent = `${priorityLabel}Sent ${dateLabel}${a.created_by ? ' · By ' + a.created_by : ''}`;
             document.getElementById('announcement-detail-body').textContent = a.message || '';
             document.getElementById('announcement-detail-modal').classList.remove('hidden');
             markAnnouncementRead(a.id); // updates the badge + list itself once persisted (see renderAnnouncementBadgeExtra)
@@ -743,18 +832,32 @@ async function loadMyHRData() {
             const hadAnnouncementBaseline = localStorage.getItem(`be_known_announcements_${activeEmail}`) !== null;
             loadHRNotifBaseline();
 
-            // Company announcements: not gated on having an hr_employees record — everyone
-            // logged in should get these, even before HR data resolves. Deliberately NOT added
-            // to the notification bell (addNotif) — Announcements are their own persistent tab
-            // now (see renderEmployeeAnnouncementsList), not a dismiss-and-disappear alert. A
-            // native OS push is still fine here since that's outside the in-app Notifications list.
+            // Company announcements: the persistent Announcements tab (renderEmployeeAnnouncementsList)
+            // stays the browsable history either way; this loop ALSO now delivers each new
+            // announcement into the notification bell (addNotif), so it never lives only inside
+            // the HR page/Announcements tab. Not gated on having an hr_employees record for the
+            // detection/browser-push itself — everyone logged in should get those even before HR
+            // data resolves — but bell delivery needs "me" for audience targeting (department/
+            // selected); an audience:'all' announcement still reaches the bell immediately
+            // either way since hrAnnouncementApplies() always matches 'all' with no employee.
             let changed = false;
             try {
                 await loadAnnouncements();
+                let annMe = null;
+                try {
+                    const profile = typeof loadCurrentUserProfile === 'function' ? await loadCurrentUserProfile() : null;
+                    annMe = profile ? profile.raw : null;
+                } catch (e) { /* best-effort — see comment above */ }
                 hrAnnouncements.forEach(a => {
                     if (!_lastKnownAnnouncementIds.has(a.id)) {
                         if (hadAnnouncementBaseline) {
                             sendBrowserNotif('📢 ' + a.title, a.message || '');
+                            if (hrAnnouncementIsScheduledActive(a) && hrAnnouncementApplies(a, annMe)) {
+                                // taskId = a.id makes addNotif's own id-stability
+                                // (`announcement_<id>`) the de-dup mechanism (spec item 16) — a
+                                // repeated poll/refresh/tab-switch can never insert a second entry.
+                                addNotif('announcement', a.message || a.title, a.created_by || null, a.id, a.priority || 'normal');
+                            }
                         }
                         _lastKnownAnnouncementIds.add(a.id);
                         changed = true;

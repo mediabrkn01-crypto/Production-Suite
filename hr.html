@@ -686,9 +686,12 @@
                         <i data-lucide="file-bar-chart" style="width:14px;height:14px"></i> HR Reports
                     </button>
 
-                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">NOTIFICATIONS</div>
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">COMMUNICATION</div>
+                    <button id="hrtree-announcements" onclick="switchHRSubtab('announcements')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="megaphone" style="width:14px;height:14px"></i> Announcements
+                    </button>
                     <button id="hrtree-notifications" onclick="switchHRSubtab('notifications')" class="sidebar-link" style="width:100%;text-align:left">
-                        <i data-lucide="bell" style="width:14px;height:14px"></i> HR Notifications
+                        <i data-lucide="bell" style="width:14px;height:14px"></i> Notifications
                         <span id="hr-notif-badge" class="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded" style="background:rgba(255,107,6,0.2);color:#ff6b06;display:none"></span>
                     </button>
 
@@ -1280,35 +1283,35 @@
                 </div>
 
                 <!-- HR: NOTIFICATIONS & ANNOUNCEMENTS -->
+                <!-- HR: ANNOUNCEMENTS — separate from System Notifications below. Creating an
+                     announcement here also delivers it into every eligible employee's
+                     notification bell (see hrPublishAnnouncement / common.js's
+                     checkForHRNotifications) — this page is only where HR authors/manages them,
+                     never the only place they're visible. -->
+                <div id="hr-sub-announcements" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between flex-wrap gap-3">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Announcements</h1>
+                            <p class="text-[#6b74a0] text-xs mt-1">Company-wide or targeted communications — delivered straight to the recipients' notification bell.</p>
+                        </div>
+                        <button onclick="hrOpenAnnouncementModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Create Announcement</button>
+                    </div>
+                    <div id="hr-announcements-missing-banner" class="hidden text-[11px] text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                        Announcements tables not found in Supabase (<code>hr_announcements</code> / <code>hr_announcement_reads</code>). Ask your developer to run Phase 12 of <code>coach-scheduling-schema.sql</code> to enable this feature.
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Title</th><th class="py-3 px-4">Audience</th><th class="py-3 px-4">Priority</th><th class="py-3 px-4">Published</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Read</th><th class="py-3 px-4 text-center">Actions</th>
+                            </tr></thead>
+                            <tbody id="hr-announcements-admin-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div id="hr-sub-notifications" class="space-y-4 hidden">
-                    <h1 class="text-xl font-bold tracking-tight">HR Notifications</h1>
-
-                    <div class="card glass-card p-4 rounded-2xl space-y-3">
-                        <h2 class="text-sm font-bold tracking-tight flex items-center gap-2"><i data-lucide="megaphone" class="w-4 h-4 text-orange-400"></i> Employee Announcement</h2>
-                        <p class="text-[11px] text-[#6b74a0]">Sent to every active employee instantly — appears in their notification bell, no refresh needed.</p>
-                        <div id="hr-announcements-missing-banner" class="hidden text-[11px] text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
-                            Announcements tables not found in Supabase (<code>hr_announcements</code> / <code>hr_announcement_reads</code>). Ask your developer to run the schema in <code>hr-announcements-schema.sql</code> to enable this feature.
-                        </div>
-                        <input id="ann-title-input" type="text" placeholder="Title (e.g. Company Celebration)" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
-                        <textarea id="ann-message-input" rows="3" placeholder="Message..." class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500"></textarea>
-                        <input id="ann-category-input" type="text" placeholder="Category (optional — e.g. Event, Policy, Holiday)" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500">
-                        <button id="ann-send-btn" onclick="hrSendAnnouncement()" class="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider brand-gradient text-white flex items-center gap-2"><i data-lucide="send" class="w-3.5 h-3.5"></i> Send</button>
-                    </div>
-
-                    <div class="card glass-card p-4 rounded-2xl">
-                        <h2 class="text-sm font-bold tracking-tight mb-3">Sent Announcements</h2>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-xs">
-                                <thead><tr class="text-left text-[#6b74a0] uppercase tracking-wide text-[10px] border-b border-white/[0.06]">
-                                    <th class="py-2 pr-3">Announcement</th><th class="py-2 pr-3">Sent</th><th class="py-2 pr-3">Recipients</th><th class="py-2 pr-3">Read</th>
-                                </tr></thead>
-                                <tbody id="hr-announcements-sent-list"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
                     <div class="flex items-center justify-between pt-2">
-                        <h2 class="text-sm font-bold tracking-tight">System Notifications</h2>
+                        <h1 class="text-xl font-bold tracking-tight">System Notifications</h1>
                         <button onclick="hrClearAllNotifications()" class="text-[11px] font-bold text-[#6b74a0] hover:text-white" style="background:none;border:none;cursor:pointer">Clear All</button>
                     </div>
                     <div id="hr-notifications-list" class="space-y-2"></div>
@@ -1780,6 +1783,52 @@
         </div>
     </div>
 
+    <div id="hr-announcement-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:460px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white" id="hr-announcement-modal-title">Create Announcement</h3>
+                <button onclick="hrCloseAnnouncementModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <input type="hidden" id="hr-ann-editing-id">
+            <div class="space-y-3">
+                <div><label class="hr-field-label">Title</label><input id="hr-ann-title" placeholder="e.g. Office timing update" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Message</label><textarea id="hr-ann-message" rows="4" placeholder="Message..." class="hr-input w-full"></textarea></div>
+                <div><label class="hr-field-label">Category (optional — e.g. Event, Policy, Holiday)</label><input id="hr-ann-category" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Audience</label>
+                    <select id="hr-ann-audience" onchange="hrUpdateAnnouncementAudienceVisibility()" class="hr-select w-full">
+                        <option value="all">All Employees</option>
+                        <option value="production">Media / Production</option>
+                        <option value="education">Academic (Trainers / Coaches)</option>
+                        <option value="sales">Sales</option>
+                        <option value="hr">HR</option>
+                        <option value="accounts">Accounts</option>
+                        <option value="other">Administration</option>
+                        <option value="selected">Selected Employees</option>
+                    </select>
+                </div>
+                <div id="hr-ann-selected-row" class="hidden">
+                    <label class="hr-field-label">Selected Employees</label>
+                    <div id="hr-ann-employee-checklist" style="max-height:180px;overflow-y:auto;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <div><label class="hr-field-label">Start Date/Time (optional)</label><input id="hr-ann-start-at" type="datetime-local" class="hr-input w-full"></div>
+                    <div><label class="hr-field-label">End Date/Time (optional)</label><input id="hr-ann-end-at" type="datetime-local" class="hr-input w-full"></div>
+                </div>
+                <div><label class="hr-field-label">Priority</label>
+                    <select id="hr-ann-priority" class="hr-select w-full">
+                        <option value="normal">Normal</option>
+                        <option value="important">Important</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px">
+                <button onclick="hrCloseAnnouncementModal()" class="w-full py-3 rounded-xl uppercase tracking-wider text-xs font-bold" style="background:rgba(255,255,255,.06);color:#a5adcf;border:1px solid rgba(255,255,255,.08)">Cancel</button>
+                <button onclick="hrPublishAnnouncement()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full" id="hr-announcement-modal-save-btn">Publish Announcement</button>
+            </div>
+        </div>
+    </div>
+
     <div id="call-toast" class="hidden fixed top-5 left-1/2 -translate-x-1/2 z-[95] bg-transparent border border-orange-500/40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
         <i data-lucide="bell" class="w-4 h-4 text-white/70 shrink-0"></i>
         <span id="call-toast-text"></span>
@@ -1795,7 +1844,7 @@
             production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators', 'Graphic Designers', 'Designers'],
             other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
         };
-        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','notifications','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','accounts'];
         const HR_DOCUMENT_TYPES = ['ID Card / Government ID', 'Address Proof', 'Educational Certificates', 'Experience Certificates', 'Resume', 'Employment Documents', 'Other'];
         const HR_APPLICANT_STATUSES = ['Applied','Shortlisted','Interview','Selected','Rejected','Joined'];
         const HR_PAYROLL_OPTIONAL_COLUMNS = {
@@ -1832,47 +1881,134 @@
         // loadHRData() itself now (see its Promise.all), not kept live like index.html does.
         let userRoster = [];
 
-// ── hrSendAnnouncement (orig line 7417) ──
-        async function hrSendAnnouncement() {
-            const titleEl = document.getElementById('ann-title-input');
-            const msgEl = document.getElementById('ann-message-input');
-            const catEl = document.getElementById('ann-category-input');
-            const title = (titleEl?.value || '').trim();
-            const message = (msgEl?.value || '').trim();
-            const category = (catEl?.value || '').trim() || null;
-            if (!title || !message) { alert('Please enter both a title and a message.'); return; }
-            const btn = document.getElementById('ann-send-btn');
-            if (btn) { btn.disabled = true; btn.innerText = 'Sending...'; }
-            const { error } = await dbInstance.from('hr_announcements').insert({
-                title, message, category, created_by: activeUser || activeEmail, created_at: new Date().toISOString()
-            });
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="send" class="w-3.5 h-3.5"></i> Send'; if (window.lucide) lucide.createIcons(); }
+// ── Announcements: Create/Edit modal ──
+        const HR_ANNOUNCEMENT_AUDIENCE_LABEL = { all: 'All Employees', production: 'Media / Production', education: 'Academic', sales: 'Sales', hr: 'HR', accounts: 'Accounts', other: 'Administration', selected: 'Selected Employees' };
+
+        function hrUpdateAnnouncementAudienceVisibility() {
+            const isSelected = document.getElementById('hr-ann-audience').value === 'selected';
+            document.getElementById('hr-ann-selected-row').classList.toggle('hidden', !isSelected);
+            if (isSelected) hrRenderAnnouncementEmployeeChecklist();
+        }
+        function hrRenderAnnouncementEmployeeChecklist(checkedIds) {
+            const el = document.getElementById('hr-ann-employee-checklist');
+            if (!el) return;
+            const checked = new Set((checkedIds || []).map(String));
+            const active = hrEmployees.filter(e => e.employment_status !== 'inactive' && e.employment_status !== 'exited');
+            el.innerHTML = active.length ? active.map(e => `
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:12px;cursor:pointer">
+                    <input type="checkbox" class="hr-ann-emp-check" value="${e.id}" ${checked.has(String(e.id)) ? 'checked' : ''} style="accent-color:#ff6b06">
+                    <span class="text-white">${e.full_name || '—'}</span><span style="color:#6b74a0;font-size:10px">${e.division ? '· ' + e.division : ''}</span>
+                </label>
+            `).join('') : `<p class="text-[11px] text-[#4a5182] italic">No employees on file yet.</p>`;
+        }
+        function _hrIsoFromLocalInput(id) {
+            const v = document.getElementById(id)?.value;
+            return v ? new Date(v).toISOString() : null;
+        }
+        function _hrLocalInputFromIso(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+        // id present = Edit (pre-fills from the existing row and UPDATEs it on save) — HR never
+        // has to delete/recreate an announcement for a small change (spec item 13).
+        function hrOpenAnnouncementModal(id) {
+            const editing = id ? hrAnnouncements.find(a => String(a.id) === String(id)) : null;
+            document.getElementById('hr-ann-editing-id').value = editing ? editing.id : '';
+            document.getElementById('hr-announcement-modal-title').textContent = editing ? 'Edit Announcement' : 'Create Announcement';
+            document.getElementById('hr-ann-title').value = editing?.title || '';
+            document.getElementById('hr-ann-message').value = editing?.message || '';
+            document.getElementById('hr-ann-category').value = editing?.category || '';
+            document.getElementById('hr-ann-audience').value = editing?.audience || 'all';
+            document.getElementById('hr-ann-priority').value = editing?.priority || 'normal';
+            document.getElementById('hr-ann-start-at').value = _hrLocalInputFromIso(editing?.start_at);
+            document.getElementById('hr-ann-end-at').value = _hrLocalInputFromIso(editing?.end_at);
+            let selectedIds = editing?.audience_employee_ids;
+            if (typeof selectedIds === 'string') { try { selectedIds = JSON.parse(selectedIds); } catch (e) { selectedIds = []; } }
+            hrRenderAnnouncementEmployeeChecklist(selectedIds || []);
+            hrUpdateAnnouncementAudienceVisibility();
+            document.getElementById('hr-announcement-modal').classList.remove('hidden');
+        }
+        function hrCloseAnnouncementModal() {
+            document.getElementById('hr-announcement-modal').classList.add('hidden');
+        }
+        async function hrPublishAnnouncement() {
+            const editingId = document.getElementById('hr-ann-editing-id').value || null;
+            const title = document.getElementById('hr-ann-title').value.trim();
+            const message = document.getElementById('hr-ann-message').value.trim();
+            const category = document.getElementById('hr-ann-category').value.trim() || null;
+            const audience = document.getElementById('hr-ann-audience').value;
+            const priority = document.getElementById('hr-ann-priority').value;
+            const start_at = _hrIsoFromLocalInput('hr-ann-start-at');
+            const end_at = _hrIsoFromLocalInput('hr-ann-end-at');
+            if (!title || !message) { if (window.showToast) showToast('warning', 'Please enter both a title and a message.'); else alert('Please enter both a title and a message.'); return; }
+            let audience_employee_ids = null;
+            if (audience === 'selected') {
+                audience_employee_ids = [...document.querySelectorAll('.hr-ann-emp-check:checked')].map(c => c.value);
+                if (!audience_employee_ids.length) { if (window.showToast) showToast('warning', 'Select at least one employee, or choose a different audience.'); return; }
+            }
+            const btn = document.getElementById('hr-announcement-modal-save-btn');
+            if (btn) { btn.disabled = true; btn.textContent = editingId ? 'Saving...' : 'Publishing...'; }
+            const payload = { title, message, category, audience, audience_employee_ids, priority, start_at, end_at, updated_at: new Date().toISOString() };
+            let error;
+            if (editingId) {
+                ({ error } = await dbInstance.from('hr_announcements').update(payload).eq('id', editingId));
+            } else {
+                ({ error } = await dbInstance.from('hr_announcements').insert({ ...payload, created_by: activeUser || activeEmail, created_at: new Date().toISOString() }));
+            }
+            if (btn) { btn.disabled = false; btn.textContent = 'Publish Announcement'; }
             if (error) {
-                alert('Could not send announcement: ' + error.message + (error.message?.includes('does not exist') ? '\n\nRun hr-announcements-schema.sql in Supabase first.' : ''));
+                const msg = 'Could not save announcement: ' + error.message + (error.message?.includes('does not exist') || error.message?.includes('column') ? '\n\nRun Phase 12 of coach-scheduling-schema.sql in Supabase first.' : '');
+                if (window.showToast) showToast('error', msg); else alert(msg);
                 return;
             }
-            if (titleEl) titleEl.value = '';
-            if (msgEl) msgEl.value = '';
-            if (catEl) catEl.value = '';
+            hrCloseAnnouncementModal();
             await loadAnnouncements();
-            await pushLogEntry(`HR sent announcement to all employees: "${title}"`);
+            await pushLogEntry(`HR ${editingId ? 'edited' : 'published'} announcement "${title}" (audience: ${HR_ANNOUNCEMENT_AUDIENCE_LABEL[audience] || audience})`);
+            if (window.showToast) showToast('success', editingId ? 'Announcement updated.' : 'Announcement published.');
         }
+        async function hrDeleteAnnouncementConfirm(id) {
+            const a = hrAnnouncements.find(x => String(x.id) === String(id));
+            if (!a) return;
+            const ok = await showConfirm(`Delete "${a.title}"? This removes it permanently — recipients who already saw it in their notification bell keep that entry, but it disappears from the Announcements tab and stops being delivered to anyone new.`, { danger: true, title: 'Delete Announcement', confirmLabel: 'Delete' });
+            if (!ok) return;
+            // Delete the read receipts first (no cascade assumed) so a stale hr_announcement_reads
+            // row can never outlive the announcement it points at.
+            await dbInstance.from('hr_announcement_reads').delete().eq('announcement_id', id);
+            const { error } = await dbInstance.from('hr_announcements').delete().eq('id', id);
+            if (error) { if (window.showToast) showToast('error', 'Could not delete: ' + error.message); return; }
+            await loadAnnouncements();
+            await pushLogEntry(`HR deleted announcement "${a.title}"`);
+            if (window.showToast) showToast('success', 'Announcement deleted.');
+        }
+        function hrViewAnnouncement(id) { if (typeof openAnnouncementDetail === 'function') openAnnouncementDetail(id); }
 
-// ── renderHRAnnouncementsSentList (orig line 7454) ──
-        function renderHRAnnouncementsSentList() {
-            const el = document.getElementById('hr-announcements-sent-list');
+// ── hrRenderAnnouncementsAdminList — HR's own CRUD history table (Title/Audience/Priority/Published/Status/Read/Actions) ──
+        function hrRenderAnnouncementsAdminList() {
+            const el = document.getElementById('hr-announcements-admin-list');
             if (!el) return;
-            if (_announcementsTableMissing) { el.innerHTML = `<tr><td colspan="4" class="py-3 text-red-300 text-xs">Announcements tables not found — see banner above.</td></tr>`; return; }
-            if (!hrAnnouncements.length) { el.innerHTML = `<tr><td colspan="4" class="py-3 text-[#4a5182] text-xs italic">No announcements sent yet.</td></tr>`; return; }
-            const totalEmployees = hrEmployees.filter(e => e.employment_status === 'active').length || '—';
+            if (_announcementsTableMissing) { el.innerHTML = `<tr><td colspan="7" class="py-3 text-red-300 text-xs">Announcements tables not found — see banner above.</td></tr>`; return; }
+            if (!hrAnnouncements.length) { el.innerHTML = `<tr><td colspan="7" class="py-3 text-[#4a5182] text-xs italic">No announcements yet.</td></tr>`; return; }
             el.innerHTML = hrAnnouncements.map(a => {
                 const readCount = hrAnnouncementReads.filter(r => String(r.announcement_id) === String(a.id)).length;
                 const dateStr = new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const now = Date.now();
+                const notYetStarted = a.start_at && now < new Date(a.start_at).getTime();
+                const expired = a.end_at && now > new Date(a.end_at).getTime();
+                const status = notYetStarted ? { label: 'Scheduled', cls: 'b-inactive' } : expired ? { label: 'Expired', cls: 'b-inactive' } : { label: 'Active', cls: 'b-active' };
+                const audienceLabel = a.audience === 'selected' ? `Selected (${(Array.isArray(a.audience_employee_ids) ? a.audience_employee_ids.length : 0)})` : (HR_ANNOUNCEMENT_AUDIENCE_LABEL[a.audience] || 'All Employees');
+                const priorityBadge = a.priority === 'urgent' ? `<span class="badge" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3)">Urgent</span>`
+                    : a.priority === 'important' ? `<span class="badge" style="background:rgba(245,158,11,.12);color:#fbbf24;border:1px solid rgba(245,158,11,.3)">Important</span>`
+                    : `<span class="text-[#6b74a0]">Normal</span>`;
                 return `<tr class="border-b border-white/[0.04]">
-                    <td data-label="Announcement" class="py-2 pr-3"><span class="font-bold text-white">${a.title}</span>${a.category ? ` <span class="text-[9px] text-[#6b74a0] uppercase">· ${a.category}</span>` : ''}</td>
-                    <td data-label="Sent" class="py-2 pr-3 text-[#6b74a0]">${dateStr}</td>
-                    <td data-label="Recipients" class="py-2 pr-3 text-[#6b74a0]">${totalEmployees}</td>
-                    <td data-label="Read" class="py-2 pr-3 text-[#6b74a0]">${readCount}/${totalEmployees}</td>
+                    <td data-label="Title" class="py-2.5 px-4"><span class="font-bold text-white">${a.title}</span>${a.category ? ` <span class="text-[9px] text-[#6b74a0] uppercase">· ${a.category}</span>` : ''}</td>
+                    <td data-label="Audience" class="py-2.5 px-4 text-[#a5adcf]">${audienceLabel}</td>
+                    <td data-label="Priority" class="py-2.5 px-4">${priorityBadge}</td>
+                    <td data-label="Published" class="py-2.5 px-4 text-[#6b74a0]">${dateStr}</td>
+                    <td data-label="Status" class="py-2.5 px-4"><span class="badge ${status.cls}">${status.label}</span></td>
+                    <td data-label="Read" class="py-2.5 px-4 text-[#6b74a0]">${readCount}</td>
+                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="hrViewAnnouncement('${a.id}')" class="hr-icon-btn">View</button> <button onclick="hrOpenAnnouncementModal('${a.id}')" class="hr-icon-btn" style="color:#60a5fa;margin-left:4px">Edit</button> <button onclick="hrDeleteAnnouncementConfirm('${a.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>`;
             }).join('');
         }
@@ -2136,7 +2272,8 @@
             else if (tab === 'holidays') { renderHRHolidays(); renderHROfficialEvents(); renderHRCelebrations(); }
             else if (tab === 'recruitment') renderHRRecruitment();
             else if (tab === 'hr-reports') renderHRReports();
-            else if (tab === 'notifications') { renderHRNotifications(); renderHRAnnouncementsSentList(); }
+            else if (tab === 'announcements') hrRenderAnnouncementsAdminList();
+            else if (tab === 'notifications') renderHRNotifications();
             if (window.lucide) lucide.createIcons();
         }
 

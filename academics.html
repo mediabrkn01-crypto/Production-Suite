@@ -2342,28 +2342,59 @@ async function loadMyProfileTab(){
     ].join('');
   } catch(e) { body.innerHTML = ''; body.className='empty'; body.textContent = 'Could not load profile: ' + e.message; }
 }
+// Audience match — LOCAL PORT of common.js's hrAnnouncementApplies (same reasoning as the
+// Celebration Engine port above: this file doesn't load common.js). Same division keys as
+// hr_celebration_events.applies_to, 'selected' matched against real hr_employees.id, never a
+// name string.
+function _acadAnnouncementApplies(a, employee){
+  const aud = a.audience || 'all';
+  if (aud === 'all') return true;
+  if (!employee) return false;
+  if (aud === 'selected') {
+    let ids = a.audience_employee_ids;
+    if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch(e) { ids = []; } }
+    return Array.isArray(ids) && ids.map(String).includes(String(employee.id));
+  }
+  return aud === employee.division;
+}
+function _acadAnnouncementIsScheduledActive(a){
+  const now = Date.now();
+  if (a.start_at && now < new Date(a.start_at).getTime()) return false;
+  if (a.end_at && now > new Date(a.end_at).getTime()) return false;
+  return true;
+}
 async function loadAnnouncementsTab(){
   const el = document.getElementById('announcementsList');
   if (!el) return;
   try {
-    const { data } = await mediaHrDB.from('hr_announcements').select('*').order('created_at',{ascending:false});
-    const rows = data || [];
+    const [{ data }, me] = await Promise.all([
+      mediaHrDB.from('hr_announcements').select('*').order('created_at',{ascending:false}),
+      _acadGetMyHREmployeeRecord()
+    ]);
+    // Scoped to this login's own audience (spec: Academic must only see announcements
+    // actually targeted at them — All Employees, their own division, or a Selected list that
+    // names their real hr_employees.id) and to announcements currently within their scheduled
+    // window, if one was set. HR's own admin history (hr.html) is unfiltered — this is the
+    // employee-facing view only.
+    const rows = (data || []).filter(a => _acadAnnouncementIsScheduledActive(a) && _acadAnnouncementApplies(a, me));
     // Same field names index.html's renderEmployeeAnnouncementsList reads (title/category/
     // message/created_at) — this previously read `a.body`, which doesn't exist on this
     // table (the real column is `message`), so the announcement text silently never
-    // rendered. Card layout matches the reference: icon + title + category tag + message
-    // preview + formatted date, not a bare title/date row.
+    // rendered. Card layout matches the reference: icon + title + category tag + priority tag
+    // + full message + formatted date, not a bare title/date row.
     el.innerHTML = rows.length ? rows.map(a => {
       const dateLabel = a.created_at ? new Date(a.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-      const excerpt = (a.message||'').slice(0,280) + ((a.message||'').length>280?'…':'');
+      const priorityTag = a.priority === 'urgent' ? `<span class="badge" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3)">Urgent</span>`
+        : a.priority === 'important' ? `<span class="badge" style="background:rgba(245,158,11,.12);color:#fbbf24;border:1px solid rgba(245,158,11,.3)">Important</span>` : '';
       return `<div class="section" style="margin-bottom:10px;padding:16px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
           <i data-lucide="megaphone" style="width:14px;height:14px;color:var(--k2)"></i>
           <div style="font-weight:700">${esc(a.title||'Announcement')}</div>
+          ${priorityTag}
           ${a.category ? `<span class="badge" style="background:rgba(240,88,37,.12);color:var(--k2);border:1px solid rgba(240,88,37,.3)">${esc(a.category)}</span>` : ''}
         </div>
-        <div style="color:var(--tx2);font-size:13px;white-space:pre-wrap">${esc(excerpt)}</div>
-        <div style="color:var(--tx3);font-size:11px;margin-top:8px">${esc(dateLabel)}</div>
+        <div style="color:var(--tx2);font-size:13px;white-space:pre-wrap">${esc(a.message||'')}</div>
+        <div style="color:var(--tx3);font-size:11px;margin-top:8px">${esc(dateLabel)}${a.created_by ? ' · By '+esc(a.created_by) : ''}</div>
       </div>`;
     }).join('') : '<div class="empty">No announcements yet.</div>';
     if (typeof lucide !== 'undefined') lucide.createIcons();

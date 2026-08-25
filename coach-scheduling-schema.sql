@@ -224,3 +224,17 @@ alter table hr_celebration_events alter column event_date drop not null;
 -- than one actual day (e.g. a 2-day festival) with an explicit end. event_end_date defaults to
 -- event_date when not set, so every existing single-day event keeps behaving exactly as before.
 alter table hr_celebration_events add column if not exists event_end_date date;
+
+-- ============ Phase 12 — HR Announcements: audience targeting, priority, scheduling ============
+-- Run in the MEDIA SUITE project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- hr_announcements / hr_announcement_reads already existed (title/message/category/created_at/
+-- created_by, and a per-employee-email read receipt table) but had no audience targeting at
+-- all — every announcement went to every employee. This adds real targeting (all / a division,
+-- reusing the exact same division keys as hr_celebration_events.applies_to / selected employee
+-- ids by hr_employees.id — never by name), a priority level, and optional scheduling.
+alter table hr_announcements add column if not exists audience text not null default 'all'; -- 'all' | 'production' | 'education' | 'sales' | 'hr' | 'accounts' | 'other' | 'selected'
+alter table hr_announcements add column if not exists audience_employee_ids jsonb; -- array of hr_employees.id, only used when audience = 'selected'
+alter table hr_announcements add column if not exists priority text not null default 'normal'; -- 'normal' | 'important' | 'urgent'
+alter table hr_announcements add column if not exists start_at timestamptz; -- optional — announcement is not delivered before this time
+alter table hr_announcements add column if not exists end_at timestamptz;   -- optional — announcement stops being delivered/shown as active after this time (HR history is unaffected)
+alter table hr_announcements add column if not exists updated_at timestamptz not null default now();
