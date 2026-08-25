@@ -2422,15 +2422,20 @@ function hrOfficialEventFor(employee, dateStr) {
             if (_celebrationCSSInjected || document.getElementById('be-celeb-styles')) { _celebrationCSSInjected = true; return; }
             const style = document.createElement('style');
             style.id = 'be-celeb-styles';
-            // Popup: the designer image IS the surface — object-fit:contain so it's never
-            // stretched/cropped, capped to 90vw/85vh (spec item 7), a single ✕ overlaid in the
-            // corner (the one thing the spec's own mockup shows sitting over the artwork).
-            // Banner: bounded on BOTH axes (max-width:100% so it never overflows the dashboard,
-            // max-height so an image that isn't actually wide-banner-shaped — e.g. HR uploaded
-            // something closer to square/portrait — can't blow up into a huge block of vertical
-            // space) with width/height left auto so whichever limit binds first scales the
-            // image down proportionally — never stretched, never cropped, just properly sized
-            // like the reference "Top Banner" examples instead of filling the screen. Rendered
+            // Popup: the designer image IS the surface — object-fit:contain so it's NEVER
+            // cropped or stretched (this is the focal "read the whole artwork" surface),
+            // capped to 90vw/85vh (spec item 7), a single ✕ overlaid in the corner (the one
+            // thing the spec's own mockup shows sitting over the artwork).
+            // Banner: a fixed-size box (full dashboard width, compact fixed height —
+            // 130px/90px on phones) with object-fit:cover. Deliberately NOT object-fit:contain
+            // here — most real uploaded artwork isn't cut to the exact wide-banner aspect ratio
+            // (e.g. the actual Onam art is closer to 2.5:1, not the recommended ~4.8:1), and
+            // contain's letterboxing left an obvious gap with the ✕ button floating in empty
+            // space disconnected from the image. cover fills the box completely, edge to edge,
+            // center-cropping the excess on whichever axis doesn't match — the same tradeoff
+            // virtually every real product's hero/banner image makes, and a deliberate,
+            // reported-and-fixed departure from the popup's own never-crop rule (the popup is
+            // the "read the whole design" surface; the banner is a compact strip). Rendered
             // inside each page's own #celebration-banner-slot — part of the dashboard content
             // area, not a floating toast (spec item 16).
             style.textContent = `
@@ -2445,11 +2450,11 @@ function hrOfficialEventFor(employee, dateStr) {
                 .be-celeb-spinner{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:#ff6b06;animation:be-celeb-spin .8s linear infinite}
                 @keyframes be-celeb-spin{to{transform:rotate(360deg)}}
                 .be-celeb-banner-slot{width:100%;position:relative}
-                .be-celeb-banner-item{position:relative;margin-bottom:10px;text-align:center}
+                .be-celeb-banner-item{position:relative;width:100%;height:130px;margin-bottom:10px;border-radius:12px;overflow:hidden;background:#12162a}
                 .be-celeb-banner-item:last-child{margin-bottom:0}
-                .be-celeb-banner-item img{display:inline-block;max-width:100%;max-height:200px;width:auto;height:auto;object-fit:contain;border-radius:12px}
+                .be-celeb-banner-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
                 .be-celeb-banner-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.55);border:none;color:#fff;cursor:pointer;width:26px;height:26px;border-radius:50%;font-size:13px;line-height:1}
-                @media (max-width:480px){.be-celeb-banner-item img{max-height:130px}}
+                @media (max-width:480px){.be-celeb-banner-item{height:90px}}
             `;
             document.head.appendChild(style);
             _celebrationCSSInjected = true;
