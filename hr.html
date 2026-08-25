@@ -5465,16 +5465,38 @@
         })();
 
 // ── runHRCelebrationCheck ──
-        // The HR admin is an employee too, and this is the one page where hrEmployees already
-        // holds the FULL roster (loadHRData, not the self-service loadMyHRData), so "me" is
-        // found directly from it here rather than calling checkForHRNotifications(), which
-        // would call loadMyHRData() and overwrite hrEmployees with just [me, ...team] —
-        // breaking this page's own Employees list.
-        function runHRCelebrationCheck() {
+        // FIX (mobile banner missing): this used to resolve "me" by searching the already-
+        // loaded hrEmployees array — the full roster, populated once by loadHRData()'s own
+        // 15-query Promise.all at boot. That's fine on a fast/desktop connection, but on a
+        // slower mobile connection that big multi-query fetch is measurably more likely to
+        // have a query fail/retry/still be settling (see loadHRData's own rate-limit-retry
+        // comment) — if hrEmployees hadn't finished resolving (or the retry pass was still in
+        // flight) at the exact moment bootHRPage()'s initHRPanel().then() fired, "me" came back
+        // undefined and the celebration check silently skipped, even though the CSS/DOM
+        // rendering itself was never the problem (verified — the shared banner component
+        // renders identically on HR mobile once it actually receives an item). Media/Studio
+        // Pipeline never had this problem because it never depends on that big array for this
+        // lookup — checkForHRNotifications() → loadMyHRData() does ONE small, dedicated,
+        // independently-resolved query for the current login's own row (see common.js). Ported
+        // that same one-row lookup here — NOT loadMyHRData() itself, which would overwrite
+        // hrEmployees with just [me, ...team] and break this page's own Employees list — just
+        // its identical portal_email (then full_name) lookup shape, so this check no longer
+        // depends on the full roster having already loaded.
+        async function runHRCelebrationCheck() {
             if (typeof runCelebrationQueue !== 'function') return;
-            const me = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
-            if (!me) { console.warn('Celebration engine: no HR employee record linked to this login — skipping.'); return; }
-            runCelebrationQueue(me);
+            if (!activeEmail) return;
+            try {
+                let lookup = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
+                let me = lookup.data && lookup.data[0];
+                if (!me && activeUser) {
+                    const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
+                    me = byName.data && byName.data[0];
+                }
+                if (!me) { console.warn('Celebration engine: no HR employee record linked to this login — skipping.'); return; }
+                runCelebrationQueue(me);
+            } catch (e) {
+                console.error('Celebration engine: could not resolve this login\'s HR record —', e.message);
+            }
         }
 
         function logoutFromHR() {
