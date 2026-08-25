@@ -1978,10 +1978,10 @@ function hrOfficialEventFor(employee, dateStr) {
             const isNew = id => (typeof notifications !== 'undefined') && notifications.some(n => n.id === 'payslip_' + id);
             el.innerHTML = mine.length ? mine.map(p => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">${p.month}${isNew(p.id) ? ' <span class="text-[9px] font-bold uppercase tracking-wide text-white bg-orange-500 rounded-full px-2 py-0.5" style="margin-left:6px">New</span>' : ''}</td>
-                    <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
-                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn">Download</button></td>
+                    <td data-label="Month" class="py-2.5 px-4 text-white font-semibold">${p.month}${isNew(p.id) ? ' <span class="text-[9px] font-bold uppercase tracking-wide text-white bg-orange-500 rounded-full px-2 py-0.5" style="margin-left:6px">New</span>' : ''}</td>
+                    <td data-label="Net Salary" class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
+                    <td data-label="Status" class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
+                    <td data-label="Action" class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn">Download</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }

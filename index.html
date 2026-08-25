@@ -320,9 +320,35 @@
             #metrics-counter-container { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; }
             .stat-card-new { padding: 10px !important; }
             .stat-num { font-size: 18px !important; }
-            table { min-width: 580px; }
             .card { border-radius: 10px !important; }
             .flex.items-center.gap-2.flex-wrap { gap: 6px !important; }
+
+            /* Ordinary data tables (the embedded Academic-module mirror's own lists — Batches,
+               Courses, Trainers, Tasks, Logs) collapse into stacked label/value rows instead of
+               the old `table { min-width: 580px }`, which forced every table wider than the
+               phone's own viewport. The Pipeline table itself is unaffected — it's already
+               `hidden md:block` with its own JS-built mobile card view (production-matrix-
+               mobile-cards). Real matrix/calendar tables (the monthly attendance grid) are
+               excluded via .matrix-table and keep their own bounded horizontal scroll. */
+            table:not(.matrix-table) { min-width: 0 !important; width: 100%; }
+            table:not(.matrix-table) thead { display: none; }
+            table:not(.matrix-table) tbody,
+            table:not(.matrix-table) tr,
+            table:not(.matrix-table) td { display: block; width: 100%; }
+            table:not(.matrix-table) tr {
+                margin-bottom: 10px; padding: 6px 4px; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;
+            }
+            table:not(.matrix-table) tr:last-child { margin-bottom: 0; }
+            table:not(.matrix-table) td {
+                display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+                padding: 6px 10px; text-align: left; border-bottom: none !important;
+            }
+            table:not(.matrix-table) td[data-label]::before {
+                content: attr(data-label); font-size: 10px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: 0.05em; color: #6b74a0;
+            }
+            table:not(.matrix-table) td:empty { display: none; }
+            .matrix-table { min-width: 640px; }
         }
         @media(min-width:768px){ #mobile-topbar { display: none !important; } aside { display: flex !important; } }
 
@@ -1349,7 +1375,7 @@
                 <!-- Monthly grid -->
                 <div class="rounded-xl overflow-hidden" style="background:#08091a;border:1px solid rgba(255,255,255,0.055)">
                     <div class="overflow-x-auto">
-                        <table id="attendance-grid-table" class="border-collapse text-xs w-full min-w-[1100px]">
+                        <table id="attendance-grid-table" class="border-collapse text-xs w-full min-w-[1100px] matrix-table">
                             <thead id="attendance-grid-head"></thead>
                             <tbody id="attendance-grid-body" class="text-gray-300"></tbody>
                         </table>
@@ -7728,10 +7754,10 @@ async function saveLeave(){
             document.getElementById('team-members-rows').innerHTML = team.length ? team.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
                 return `<tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
-                    <td class="py-2.5 px-4">${rec ? `<span class="hr-badge hr-badge-${rec.status}">${rec.status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
+                    <td data-label="Name" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
+                    <td data-label="Department" class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
+                    <td data-label="Designation" class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                    <td data-label="Today's Status" class="py-2.5 px-4">${rec ? `<span class="hr-badge hr-badge-${rec.status}">${rec.status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
                 </tr>`;
             }).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No team members linked to you yet — ask HR to set your team's "Manager (portal email)" field.</td></tr>`;
 

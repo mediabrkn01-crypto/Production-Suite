@@ -117,7 +117,23 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
   #app{flex-direction:column!important}
   .acad-main{padding:12px!important}
   .dash-grid{grid-template-columns:repeat(2,1fr)!important;gap:8px!important}
-  table{min-width:560px}
+
+  /* Ordinary data tables collapse into stacked label/value rows instead of the old
+     `table{min-width:560px}` — which forced every table wider than the phone's own
+     viewport. Real matrix/calendar tables (weekly schedule, coach availability grid —
+     dozens of time-slot columns) are excluded via .acad-matrix-table and keep their own
+     bounded horizontal scroll, the correct approach for a true matrix. */
+  table:not(.acad-matrix-table){min-width:0!important;width:100%}
+  table:not(.acad-matrix-table) thead{display:none}
+  table:not(.acad-matrix-table) tbody,
+  table:not(.acad-matrix-table) tr,
+  table:not(.acad-matrix-table) td{display:block;width:100%}
+  table:not(.acad-matrix-table) tr{margin-bottom:10px;padding:6px 4px;border:1px solid rgba(255,255,255,.06);border-radius:12px}
+  table:not(.acad-matrix-table) tr:last-child{margin-bottom:0}
+  table:not(.acad-matrix-table) td{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:6px 10px;text-align:left;border-bottom:none!important}
+  table:not(.acad-matrix-table) td[data-label]::before{content:attr(data-label);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b74a0}
+  table:not(.acad-matrix-table) td:empty{display:none}
+  .acad-matrix-table{min-width:640px}
 }
 @media(min-width:768px){#mobile-topbar{display:none!important}aside{display:flex!important}}
 
@@ -1128,11 +1144,11 @@ async function loadDelegationTab(){
       const start = new Date(d.start_datetime), end = new Date(d.end_datetime);
       const status = d.status === 'revoked' ? 'Revoked' : (now < start ? 'Upcoming' : (now > end ? 'Expired' : 'Active'));
       const canRevoke = d.status === 'active' && now <= end;
-      return `<tr><td>${esc(d.delegate_name || d.trainers?.name || '—')}</td>
-        <td>${start.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})} → ${end.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
-        <td><span class="badge ${status==='Active'?'b-active':'b-inactive'}">${status}</span></td>
-        <td style="max-width:200px;white-space:pre-wrap;font-size:11.5px;color:var(--tx3)">${esc(d.notes||'—')}</td>
-        <td>${canRevoke ? `<button class="act-btn" onclick="revokeDelegation('${d.id}','${esc((d.delegate_name||'').replace(/'/g,"\\'"))}')" style="border-color:rgba(255,5,82,.4);color:var(--brand-3)">Revoke</button>` : ''}</td></tr>`;
+      return `<tr><td data-label="Delegated To">${esc(d.delegate_name || d.trainers?.name || '—')}</td>
+        <td data-label="Window">${start.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})} → ${end.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
+        <td data-label="Status"><span class="badge ${status==='Active'?'b-active':'b-inactive'}">${status}</span></td>
+        <td data-label="Notes" style="max-width:200px;white-space:pre-wrap;font-size:11.5px;color:var(--tx3)">${esc(d.notes||'—')}</td>
+        <td data-label="Actions">${canRevoke ? `<button class="act-btn" onclick="revokeDelegation('${d.id}','${esc((d.delegate_name||'').replace(/'/g,"\\'"))}')" style="border-color:rgba(255,5,82,.4);color:var(--brand-3)">Revoke</button>` : ''}</td></tr>`;
     }).join('') : '<tr><td colspan="5" class="empty">No delegations yet.</td></tr>';
   } catch(e) { document.getElementById('delegationTable').innerHTML = `<tr><td colspan="5" class="empty">Could not load delegations: ${esc(e.message)} — run coach-scheduling-schema.sql Phase 7 in Supabase if this table doesn't exist yet.</td></tr>`; }
 }
@@ -1946,10 +1962,10 @@ async function loadTrainersTable(){
   });
   document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => {
     const load = byTrainer[t.id] || { count: 0, hrs: 0 };
-    return `<tr><td><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((t.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(t.name)}</div></td><td>${t.type==='pt'?'Part-time':'Full-time'}</td>
-    <td>${load.count}</td><td>${load.hrs?Math.round(load.hrs)+'h':'0h'}</td>
-    <td><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td>
-    <td><button class="act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>`;
+    return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((t.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(t.name)}</div></td><td data-label="Type">${t.type==='pt'?'Part-time':'Full-time'}</td>
+    <td data-label="Active Batches">${load.count}</td><td data-label="Weekly Load">${load.hrs?Math.round(load.hrs)+'h':'0h'}</td>
+    <td data-label="Status"><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td>
+    <td data-label="Actions"><button class="act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>`;
   }).join('') || '<tr><td colspan="6" class="empty">No trainers yet</td></tr>';
 }
 // ============================================================================
@@ -2096,7 +2112,7 @@ async function loadPayslipsTab(){
     if (!me) { tbody.innerHTML = '<tr><td colspan="3" class="empty">No HR employee record is linked to your login yet.</td></tr>'; return; }
     const { data } = await mediaHrDB.from('hr_payroll').select('*').eq('employee_id', me.id).eq('published', true);
     const rows = data || [];
-    tbody.innerHTML = rows.length ? rows.map(p => `<tr><td>${esc(p.month)}</td><td>₹${Number(p.net_salary||0).toLocaleString('en-IN')}</td><td><span class="badge ${p.payment_status==='paid'?'b-active':'b-inactive'}">${esc(p.payment_status)}</span></td></tr>`).join('') : '<tr><td colspan="3" class="empty">No payslips yet.</td></tr>';
+    tbody.innerHTML = rows.length ? rows.map(p => `<tr><td data-label="Month">${esc(p.month)}</td><td data-label="Net Salary">₹${Number(p.net_salary||0).toLocaleString('en-IN')}</td><td data-label="Status"><span class="badge ${p.payment_status==='paid'?'b-active':'b-inactive'}">${esc(p.payment_status)}</span></td></tr>`).join('') : '<tr><td colspan="3" class="empty">No payslips yet.</td></tr>';
   } catch(e) { tbody.innerHTML = '<tr><td colspan="3" class="empty">Could not load payslips: '+esc(e.message)+'</td></tr>'; }
 }
 async function loadTeamTab(){
@@ -2195,7 +2211,7 @@ async function renderAvailabilityGrid(){
       _availSlotsForDate.forEach(s=>{ if (s.batch_id) s._batchName = nameById.get(s.batch_id); });
     }
 
-    wrap.innerHTML = `<table><thead><tr><th>Coach</th>${AVAIL_HOURS.map(h=>`<th>${_availSlotLabel(h)}</th>`).join('')}</tr></thead><tbody>
+    wrap.innerHTML = `<table class="acad-matrix-table"><thead><tr><th>Coach</th>${AVAIL_HOURS.map(h=>`<th>${_availSlotLabel(h)}</th>`).join('')}</tr></thead><tbody>
       ${_availTrainers.map(t=>{
         const onLeave = _availOnLeaveIds.has(t.id);
         // Daily class count — same cap confirmAssignSlot() enforces (pt_max_classes_per_day,
@@ -2588,11 +2604,11 @@ function renderStudentsTable(){
   // component already used on the dashboard's On Leave/Upcoming Availability rows, not a
   // new one, matching the two-line student cell in the reference design.
   document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => `
-    <tr><td><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
-    <td>${esc(s.batch_name||'Unassigned')}</td><td>${esc(s.programme||'—')}</td><td>${esc(s.trainer_name||'—')}</td>
-    <td><span class="badge ${s.status!=='inactive'?'b-active':'b-inactive'}">${esc(s.status||'active')}</span></td>
-    <td>${s.enrolled_date||'—'}</td>
-    <td><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>
+    <tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
+    <td data-label="Batch">${esc(s.batch_name||'Unassigned')}</td><td data-label="Course">${esc(s.programme||'—')}</td><td data-label="Coach">${esc(s.trainer_name||'—')}</td>
+    <td data-label="Status"><span class="badge ${s.status!=='inactive'?'b-active':'b-inactive'}">${esc(s.status||'active')}</span></td>
+    <td data-label="Enrolled">${s.enrolled_date||'—'}</td>
+    <td data-label="Actions"><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>
   `).join('') : `<tr><td colspan="7" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
 }
 
@@ -2625,7 +2641,7 @@ async function loadScheduleTab(){
     const colorFor = i => ['var(--brand-3)','var(--blue)','var(--purple)','var(--green)','var(--orange)'][i%5];
     document.getElementById('scheduleGrid').innerHTML = `
       <div style="overflow-x:auto">
-      <table style="min-width:900px"><thead><tr>${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
+      <table class="acad-matrix-table" style="min-width:900px"><thead><tr>${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
       <tbody><tr>${DAYS.map(day=>`<td style="vertical-align:top;padding:8px 6px">${
         byDay[day].length ? byDay[day].map((b,i)=>`
           <div style="background:${colorFor(i)}22;border:1px solid ${colorFor(i)}55;border-radius:8px;padding:8px;margin-bottom:6px;font-size:11px">
@@ -2698,19 +2714,19 @@ async function loadHeadView(){
     const n=(b.students?b.students.length:0), cap=b.capacity;
     const seats=cap?`${n}/${cap}`:`${n}`;
     const seatCol=(cap&&n>=cap)?'var(--yellow)':'var(--tx2)';
-    return `<tr><td>${esc(b.name)}</td><td>${b.trainers?.name||'—'}</td>
-    <td>${esc(cn)}${b.sessions_total?' · '+b.sessions_total+'s':''}</td>
-    <td>${b.day_pattern||''} ${b.time_slot||''}</td>
-    <td style="color:${seatCol}">${seats}</td>
-    <td><span class="badge ${b.status!=='inactive'&&b.status!=='closed'?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
-    <td>${b.start_date||'—'}</td>
-    <td>${b.expected_completion_date||'—'}</td>
-    <td><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button> <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
+    return `<tr><td data-label="Batch Name">${esc(b.name)}</td><td data-label="Trainer">${b.trainers?.name||'—'}</td>
+    <td data-label="Course">${esc(cn)}${b.sessions_total?' · '+b.sessions_total+'s':''}</td>
+    <td data-label="Schedule">${b.day_pattern||''} ${b.time_slot||''}</td>
+    <td data-label="Students" style="color:${seatCol}">${seats}</td>
+    <td data-label="Status"><span class="badge ${b.status!=='inactive'&&b.status!=='closed'?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
+    <td data-label="Start Date">${b.start_date||'—'}</td>
+    <td data-label="End Date">${b.expected_completion_date||'—'}</td>
+    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button> <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
   }).join('') || '<tr><td colspan="9" class="empty">No batches yet</td></tr>';
 
   const { data: assigns } = await sb.from('assignments').select('*, trainers(name)').order('created_at',{ascending:false});
   document.getElementById('assignTable').innerHTML = (assigns||[]).map(a => `
-    <tr><td>${a.trainers?.name||'—'}</td><td>${a.task}</td><td>${a.due_date||'—'}</td><td>${a.status}</td></tr>
+    <tr><td data-label="Trainer">${a.trainers?.name||'—'}</td><td data-label="Task">${a.task}</td><td data-label="Due">${a.due_date||'—'}</td><td data-label="Status">${a.status}</td></tr>
   `).join('') || '<tr><td colspan="4" class="empty">No tasks assigned</td></tr>';
 
   await populateTrainerSelects();
@@ -2725,7 +2741,7 @@ function renderMyTasks(filter){
   const all = window._myTasksAll||[];
   const rows = filter==='all' ? all : all.filter(t => filter==='completed' ? /completed|done/i.test(t.status||'') : !/completed|done/i.test(t.status||''));
   document.getElementById('myTasks').innerHTML = rows.map(t => `
-    <tr><td>${esc(t.task)}</td><td>${esc(t.assigned_by||'—')}</td><td>${t.due_date||'—'}</td><td><span class="badge ${/completed|done/i.test(t.status||'')?'b-active':'b-inactive'}">${esc(t.status||'—')}</span></td></tr>
+    <tr><td data-label="Task">${esc(t.task)}</td><td data-label="Assigned By">${esc(t.assigned_by||'—')}</td><td data-label="Due">${t.due_date||'—'}</td><td data-label="Status"><span class="badge ${/completed|done/i.test(t.status||'')?'b-active':'b-inactive'}">${esc(t.status||'—')}</span></td></tr>
   `).join('') || `<tr><td colspan="4" class="empty">${all.length?'No tasks match this filter.':'No tasks assigned'}</td></tr>`;
 }
 function filterMyTasks(filter){ renderMyTasks(filter); }
@@ -2750,9 +2766,9 @@ async function loadTrainerView(){
     const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
     const pct = total ? Math.round((done/total)*100) : 0;
     const statusOk = b.status !== 'inactive' && b.status !== 'closed';
-    return `<tr><td>${esc(b.name)}</td><td>${esc(b.day_pattern||'')} ${esc(b.time_slot||'')}</td><td>${esc(b.programme||'—')}</td><td>${b.students?.length||0}</td>
-      <td><span class="badge ${statusOk?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
-      <td style="min-width:110px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gk)"></div></div><span style="font-size:10.5px;color:var(--tx3);min-width:30px">${total?pct+'%':'—'}</span></div></td></tr>`;
+    return `<tr><td data-label="Batch">${esc(b.name)}</td><td data-label="Schedule">${esc(b.day_pattern||'')} ${esc(b.time_slot||'')}</td><td data-label="Course">${esc(b.programme||'—')}</td><td data-label="Students">${b.students?.length||0}</td>
+      <td data-label="Status"><span class="badge ${statusOk?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
+      <td data-label="Progress" style="min-width:110px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gk)"></div></div><span style="font-size:10.5px;color:var(--tx3);min-width:30px">${total?pct+'%':'—'}</span></div></td></tr>`;
   }).join('') || '<tr><td colspan="6" class="empty">No batches assigned yet</td></tr>';
 
   const { data: tasks } = await sb.from('assignments').select('*').eq('trainer_id', myTrainer.id).order('due_date');
@@ -2761,7 +2777,7 @@ async function loadTrainerView(){
 
   const { data: logs } = await sb.from('sessions').select('*, students(name)').eq('logged_by', currentUser.name).order('session_date',{ascending:false}).limit(20);
   document.getElementById('myLogs').innerHTML = (logs||[]).map(l => `
-    <tr><td>${l.students?.name||'—'}</td><td>${l.session_date}</td><td>${esc(l.type)}</td><td><span class="badge ${l.status==='completed'?'b-active':'b-inactive'}">${esc(l.status||'—')}</span></td><td>${esc(l.notes||'')}</td></tr>
+    <tr><td data-label="Student">${l.students?.name||'—'}</td><td data-label="Date">${l.session_date}</td><td data-label="Type">${esc(l.type)}</td><td data-label="Status"><span class="badge ${l.status==='completed'?'b-active':'b-inactive'}">${esc(l.status||'—')}</span></td><td data-label="Notes">${esc(l.notes||'')}</td></tr>
   `).join('') || '<tr><td colspan="5" class="empty">No sessions logged yet</td></tr>';
 
   const batchSelect = document.getElementById('m_s_batch');
@@ -2882,14 +2898,14 @@ async function loadCourses(){
 function renderCourseTable(){
   const el=document.getElementById('courseTable'); if(!el)return;
   el.innerHTML=COURSE_ROWS.map(c=>`
-    <tr><td>${esc(c.name)}</td>
-    <td>${c.type==='one-on-one'?'1:1':(c.type==='recorded'?'Recorded':'Group')}</td>
-    <td>${c.type==='recorded'?'—':(c.sessions_total||'—')}</td>
-    <td>${c.duration_days?c.duration_days+'d'+(c.type==='recorded'?' validity':''):'—'}</td>
-    <td>${c.type==='recorded'?'—':(c.type==='one-on-one'?'1':(c.max_students||'—'))}</td>
-    <td>${esc(c.default_days||'—')}${c.mc_day?' · MC '+esc(c.mc_day):''}</td>
-    <td><span class="badge ${c.active===false?'b-inactive':'b-active'}">${c.active===false?'Legacy':'Active'}</span></td>
-    <td><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
+    <tr><td data-label="Course">${esc(c.name)}</td>
+    <td data-label="Type">${c.type==='one-on-one'?'1:1':(c.type==='recorded'?'Recorded':'Group')}</td>
+    <td data-label="Sessions">${c.type==='recorded'?'—':(c.sessions_total||'—')}</td>
+    <td data-label="Duration">${c.duration_days?c.duration_days+'d'+(c.type==='recorded'?' validity':''):'—'}</td>
+    <td data-label="Capacity">${c.type==='recorded'?'—':(c.type==='one-on-one'?'1':(c.max_students||'—'))}</td>
+    <td data-label="Default Days">${esc(c.default_days||'—')}${c.mc_day?' · MC '+esc(c.mc_day):''}</td>
+    <td data-label="Status"><span class="badge ${c.active===false?'b-inactive':'b-active'}">${c.active===false?'Legacy':'Active'}</span></td>
+    <td data-label="Actions"><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
     <button class="act-btn" onclick="toggleCourse('${c.id}')">${c.active===false?'Enable':'Disable'}</button>
     <button class="act-btn" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>
   `).join('')||'<tr><td colspan="8" class="empty">No courses yet — define your first course.</td></tr>';
@@ -3287,7 +3303,7 @@ function renderSheetTable(targetId, rows, maxRows=15){
     <table>
       <thead><tr>${headers.map(h=>`<th>${h||''}</th>`).join('')}</tr></thead>
       <tbody>
-        ${body.map(r => `<tr>${headers.map((_,i)=>`<td>${r[i]||''}</td>`).join('')}</tr>`).join('')}
+        ${body.map(r => `<tr>${headers.map((h,i)=>`<td data-label="${h||''}">${r[i]||''}</td>`).join('')}</tr>`).join('')}
       </tbody>
     </table>
     <div style="font-size:10px;color:var(--tx3);margin-top:10px">Showing ${body.length} of ${rows.length-1} rows — live from Google Sheet</div>

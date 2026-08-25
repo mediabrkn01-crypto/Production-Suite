@@ -320,9 +320,39 @@
             #metrics-counter-container { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; }
             .stat-card-new { padding: 10px !important; }
             .stat-num { font-size: 18px !important; }
-            table { min-width: 580px; }
             .card { border-radius: 10px !important; }
             .flex.items-center.gap-2.flex-wrap { gap: 6px !important; }
+
+            /* Ordinary data tables collapse into stacked label/value rows instead of the old
+               `table { min-width: 580px }` — which forced every table (even a 3-column list)
+               wider than the phone's own viewport, guaranteeing horizontal overflow. Matrix/
+               calendar tables (the Attendance Report grid, and anything explicitly opted out
+               via .hr-scroll-table — dozens of date columns, a real per-employee calendar)
+               can't collapse into readable rows no matter how this is done; those keep their
+               own bounded horizontal scroll instead, which is the correct approach for a true
+               matrix, not a page-overflow bug — see their own overflow-x-auto wrapper divs. */
+            table:not(.hr-att-grid):not(.hr-scroll-table) { min-width: 0 !important; width: 100%; }
+            table:not(.hr-att-grid):not(.hr-scroll-table) thead { display: none; }
+            table:not(.hr-att-grid):not(.hr-scroll-table) tbody,
+            table:not(.hr-att-grid):not(.hr-scroll-table) tr,
+            table:not(.hr-att-grid):not(.hr-scroll-table) td { display: block; width: 100%; }
+            table:not(.hr-att-grid):not(.hr-scroll-table) tr {
+                margin-bottom: 10px; padding: 6px 4px; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;
+            }
+            table:not(.hr-att-grid):not(.hr-scroll-table) tr:last-child { margin-bottom: 0; }
+            table:not(.hr-att-grid):not(.hr-scroll-table) td {
+                display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+                padding: 6px 10px; text-align: left; border-bottom: none !important;
+            }
+            table:not(.hr-att-grid):not(.hr-scroll-table) td[data-label]::before {
+                content: attr(data-label); font-size: 10px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: 0.05em; color: #6b74a0;
+            }
+            table:not(.hr-att-grid):not(.hr-scroll-table) td:empty { display: none; }
+            /* .hr-scroll-table (Payroll, Workforce Report per-employee table) keeps a real,
+               contained horizontal scroll — same overflow-x-auto pattern the Attendance grid
+               already uses, just applied consistently instead of relying on a page-wide hack. */
+            .hr-scroll-table { min-width: 640px; }
         }
         @media(min-width:768px){ #mobile-topbar { display: none !important; } aside { display: flex !important; } }
 
@@ -1084,7 +1114,7 @@
                         <button onclick="deleteSelectedHRPayroll()" class="hr-select" style="cursor:pointer;color:#f87171;border-color:rgba(248,113,113,0.4)">🗑 Delete Selected</button>
                     </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                        <table class="w-full text-sm text-left hr-scroll-table">
                             <thead>
                                 <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
                                     <th class="py-3 px-4"></th>
@@ -1740,10 +1770,10 @@
                 const readCount = hrAnnouncementReads.filter(r => String(r.announcement_id) === String(a.id)).length;
                 const dateStr = new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 return `<tr class="border-b border-white/[0.04]">
-                    <td class="py-2 pr-3"><span class="font-bold text-white">${a.title}</span>${a.category ? ` <span class="text-[9px] text-[#6b74a0] uppercase">· ${a.category}</span>` : ''}</td>
-                    <td class="py-2 pr-3 text-[#6b74a0]">${dateStr}</td>
-                    <td class="py-2 pr-3 text-[#6b74a0]">${totalEmployees}</td>
-                    <td class="py-2 pr-3 text-[#6b74a0]">${readCount}/${totalEmployees}</td>
+                    <td data-label="Announcement" class="py-2 pr-3"><span class="font-bold text-white">${a.title}</span>${a.category ? ` <span class="text-[9px] text-[#6b74a0] uppercase">· ${a.category}</span>` : ''}</td>
+                    <td data-label="Sent" class="py-2 pr-3 text-[#6b74a0]">${dateStr}</td>
+                    <td data-label="Recipients" class="py-2 pr-3 text-[#6b74a0]">${totalEmployees}</td>
+                    <td data-label="Read" class="py-2 pr-3 text-[#6b74a0]">${readCount}/${totalEmployees}</td>
                 </tr>`;
             }).join('');
         }
@@ -2154,11 +2184,11 @@
                 const badgeClass = onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
                 const checkIn = rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
                 return `<tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 26)}<span>${e.full_name}</span></div></td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
-                    <td class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${checkIn}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                    <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 26)}<span>${e.full_name}</span></div></td>
+                    <td data-label="Role" class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
+                    <td data-label="Status" class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
+                    <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${checkIn}</td>
+                    <td data-label="Designation" class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
                     <td class="py-2.5 px-4 text-right"><button onclick="openHREmployeeProfile('${e.id}')" title="View profile" class="text-[#6b74a0] hover:text-white p-1 rounded"><i data-lucide="more-vertical" class="w-4 h-4"></i></button></td>
                 </tr>`;
             }).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
@@ -2933,7 +2963,7 @@
             const rows = Object.entries(counts).sort((a,b) => b[1]-a[1]);
             document.getElementById('hr-designations-rows').innerHTML = rows.length ? rows.map(([key, count]) => {
                 const [desig, div] = key.split('|');
-                return `<tr><td class="py-2.5 px-4 text-white font-semibold">${desig}</td><td class="py-2.5 px-4 text-[#a5adcf]">${divisionLabel[div]||div}</td><td class="py-2.5 px-4 text-[#a5adcf]">${count}</td></tr>`;
+                return `<tr><td data-label="Designation" class="py-2.5 px-4 text-white font-semibold">${desig}</td><td data-label="Division" class="py-2.5 px-4 text-[#a5adcf]">${divisionLabel[div]||div}</td><td data-label="Employees" class="py-2.5 px-4 text-[#a5adcf]">${count}</td></tr>`;
             }).join('') : `<tr><td colspan="3" class="py-8 text-center text-[#4a5182] text-xs">No designations recorded yet.</td></tr>`;
         }
 
@@ -2992,12 +3022,12 @@
                 const status = rec?.status || (portalLog ? 'present' : '');
                 return `
                 <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
-                    <td class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}">${status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
-                    <td class="py-2.5 px-4 text-center">
+                    <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
+                    <td data-label="Division" class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
+                    <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}">${status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
+                    <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
+                    <td data-label="Check-out" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
+                    <td data-label="Set" class="py-2.5 px-4 text-center">
                         <select class="hr-select" onchange="setHRAttendanceStatus('${e.id}', this.value)">
                             <option value="">Set…</option>
                             ${HR_ATT_STATUSES.map(s => `<option value="${s}" ${status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
@@ -3262,11 +3292,11 @@
                 const used = hrComputeLeaveUsed(employeeId, type);
                 const remaining = unlimited ? '—' : Math.max(0, allocated - used);
                 return `<tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">${type}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${unlimited ? '—' : `<input type="number" min="0" value="${allocated}" class="hr-input" style="width:70px" id="hr-lb-input-${type.replace(/\s+/g,'_')}">`}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${used}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${remaining}</td>
-                    <td class="py-2.5 px-4 text-center">${unlimited ? '—' : `<button onclick="saveHRLeaveAllocated('${employeeId}','${type}', document.getElementById('hr-lb-input-${type.replace(/\s+/g,'_')}').value)" class="hr-icon-btn">Save</button>`}</td>
+                    <td data-label="Leave Type" class="py-2.5 px-4 text-white font-semibold">${type}</td>
+                    <td data-label="Allocated" class="py-2.5 px-4 text-[#a5adcf]">${unlimited ? '—' : `<input type="number" min="0" value="${allocated}" class="hr-input" style="width:70px" id="hr-lb-input-${type.replace(/\s+/g,'_')}">`}</td>
+                    <td data-label="Used" class="py-2.5 px-4 text-[#a5adcf]">${used}</td>
+                    <td data-label="Remaining" class="py-2.5 px-4 text-[#a5adcf]">${remaining}</td>
+                    <td data-label="Save" class="py-2.5 px-4 text-center">${unlimited ? '—' : `<button onclick="saveHRLeaveAllocated('${employeeId}','${type}', document.getElementById('hr-lb-input-${type.replace(/\s+/g,'_')}').value)" class="hr-icon-btn">Save</button>`}</td>
                 </tr>`;
             }).join('');
         }
@@ -3659,11 +3689,11 @@
         function renderHRPayslipsList() {
             document.getElementById('hr-payslips-rows').innerHTML = hrPayroll.length ? hrPayroll.map(p => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">${hrEmpName(p.employee_id)}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${p.month}</td>
-                    <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
-                    <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
+                    <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold">${hrEmpName(p.employee_id)}</td>
+                    <td data-label="Month" class="py-2.5 px-4 text-[#a5adcf]">${p.month}</td>
+                    <td data-label="Net Salary" class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
+                    <td data-label="Status" class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
+                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">Download</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
         }
@@ -3737,7 +3767,7 @@
                         <th class="py-2 pr-4">Employee</th><th class="py-2 pr-4">Present</th><th class="py-2 pr-4">Absent</th><th class="py-2 pr-4">Late</th><th class="py-2 pr-4">Afternoon</th><th class="py-2 pr-4">Half Day</th><th class="py-2 pr-4">WFH</th><th class="py-2 pr-4">On Leave</th><th class="py-2 pr-4">Attendance %</th>
                     </tr></thead>
                     <tbody class="divide-y divide-white/[0.05]">
-                        ${rows.map(r => `<tr><td class="py-2 pr-4 text-white">${r.name}</td><td class="py-2 pr-4">${r.counts.present}</td><td class="py-2 pr-4">${r.counts.absent}</td><td class="py-2 pr-4">${r.counts.late}</td><td class="py-2 pr-4">${r.counts.afternoon}</td><td class="py-2 pr-4">${r.counts.half_day}</td><td class="py-2 pr-4">${r.counts.wfh}</td><td class="py-2 pr-4">${r.counts.on_leave}</td><td class="py-2 pr-4 font-bold ${r.pct===null?'text-[#4a5182]':r.pct>=90?'text-green-400':r.pct>=75?'text-yellow-400':'text-red-400'}">${r.pct===null?'—':r.pct+'%'}</td></tr>`).join('') || `<tr><td colspan="9" class="py-4 text-center text-[#4a5182] text-xs">No data.</td></tr>`}
+                        ${rows.map(r => `<tr><td data-label="Employee" class="py-2 pr-4 text-white">${r.name}</td><td data-label="Present" class="py-2 pr-4">${r.counts.present}</td><td data-label="Absent" class="py-2 pr-4">${r.counts.absent}</td><td data-label="Late" class="py-2 pr-4">${r.counts.late}</td><td data-label="Afternoon" class="py-2 pr-4">${r.counts.afternoon}</td><td data-label="Half Day" class="py-2 pr-4">${r.counts.half_day}</td><td data-label="WFH" class="py-2 pr-4">${r.counts.wfh}</td><td data-label="On Leave" class="py-2 pr-4">${r.counts.on_leave}</td><td data-label="Attendance %" class="py-2 pr-4 font-bold ${r.pct===null?'text-[#4a5182]':r.pct>=90?'text-green-400':r.pct>=75?'text-yellow-400':'text-red-400'}">${r.pct===null?'—':r.pct+'%'}</td></tr>`).join('') || `<tr><td colspan="9" class="py-4 text-center text-[#4a5182] text-xs">No data.</td></tr>`}
                     </tbody>
                 </table>`;
         }
@@ -4092,7 +4122,7 @@
             if (!tableEl) return;
             const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
             tableEl.innerHTML = `
-                <table class="w-full text-xs text-left" style="min-width:1400px">
+                <table class="w-full text-xs text-left hr-scroll-table" style="min-width:1400px">
                     <thead><tr class="text-[#6b74a0] text-[10px] uppercase tracking-wider border-b border-white/[0.06]">
                         <th class="py-2 pr-3">Employee</th><th class="py-2 pr-3">Department</th><th class="py-2 pr-3">Designation</th><th class="py-2 pr-3">Joined</th><th class="py-2 pr-3">Status</th>
                         <th class="py-2 pr-3">Present</th><th class="py-2 pr-3">Late</th><th class="py-2 pr-3">Afternoon</th><th class="py-2 pr-3">Leave</th><th class="py-2 pr-3">Absent</th><th class="py-2 pr-3">Attendance %</th><th class="py-2 pr-3">Avg Hrs</th>
@@ -4215,10 +4245,10 @@
             const rows = [...hrHolidays].sort((a,b) => a.holiday_date.localeCompare(b.holiday_date));
             document.getElementById('hr-holidays-rows').innerHTML = rows.length ? rows.map(h => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">${new Date(h.holiday_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${h.name}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${h.type}</td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="deleteHRHoliday('${h.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
+                    <td data-label="Date" class="py-2.5 px-4 text-white font-semibold">${new Date(h.holiday_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
+                    <td data-label="Holiday" class="py-2.5 px-4 text-[#a5adcf]">${h.name}</td>
+                    <td data-label="Type" class="py-2.5 px-4 text-[#a5adcf]">${h.type}</td>
+                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHRHoliday('${h.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No holidays added yet.</td></tr>`;
         }
@@ -4278,12 +4308,12 @@
             const rows = [...hrOfficialEvents].sort((a,b) => a.event_date.localeCompare(b.event_date));
             document.getElementById('hr-official-events-rows').innerHTML = rows.length ? rows.map(ev => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">${new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${ev.title}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${ev.paid === false ? 'No' : 'Yes'}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${ev.clock_in_required ? 'Yes' : 'No'}</td>
-                    <td class="py-2.5 px-4 text-center"><button onclick="deleteHROfficialEvent('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
+                    <td data-label="Date" class="py-2.5 px-4 text-white font-semibold">${new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
+                    <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">${ev.title}</td>
+                    <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
+                    <td data-label="Paid" class="py-2.5 px-4 text-[#a5adcf]">${ev.paid === false ? 'No' : 'Yes'}</td>
+                    <td data-label="Clock In Required" class="py-2.5 px-4 text-[#a5adcf]">${ev.clock_in_required ? 'Yes' : 'No'}</td>
+                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHROfficialEvent('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No official events added yet.</td></tr>`;
         }
