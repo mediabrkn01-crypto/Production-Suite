@@ -2413,8 +2413,13 @@ function hrOfficialEventFor(employee, dateStr) {
         function markCelebrationPopupSeen(key) { localStorage.setItem(_celebStorageKey('popup', key), '1'); }
         function isCelebrationBannerDismissed(key) { return !!localStorage.getItem(_celebStorageKey('banner', key)); }
         function dismissCelebrationBanner(key) {
-            localStorage.setItem(_celebStorageKey('banner', key), '1');
-            document.getElementById(`celeb-banner-${key}`)?.remove();
+            try {
+                localStorage.setItem(_celebStorageKey('banner', key), '1');
+                const el = document.getElementById(`celeb-banner-${key}`);
+                if (el) el.remove(); else console.warn(`Celebration engine: dismiss clicked for "${key}" but its banner element was already gone.`);
+            } catch (e) {
+                console.error('Celebration engine: could not dismiss banner —', e.message);
+            }
         }
 
         let _celebrationCSSInjected = false;
@@ -2452,8 +2457,9 @@ function hrOfficialEventFor(employee, dateStr) {
                 .be-celeb-banner-slot{width:100%;position:relative}
                 .be-celeb-banner-item{position:relative;width:100%;height:130px;margin-bottom:10px;border-radius:12px;overflow:hidden;background:#12162a}
                 .be-celeb-banner-item:last-child{margin-bottom:0}
-                .be-celeb-banner-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
-                .be-celeb-banner-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.55);border:none;color:#fff;cursor:pointer;width:26px;height:26px;border-radius:50%;font-size:13px;line-height:1}
+                .be-celeb-banner-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none}
+                .be-celeb-banner-close{position:absolute;top:8px;right:8px;z-index:5;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;pointer-events:auto}
+                .be-celeb-banner-close:hover{background:rgba(10,12,20,.9)}
                 @media (max-width:480px){.be-celeb-banner-item{height:90px}}
             `;
             document.head.appendChild(style);
