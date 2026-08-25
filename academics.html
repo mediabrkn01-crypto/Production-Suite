@@ -1694,24 +1694,248 @@ async function boot(){
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+// ============================================================================
+// CELEBRATION ENGINE — LOCAL PORT (root cause of the missing Academic banner).
+//
+// common.js defines the real, shared version of every function below
+// (computeTodaysCelebrations/runCelebrationQueue/renderCelebrationBanners/etc.), and
+// index.html/hr.html both <script src="common.js"> it. academics.html never has — it is a
+// standalone file with its own client variables (mediaHrDB/sb instead of dbInstance/acadDB),
+// same reason acadSyncTrainersFromHRLocal() above exists as its own local port rather than
+// relying on the common.js copy. Every call this file made into the shared engine
+// (runCelebrationQueue, hasSeenCelebrationPopup, ensureCelebrationBannerHost, ...) was
+// therefore always a reference to an undefined identifier — caught only because
+// runAcadCelebrationCheck's very first line was `if (typeof runCelebrationQueue !== 'function')
+// return;`, a guard meant for a genuinely-optional dependency, which made the entire feature
+// exit silently, every single time, with zero console output — exactly why nothing about this
+// showed up even after moving the boot() call order and adding logging in earlier rounds; that
+// code never ran either. This is the same logic as common.js's engine, ported to this file's
+// own variables (mediaHrDB for the DB client, currentUser.username as the per-user identity key
+// since this page never sets common.js's `activeEmail` global) so Academic actually shares the
+// same event data and behavior instead of silently having none of it.
+let acadCelebrationEvents = [];
+
+function _acadIsBirthdayToday(dobStr) {
+  if (!dobStr) return false;
+  const d = new Date(dobStr);
+  if (isNaN(d)) return false;
+  const now = new Date();
+  return d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+function _acadIsAnniversaryToday(joiningDateStr) {
+  if (!joiningDateStr) return null;
+  const jd = new Date(joiningDateStr);
+  if (isNaN(jd)) return null;
+  const now = new Date();
+  if (jd.getMonth() !== now.getMonth() || jd.getDate() !== now.getDate()) return null;
+  const years = now.getFullYear() - jd.getFullYear();
+  return years >= 1 ? years : null;
+}
+function _acadCelebrationStatusForToday(ev) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (!ev.event_date) return null;
+  const endDate = ev.event_end_date || ev.event_date;
+  if (todayStr >= ev.event_date && todayStr <= endDate) return 'actual';
+  if (ev.advance_start_date && todayStr >= ev.advance_start_date && todayStr < ev.event_date) return 'advance';
+  return null;
+}
+function _acadCelebrationApplies(ev, employee) {
+  return !ev.applies_to || ev.applies_to === 'all' || ev.applies_to === employee.division;
+}
+function _acadFindCelebrationTemplate(type) {
+  return (acadCelebrationEvents || []).find(ev => ev.event_type === type) || null;
+}
+function _acadComputeTodaysCelebrations(me) {
+  if (!me) return [];
+  const items = [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const firstName = (me.full_name || currentUser?.name || 'there').trim().split(' ')[0];
+
+  if (_acadIsBirthdayToday(me.dob)) {
+    const tpl = _acadFindCelebrationTemplate('birthday');
+    items.push({
+      key: `birthday_${todayStr}`, type: 'birthday',
+      title: `Happy Birthday, ${firstName}!`, captionName: firstName,
+      message: 'Wishing you a wonderful year ahead filled with happiness and success 🎂',
+      bannerMessage: `🎂 Happy Birthday, ${firstName}! Have a wonderful day 🎉`,
+      popupImage: tpl?.popup_image_base64 || null, bannerImage: tpl?.banner_image_base64 || null,
+      artworkMode: tpl?.artwork_mode || 'complete',
+      popupEnabled: tpl ? tpl.popup_enabled !== false : true, bannerEnabled: tpl ? tpl.banner_enabled !== false : true
+    });
+  }
+  const years = _acadIsAnniversaryToday(me.joining_date);
+  if (years) {
+    const yearLabel = years === 1 ? '1 Year' : `${years} Years`;
+    const tpl = _acadFindCelebrationTemplate('work_anniversary');
+    items.push({
+      key: `anniversary_${todayStr}`, type: 'work_anniversary',
+      title: `Happy Work Anniversary, ${firstName}!`, captionName: `${firstName} · ${yearLabel}`,
+      message: `Thank you for being an important part of our journey — ${yearLabel} at Broken English 🎉`,
+      bannerMessage: `🏆 Happy Work Anniversary, ${firstName}! ${yearLabel} and counting 🎉`,
+      popupImage: tpl?.popup_image_base64 || null, bannerImage: tpl?.banner_image_base64 || null,
+      artworkMode: tpl?.artwork_mode || 'complete',
+      popupEnabled: tpl ? tpl.popup_enabled !== false : true, bannerEnabled: tpl ? tpl.banner_enabled !== false : true
+    });
+  }
+  (acadCelebrationEvents || []).forEach(ev => {
+    if (ev.event_type === 'birthday' || ev.event_type === 'work_anniversary') return;
+    const status = _acadCelebrationStatusForToday(ev);
+    const applies = _acadCelebrationApplies(ev, me);
+    if (!status || !applies) {
+      console.info(`Celebration engine: "${ev.title}" (${ev.id}) not shown to ${me.full_name || 'this employee'} — ${!status ? `not active today (event_date=${ev.event_date}, event_end_date=${ev.event_end_date || ev.event_date}, advance_start_date=${ev.advance_start_date || 'none'})` : `applies_to="${ev.applies_to}" does not match this employee's division="${me.division}"`}.`);
+      return;
+    }
+    const titleText = `${status === 'advance' ? 'Advance ' : ''}${ev.title}!`;
+    items.push({
+      key: `event_${ev.id}_${todayStr}`, type: ev.event_type || 'custom',
+      title: `${ev.icon ? ev.icon + ' ' : ''}${titleText}`, captionName: null,
+      message: ev.message || `Wishing you a wonderful ${ev.title}!`,
+      bannerMessage: ev.banner_message || ev.message || `${ev.icon ? ev.icon + ' ' : ''}${titleText}`,
+      popupImage: ev.popup_image_base64 || null, bannerImage: ev.banner_image_base64 || null,
+      artworkMode: 'complete',
+      popupEnabled: ev.popup_enabled !== false, bannerEnabled: ev.banner_enabled !== false
+    });
+  });
+  return items;
+}
+
+// Per-user-per-event-per-day dismiss/seen state — keyed on currentUser.username (this page's
+// own identity convention) rather than common.js's activeEmail, which this page never sets.
+function _acadCelebStorageKey(prefix, key) { return `be_celeb_${prefix}_${(currentUser?.username || '').toLowerCase()}_${key}`; }
+function _acadHasSeenCelebrationPopup(key) { return !!localStorage.getItem(_acadCelebStorageKey('popup', key)); }
+function _acadMarkCelebrationPopupSeen(key) { localStorage.setItem(_acadCelebStorageKey('popup', key), '1'); }
+function _acadIsCelebrationBannerDismissed(key) { return !!localStorage.getItem(_acadCelebStorageKey('banner', key)); }
+function dismissCelebrationBanner(key) {
+  try {
+    localStorage.setItem(_acadCelebStorageKey('banner', key), '1');
+    const el = document.getElementById(`celeb-banner-${key}`);
+    if (el) el.remove(); else console.warn(`Celebration engine: dismiss clicked for "${key}" but its banner element was already gone.`);
+  } catch (e) {
+    console.error('Celebration engine: could not dismiss banner —', e.message);
+  }
+}
+
+let _acadCelebrationCSSInjected = false;
+function _acadEnsureCelebrationCSS() {
+  if (_acadCelebrationCSSInjected || document.getElementById('be-celeb-styles')) { _acadCelebrationCSSInjected = true; return; }
+  const style = document.createElement('style');
+  style.id = 'be-celeb-styles';
+  // Identical rules to common.js's ensureCelebrationCSS() — same popup (never-crop, contain)
+  // vs. banner (fixed 130px/90px box, cover-fill) treatment, so Academic renders pixel-identical
+  // to HR/Media rather than a second, drifting implementation.
+  style.textContent = `
+      .be-celeb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:95;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+      .be-celeb-overlay.hidden{display:none}
+      .be-celeb-imgwrap{position:relative;max-width:90vw;max-height:85vh;line-height:0}
+      .be-celeb-imgwrap img{display:block;max-width:90vw;max-height:85vh;width:auto;height:auto;object-fit:contain;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+      .be-celeb-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;backdrop-filter:blur(3px)}
+      .be-celeb-close:hover{background:rgba(10,12,20,.85)}
+      .be-celeb-caption{text-align:center;color:#fff;font-weight:700;font-size:14px;margin-top:10px;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+      .be-celeb-loading{width:90vw;max-width:340px;aspect-ratio:4/5;border-radius:14px;background:#12162a;display:flex;align-items:center;justify-content:center}
+      .be-celeb-spinner{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:#ff6b06;animation:be-celeb-spin .8s linear infinite}
+      @keyframes be-celeb-spin{to{transform:rotate(360deg)}}
+      .be-celeb-banner-slot{width:100%;position:relative}
+      .be-celeb-banner-item{position:relative;width:100%;height:130px;margin-bottom:10px;border-radius:12px;overflow:hidden;background:#12162a}
+      .be-celeb-banner-item:last-child{margin-bottom:0}
+      .be-celeb-banner-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none}
+      .be-celeb-banner-close{position:absolute;top:8px;right:8px;z-index:5;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;pointer-events:auto}
+      .be-celeb-banner-close:hover{background:rgba(10,12,20,.9)}
+      @media (max-width:480px){.be-celeb-banner-item{height:90px}}
+  `;
+  document.head.appendChild(style);
+  _acadCelebrationCSSInjected = true;
+}
+function _acadEnsureCelebrationBannerHost() {
+  let host = document.getElementById('celebration-banner-slot');
+  if (host) return host;
+  host = document.createElement('div');
+  host.id = 'celebration-banner-slot';
+  host.className = 'be-celeb-banner-slot';
+  host.style.cssText = 'position:fixed;top:64px;left:12px;right:12px;z-index:90;max-width:480px;margin:0 auto';
+  document.body.appendChild(host);
+  return host;
+}
+function _acadEnsureCelebrationDOM() {
+  _acadEnsureCelebrationCSS();
+  if (!document.getElementById('celebration-popup-overlay')) {
+    document.body.insertAdjacentHTML('beforeend', `<div id="celebration-popup-overlay" class="be-celeb-overlay hidden"></div>`);
+  }
+  _acadEnsureCelebrationBannerHost();
+}
+
+let _acadCelebrationQueue = [];
+function runCelebrationQueue(me) {
+  const items = _acadComputeTodaysCelebrations(me);
+  console.info(`Celebration engine: checked for ${me?.full_name || 'unknown employee'} (division="${me?.division}") — ${(acadCelebrationEvents||[]).length} configured event(s) in hr_celebration_events, ${items.length} applicable today.`);
+  if (!items.length) return;
+  _acadEnsureCelebrationDOM();
+  // No Notification Center bell on academics.html (unlike index.html/hr.html) — the
+  // banner/popup surfaces below are this page's only celebration surface, so there's no
+  // addNotif() call here to skip.
+  _acadCelebrationQueue = items.filter(it => it.popupEnabled && it.popupImage && !_acadHasSeenCelebrationPopup(it.key));
+  showNextCelebrationPopup();
+  renderCelebrationBanners(items.filter(it => it.bannerEnabled && it.bannerImage && !_acadIsCelebrationBannerDismissed(it.key)));
+}
+function showNextCelebrationPopup() {
+  if (!_acadCelebrationQueue.length) return;
+  const overlay = document.getElementById('celebration-popup-overlay');
+  if (!overlay || !overlay.classList.contains('hidden')) return;
+  const item = _acadCelebrationQueue[0];
+  overlay.innerHTML = `<div class="be-celeb-loading"><div class="be-celeb-spinner"></div></div>`;
+  overlay.classList.remove('hidden');
+  const preload = new Image();
+  preload.onload = () => {
+    if (_acadCelebrationQueue[0] !== item) return;
+    const captionHtml = item.artworkMode === 'template' && item.captionName
+      ? `<div class="be-celeb-caption">${item.captionName}</div>` : '';
+    overlay.innerHTML = `
+        <div>
+            <div class="be-celeb-imgwrap">
+                <img src="${item.popupImage}" alt="${item.title}">
+                <button onclick="closeCelebrationPopup()" class="be-celeb-close" aria-label="Close">✕</button>
+            </div>
+            ${captionHtml}
+        </div>
+    `;
+  };
+  preload.onerror = () => {
+    if (_acadCelebrationQueue[0] !== item) return;
+    console.error(`Celebration engine: popup image failed to load for event "${item.key}" (type: ${item.type}). Image data length: ${item.popupImage ? item.popupImage.length : 0}.`);
+    closeCelebrationPopup();
+  };
+  preload.src = item.popupImage;
+}
+function closeCelebrationPopup() {
+  const overlay = document.getElementById('celebration-popup-overlay');
+  overlay?.classList.add('hidden');
+  if (overlay) overlay.innerHTML = '';
+  const item = _acadCelebrationQueue.shift();
+  if (item) _acadMarkCelebrationPopupSeen(item.key);
+  if (_acadCelebrationQueue.length) setTimeout(showNextCelebrationPopup, 300);
+}
+function renderCelebrationBanners(items) {
+  const host = _acadEnsureCelebrationBannerHost();
+  host.innerHTML = items.map(it => `
+      <div id="celeb-banner-${it.key}" class="be-celeb-banner-item">
+          <img src="${it.bannerImage}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner image failed to load for event &quot;${it.key}&quot; (type: ${it.type}).');this.closest('.be-celeb-banner-item')?.remove()">
+          <button onclick="dismissCelebrationBanner('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button>
+      </div>
+  `).join('');
+}
+
 function runAcadCelebrationCheck() {
-  if (typeof runCelebrationQueue !== 'function') return;
   _acadGetMyHREmployeeRecord().then(async me => {
     if (!me) { console.warn('Celebration engine: no HR employee record linked to this login — skipping.'); return; }
     try {
       const { data, error } = await mediaHrDB.from('hr_celebration_events').select('*').order('event_date', { ascending: true });
-      if (error) { console.error('Celebration engine: hr_celebration_events fetch failed —', error.message); hrCelebrationEvents = []; }
-      else { hrCelebrationEvents = data || []; }
+      if (error) { console.error('Celebration engine: hr_celebration_events fetch failed —', error.message); acadCelebrationEvents = []; }
+      else { acadCelebrationEvents = data || []; }
     } catch (e) {
       console.error('Celebration engine: hr_celebration_events fetch threw —', e.message);
-      hrCelebrationEvents = [];
+      acadCelebrationEvents = [];
     }
     runCelebrationQueue(me);
   }).catch(e => {
-    // Previously this promise chain had no .catch() at all — a failure in
-    // _acadGetMyHREmployeeRecord() itself (e.g. loadCurrentUserProfile throwing) would surface
-    // only as a generic "Uncaught (in promise)" line with nothing celebration-specific to grep
-    // for, easy to miss among this page's other console noise.
     console.error('Celebration engine: could not resolve this employee\'s HR record —', e.message);
   });
 }
