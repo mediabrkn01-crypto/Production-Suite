@@ -72,6 +72,7 @@ let hrPayroll = [];
 let hrSalaryHistory = [];
 let hrHolidays = [];
 let hrOfficialEvents = []; // hr_official_events — paid company-wide event days (see hrOfficialEventFor)
+let hrCelebrationEvents = []; // hr_celebration_events — HR-configured festival/company-event wishes (see computeTodaysCelebrations)
 let hrCompanySettings = { weekly_off_sunday: true, weekly_off_saturday: false };
 let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLoaded guards loadHRData()
 
@@ -266,13 +267,15 @@ async function loadMyHRData() {
         if (!me) {
             hrEmployees = []; hrAttendance = []; hrLeaveRequests = []; hrLeaveBalances = [];
             hrPayroll = []; hrSalaryHistory = [];
-            const [hol, oe, settings] = await Promise.all([
+            const [hol, oe, cel, settings] = await Promise.all([
                 dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
                 dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
+                dbInstance.from('hr_celebration_events').select('*').order('event_date', { ascending: true }),
                 dbInstance.from('hr_company_settings').select('*').limit(1)
             ]);
             hrHolidays = hol.data || [];
             hrOfficialEvents = oe.data || [];
+            hrCelebrationEvents = cel.data || [];
             if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
             myHRDataLoaded = true;
             return;
@@ -291,7 +294,7 @@ async function loadMyHRData() {
         const teamIds = [me.id, ...teamMembers.map(t => t.id)];
         const scopeAttLeave = q => teamIds.length > 1 ? q.in('employee_id', teamIds) : q.eq('employee_id', me.id);
 
-        const [att, leaveReq, leaveBal, pay, salHist, hol, oe, settings, attLogs] = await Promise.all([
+        const [att, leaveReq, leaveBal, pay, salHist, hol, oe, cel, settings, attLogs] = await Promise.all([
             scopeAttLeave(dbInstance.from('hr_attendance').select('*')),
             scopeAttLeave(dbInstance.from('hr_leave_requests').select('*')).order('requested_at', { ascending: false }),
             scopeAttLeave(dbInstance.from('hr_leave_balances').select('*')),
@@ -301,6 +304,7 @@ async function loadMyHRData() {
             dbInstance.from('hr_salary_history').select('*').eq('employee_id', me.id).order('effective_date', { ascending: false }),
             dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
             dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
+            dbInstance.from('hr_celebration_events').select('*').order('event_date', { ascending: true }),
             dbInstance.from('hr_company_settings').select('*').limit(1),
             // Own raw clock-in log — hrAttDayCode/hrCalculatePayrollForMonth's fallback (via
             // hrPortalLogFor) needs this populated here too, not just from hr.html's loader, or
@@ -315,6 +319,7 @@ async function loadMyHRData() {
         hrSalaryHistory = salHist.data || [];
         hrHolidays = hol.data || [];
         hrOfficialEvents = oe.data || [];
+        hrCelebrationEvents = cel.data || [];
         if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
         if (!attLogs.error) window._hrAttendanceLogsCache = attLogs.data || [];
     } catch (e) {
@@ -400,6 +405,9 @@ async function loadMyHRData() {
                 case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'announcement': return { icon: 'megaphone', color: 'orange', label: '📢 Company Announcement', onClick: null };
                 case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: null };
+                case 'birthday': return { icon: 'cake', color: 'orange', label: '🎂 Happy Birthday!', onClick: null };
+                case 'work_anniversary': return { icon: 'award', color: 'orange', label: '🏆 Work Anniversary', onClick: null };
+                case 'celebration': return { icon: 'party-popper', color: 'orange', label: '🎉 Celebration', onClick: null };
                 default: return { icon: 'plus-circle', color: 'orange', label: '🆕 New Task Assigned', onClick: null };
             }
         }
@@ -756,7 +764,7 @@ async function loadMyHRData() {
             const me = myHREmployeeRecord();
             if (!me) { if (changed) saveHRNotifBaseline(); return; }
 
-            checkAndShowBirthdayPopup(me);
+            runCelebrationQueue(me);
             checkDeptLeaveNotifications();
 
             // New payslip: any published row for me not seen before. First-ever check on this
@@ -2276,8 +2284,18 @@ function hrOfficialEventFor(employee, dateStr) {
             }
         });
 
-// ── BIRTHDAY CELEBRATION — month/day only, never the birth year; works for every
-// employee automatically off the existing hr_employees.dob field, nothing hardcoded. ──
+// ── CELEBRATION ENGINE — birthday, work anniversary (both computed live off the existing
+// hr_employees.dob/joining_date, nothing duplicated or hardcoded), and HR-configured
+// festival/national-day/custom events (hr_celebration_events). One shared popup+banner
+// component, built once via ensureCelebrationDOM() rather than duplicated markup in
+// index.html/hr.html/academics.html — this is what makes it actually work on every page,
+// unlike the old birthday-only popup which only ever existed in index.html's own markup and
+// silently did nothing on hr.html/academics.html (its own null-check on
+// #birthday-popup-overlay just returned early there). Self-contained CSS (.be-celeb-*
+// classes, injected once) so it renders identically regardless of which page's own utility
+// classes are or aren't available — academics.html in particular has none of index.html/
+// hr.html's .card/.glass-card/.brand-gradient classes. ──
+
         function isBirthdayToday(dobStr) {
             if (!dobStr) return false;
             const d = new Date(dobStr);
@@ -2291,41 +2309,224 @@ function hrOfficialEventFor(employee, dateStr) {
             return hrEmployees.filter(e => e.employment_status === 'active' && isBirthdayToday(e.dob));
         }
 
-        // Employee-side popup — once per person per calendar day, persisted in localStorage
-        // so it survives reloads/re-polls within the same day rather than a session flag that
-        // would just re-show on every refresh.
-        function checkAndShowBirthdayPopup(me) {
-            if (!me || !isBirthdayToday(me.dob) || !document.getElementById('birthday-popup-overlay')) return;
-            const today = new Date().toISOString().slice(0, 10);
-            const key = `be_birthday_shown_${(activeEmail || '').toLowerCase()}_${today}`;
-            if (localStorage.getItem(key)) return;
-            localStorage.setItem(key, '1');
-            showBirthdayPopup(me.full_name || activeUser || 'there');
+        // Work anniversary — same month/day match as birthday, but only once at least one full
+        // year has actually elapsed (joining day itself isn't anyone's first anniversary).
+        // Returns the whole-number year count, or null if today isn't the anniversary.
+        function isAnniversaryToday(joiningDateStr) {
+            if (!joiningDateStr) return null;
+            const jd = new Date(joiningDateStr);
+            if (isNaN(jd)) return null;
+            const now = new Date();
+            if (jd.getMonth() !== now.getMonth() || jd.getDate() !== now.getDate()) return null;
+            const years = now.getFullYear() - jd.getFullYear();
+            return years >= 1 ? years : null;
         }
 
-        function showBirthdayPopup(name) {
-            const overlay = document.getElementById('birthday-popup-overlay');
-            if (!overlay) return;
-            const firstName = String(name).trim().split(' ')[0];
-            document.getElementById('birthday-popup-name-suffix').textContent = firstName ? ',' : '';
-            document.getElementById('birthday-popup-name').textContent = firstName || '';
-            const confettiEl = document.getElementById('birthday-confetti');
+        const CELEBRATION_THEMES = {
+            confetti: { pieces: ['🎉','🎈','🎊','✨','🎂'], icon: '🎉' },
+            balloons: { pieces: ['🎈','🎉','✨','🎊'], icon: '🎈' },
+            floral:   { pieces: ['🌼','🌸','🪔','✨'], icon: '🌼' },
+            tricolor: { pieces: ['🇮🇳','🎉','✨'], icon: '🇮🇳' },
+            snow:     { pieces: ['❄️','✨','🎄'], icon: '🎄' },
+            gold:     { pieces: ['🏆','✨','🎉'], icon: '🏆' }
+        };
+
+        // A company-wide event is "active" today either on its actual event_date, or — if HR
+        // set an advance_start_date — anywhere in [advance_start_date, event_date). Returns
+        // 'actual' | 'advance' | null. Purely date-driven, never hardcoded into page JS (spec
+        // item 4/5) — HR changes the dates in the Celebrations admin UI, this just reads them.
+        function hrCelebrationStatusForToday(ev) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (!ev.event_date) return null;
+            if (todayStr === ev.event_date) return 'actual';
+            if (ev.advance_start_date && todayStr >= ev.advance_start_date && todayStr < ev.event_date) return 'advance';
+            return null;
+        }
+
+        function hrCelebrationApplies(ev, employee) {
+            return !ev.applies_to || ev.applies_to === 'all' || ev.applies_to === employee.division;
+        }
+
+        // Every celebration item relevant to this employee today — personal (birthday, work
+        // anniversary) first, then HR-configured company-wide events. Each item is fully
+        // self-describing (title/message/bannerMessage/theme/enabled flags) so the queue/
+        // banner renderers below never need to know the difference between a birthday and a
+        // festival.
+        function computeTodaysCelebrations(me) {
+            if (!me) return [];
+            const items = [];
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const firstName = (me.full_name || activeUser || 'there').trim().split(' ')[0];
+
+            if (isBirthdayToday(me.dob)) {
+                items.push({
+                    key: `birthday_${todayStr}`, type: 'birthday', theme: 'confetti',
+                    title: `Happy Birthday, ${firstName}!`,
+                    message: 'Wishing you a wonderful year ahead filled with happiness and success 🎂',
+                    bannerMessage: `🎂 Happy Birthday, ${firstName}! Have a wonderful day 🎉`,
+                    popupEnabled: true, bannerEnabled: true
+                });
+            }
+            const years = isAnniversaryToday(me.joining_date);
+            if (years) {
+                const yearLabel = years === 1 ? '1 Year' : `${years} Years`;
+                items.push({
+                    key: `anniversary_${todayStr}`, type: 'work_anniversary', theme: 'gold',
+                    title: `Happy Work Anniversary, ${firstName}!`,
+                    message: `Thank you for being an important part of our journey — ${yearLabel} at Broken English 🎉`,
+                    bannerMessage: `🏆 Happy Work Anniversary, ${firstName}! ${yearLabel} and counting 🎉`,
+                    popupEnabled: true, bannerEnabled: true
+                });
+            }
+            (hrCelebrationEvents || []).forEach(ev => {
+                const status = hrCelebrationStatusForToday(ev);
+                if (!status || !hrCelebrationApplies(ev, me)) return;
+                const titleText = `${status === 'advance' ? 'Advance ' : ''}${ev.title}!`;
+                items.push({
+                    key: `event_${ev.id}_${todayStr}`, type: ev.event_type || 'custom', theme: ev.animation_style || 'confetti',
+                    title: `${ev.icon ? ev.icon + ' ' : ''}${titleText}`,
+                    message: ev.message || `Wishing you a wonderful ${ev.title}!`,
+                    bannerMessage: ev.banner_message || ev.message || `${ev.icon ? ev.icon + ' ' : ''}${titleText}`,
+                    popupEnabled: ev.popup_enabled !== false, bannerEnabled: ev.banner_enabled !== false
+                });
+            });
+            return items;
+        }
+
+        // Per-user, per-event, per-day seen/dismissed state (spec item 2) — localStorage keyed
+        // by activeEmail + the item's own key (which already embeds today's date), never a
+        // single global flag shared between employees.
+        function _celebStorageKey(prefix, key) { return `be_celeb_${prefix}_${(activeEmail || '').toLowerCase()}_${key}`; }
+        function hasSeenCelebrationPopup(key) { return !!localStorage.getItem(_celebStorageKey('popup', key)); }
+        function markCelebrationPopupSeen(key) { localStorage.setItem(_celebStorageKey('popup', key), '1'); }
+        function isCelebrationBannerDismissed(key) { return !!localStorage.getItem(_celebStorageKey('banner', key)); }
+        function dismissCelebrationBanner(key) {
+            localStorage.setItem(_celebStorageKey('banner', key), '1');
+            document.getElementById(`celeb-banner-${key}`)?.remove();
+        }
+
+        let _celebrationCSSInjected = false;
+        function ensureCelebrationCSS() {
+            if (_celebrationCSSInjected || document.getElementById('be-celeb-styles')) { _celebrationCSSInjected = true; return; }
+            const style = document.createElement('style');
+            style.id = 'be-celeb-styles';
+            style.textContent = `
+                .be-celeb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:95;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+                .be-celeb-overlay.hidden{display:none}
+                .be-celeb-card{background:#12162a;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:32px 24px;width:100%;max-width:380px;text-align:center;position:relative;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+                .be-celeb-close{position:absolute;top:12px;right:12px;background:none;border:none;color:#808a9d;cursor:pointer;padding:6px;font-size:16px;line-height:1;z-index:2}
+                .be-celeb-close:hover{color:#fff}
+                .be-celeb-icon{font-size:48px;margin-bottom:12px}
+                .be-celeb-title{font-size:20px;font-weight:800;color:#fff;margin-bottom:6px}
+                .be-celeb-message{font-size:12.5px;color:#a5adcf;margin-bottom:20px;line-height:1.5}
+                .be-celeb-cta{background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:11px;font-weight:700;padding:11px 24px;border-radius:12px;text-transform:uppercase;letter-spacing:.05em;border:none;cursor:pointer}
+                .be-celeb-confetti{position:absolute;inset:0;pointer-events:none}
+                .be-celeb-confetti span{position:absolute;top:-10%;font-size:16px;animation:be-celeb-fall 2.6s ease-in forwards;opacity:.9}
+                @keyframes be-celeb-fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(320px) rotate(360deg);opacity:0}}
+                .be-celeb-banner-host{position:fixed;top:70px;left:20px;z-index:90;display:flex;flex-direction:column;gap:8px;max-width:min(360px,calc(100vw - 40px));pointer-events:none}
+                .be-celeb-banner{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;background:#12162a;border:1px solid rgba(255,255,255,.1);border-left:3px solid #ff6b06;border-radius:10px;padding:10px 12px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:12.5px;color:#e6e9f5}
+                .be-celeb-banner button{background:none;border:none;color:#808a9d;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px}
+                @media (max-width:480px){.be-celeb-banner-host{left:12px;right:12px;max-width:none;top:64px}.be-celeb-card{padding:24px 18px}}
+            `;
+            document.head.appendChild(style);
+            _celebrationCSSInjected = true;
+        }
+
+        function ensureCelebrationBannerHost() {
+            let host = document.getElementById('celebration-banner-host');
+            if (!host) {
+                host = document.createElement('div');
+                host.id = 'celebration-banner-host';
+                host.className = 'be-celeb-banner-host';
+                document.body.appendChild(host);
+            }
+            return host;
+        }
+
+        function ensureCelebrationDOM() {
+            ensureCelebrationCSS();
+            if (!document.getElementById('celebration-popup-overlay')) {
+                document.body.insertAdjacentHTML('beforeend', `
+                    <div id="celebration-popup-overlay" class="be-celeb-overlay hidden">
+                        <div class="be-celeb-card">
+                            <div id="celebration-confetti" class="be-celeb-confetti" aria-hidden="true"></div>
+                            <button onclick="closeCelebrationPopup()" class="be-celeb-close" aria-label="Close">✕</button>
+                            <div class="be-celeb-icon" id="celebration-popup-icon">🎉</div>
+                            <h2 class="be-celeb-title" id="celebration-popup-title"></h2>
+                            <p class="be-celeb-message" id="celebration-popup-message"></p>
+                            <button onclick="closeCelebrationPopup()" class="be-celeb-cta">Have a Great Day!</button>
+                        </div>
+                    </div>
+                `);
+            }
+            ensureCelebrationBannerHost();
+        }
+
+        // Queue so multiple events on the same day (e.g. a birthday + a company festival) never
+        // show two full-screen popups at once (spec item 13) — one at a time, in order, with a
+        // brief pause between. Banners, unlike the popup, aren't queued — every active,
+        // not-yet-dismissed-today event gets its own small banner simultaneously, since those
+        // are meant to coexist quietly rather than interrupt one another.
+        let _celebrationQueue = [];
+        function runCelebrationQueue(me) {
+            const items = computeTodaysCelebrations(me);
+            if (!items.length) return;
+            ensureCelebrationDOM();
+            // Notification Center entry per item per day — addNotif already dedupes by its own
+            // id (built from `key` here), so calling this on every poll is safe and never spams.
+            items.forEach(it => {
+                if (typeof addNotif === 'function') {
+                    const notifType = it.type === 'birthday' ? 'birthday' : it.type === 'work_anniversary' ? 'work_anniversary' : 'celebration';
+                    addNotif(notifType, it.bannerMessage || it.message, null, it.key);
+                }
+            });
+            _celebrationQueue = items.filter(it => it.popupEnabled && !hasSeenCelebrationPopup(it.key));
+            showNextCelebrationPopup();
+            renderCelebrationBanners(items.filter(it => it.bannerEnabled && !isCelebrationBannerDismissed(it.key)));
+        }
+
+        function showNextCelebrationPopup() {
+            if (!_celebrationQueue.length) return;
+            const overlay = document.getElementById('celebration-popup-overlay');
+            if (!overlay || !overlay.classList.contains('hidden')) return; // one at a time — closeCelebrationPopup re-calls this once the current one is dismissed
+            const item = _celebrationQueue[0];
+            const theme = CELEBRATION_THEMES[item.theme] || CELEBRATION_THEMES.confetti;
+            document.getElementById('celebration-popup-icon').textContent = theme.icon;
+            document.getElementById('celebration-popup-title').textContent = item.title;
+            document.getElementById('celebration-popup-message').textContent = item.message;
+            const confettiEl = document.getElementById('celebration-confetti');
             if (confettiEl) {
-                const pieces = ['🎉','🎈','🎊','✨','🎂'];
                 confettiEl.innerHTML = Array.from({ length: 16 }).map(() => {
                     const left = Math.round(Math.random() * 100);
                     const delay = (Math.random() * 0.6).toFixed(2);
                     const dur = (2 + Math.random() * 1.2).toFixed(2);
-                    const emoji = pieces[Math.floor(Math.random() * pieces.length)];
-                    return `<span class="confetti-piece" style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s">${emoji}</span>`;
+                    const emoji = theme.pieces[Math.floor(Math.random() * theme.pieces.length)];
+                    return `<span style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s">${emoji}</span>`;
                 }).join('');
             }
             overlay.classList.remove('hidden');
-            if (window.lucide) lucide.createIcons();
         }
 
-        function closeBirthdayPopup() {
-            document.getElementById('birthday-popup-overlay')?.classList.add('hidden');
+        function closeCelebrationPopup() {
+            const overlay = document.getElementById('celebration-popup-overlay');
+            overlay?.classList.add('hidden');
+            const item = _celebrationQueue.shift();
+            if (item) markCelebrationPopupSeen(item.key);
+            // Destroy the animation once closed rather than leaving 16 animated spans sitting in
+            // the DOM all day (spec item 19 — only run celebration animation while active).
+            const confettiEl = document.getElementById('celebration-confetti');
+            if (confettiEl) confettiEl.innerHTML = '';
+            if (_celebrationQueue.length) setTimeout(showNextCelebrationPopup, 300);
+        }
+
+        function renderCelebrationBanners(items) {
+            const host = ensureCelebrationBannerHost();
+            host.innerHTML = items.map(it => `
+                <div id="celeb-banner-${it.key}" class="be-celeb-banner">
+                    <span style="flex:1">${it.bannerMessage}</span>
+                    <button onclick="dismissCelebrationBanner('${it.key}')" aria-label="Dismiss">✕</button>
+                </div>
+            `).join('');
         }
 
 // ============================================================================

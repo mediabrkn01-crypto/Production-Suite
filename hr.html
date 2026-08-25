@@ -1231,6 +1231,22 @@
                             <tbody id="hr-official-events-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
+
+                    <div class="flex items-center justify-between" style="margin-top:8px">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Celebrations / Special Days</h1>
+                            <p class="text-[#6b74a0] text-xs mt-1">Birthday and Work Anniversary wishes are automatic (from each employee's DOB/joining date) — this is only for company-wide festivals, national days, and custom celebrations.</p>
+                        </div>
+                        <button onclick="openHRCelebrationModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Celebration</button>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Event Date</th><th class="py-3 px-4">Title</th><th class="py-3 px-4">Type</th><th class="py-3 px-4">Advance Start</th><th class="py-3 px-4">Applies To</th><th class="py-3 px-4">Popup</th><th class="py-3 px-4">Banner</th><th class="py-3 px-4 text-center">Actions</th>
+                            </tr></thead>
+                            <tbody id="hr-celebrations-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- HR: DOCUMENTS -->
@@ -1681,6 +1697,63 @@
         </div>
     </div>
 
+    <div id="hr-celebration-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:460px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Add Celebration / Special Day</h3>
+                <button onclick="closeHRCelebrationModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="space-y-3">
+                <div><label class="hr-field-label">Title</label><input id="hr-cel-title" placeholder="e.g. Onam" class="hr-input w-full"></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <div><label class="hr-field-label">Event Date</label><input id="hr-cel-date" type="date" class="hr-input w-full"></div>
+                    <div><label class="hr-field-label">Advance Wishes Start (optional)</label><input id="hr-cel-advance-date" type="date" class="hr-input w-full"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <div><label class="hr-field-label">Type</label>
+                        <select id="hr-cel-type" class="hr-select w-full">
+                            <option value="festival">Festival</option>
+                            <option value="national_day">National Day</option>
+                            <option value="company_event">Company Event</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div><label class="hr-field-label">Applies To</label>
+                        <select id="hr-cel-applies-to" class="hr-select w-full">
+                            <option value="all">All Employees</option>
+                            <option value="production">Production House</option>
+                            <option value="education">Education</option>
+                            <option value="sales">Sales</option>
+                            <option value="hr">HR</option>
+                            <option value="accounts">Accounts</option>
+                            <option value="other">Administration</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <div><label class="hr-field-label">Icon (single emoji, optional)</label><input id="hr-cel-icon" placeholder="🌼" maxlength="4" class="hr-input w-full"></div>
+                    <div><label class="hr-field-label">Animation Style</label>
+                        <select id="hr-cel-animation" class="hr-select w-full">
+                            <option value="confetti">Confetti</option>
+                            <option value="balloons">Balloons</option>
+                            <option value="floral">Floral</option>
+                            <option value="tricolor">Tricolor</option>
+                            <option value="snow">Snow / Festive Lights</option>
+                            <option value="gold">Gold / Milestone</option>
+                        </select>
+                    </div>
+                </div>
+                <div><label class="hr-field-label">Popup Message</label><textarea id="hr-cel-message" rows="2" class="hr-input w-full" placeholder="Wishing you and your family a joyful and prosperous Onam."></textarea></div>
+                <div><label class="hr-field-label">Banner Message (optional — falls back to popup message)</label><input id="hr-cel-banner-message" class="hr-input w-full" placeholder="🌼 Happy Onam! Wishing you and your family a joyful Onam."></div>
+                <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-cel-popup-enabled" checked style="accent-color:#ff6b06"> Popup Enabled</label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-cel-banner-enabled" checked style="accent-color:#ff6b06"> Banner Enabled</label>
+                </div>
+            </div>
+            <button onclick="saveHRCelebration()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Celebration</button>
+        </div>
+    </div>
+
     <div id="call-toast" class="hidden fixed top-5 left-1/2 -translate-x-1/2 z-[95] bg-transparent border border-orange-500/40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
         <i data-lucide="bell" class="w-4 h-4 text-white/70 shrink-0"></i>
         <span id="call-toast-text"></span>
@@ -1831,7 +1904,7 @@
                     leaveBalQuery = dbInstance.from('hr_leave_balances').select('*').eq('employee_id', myEmpId || NOBODY);
                     attQuery = dbInstance.from('hr_attendance').select('*').eq('employee_id', myEmpId || NOBODY);
                 }
-                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, empDocs, settings, roster] = await Promise.all([
+                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, celebrationEvents, empDocs, settings, roster] = await Promise.all([
                     dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
                     leaveReqQuery,
                     leaveBalQuery,
@@ -1843,6 +1916,7 @@
                     dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
                     dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
                     dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
+                    dbInstance.from('hr_celebration_events').select('*').order('event_date', { ascending: true }),
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_company_settings').select('*').limit(1),
                     // Login-account roster — hr.html doesn't run the Pipeline module, so unlike
@@ -1931,6 +2005,7 @@
                 // other table here, so the rest of HR keeps working while this one feature
                 // just has nothing to show until the migration is run.
                 hrOfficialEvents = officialEvents.data || [];
+                hrCelebrationEvents = celebrationEvents.data || []; // same missing-table safety as above — no celebration UI until the Phase 9 migration is run
                 hrEmployeeDocuments = empDocs.data || [];
                 hrCompanySettings = (settings.data && settings.data[0]) || { weekly_off_sunday: true, weekly_off_saturday: false };
                 if (!roster.error) userRoster = roster.data || [];
@@ -2031,7 +2106,7 @@
             else if (tab === 'payroll') renderHRPayroll();
             else if (tab === 'payslips') renderHRPayslipsList();
             else if (tab === 'documents') renderHRDocumentsList();
-            else if (tab === 'holidays') { renderHRHolidays(); renderHROfficialEvents(); }
+            else if (tab === 'holidays') { renderHRHolidays(); renderHROfficialEvents(); renderHRCelebrations(); }
             else if (tab === 'recruitment') renderHRRecruitment();
             else if (tab === 'hr-reports') renderHRReports();
             else if (tab === 'notifications') { renderHRNotifications(); renderHRAnnouncementsSentList(); }
@@ -4318,6 +4393,84 @@
             `).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No official events added yet.</td></tr>`;
         }
 
+// ── openHRCelebrationModal ──
+        function openHRCelebrationModal() {
+            document.getElementById('hr-cel-title').value = '';
+            document.getElementById('hr-cel-date').value = '';
+            document.getElementById('hr-cel-advance-date').value = '';
+            document.getElementById('hr-cel-type').value = 'festival';
+            document.getElementById('hr-cel-applies-to').value = 'all';
+            document.getElementById('hr-cel-icon').value = '';
+            document.getElementById('hr-cel-animation').value = 'confetti';
+            document.getElementById('hr-cel-message').value = '';
+            document.getElementById('hr-cel-banner-message').value = '';
+            document.getElementById('hr-cel-popup-enabled').checked = true;
+            document.getElementById('hr-cel-banner-enabled').checked = true;
+            document.getElementById('hr-celebration-modal').classList.remove('hidden');
+            document.getElementById('hr-celebration-modal').classList.add('flex');
+        }
+
+// ── closeHRCelebrationModal ──
+        function closeHRCelebrationModal() {
+            document.getElementById('hr-celebration-modal').classList.add('hidden');
+            document.getElementById('hr-celebration-modal').classList.remove('flex');
+        }
+
+// ── saveHRCelebration ──
+        // Writes a structured hr_celebration_events row — nothing here hardcodes a festival
+        // date or an employee's wishes; the celebration engine (common.js) reads this table
+        // live and computes who sees what, when, exactly like hr_official_events already does
+        // for attendance. Advance Wishes Start is optional — leave it blank for an event that
+        // should only ever show on its own actual date.
+        async function saveHRCelebration() {
+            const title = document.getElementById('hr-cel-title').value.trim();
+            const event_date = document.getElementById('hr-cel-date').value;
+            const advance_start_date = document.getElementById('hr-cel-advance-date').value || null;
+            const event_type = document.getElementById('hr-cel-type').value;
+            const applies_to = document.getElementById('hr-cel-applies-to').value;
+            const icon = document.getElementById('hr-cel-icon').value.trim() || null;
+            const animation_style = document.getElementById('hr-cel-animation').value;
+            const message = document.getElementById('hr-cel-message').value.trim() || null;
+            const banner_message = document.getElementById('hr-cel-banner-message').value.trim() || null;
+            const popup_enabled = document.getElementById('hr-cel-popup-enabled').checked;
+            const banner_enabled = document.getElementById('hr-cel-banner-enabled').checked;
+            if (!title || !event_date) { alert('Title and Event Date are required.'); return; }
+            if (advance_start_date && advance_start_date > event_date) { alert('Advance Wishes Start must be on or before the Event Date.'); return; }
+            try {
+                await dbInstance.from('hr_celebration_events').insert([{ title, event_date, advance_start_date, event_type, applies_to, icon, animation_style, message, banner_message, popup_enabled, banner_enabled }]);
+                closeHRCelebrationModal();
+                await loadHRData();
+                renderHRCelebrations();
+            } catch (e) { alert('Could not save celebration: ' + e.message); }
+        }
+
+// ── deleteHRCelebration ──
+        async function deleteHRCelebration(id) {
+            if (!(await showConfirm('This cannot be undone.', { title: 'Remove this celebration?', confirmLabel: 'Remove', danger: true }))) return;
+            await dbInstance.from('hr_celebration_events').delete().eq('id', id);
+            await loadHRData();
+            renderHRCelebrations();
+        }
+
+// ── renderHRCelebrations ──
+        function renderHRCelebrations() {
+            const appliesToLabel = { all: 'All Employees', production: 'Production House', education: 'Education', sales: 'Sales', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+            const typeLabel = { festival: 'Festival', national_day: 'National Day', company_event: 'Company Event', custom: 'Custom' };
+            const rows = [...(hrCelebrationEvents || [])].sort((a,b) => a.event_date.localeCompare(b.event_date));
+            document.getElementById('hr-celebrations-rows').innerHTML = rows.length ? rows.map(ev => `
+                <tr class="hover:bg-white/[0.02]">
+                    <td data-label="Event Date" class="py-2.5 px-4 text-white font-semibold">${new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
+                    <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">${ev.icon ? ev.icon + ' ' : ''}${ev.title}</td>
+                    <td data-label="Type" class="py-2.5 px-4 text-[#a5adcf]">${typeLabel[ev.event_type] || ev.event_type}</td>
+                    <td data-label="Advance Start" class="py-2.5 px-4 text-[#a5adcf]">${ev.advance_start_date ? new Date(ev.advance_start_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—'}</td>
+                    <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
+                    <td data-label="Popup" class="py-2.5 px-4 text-[#a5adcf]">${ev.popup_enabled === false ? 'No' : 'Yes'}</td>
+                    <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : 'Yes'}</td>
+                    <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHRCelebration('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
+                </tr>
+            `).join('') : `<tr><td colspan="8" class="py-8 text-center text-[#4a5182] text-xs">No celebrations added yet.</td></tr>`;
+        }
+
 // ── updateHRPayrollNetPreview (orig line 10738) ──
         function updateHRPayrollNetPreview() {
             const g = id => parseFloat(document.getElementById(id).value) || 0;
@@ -4813,7 +4966,18 @@
             }
             renderHRSidebarIdentity();
             if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
-            initHRPanel();
+            initHRPanel().then(() => {
+                // Celebration engine (common.js) — the HR admin is an employee too, and this
+                // is the one page where hrEmployees already holds the FULL roster (loadHRData,
+                // not the self-service loadMyHRData), so "me" is found directly from it rather
+                // than calling checkForHRNotifications() here, which would call loadMyHRData()
+                // and overwrite hrEmployees with just [me, ...team] — breaking this page's own
+                // Employees list.
+                if (typeof runCelebrationQueue === 'function') {
+                    const me = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
+                    if (me) runCelebrationQueue(me);
+                }
+            });
             updateHRHeaderDateTime();
             setInterval(updateHRHeaderDateTime, 1000);
             if (window.lucide) lucide.createIcons();

@@ -175,3 +175,27 @@ create table if not exists hr_official_events (
   created_at timestamptz not null default now()
 );
 create index if not exists hr_official_events_date_idx on hr_official_events (event_date, applies_to);
+
+-- ============ Phase 9 — Company-wide Celebration / Wishes Events ============
+-- Run in the MEDIA SUITE project (fevqnpllmarhoqdzpatq, same consolidated project). Idempotent.
+-- HR-configurable festival/national-day/custom celebration records that drive the shared
+-- celebration popup+banner engine in common.js (see computeTodaysCelebrations). Deliberately
+-- does NOT store Birthday or Work Anniversary rows — those are computed live off
+-- hr_employees.dob / joining_date every time, exactly like the rest of this app avoids
+-- duplicating a fact that already lives on the employee record elsewhere.
+create table if not exists hr_celebration_events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  event_type text not null default 'custom', -- 'festival' | 'national_day' | 'company_event' | 'custom'
+  event_date date not null,
+  advance_start_date date, -- optional; when set, dates in [advance_start_date, event_date) show the advance message instead of the actual-day one
+  message text,            -- popup body
+  banner_message text,     -- falls back to `message` if blank
+  popup_enabled boolean not null default true,
+  banner_enabled boolean not null default true,
+  animation_style text not null default 'confetti', -- 'confetti' | 'balloons' | 'floral' | 'tricolor' | 'snow' | 'gold'
+  applies_to text not null default 'all', -- 'all' | 'production' | 'education' | 'sales' | 'hr' | 'accounts' | 'other' — matches hr_employees.division
+  icon text,                -- single emoji shown on the popup/banner
+  created_at timestamptz not null default now()
+);
+create index if not exists hr_celebration_events_date_idx on hr_celebration_events (event_date, applies_to);
