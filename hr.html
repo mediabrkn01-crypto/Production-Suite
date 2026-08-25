@@ -2026,6 +2026,7 @@
                 // other table here, so the rest of HR keeps working while this one feature
                 // just has nothing to show until the migration is run.
                 hrOfficialEvents = officialEvents.data || [];
+                if (celebrationEvents.error) console.error('Celebration engine: hr_celebration_events fetch failed —', celebrationEvents.error.message);
                 hrCelebrationEvents = celebrationEvents.data || []; // same missing-table safety as above — no celebration UI until the Phase 9 migration is run
                 hrEmployeeDocuments = empDocs.data || [];
                 hrCompanySettings = (settings.data && settings.data[0]) || { weekly_off_sunday: true, weekly_off_saturday: false };
@@ -5073,21 +5074,29 @@
             renderHRSidebarIdentity();
             if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
             initHRPanel().then(() => {
-                // Celebration engine (common.js) — the HR admin is an employee too, and this
-                // is the one page where hrEmployees already holds the FULL roster (loadHRData,
-                // not the self-service loadMyHRData), so "me" is found directly from it rather
-                // than calling checkForHRNotifications() here, which would call loadMyHRData()
-                // and overwrite hrEmployees with just [me, ...team] — breaking this page's own
-                // Employees list.
-                if (typeof runCelebrationQueue === 'function') {
-                    const me = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
-                    if (me) runCelebrationQueue(me);
-                }
+                runHRCelebrationCheck();
+                // Re-check periodically, not just once at boot — matches index.html's own
+                // 20s-throttled poll, so a celebration HR (or another admin) creates while this
+                // page is already open still reaches them without a full reload.
+                setInterval(runHRCelebrationCheck, 60000);
             });
             updateHRHeaderDateTime();
             setInterval(updateHRHeaderDateTime, 1000);
             if (window.lucide) lucide.createIcons();
         })();
+
+// ── runHRCelebrationCheck ──
+        // The HR admin is an employee too, and this is the one page where hrEmployees already
+        // holds the FULL roster (loadHRData, not the self-service loadMyHRData), so "me" is
+        // found directly from it here rather than calling checkForHRNotifications(), which
+        // would call loadMyHRData() and overwrite hrEmployees with just [me, ...team] —
+        // breaking this page's own Employees list.
+        function runHRCelebrationCheck() {
+            if (typeof runCelebrationQueue !== 'function') return;
+            const me = hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
+            if (!me) { console.warn('Celebration engine: no HR employee record linked to this login — skipping.'); return; }
+            runCelebrationQueue(me);
+        }
 
         function logoutFromHR() {
             localStorage.removeItem('be_active_user');

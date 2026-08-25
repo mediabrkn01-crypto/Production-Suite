@@ -275,6 +275,7 @@ async function loadMyHRData() {
             ]);
             hrHolidays = hol.data || [];
             hrOfficialEvents = oe.data || [];
+            if (cel.error) console.error('Celebration engine: hr_celebration_events fetch failed —', cel.error.message);
             hrCelebrationEvents = cel.data || [];
             if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
             myHRDataLoaded = true;
@@ -319,6 +320,7 @@ async function loadMyHRData() {
         hrSalaryHistory = salHist.data || [];
         hrHolidays = hol.data || [];
         hrOfficialEvents = oe.data || [];
+        if (cel.error) console.error('Celebration engine: hr_celebration_events fetch failed —', cel.error.message);
         hrCelebrationEvents = cel.data || [];
         if (settings.data && settings.data[0]) hrCompanySettings = settings.data[0];
         if (!attLogs.error) window._hrAttendanceLogsCache = attLogs.data || [];
@@ -2526,6 +2528,10 @@ function hrOfficialEventFor(employee, dateStr) {
             };
             preload.onerror = () => {
                 if (_celebrationQueue[0] !== item) return;
+                // Log the actual failure (spec item 12) rather than silently skipping —
+                // popup_image_base64 truncated in the log since it's a data URL (can be
+                // hundreds of KB), only its length is useful for diagnosing a corrupt upload.
+                console.error(`Celebration engine: popup image failed to load for event "${item.key}" (type: ${item.type}). Image data length: ${item.popupImage ? item.popupImage.length : 0}.`);
                 closeCelebrationPopup(); // skip this one safely — never leave a broken-image modal open
             };
             preload.src = item.popupImage;
@@ -2544,7 +2550,7 @@ function hrOfficialEventFor(employee, dateStr) {
             const host = ensureCelebrationBannerHost();
             host.innerHTML = items.map(it => `
                 <div id="celeb-banner-${it.key}" class="be-celeb-banner-item">
-                    <img src="${it.bannerImage}" alt="${it.title}" loading="lazy" onerror="this.closest('.be-celeb-banner-item')?.remove()">
+                    <img src="${it.bannerImage}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner image failed to load for event &quot;${it.key}&quot; (type: ${it.type}).');this.closest('.be-celeb-banner-item')?.remove()">
                     <button onclick="dismissCelebrationBanner('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button>
                 </div>
             `).join('');

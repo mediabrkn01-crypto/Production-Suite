@@ -1676,16 +1676,32 @@ async function boot(){
   // company-wide events (hrCelebrationEvents) are otherwise never fetched on this page at all
   // — academics.html doesn't call loadMyHRData() for anything else, so fetch just this one
   // table directly rather than pulling in loadMyHRData()'s full attendance/leave/payroll set.
-  if (typeof runCelebrationQueue === 'function') {
-    _acadGetMyHREmployeeRecord().then(async me => {
-      if (!me) return;
-      try {
-        const { data } = await mediaHrDB.from('hr_celebration_events').select('*').order('event_date', { ascending: true });
-        hrCelebrationEvents = data || [];
-      } catch (e) { /* table may not exist yet — celebration engine still runs fine for birthday/anniversary */ }
-      runCelebrationQueue(me);
-    });
+  runAcadCelebrationCheck();
+  // Re-check periodically (not just once at boot) — a celebration HR creates while this
+  // trainer already has the page open must still reach them without a full reload, same as
+  // index.html's own 20s-throttled poll. 60s is plenty for something that's date-scoped to
+  // begin with (spec item 1/12). boot() can run more than once per page (alternate login
+  // paths) — guarded so a second boot() never stacks a second interval.
+  if (!window._acadCelebrationIntervalSet) {
+    window._acadCelebrationIntervalSet = true;
+    setInterval(runAcadCelebrationCheck, 60000);
   }
+}
+
+function runAcadCelebrationCheck() {
+  if (typeof runCelebrationQueue !== 'function') return;
+  _acadGetMyHREmployeeRecord().then(async me => {
+    if (!me) { console.warn('Celebration engine: no HR employee record linked to this login — skipping.'); return; }
+    try {
+      const { data, error } = await mediaHrDB.from('hr_celebration_events').select('*').order('event_date', { ascending: true });
+      if (error) { console.error('Celebration engine: hr_celebration_events fetch failed —', error.message); hrCelebrationEvents = []; }
+      else { hrCelebrationEvents = data || []; }
+    } catch (e) {
+      console.error('Celebration engine: hr_celebration_events fetch threw —', e.message);
+      hrCelebrationEvents = [];
+    }
+    runCelebrationQueue(me);
+  });
 }
 
 // Sidebar tab switching for the Academic Module shell. Nothing here re-fetches data —
