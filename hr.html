@@ -1846,6 +1846,24 @@
         </div>
     </div>
 
+    <!-- HR Overview stat-card detail modal — one shared modal, populated per-category by
+         hrOpenDashboardDetail(key). Same table/badge components used everywhere else in HR,
+         not a new design language. -->
+    <div id="hr-dashboard-detail-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:640px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white" id="hr-dashboard-detail-title">Details</h3>
+                <button onclick="hrCloseDashboardDetail()" class="hr-icon-btn">✕</button>
+            </div>
+            <div class="overflow-x-auto" style="max-height:60vh;overflow-y:auto">
+                <table class="w-full text-sm text-left">
+                    <thead id="hr-dashboard-detail-head" class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]"></thead>
+                    <tbody id="hr-dashboard-detail-rows" class="divide-y divide-white/[0.05]"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div id="call-toast" class="hidden fixed top-5 left-1/2 -translate-x-1/2 z-[95] bg-transparent border border-orange-500/40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
         <i data-lucide="bell" class="w-4 h-4 text-white/70 shrink-0"></i>
         <span id="call-toast-text"></span>
@@ -2321,7 +2339,19 @@
             const manuallyMarkedPresentIds = new Set(hrAttendance.filter(a => a.att_date === todayStr && HR_PRESENT_STATUSES.includes(a.status)).map(a => a.employee_id));
             const portalPresentIds = new Set(hrEmployees.filter(e => hrPortalLogFor(e, todayStr)).map(e => e.id));
             const todayPresent = new Set([...manuallyMarkedPresentIds, ...portalPresentIds]).size;
-            const onLeaveToday = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr).length;
+            // WFH vs actual leave (spec: "Work From Home is NOT Leave") — hr_leave_requests has
+            // no separate WFH table; a WFH day is just an approved leave row whose leave_type is
+            // the literal 'Work From Home' string (same convention hrAttDayCode/hrApprovedLeaveFor
+            // already use to render the 'WFH' attendance code instead of 'PL'/'UL' — this is the
+            // one existing resolved-status distinction, not a second/conflicting calculation).
+            // Deduped to one employee per bucket (spec item 9 — "one employee = one primary
+            // status"); WFH wins a same-day overlap with a non-WFH leave row, an edge case that
+            // shouldn't normally occur but must still resolve to exactly one category if it does.
+            const approvedTodayLeaveReqs = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr);
+            const wfhEmployeeIdsToday = new Set(approvedTodayLeaveReqs.filter(r => r.leave_type === 'Work From Home').map(r => r.employee_id));
+            const onLeaveEmployeeIdsToday = new Set(approvedTodayLeaveReqs.filter(r => r.leave_type !== 'Work From Home' && !wfhEmployeeIdsToday.has(r.employee_id)).map(r => r.employee_id));
+            const onLeaveToday = onLeaveEmployeeIdsToday.size;
+            const wfhToday = wfhEmployeeIdsToday.size;
             const pendingLeave = hrLeaveRequests.filter(r => r.status === 'pending').length;
 
             const absentToday = hrAttendance.filter(a => a.att_date === todayStr && a.status === 'absent').length;
@@ -2397,15 +2427,20 @@
             // Colors are drawn from the existing --purple/--blue/--amber/--pink/--cyan palette
             // already declared in :root above; no new colors introduced. ──
             const stats = [
-                { label: 'Total Employees', sub: 'Across all departments', num: total, icon: 'users', color: 'var(--blue)' },
-                { label: 'Present Today', sub: 'Marked attendance', num: todayPresent, icon: 'user-check', color: 'var(--green)' },
-                { label: 'On Leave', sub: 'Enjoying time off', num: onLeaveToday, icon: 'palmtree', color: 'var(--amber)' },
-                { label: 'New Employees', sub: 'This month', num: newThisMonth, icon: 'user-plus', color: 'var(--purple)' },
-                { label: 'Pending Leave Requests', sub: 'Requires approval', num: pendingLeave, icon: 'calendar-clock', color: 'var(--cyan)' },
-                { label: 'Pending Payroll', sub: 'This payroll cycle', num: pendingPayroll, icon: 'wallet', color: 'var(--pink)' }
+                { key: 'total', label: 'Total Employees', sub: 'Across all departments', num: total, icon: 'users', color: 'var(--blue)' },
+                { key: 'present', label: 'Present Today', sub: 'Marked attendance', num: todayPresent, icon: 'user-check', color: 'var(--green)' },
+                { key: 'leave', label: 'On Leave', sub: 'Enjoying time off', num: onLeaveToday, icon: 'palmtree', color: 'var(--amber)' },
+                { key: 'wfh', label: 'Work From Home', sub: 'Working remotely today', num: wfhToday, icon: 'home', color: 'var(--purple)' },
+                { key: 'new', label: 'New Employees', sub: 'This month', num: newThisMonth, icon: 'user-plus', color: 'var(--purple)' },
+                { key: 'pending_leave', label: 'Pending Leave Requests', sub: 'Requires approval', num: pendingLeave, icon: 'calendar-clock', color: 'var(--cyan)' },
+                { key: 'pending_payroll', label: 'Pending Payroll', sub: 'This payroll cycle', num: pendingPayroll, icon: 'wallet', color: 'var(--pink)' }
             ];
+            // Every card opens the same detail modal, scoped to that card's own category
+            // (spec item 5) — hrOpenDashboardDetail resolves the exact list from the exact same
+            // hrLeaveRequests/hrAttendance/hrEmployees/hrPayroll arrays this function itself just
+            // used, so the modal can never disagree with the number on the card.
             document.getElementById('hr-dash-stats').innerHTML = stats.map(s => `
-                <div class="hr-stat-card" style="display:flex;align-items:flex-start;gap:12px">
+                <div class="hr-stat-card" onclick="hrOpenDashboardDetail('${s.key}')" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hrOpenDashboardDetail('${s.key}');}">
                     <div style="background:color-mix(in srgb, ${s.color} 16%, transparent);color:${s.color};border-radius:10px;padding:9px;flex-shrink:0"><i data-lucide="${s.icon}" style="width:18px;height:18px"></i></div>
                     <div style="min-width:0"><div class="num">${s.num}</div><div class="label" style="text-transform:none;letter-spacing:normal;font-size:11px;color:#c7cbe0;font-weight:600">${s.label}</div><div style="font-size:10px;color:#6b74a0;margin-top:1px">${s.sub}</div></div>
                 </div>
@@ -2438,10 +2473,13 @@
             document.getElementById('hr-dash-workforce-rows').innerHTML = activeEmps.length ? activeEmps.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
                 const portalLog = hrPortalLogFor(e, todayStr);
-                const onLeave = hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr);
+                // WFH is its own resolved status, never folded into "On Leave" (same
+                // leave_type==='Work From Home' distinction as the dashboard tiles above).
+                const isWFH = hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.leave_type === 'Work From Home' && r.start_date <= todayStr && r.end_date >= todayStr);
+                const onLeave = !isWFH && hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.leave_type !== 'Work From Home' && r.start_date <= todayStr && r.end_date >= todayStr);
                 const effectiveStatus = rec ? rec.status : (portalLog ? 'present' : null);
-                const status = onLeave ? 'On Leave' : effectiveStatus ? effectiveStatus.replace('_',' ') : 'Not marked';
-                const badgeClass = onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
+                const status = isWFH ? 'WFH' : onLeave ? 'On Leave' : effectiveStatus ? effectiveStatus.replace('_',' ') : 'Not marked';
+                const badgeClass = isWFH ? 'hr-badge-wfh' : onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
                 const checkIn = rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
                 return `<tr class="hover:bg-white/[0.02]">
                     <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 26)}<span>${e.full_name}</span></div></td>
@@ -2452,6 +2490,89 @@
                     <td class="py-2.5 px-4 text-right"><button onclick="openHREmployeeProfile('${e.id}')" title="View profile" class="text-[#6b74a0] hover:text-white p-1 rounded"><i data-lucide="more-vertical" class="w-4 h-4"></i></button></td>
                 </tr>`;
             }).join('') : `<tr><td colspan="6" class="py-8 text-center text-[#4a5182] text-xs">No active employees yet.</td></tr>`;
+        }
+
+        // HR Overview stat cards — click-through detail (spec item 5). Every category here
+        // resolves its list from the exact same arrays/conditions renderHRDashboard() just used
+        // for that same card's own number (todayStr, HR_PRESENT_STATUSES, the WFH-vs-leave
+        // leave_type split above) — never a second, differently-computed status.
+        const HR_DASHBOARD_DETAIL_HEAD = {
+            total: ['Employee', 'Department', 'Designation', 'Status'],
+            present: ['Employee', 'Department', 'Designation', 'Check-in', 'Status'],
+            leave: ['Employee', 'Department', 'Designation', 'Leave Type', 'Dates'],
+            wfh: ['Employee', 'Department', 'Designation', 'WFH Date', 'Status'],
+            new: ['Employee', 'Department', 'Designation', 'Joining Date'],
+            pending_leave: ['Employee', 'Leave Type', 'Dates', 'Status'],
+            pending_payroll: ['Employee', 'Month', 'Net Salary', 'Status']
+        };
+        const HR_DASHBOARD_DETAIL_TITLE = {
+            total: 'Total Employees', present: 'Present Today', leave: 'On Leave',
+            wfh: 'Work From Home Today', new: 'New Employees This Month',
+            pending_leave: 'Pending Leave Requests', pending_payroll: 'Pending Payroll'
+        };
+        const HR_DIVISION_LABEL = { education: 'Academic', production: 'Media / Production', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Other' };
+        function hrOpenDashboardDetail(key) {
+            const todayStr = new Date().toISOString().slice(0,10);
+            const activeEmps = hrEmployees.filter(e => e.employment_status === 'active');
+            let rows = [];
+            if (key === 'total') {
+                rows = hrEmployees.map(e => [
+                    `<span style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}${e.full_name}</span>`,
+                    HR_DIVISION_LABEL[e.division] || e.division || '—', e.designation || '—',
+                    `<span class="hr-badge ${e.employment_status === 'active' ? 'hr-badge-active' : 'hr-badge-inactive'}">${e.employment_status || '—'}</span>`
+                ]);
+            } else if (key === 'present') {
+                const manuallyMarkedPresentIds = new Set(hrAttendance.filter(a => a.att_date === todayStr && HR_PRESENT_STATUSES.includes(a.status)).map(a => a.employee_id));
+                const portalPresentIds = new Set(hrEmployees.filter(e => hrPortalLogFor(e, todayStr)).map(e => e.id));
+                const presentIds = new Set([...manuallyMarkedPresentIds, ...portalPresentIds]);
+                rows = activeEmps.filter(e => presentIds.has(e.id)).map(e => {
+                    const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
+                    const portalLog = hrPortalLogFor(e, todayStr);
+                    const checkIn = rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+                    const st = rec ? rec.status.replace('_',' ') : 'present';
+                    return [`<span style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}${e.full_name}</span>`, HR_DIVISION_LABEL[e.division] || e.division || '—', e.designation || '—', checkIn, `<span class="hr-badge hr-badge-${rec ? rec.status : 'present'}">${st}</span>`];
+                });
+            } else if (key === 'leave' || key === 'wfh') {
+                const isWfhKey = key === 'wfh';
+                const reqs = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr && (isWfhKey ? r.leave_type === 'Work From Home' : r.leave_type !== 'Work From Home'));
+                // Same WFH-priority dedupe as the card count — an employee only ever appears in
+                // exactly one of these two lists.
+                const wfhIds = new Set(hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr && r.leave_type === 'Work From Home').map(r => r.employee_id));
+                const filteredReqs = isWfhKey ? reqs : reqs.filter(r => !wfhIds.has(r.employee_id));
+                rows = filteredReqs.map(r => {
+                    const e = hrEmployees.find(x => x.id === r.employee_id);
+                    return [
+                        `<span style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e || hrEmpName(r.employee_id), 24)}${e ? e.full_name : hrEmpName(r.employee_id)}</span>`,
+                        e ? (HR_DIVISION_LABEL[e.division] || e.division || '—') : '—', e ? (e.designation || '—') : '—',
+                        isWfhKey ? `${r.start_date}${r.end_date !== r.start_date ? ' → ' + r.end_date : ''}` : r.leave_type,
+                        isWfhKey ? `<span class="hr-badge hr-badge-active">Approved</span>` : `${r.start_date} → ${r.end_date}`
+                    ];
+                });
+            } else if (key === 'new') {
+                const now = new Date(), thisMonth = now.getMonth(), thisYear = now.getFullYear();
+                rows = hrEmployees.filter(e => e.joining_date && new Date(e.joining_date).getMonth() === thisMonth && new Date(e.joining_date).getFullYear() === thisYear)
+                    .map(e => [`<span style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}${e.full_name}</span>`, HR_DIVISION_LABEL[e.division] || e.division || '—', e.designation || '—', e.joining_date]);
+            } else if (key === 'pending_leave') {
+                rows = hrLeaveRequests.filter(r => r.status === 'pending').map(r => [
+                    hrEmpName(r.employee_id), r.leave_type, `${r.start_date} → ${r.end_date}`, `<span class="hr-badge hr-badge-pending">Pending</span>`
+                ]);
+            } else if (key === 'pending_payroll') {
+                rows = hrPayroll.filter(p => p.payment_status === 'pending').map(p => [
+                    hrEmpName(p.employee_id), p.month, `₹${(p.net_salary||0).toLocaleString('en-IN')}`, `<span class="hr-badge hr-badge-pending">Pending</span>`
+                ]);
+            } else { return; }
+
+            document.getElementById('hr-dashboard-detail-title').textContent = HR_DASHBOARD_DETAIL_TITLE[key] || 'Details';
+            const head = HR_DASHBOARD_DETAIL_HEAD[key] || [];
+            document.getElementById('hr-dashboard-detail-head').innerHTML = `<tr>${head.map(h => `<th class="py-3 px-4">${h}</th>`).join('')}</tr>`;
+            document.getElementById('hr-dashboard-detail-rows').innerHTML = rows.length
+                ? rows.map(cols => `<tr>${cols.map((c, i) => `<td data-label="${head[i] || ''}" class="py-2.5 px-4 text-[#e6e9f5]">${c}</td>`).join('')}</tr>`).join('')
+                : `<tr><td colspan="${head.length || 1}" class="py-8 text-center text-[#4a5182] text-xs">Nothing to show here right now.</td></tr>`;
+            document.getElementById('hr-dashboard-detail-modal').classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+        function hrCloseDashboardDetail() {
+            document.getElementById('hr-dashboard-detail-modal')?.classList.add('hidden');
         }
 
 // ── hrNextOccurrence (orig line 8961) ──
