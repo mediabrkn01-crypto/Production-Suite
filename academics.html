@@ -134,8 +134,18 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
   table:not(.acad-matrix-table) td[data-label]::before{content:attr(data-label);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b74a0}
   table:not(.acad-matrix-table) td:empty{display:none}
   .acad-matrix-table{min-width:640px}
+
+  /* My Calendar (loadScheduleTab) — the desktop time-row × day-column matrix is genuinely
+     unreadable squeezed into a phone width even with horizontal scroll (7 day columns × many
+     time rows), so mobile gets its own day-stacked list instead of a shrunk copy of the same
+     table — both are rendered, CSS just picks which one shows. */
+  .acad-calendar-desktop{display:none!important}
+  .acad-calendar-mobile{display:block!important}
 }
-@media(min-width:768px){#mobile-topbar{display:none!important}aside{display:flex!important}}
+@media(min-width:768px){
+  #mobile-topbar{display:none!important}aside{display:flex!important}
+  .acad-calendar-mobile{display:none!important}
+}
 
 /* ── Scrollbar — identical to index.html/hr.html's global thin/subtle treatment. This
    page had none at all before, so every scroll area (sidebar nav, main content, modals)
@@ -358,7 +368,7 @@ details[open] .rawsum::before{content:'▾ '}
              scoped data window._liveBatches already used for "Batches"/"Student Attendance"
              above, so a Trainer only ever sees their own past batches here (Head sees all),
              with no separate query or permission logic needed. -->
-        <button class="acad-nav-link sidebar-link" id="nav-acad-previous" onclick="acadSwitchTab('previous')"><i data-lucide="history" style="width:14px;height:14px"></i> Previous Classes</button>
+        <button class="acad-nav-link sidebar-link" id="nav-acad-previous" onclick="acadSwitchTab('previous')"><i data-lucide="history" style="width:14px;height:14px"></i> Finished Batches</button>
         <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-createbatch" onclick="acadSwitchTab('createbatch')"><i data-lucide="square-plus" style="width:14px;height:14px"></i> Create Batch</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-students" onclick="acadSwitchTab('students')"><i data-lucide="graduation-cap" style="width:14px;height:14px"></i> <span id="nav-acad-students-label">Students</span></button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-classes" onclick="acadSwitchTab('classes')"><i data-lucide="presentation" style="width:14px;height:14px"></i> <span id="nav-acad-classes-label">Classes</span></button>
@@ -375,7 +385,11 @@ details[open] .rawsum::before{content:'▾ '}
              common employee items shared with every other department (see below). -->
         <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-mybatches" onclick="acadSwitchTab('mybatches')"><i data-lucide="book-marked" style="width:14px;height:14px"></i> My Batches</button>
         <button class="acad-nav-link sidebar-link" id="nav-acad-tasks" onclick="acadSwitchTab('tasks')"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
-        <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-logs" onclick="acadSwitchTab('logs')"><i data-lucide="notebook" style="width:14px;height:14px"></i> Logs</button>
+        <!-- Standalone "Logs" removed — class logs are now recorded directly inside Mark
+             Attendance (Student Attendance tab) and read back via each batch's own Session
+             History, not a separate nav item. Old sessions rows (logged the previous way)
+             are never deleted — Session History reads the same `sessions` table, old and new
+             rows alike. -->
       </div>
       <div style="margin-bottom:14px">
         <div class="nav-section-title">MY WORKSPACE</div>
@@ -522,14 +536,15 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
       </div>
 
-      <!-- Previous Classes — completed batches only (loadLive() splits active/previous by
-           real session progress, see the comment there), kept out of the main active list so
-           it doesn't keep growing forever. Historical data (attendance, roster, progress) is
-           never deleted, just rendered here via the same card() component instead. -->
+      <!-- Finished Batches (was "Previous Classes") — completed batches only (loadLive()
+           splits active/previous by real session progress, see the comment there), kept out
+           of the main active list so it doesn't keep growing forever. Historical data
+           (attendance, roster, progress, class logs) is never deleted, just rendered here via
+           the same card() component instead. -->
       <div class="acad-tab" id="tab-acad-previous">
         <div class="section">
-          <h2>Previous Classes</h2>
-          <div class="lv-note">Batches that have reached their full session count. Attendance and student history are preserved — nothing here is deleted.</div>
+          <h2>Finished Batches</h2>
+          <div class="lv-note">Batches that have reached their full session count. Attendance, class logs, and student history are all preserved — nothing here is deleted.</div>
           <div id="previousClasses" class="loading">Loading…</div>
         </div>
       </div>
@@ -668,14 +683,6 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="section role-restricted-only hidden" id="clockOnly">
           <h2>My Workspace</h2>
           <div class="empty">Welcome! Use the <b>Clock In / Clock Out</b> button above to record your working hours — they go straight to HR. Your team dashboards live in your own portals.</div>
-        </div>
-      </div>
-
-      <div class="acad-tab" id="tab-acad-logs">
-        <div class="section role-trainer-only hidden">
-          <h2>Log a Session <button onclick="openModal('session')">+ Log Session</button></h2>
-          <table><thead><tr><th>Student</th><th>Date</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead>
-            <tbody id="myLogs"></tbody></table>
         </div>
       </div>
 
@@ -873,11 +880,18 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
       </div>
 
-      <!-- Schedule — weekly timetable grid built from batches.day_pattern + time_slot. -->
+      <!-- Schedule / My Calendar — a real weekly timetable generated from active batch
+           allocations (day_pattern + time_slot + trainer_id), never manually typed. Two
+           renders of the SAME data (desktop time-row × day-column matrix; mobile day-stacked
+           list) — CSS picks which one shows, see the @media rules above. Automatically drops
+           a batch once its sessions are 100% done (same rule My Batches/Finished Batches use)
+           and updates the instant the Academic Head changes a batch's schedule, since nothing
+           here is stored separately from `batches` itself. -->
       <div class="acad-tab" id="tab-acad-schedule">
         <div class="section">
           <h2><span id="tab-acad-schedule-label">Weekly Timetable</span></h2>
-          <div id="scheduleGrid" class="loading">Loading…</div>
+          <div id="scheduleGrid" class="loading acad-calendar-desktop">Loading…</div>
+          <div id="scheduleGridMobile" class="loading acad-calendar-mobile" style="display:none">Loading…</div>
         </div>
       </div>
 
@@ -1014,17 +1028,6 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('assignment')">Cancel</button><button class="btn-save" onclick="saveAssignment()">Save</button></div>
 </div></div>
 
-<div class="modal-bg" id="modalSession"><div class="modal">
-  <h3>Log Session</h3>
-  <select id="m_s_batch"></select>
-  <input id="m_s_student" placeholder="Student name"/>
-  <input id="m_s_date" type="date"/>
-  <select id="m_s_type"><option value="group">Group</option><option value="one-on-one">1-on-1</option><option value="masterclass">Masterclass</option><option value="activity">Activity</option></select>
-  <select id="m_s_status"><option value="completed">Completed</option><option value="pending">Pending</option><option value="absent">Absent</option></select>
-  <input id="m_s_notes" placeholder="Session summary notes"/>
-  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('session')">Cancel</button><button class="btn-save" onclick="saveSession()">Save</button></div>
-</div></div>
-
 <div class="modal-bg" id="modalStudent"><div class="modal" style="width:460px">
   <h3>Add Student · manual entry</h3>
   <div class="mhint" style="margin-bottom:10px">Only the name is required. Pick a course to auto-fill the fee. Enrolment date = the first payment date. Leave batch blank to add them later from the batch.</div>
@@ -1087,10 +1090,33 @@ details[open] .rawsum::before{content:'▾ '}
   <h3 id="att_title">Attendance</h3>
   <div class="mrow">
     <input id="att_num" type="number" placeholder="Session #" value="1"/>
-    <input id="att_date" type="date"/>
+    <input id="att_date" type="date" onchange="loadClassLogForAttDate()"/>
   </div>
   <div id="att_list" style="max-height:340px;overflow:auto;margin:10px 0"></div>
-  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('att')">Cancel</button><button class="btn-save" onclick="saveAtt()">Save Attendance</button></div>
+  <!-- Class Log — merged directly into Mark Attendance (was a separate "Log a Session" tab/
+       modal). One log per batch+date, not per student — the actual use case is "what did I
+       teach in THIS class", recorded at the same time as attendance. Reuses the existing
+       `sessions` table (batch_id/session_date/notes), just with student_id left null since
+       this isn't about one specific student — old per-student rows from the previous Log a
+       Session feature are untouched and still readable in Session History below. -->
+  <div class="subhead" style="margin:14px 0 8px">Class Log / Today's Class Notes</div>
+  <textarea id="att_class_log" placeholder="What was taught in today's class? (topics covered, activities, homework, notes...)" style="min-height:80px;width:100%"></textarea>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('att')">Cancel</button>
+    <button class="btn-save" onclick="saveAtt()">Save Attendance &amp; Class Log</button>
+  </div>
+  <div style="text-align:center;margin-top:10px"><span style="color:var(--k2);cursor:pointer;font-size:12.5px" onclick="openSessionHistory()">View Session History for this batch</span></div>
+</div></div>
+
+<!-- Session History — past sessions for one batch: date, trainer, attendance summary, class
+     log. Replaces the standalone "Logs" tab (spec: do not delete existing log data — this
+     reads the same `sessions` + `attendance` rows, old and new alike, just per-batch instead
+     of a flat "my last 20 logs" list). Available to both the trainer who taught the batch and
+     the Academic Head. -->
+<div class="modal-bg" id="modalSessionHistory"><div class="modal" style="width:520px">
+  <h3 id="sessionHistoryTitle">Session History</h3>
+  <div id="sessionHistoryList" style="max-height:420px;overflow:auto;margin:10px 0"></div>
+  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('sessionHistory')">Close</button></div>
 </div></div>
 
 <script>
@@ -1451,9 +1477,12 @@ async function loadLive(){
           <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          ${isPrevious ? '<span class="badge b-active">Completed</span>' : `
+          ${isPrevious ? `<span class="badge b-active">Completed</span>
+          <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
+          ` : `
           ${isHead&&!b.elite?`<button class="act-btn" onclick="renameBatch(${i})">Rename</button>`:''}
           ${isHead?`<button class="act-btn" onclick="setBaseline(${i})">Set Progress</button>`:''}
+          <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
           <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
           `}
         </div>
@@ -1513,7 +1542,29 @@ async function openAtt(i){
   document.getElementById('att_title').innerHTML=esc(b.name)+' <span style="font-weight:400;opacity:.6;font-size:13px">\u00b7 session '+next+' of '+total+' \u00b7 '+dn+' done</span>';
   document.getElementById('att_date').value=new Date().toISOString().slice(0,10);
   document.getElementById('att_list').innerHTML=b.students.map(function(s,j){return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.08)"><span>'+esc(s.name)+'</span><label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" id="att_'+j+'" checked/> Present</label></div>';}).join('');
+  // Resolve the real batch_id (b.raw/b.name here is just the batch_name string \u2014 loadLive()
+  // groups by name, not by batches.id) \u2014 needed for the class log's sessions.batch_id FK.
+  // Cached on window so saveAtt()/loadClassLogForAttDate() don't each re-look it up.
+  try {
+    const { data: batchRow } = await sb.from('batches').select('id').eq('name', b.raw||b.name).maybeSingle();
+    window._attBatchId = batchRow ? batchRow.id : null;
+  } catch(e) { window._attBatchId = null; }
+  await loadClassLogForAttDate();
   document.getElementById('modalAtt').classList.add('on');
+}
+// Loads any already-saved class log for this batch on the currently-selected date (student_id
+// is null \u2014 a class log is about the whole class, not one student, distinct from the old
+// per-student "Log a Session" rows this same table also holds) \u2014 lets a trainer revisit and
+// edit the same day's notes instead of only ever appending new ones.
+async function loadClassLogForAttDate(){
+  const el = document.getElementById('att_class_log');
+  if (!el) return;
+  const date = document.getElementById('att_date').value;
+  if (!window._attBatchId || !date) { el.value=''; return; }
+  try {
+    const { data } = await sb.from('sessions').select('notes').eq('batch_id', window._attBatchId).eq('session_date', date).is('student_id', null).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    el.value = data ? (data.notes || '') : '';
+  } catch(e) { el.value=''; }
 }
 async function saveAtt(){
   const b=window._attBatch; if(!b)return;
@@ -1521,9 +1572,74 @@ async function saveAtt(){
   const date=document.getElementById('att_date').value||new Date().toISOString().slice(0,10);
   const rows=b.students.map(function(s,j){return {batch_name:b.name,student_uin:s.uin,session_num:num,session_date:date,status:document.getElementById('att_'+j).checked?'present':'absent',marked_by:currentUser.name};});
   const {error}=await sb.from('attendance').insert(rows);
-  if(error){alert('Save failed: '+error.message);return;}
-  alert('Attendance saved: '+b.name+' \u00b7 session '+num); loadLive();
+  if(error){showToast('error','Save failed: '+error.message);return;}
+  // Class log \u2014 same `sessions` table the old standalone "Logs" tab used, one row per
+  // batch+date (student_id null), saved alongside attendance for the same batch/date/trainer/
+  // session per spec. Replaces (not stacks onto) any existing log for the same batch+date, so
+  // re-opening and re-saving the same day's attendance edits the log instead of duplicating it.
+  const classLogText = document.getElementById('att_class_log').value.trim();
+  if (classLogText && window._attBatchId) {
+    try {
+      const { data: existing } = await sb.from('sessions').select('id').eq('batch_id', window._attBatchId).eq('session_date', date).is('student_id', null).maybeSingle();
+      if (existing) await sb.from('sessions').update({ notes: classLogText, logged_by: currentUser.name, type: 'class_log', status: 'completed' }).eq('id', existing.id);
+      else await sb.from('sessions').insert({ batch_id: window._attBatchId, session_date: date, notes: classLogText, logged_by: currentUser.name, type: 'class_log', status: 'completed' });
+    } catch(e) { console.warn('Could not save class log:', e.message); }
+  }
+  showToast('success','Attendance saved: '+b.name+' \u00b7 session '+num);
+  loadLive();
   document.getElementById('modalAtt').classList.remove('on');
+}
+// Session History \u2014 past sessions for one batch: date, trainer, attendance summary, class log
+// notes. Reachable from Mark Attendance (this batch) and from every batch card, active or
+// finished (spec: Academic Head must be able to see these, and a finished batch must keep
+// read access to them). Reads the exact same `attendance`/`sessions` rows old and new alike \u2014
+// nothing about the old per-student "Log a Session" data is lost, just merged into the same
+// per-date view.
+function openSessionHistory(){
+  return openSessionHistoryFor(window._attBatch ? window._attBatch.name : '');
+}
+async function openSessionHistoryFor(batchName){
+  document.getElementById('sessionHistoryTitle').textContent = 'Session History' + (batchName ? ' \u2014 ' + batchName : '');
+  const list = document.getElementById('sessionHistoryList');
+  list.innerHTML = '<div class="loading">Loading\u2026</div>';
+  document.getElementById('modalSessionHistory').classList.add('on');
+  if (!batchName) { list.innerHTML = '<div class="empty">No batch selected.</div>'; return; }
+  try {
+    const { data: batchRow } = await sb.from('batches').select('id').eq('name', batchName).maybeSingle();
+    const batchId = batchRow ? batchRow.id : null;
+    const [{data:attRows},{data:logRows}] = await Promise.all([
+      sb.from('attendance').select('session_date,status,marked_by').eq('batch_name', batchName),
+      batchId ? sb.from('sessions').select('session_date,notes,logged_by').eq('batch_id', batchId).order('session_date',{ascending:false}) : Promise.resolve({data:[]})
+    ]);
+    const byDate = {};
+    (attRows||[]).forEach(r => {
+      const d = byDate[r.session_date] = byDate[r.session_date] || { present:0, absent:0, marked_by: r.marked_by };
+      if (r.status === 'present') d.present++; else if (r.status === 'absent') d.absent++;
+      if (!d.marked_by) d.marked_by = r.marked_by;
+    });
+    // Multiple sessions rows can exist for the same date (old per-student ad-hoc "Log a
+    // Session" entries, from before this was merged into Mark Attendance) \u2014 concatenated
+    // rather than overwritten, so nothing from that earlier feature is silently dropped.
+    (logRows||[]).forEach(r => {
+      const d = byDate[r.session_date] = byDate[r.session_date] || {present:0,absent:0,marked_by:r.logged_by};
+      d.notes = d.notes ? d.notes + ' \u00b7 ' + (r.notes||'') : (r.notes||'');
+      if (!d.marked_by) d.marked_by = r.logged_by;
+    });
+    const dates = Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+    list.innerHTML = dates.length ? dates.map(d => {
+      const info = byDate[d];
+      const dateLabel = new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+      const attSummary = (info.present || info.absent) ? `${info.present} Present / ${info.absent} Absent` : '';
+      return `<div class="section" style="margin-bottom:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+          <span style="font-weight:700;color:var(--tx)">${esc(dateLabel)}</span>
+          <span style="font-size:11px;color:var(--tx3)">Trainer: ${esc(info.marked_by||'\u2014')}</span>
+        </div>
+        ${attSummary ? `<div style="font-size:12px;color:var(--tx2);margin-top:4px">${esc(attSummary)}</div>` : ''}
+        ${info.notes ? `<div style="font-size:12.5px;color:var(--tx);margin-top:6px;white-space:pre-wrap">${esc(info.notes)}</div>` : '<div style="font-size:11px;color:var(--tx3);margin-top:6px;font-style:italic">No class log recorded for this date.</div>'}
+      </div>`;
+    }).join('') : '<div class="empty">No sessions recorded yet for this batch.</div>';
+  } catch(e) { list.innerHTML = '<div class="empty">Could not load session history: '+esc(e.message)+'</div>'; }
 }
 // Applies role-based visibility to every section now that they're split across tabs
 // instead of two big headView/trainerView containers — same three role tiers as before,
@@ -2519,16 +2635,22 @@ function _formatTime12(hhmm){
   return h12+':'+String(m).padStart(2,'0')+(h<12?'AM':'PM');
 }
 function _timeToMinutes(hhmm){ const [h,m]=hhmm.split(':').map(Number); return h*60+m; }
-// Parses a stored batch time_slot string's LEADING time ("8:00 AM – 9:30 AM" -> "8:00 AM")
-// back into minutes-since-midnight. batches.time_slot is always written by
-// formatBatchTimeRange() in exactly this "h:mm AM/PM – h:mm AM/PM" shape — no new batch column
-// needed to know a batch's own start time.
+// Parses a stored batch time_slot string's LEADING time back into minutes-since-midnight — no
+// new batch column needed to know a batch's own start time. Two real formats exist in this
+// data: batches created via the current Create Batch form always get formatBatchTimeRange()'s
+// clean "8:00 AM – 9:30 AM" shape, but older/legacy batches (pre-dating that structured form)
+// store free-typed strings like "9:30 p.m. - 10:30 p.m." or "10 a.m. - 11 a.m." — periods
+// after the letters, sometimes no leading zero, sometimes no space before "a.m."/"p.m.", and
+// occasionally no minutes at all. This regex tolerates all of those instead of only the new
+// format, so legacy batches show up in the recurring-availability engine and My Calendar too,
+// not just ones created after this session's redesign.
 function _parseTimeLabelToMinutes(label){
-  const m = /^(\d{1,2}):(\d{2})\s*([AP]M)/i.exec((label||'').trim());
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?/i.exec((label||'').trim());
   if (!m) return null;
   let h = parseInt(m[1],10) % 12;
-  if (/PM/i.test(m[3])) h += 12;
-  return h*60 + parseInt(m[2],10);
+  if (/p/i.test(m[3])) h += 12;
+  const mins = m[2] ? parseInt(m[2],10) : 0;
+  return h*60 + mins;
 }
 function _batchStartMinutes(b){ return _parseTimeLabelToMinutes(b && b.time_slot); }
 // A batch is "currently active" (occupying its trainer's time) purely by date range — the
@@ -3029,40 +3151,105 @@ function renderStudentsTable(){
 async function loadScheduleTab(){
   try{
     const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
-    let query = sb.from('batches').select('*').eq('status','active');
+    let query = sb.from('batches').select('*, students(id)').eq('status','active');
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const {data:batches} = await query;
-    const rows = batches||[];
-    if (!rows.length) { document.getElementById('scheduleGrid').innerHTML = '<div class="empty">No active batches to schedule.</div>'; return; }
-    // Real Mon–Sun grid, not a plain list — day_pattern is the same comma-joined weekday
-    // string saveBatch() already writes (e.g. "Mon, Wed, Fri · MC Sat"); parsed here into
-    // which day-columns each batch's block actually appears under. A batch with no
-    // day_pattern at all (shouldn't normally happen — Create Batch requires picking days)
-    // falls into an "Unscheduled" row below the grid rather than being silently dropped.
+    let rows = batches||[];
+    // My Calendar only ever reflects CURRENT capacity — a batch whose sessions are 100% done
+    // has already released its time slot (same completion rule now applied to My Batches and
+    // the recurring Availability engine), so it disappears from here too instead of still
+    // showing a class that no longer actually happens.
+    if (rows.length) {
+      const names = rows.map(b=>b.name).filter(Boolean);
+      const doneByBatch = {};
+      if (names.length) {
+        try {
+          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names);
+          (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
+        } catch(e) {}
+      }
+      rows = rows.filter(b => {
+        const total = b.sessions_total || 0;
+        const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
+        return !(total && done >= total);
+      });
+    }
+    const desktopEl = document.getElementById('scheduleGrid');
+    const mobileEl = document.getElementById('scheduleGridMobile');
+    if (!rows.length) {
+      const empty = '<div class="empty">No active classes to schedule right now.</div>';
+      if (desktopEl) desktopEl.innerHTML = empty;
+      if (mobileEl) mobileEl.innerHTML = empty;
+      return;
+    }
     const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const byDay = {}; DAYS.forEach(d=>byDay[d]=[]);
+    const DAY_LABEL = {Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday'};
+    // Time rows are generated from the batches actually shown here — never a hardcoded list
+    // (a morning-only or evening-only roster gets exactly the rows it needs) — sorted
+    // chronologically via the same time_slot-parsing helper the Availability engine already
+    // uses (_batchStartMinutes). A batch whose day/time can't be parsed falls into
+    // "Unscheduled" below the grid rather than being silently dropped.
+    const byDayTime = {}; // "Mon|18:00" -> [batch, ...]
+    const timesSeen = new Set();
     const unscheduled = [];
     rows.forEach(b=>{
       const tokens = (b.day_pattern||'').split(',').map(s=>s.trim()).filter(Boolean);
-      const dayTokens = tokens.filter(t=>DAYS.includes(t.replace(/\s*·.*$/,'').trim()));
-      if (!dayTokens.length) { unscheduled.push(b); return; }
-      dayTokens.forEach(d=>{ const day=d.replace(/\s*·.*$/,'').trim(); if(byDay[day]) byDay[day].push(b); });
+      const dayTokens = tokens.map(t=>t.replace(/\s*·.*$/,'').trim()).filter(d=>DAYS.includes(d));
+      const startMin = _batchStartMinutes(b);
+      if (!dayTokens.length || startMin === null) { unscheduled.push(b); return; }
+      const timeKey = String(Math.floor(startMin/60)).padStart(2,'0')+':'+String(startMin%60).padStart(2,'0');
+      timesSeen.add(timeKey);
+      dayTokens.forEach(d=>{ const key=d+'|'+timeKey; (byDayTime[key]=byDayTime[key]||[]).push(b); });
     });
-    const colorFor = i => ['var(--brand-3)','var(--blue)','var(--purple)','var(--green)','var(--orange)'][i%5];
-    document.getElementById('scheduleGrid').innerHTML = `
-      <div style="overflow-x:auto">
-      <table class="acad-matrix-table" style="min-width:900px"><thead><tr>${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
-      <tbody><tr>${DAYS.map(day=>`<td style="vertical-align:top;padding:8px 6px">${
-        byDay[day].length ? byDay[day].map((b,i)=>`
-          <div style="background:${colorFor(i)}22;border:1px solid ${colorFor(i)}55;border-radius:8px;padding:8px;margin-bottom:6px;font-size:11px">
-            <div style="font-weight:700;color:var(--tx)">${esc(b.name)}</div>
-            <div style="color:var(--tx3);margin-top:2px">${esc(b.trainer_name||'—')}</div>
-            <div style="color:var(--tx3)">${esc(b.time_slot||'—')}</div>
-          </div>`).join('') : '<div class="empty" style="padding:6px 0;font-size:10px">—</div>'
-      }</td>`).join('')}</tr></tbody></table>
-      </div>
-      ${unscheduled.length ? `<div class="mhint" style="margin-top:12px">Unscheduled: ${unscheduled.map(b=>esc(b.name)).join(', ')}</div>` : ''}
-    `;
+    const times = [...timesSeen].sort();
+    // Sunday defaults to Weekly Off (spec item 13) — UNLESS a batch is genuinely scheduled on
+    // Sunday (day_pattern's Masterclass Day option includes Sun), in which case it shows those
+    // real classes exactly like any other day rather than hiding them behind an "Off" label.
+    const sundayHasClasses = rows.some(b => (b.day_pattern||'').split(',').map(s=>s.trim().replace(/\s*·.*$/,'')).includes('Sun'));
+
+    const classCard = (b) => `<div style="background:rgba(255,107,6,.1);border:1px solid rgba(255,107,6,.28);border-radius:8px;padding:6px 8px;margin-bottom:5px;font-size:11px;cursor:pointer" onclick="openBatchDetails('${b.id}')">
+      <div style="font-weight:700;color:var(--tx)">${esc(b.name)}</div>
+      <div style="color:var(--tx3);margin-top:1px">${esc(b.time_slot||'')}${b.students?.length!=null?' · '+b.students.length+' students':''}</div>
+    </div>`;
+
+    // Desktop — time rows × day columns (spec item 9).
+    if (desktopEl) {
+      desktopEl.innerHTML = times.length ? `
+        <div style="overflow-x:auto">
+        <table class="acad-matrix-table" style="min-width:900px"><thead><tr><th></th>${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
+        <tbody>${times.map(t => `<tr><td style="color:var(--tx3);font-size:11px;white-space:nowrap;padding:8px 10px 8px 0">${_formatTime12(t)}</td>${
+          DAYS.map(day => {
+            if (day === 'Sun' && !sundayHasClasses) return `<td style="vertical-align:top;padding:8px 6px"><div class="empty" style="padding:6px 0;font-size:10px;color:var(--tx3)">Weekly Off</div></td>`;
+            const list = byDayTime[day+'|'+t] || [];
+            return `<td style="vertical-align:top;padding:8px 6px">${list.length ? list.map(classCard).join('') : '<div class="empty" style="padding:6px 0;font-size:10px">—</div>'}</td>`;
+          }).join('')
+        }</tr>`).join('')}</tbody></table>
+        </div>
+      ` : '<div class="empty">No scheduled class times to show.</div>';
+    }
+
+    // Mobile — day-stacked list, identical underlying data (spec item 14).
+    if (mobileEl) {
+      mobileEl.innerHTML = DAYS.map(day => {
+        if (day === 'Sun' && !sundayHasClasses) {
+          return `<div class="section" style="margin-bottom:10px;padding:12px"><div style="font-weight:700;color:var(--tx);margin-bottom:4px">${DAY_LABEL[day]}</div><div class="empty" style="padding:2px 0">Weekly Off</div></div>`;
+        }
+        const items = times.filter(t => (byDayTime[day+'|'+t]||[]).length).flatMap(t => (byDayTime[day+'|'+t]||[]).map(b => ({t,b})));
+        return `<div class="section" style="margin-bottom:10px;padding:12px">
+          <div style="font-weight:700;color:var(--tx);margin-bottom:6px">${DAY_LABEL[day]}</div>
+          ${items.length ? items.map(({t,b}) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer" onclick="openBatchDetails('${b.id}')">
+            <span style="font-size:12.5px;color:var(--tx)">${_formatTime12(t)}</span>
+            <span style="font-size:12px;color:var(--tx2)">${esc(b.name)}</span>
+          </div>`).join('') : '<div class="empty" style="padding:2px 0">No classes.</div>'}
+        </div>`;
+      }).join('');
+    }
+
+    if (unscheduled.length) {
+      const note = `<div class="mhint" style="margin-top:12px">Unscheduled (no day/time set): ${unscheduled.map(b=>esc(b.name)).join(', ')}</div>`;
+      if (desktopEl) desktopEl.innerHTML += note;
+      if (mobileEl) mobileEl.innerHTML += note;
+    }
   }catch(e){ console.warn('Schedule tab failed to load:', e.message); }
 }
 
@@ -3171,27 +3358,27 @@ async function loadTrainerView(){
       (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
     } catch(e) {}
   }
-  document.getElementById('myBatches').innerHTML = (batches||[]).map(b => {
+  // My Batches shows only active/ongoing/upcoming batches — a batch whose sessions are 100%
+  // done belongs in Finished Batches instead (same progress formula loadLive() already uses
+  // to make that exact split there, applied here too so this table doesn't disagree with it).
+  const progressOf = b => {
     const total = b.sessions_total || 0;
     const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
-    const pct = total ? Math.round((done/total)*100) : 0;
+    return { total, done, pct: total ? Math.round((done/total)*100) : 0 };
+  };
+  const myActiveBatches = (batches||[]).filter(b => { const { total, done } = progressOf(b); return !(total && done >= total); });
+  document.getElementById('myBatches').innerHTML = myActiveBatches.map(b => {
+    const { total, pct } = progressOf(b);
     const statusOk = b.status !== 'inactive' && b.status !== 'closed';
     return `<tr><td data-label="Batch">${esc(b.name)}</td><td data-label="Schedule">${esc(b.day_pattern||'')} ${esc(b.time_slot||'')}</td><td data-label="Course">${esc(b.programme||'—')}</td><td data-label="Students">${b.students?.length||0}</td>
       <td data-label="Status"><span class="badge ${statusOk?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
       <td data-label="Progress" style="min-width:110px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gk)"></div></div><span style="font-size:10.5px;color:var(--tx3);min-width:30px">${total?pct+'%':'—'}</span></div></td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">No batches assigned yet</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty">No active batches assigned right now — completed batches move to Finished Batches.</td></tr>';
 
   const { data: tasks } = await sb.from('assignments').select('*').eq('trainer_id', myTrainer.id).order('due_date');
   window._myTasksAll = tasks||[];
   renderMyTasks('all');
 
-  const { data: logs } = await sb.from('sessions').select('*, students(name)').eq('logged_by', currentUser.name).order('session_date',{ascending:false}).limit(20);
-  document.getElementById('myLogs').innerHTML = (logs||[]).map(l => `
-    <tr><td data-label="Student">${l.students?.name||'—'}</td><td data-label="Date">${l.session_date}</td><td data-label="Type">${esc(l.type)}</td><td data-label="Status"><span class="badge ${l.status==='completed'?'b-active':'b-inactive'}">${esc(l.status||'—')}</span></td><td data-label="Notes">${esc(l.notes||'')}</td></tr>
-  `).join('') || '<tr><td colspan="5" class="empty">No sessions logged yet</td></tr>';
-
-  const batchSelect = document.getElementById('m_s_batch');
-  batchSelect.innerHTML = (batches||[]).map(b => `<option value="${b.id}">${b.name}</option>`).join('');
   window._myTrainerId = myTrainer.id;
 }
 
@@ -3689,27 +3876,6 @@ async function saveAssignment(){
   await loadHeadView();
 }
 
-async function saveSession(){
-  // any logged-in trainer may log their own session — no head-only guard needed here
-  const batch_id = document.getElementById('m_s_batch').value;
-  const studentName = document.getElementById('m_s_student').value.trim();
-  const session_date = document.getElementById('m_s_date').value;
-  const type = document.getElementById('m_s_type').value;
-  const status = document.getElementById('m_s_status').value;
-  const notes = document.getElementById('m_s_notes').value.trim();
-  if(!studentName || !session_date) return;
-
-  let { data: existing } = await sb.from('students').select('id').ilike('name', studentName).eq('batch_id', batch_id).maybeSingle();
-  let student_id = existing?.id;
-  if(!student_id){
-    const { data: newStudent } = await sb.from('students').insert({ name: studentName, batch_id }).select().single();
-    student_id = newStudent.id;
-  }
-  await sb.from('sessions').insert({ student_id, batch_id, session_date, type, status, notes, logged_by: currentUser.name });
-  closeModal('session');
-  document.getElementById('m_s_student').value=''; document.getElementById('m_s_notes').value='';
-  await loadTrainerView(); await loadStats();
-}
 
 // ══ LIVE GOOGLE SHEET FETCH — renders real rows as pictorial cards ══
 
