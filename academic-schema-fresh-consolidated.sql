@@ -200,3 +200,39 @@ end $$;
 
 -- Reload PostgREST's schema cache so the new tables are visible immediately.
 NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
+-- Phase 2 — Recurring Trainer Availability (replaces trainer_slots' role as
+-- the trainer's own "capacity" declaration). Idempotent, safe to re-run.
+--
+-- trainer_slots (above) was one row per trainer per exact calendar date per
+-- hour — a trainer had to re-declare the same working hours every single day,
+-- and nothing ever released a slot automatically when a batch finished. This
+-- table is the opposite: one row per RECURRING time window a trainer offers,
+-- entered once, with no date dimension at all (effective_from/effective_until
+-- bound WHEN the declaration itself is in force, not which calendar dates it
+-- covers day-by-day). Whether a given window is currently FREE or OCCUPIED is
+-- never stored here — it's always computed live from `batches` (which already
+-- carries trainer_id/start_date/expected_completion_date/time_slot), the same
+-- way it's computed in academics.html's own availability engine. trainer_slots
+-- itself is left in place (not dropped) since older rows/other code may still
+-- reference it, but the app no longer writes new ones for capacity purposes.
+-- ============================================================================
+create table if not exists trainer_availability (
+  id uuid primary key default gen_random_uuid(),
+  trainer_id uuid not null references trainers(id) on delete cascade,
+  start_time text not null,        -- "HH:MM", 24h — same convention trainer_slots already used
+  end_time text not null,
+  effective_from date not null default current_date,  -- when this declared window starts applying
+  effective_until date,                                 -- nullable = indefinite, until edited/removed
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists trainer_availability_trainer_idx on trainer_availability (trainer_id);
+
+alter table trainer_availability enable row level security;
+drop policy if exists trainer_availability_allow_all on trainer_availability;
+create policy trainer_availability_allow_all on trainer_availability for all using (true) with check (true);
+
+NOTIFY pgrst, 'reload schema';

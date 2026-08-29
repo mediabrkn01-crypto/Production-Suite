@@ -243,7 +243,6 @@ tr.clickable{cursor:pointer}
 .lv-field input[type="date"]::-webkit-datetime-edit-month-field, input[type="date"]::-webkit-datetime-edit-month-field,
 .lv-field input[type="date"]::-webkit-datetime-edit-day-field, input[type="date"]::-webkit-datetime-edit-day-field,
 .lv-field input[type="date"]::-webkit-datetime-edit-year-field, input[type="date"]::-webkit-datetime-edit-year-field{color:var(--tx);}
-#availDate{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:8px 10px;}
 .lv-apply{padding:11px 22px;border:none;border-radius:9px;background:var(--gk);color:#fff;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 20px rgba(237,31,81,.3);}
 .stu-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px;margin-bottom:12px;padding:14px;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:12px;}
 .stu-grid .k{color:var(--tx3);text-transform:uppercase;font-size:9.5px;letter-spacing:.07em;align-self:center;}
@@ -741,67 +740,97 @@ details[open] .rawsum::before{content:'▾ '}
 
       <!-- Coach Availability — list + drill-down (coach → assigned batches → batch detail),
            all internal (view-stack inside this one tab, no page navigation). -->
-      <!-- Availability — real per-date, per-hour slot grid backed by trainer_slots (one row
-           per trainer per hour per date; booking a slot is updating that same row, so a
-           double-booking is structurally impossible, backed by a DB unique constraint too,
-           not just a UI check). Trainer role: toggle your own availability. Head role: see
-           every coach's grid for the day and assign a batch into any open (green) slot. -->
+      <!-- Availability — REDESIGNED from a per-date/per-hour grid (trainer_slots) into a
+           recurring capacity system (trainer_availability). A trainer declares the recurring
+           time windows they can teach ONCE — no date picker, no re-marking the same hours for
+           today/tomorrow/every future date. FREE vs OCCUPIED is never a field a trainer sets;
+           it's always computed live as (declared availability) minus (any currently-active
+           batch — by date range — whose start time falls inside that window). See
+           findOccupyingBatch()/isBatchCurrentlyActive() below — the single shared calculation
+           every view here reads from, so none of them can ever disagree. -->
       <div class="acad-tab" id="tab-acad-availability">
-        <div class="section">
-          <h2>
-            <span id="tab-acad-availability-label">Availability</span>
-            <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:400">
-              <button class="act-btn" onclick="availShiftDate(-1)">‹</button>
-              <input type="date" id="availDate" style="width:auto" onchange="renderAvailabilityGrid()"/>
-              <button class="act-btn" onclick="availShiftDate(1)">›</button>
-            </span>
-          </h2>
-          <div class="lv-note" style="display:flex;gap:14px;flex-wrap:wrap">
-            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--green);margin-right:5px"></span>Available</span>
-            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--brand-3);margin-right:5px"></span>Booked</span>
-            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:rgba(255,255,255,.06);margin-right:5px"></span>Not set / out of hours</span>
-          </div>
-          <div id="availGridWrap" class="loading" style="margin-top:14px;overflow-x:auto">Loading…</div>
-        </div>
-        <!-- Trainer-only: toggle your own slots for the selected date (role-gated below). -->
-        <div class="section role-trainer-only" id="availMyToggleSection">
-          <h2>My Slots for This Date</h2>
-          <div class="lv-note">Click a slot to mark yourself available. Click again to remove it. Booked slots (already assigned to a batch) can't be removed here — ask the Academic Head to reassign first.</div>
-          <div id="availMyToggleGrid" class="loading" style="margin-top:10px">Loading…</div>
-          <!-- Custom Time — additional to the quick hourly slots above, not a replacement.
-               Writes into the exact same trainer_slots table/row shape (trainer_id, slot_date,
-               start_time, end_time, status) — the Academic Head's Coach Availability reads
-               that one table regardless of which of the two ways a slot was added. -->
-          <div class="subhead" style="margin:22px 0 10px">Custom Time</div>
+        <!-- Trainer: declare/edit recurring availability. -->
+        <div class="section role-trainer-only" id="availMySection">
+          <h2><span id="tab-acad-availability-label">My Availability</span></h2>
+          <div class="lv-note">The recurring hours you can teach — set once, applies every week until you edit or remove it. The Academic Head automatically sees which of these are currently free, based on your active batches — you never need to mark a slot free or busy yourself.</div>
+          <div id="availMyList" class="loading" style="margin-top:12px">Loading…</div>
+          <div class="subhead" style="margin:20px 0 10px">Add a Recurring Slot</div>
           <div class="mrow" style="align-items:flex-end">
             <!-- readonly, not type="time" — tapping opens the themed analog clock picker
                  (#modalClockPicker) instead of the browser's native square popup. The input
                  itself still holds the real 24h "HH:MM" value (writeClockResult() sets
-                 .value directly) — addCustomAvailability() below reads it exactly the same
-                 way it always did, no other code needed to change. -->
-            <label class="lv-field" style="flex:1"><span>Start Time</span><input type="text" id="customAvailStart" readonly placeholder="Tap to set" style="cursor:pointer" onclick="openClockPicker('customAvailStart')"/></label>
-            <label class="lv-field" style="flex:1"><span>End Time</span><input type="text" id="customAvailEnd" readonly placeholder="Tap to set" style="cursor:pointer" onclick="openClockPicker('customAvailEnd')"/></label>
-            <button class="lv-apply" style="white-space:nowrap" onclick="addCustomAvailability()">+ Add Availability</button>
+                 .value directly). No whole-hour restriction — any time is valid. -->
+            <label class="lv-field" style="flex:1"><span>Start Time</span><input type="text" id="myAvailStart" readonly placeholder="Tap to set" style="cursor:pointer" onclick="openClockPicker('myAvailStart')"/></label>
+            <label class="lv-field" style="flex:1"><span>End Time</span><input type="text" id="myAvailEnd" readonly placeholder="Tap to set" style="cursor:pointer" onclick="openClockPicker('myAvailEnd')"/></label>
+            <label class="lv-field" style="flex:1"><span>Effective From (optional)</span><input type="date" id="myAvailEffFrom"/></label>
+            <button class="lv-apply" style="white-space:nowrap" onclick="addMyAvailability()">+ Add</button>
           </div>
-          <div class="subhead" style="margin:18px 0 8px">Added Custom Times</div>
-          <div id="customAvailList" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <!-- Academic Head: every trainer's declared slots, each shown Free/Occupied. -->
+        <div class="section role-head-only hidden" id="availHeadSection">
+          <h2>Trainer Availability</h2>
+          <div class="lv-note" style="display:flex;gap:14px;flex-wrap:wrap">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--green);margin-right:5px"></span>Free — click to assign a class</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--brand-3);margin-right:5px"></span>Occupied — click for details</span>
+          </div>
+          <div id="availByTrainer" class="loading" style="margin-top:14px">Loading…</div>
+        </div>
+
+        <!-- Academic Head: compact cross-trainer "who's free when" view for quickly finding a
+             coach when assigning a new batch. -->
+        <div class="section role-head-only hidden" id="availFreeSection">
+          <h2>Available Trainers</h2>
+          <div class="lv-note">Grouped by time — every trainer currently free during that window.</div>
+          <div id="availFreeSlots" class="loading" style="margin-top:12px">Loading…</div>
         </div>
       </div>
 
-      <!-- Assign-a-class modal — Batch → Trainer → Slot is already chosen by the time this
-           opens (the Head clicks a specific open cell in the grid above); this just confirms
-           which batch fills it. -->
+      <!-- Assign-a-class modal — opened from a FREE slot on the Head's Trainer Availability
+           view. Links an existing batch to this trainer (batches.trainer_id/trainer_name) —
+           the same "attach an unassigned batch" job the old trainer_slots-based version did,
+           minus the trainer_slots bookkeeping, which no longer exists under this model. -->
       <div class="modal-bg" id="modalAssignSlot"><div class="modal">
         <h3>Assign Class</h3>
         <div class="stu-grid" style="margin-bottom:14px">
           <div class="k">Coach</div><div class="v" id="assignSlotCoach">—</div>
-          <div class="k">Date</div><div class="v" id="assignSlotDate">—</div>
           <div class="k">Time</div><div class="v" id="assignSlotTime">—</div>
         </div>
         <select id="assignSlotBatch"><option value="">— Select batch —</option></select>
+        <div class="lv-note" style="margin-top:8px">Don't see the batch yet? <span style="color:var(--k2);cursor:pointer" onclick="document.getElementById('modalAssignSlot').classList.remove('on');acadSwitchTab('createbatch')">Create one</span> — Trainer and Class Start Time will be ready to pick there.</div>
         <div class="modal-actions">
           <button class="btn-cancel" onclick="document.getElementById('modalAssignSlot').classList.remove('on')">Cancel</button>
           <button class="btn-save" onclick="confirmAssignSlot()">Assign</button>
+        </div>
+      </div></div>
+
+      <!-- Occupied-slot detail — read-only, shows why a slot isn't free and when it will be. -->
+      <div class="modal-bg" id="modalOccupiedSlot"><div class="modal">
+        <h3>Occupied Slot</h3>
+        <div class="stu-grid" style="margin-bottom:14px">
+          <div class="k">Trainer</div><div class="v" id="occSlotTrainer">—</div>
+          <div class="k">Time</div><div class="v" id="occSlotTime">—</div>
+          <div class="k">Batch</div><div class="v" id="occSlotBatch">—</div>
+          <div class="k">Course</div><div class="v" id="occSlotCourse">—</div>
+          <div class="k">Dates</div><div class="v" id="occSlotDates">—</div>
+          <div class="k">Students</div><div class="v" id="occSlotStudents">—</div>
+          <div class="k">Status</div><div class="v" id="occSlotStatus">—</div>
+        </div>
+        <div id="occSlotReleaseNote" class="lv-note"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="document.getElementById('modalOccupiedSlot').classList.remove('on')">Close</button>
+        </div>
+      </div></div>
+
+      <!-- Simple Yes/Cancel confirm — local port (see the Celebration Engine port earlier in
+           this file for why: this page doesn't load common.js, so its showConfirm() isn't
+           reachable here). Used only to protect an active-batch slot from being removed. -->
+      <div class="modal-bg" id="modalSimpleConfirm"><div class="modal">
+        <h3 id="simpleConfirmTitle">Are you sure?</h3>
+        <div class="lv-note" id="simpleConfirmMessage" style="white-space:pre-wrap"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="_resolveSimpleConfirm(false)">Cancel</button>
+          <button class="btn-save" id="simpleConfirmOkBtn" onclick="_resolveSimpleConfirm(true)">Confirm</button>
         </div>
       </div></div>
 
@@ -909,9 +938,9 @@ details[open] .rawsum::before{content:'▾ '}
 </div></div>
 
 <!-- Analog clock time picker — themed to match this dark UI (no native/light system popup),
-     used by Custom Time's Start/End Time fields. Tap a number, or drag the hand, to pick the
-     hour, then the minute; AM/PM toggles below. Large touch targets throughout for mobile/
-     WebView use (spec item 3). -->
+     used by My Availability's Start/End Time fields. Tap a number, or drag the hand, to pick
+     the hour, then the minute; AM/PM toggles below. Large touch targets throughout for
+     mobile/WebView use. -->
 <div class="modal-bg" id="modalClockPicker"><div class="modal" style="width:320px;text-align:center">
   <h3 style="margin-bottom:10px">Select Time</h3>
   <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:18px">
@@ -2454,234 +2483,297 @@ async function loadTeamTab(){
 }
 
 // ============================================================================
-// Availability — real per-date, per-hour slot grid backed by the trainer_slots table
-// (one row per trainer per hour per date). Trainers create rows to mark themselves
-// available; the Academic Head "books" a slot by updating that SAME row (status +
-// batch_id) — assignment is never a second, separate record, so a slot can't be
-// double-booked by construction, backed by a DB unique(trainer_id,slot_date,start_time)
-// constraint as the hard backstop, not just a UI check. Fixed hourly slots, 9am–5pm,
-// matching the reference design's own displayed columns.
+// Availability — see the Recurring Availability Engine above (findOccupyingBatch etc.) for
+// the actual FREE/OCCUPIED calculation. AVAIL_HOURS/_availSlotLabel below are unrelated to
+// that recurring system — they're the fixed whole-hour list Create Batch's own Class Start
+// Time dropdown uses (buildBatchTimeOptions), kept exactly as before.
 // ============================================================================
 // Full 24-hour timeline (00:00–23:00), not just a 9–5 window — a Trainer/Coach may
 // genuinely be available for an early-morning or late-evening batch.
 const AVAIL_HOURS = Array.from({length:24}, (_,h) => String(h).padStart(2,'0')+':00');
 function _availSlotLabel(h){ const hr=parseInt(h,10); const end=(hr+1)%24; const fmt=x=>{const h12=((x+11)%12)+1; return h12+(x<12?'AM':'PM');}; return fmt(hr)+'–'+fmt(end); }
-let _availTrainers = [], _availSlotsForDate = [], _availOnLeaveIds = new Set();
-let _assignSlotCtx = null; // { trainerId, trainerName, date, start }
+let _availTrainers = [], _availOnLeaveIds = new Set();
+let _assignSlotCtx = null; // { trainerId, trainerName, startTime, endTime }
+let _myAvailability = [];       // this trainer's own trainer_availability rows
+let _allAvailability = [];      // Head view: every active trainer's trainer_availability rows
+let _availBatchesForOccupancy = []; // batches used for the FREE/OCCUPIED calculation below
 
-function availShiftDate(delta){
-  const el = document.getElementById('availDate');
-  const d = new Date(el.value || new Date().toISOString().slice(0,10));
-  d.setDate(d.getDate()+delta);
-  el.value = d.toISOString().slice(0,10);
-  renderAvailabilityGrid();
-}
+// ============================================================================
+// RECURRING AVAILABILITY ENGINE — the single shared calculation every view on this tab reads
+// from (My Availability, Trainer Availability, Available Trainers, Assign/Occupied modals), so
+// none of them can ever disagree. Replaces the old per-date trainer_slots grid: a trainer
+// declares recurring time windows ONCE (trainer_availability, no date column at all); whether
+// a given window is FREE or OCCUPIED is never stored anywhere — it's computed live as
+// (declared availability) minus (any currently-active batch, by date range, whose start time
+// falls inside that window). A batch's own start_date/expected_completion_date already exist
+// on `batches` — nothing new needed there. When expected_completion_date passes, the batch
+// stops counting as active and the slot is free again automatically, with zero trainer action.
+// ============================================================================
 
-async function loadAvailabilityTab(){
-  const dateEl = document.getElementById('availDate');
-  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0,10);
-  await renderAvailabilityGrid();
-}
-
-// Refetches trainers + this date's slots + today's approved-leave set, then renders both
-// the Head's all-coaches overview grid and (if this user is a coach) their own toggle grid.
-async function renderAvailabilityGrid(){
-  const wrap = document.getElementById('availGridWrap');
-  const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
-  if (!wrap) return;
-  const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
-  // A Trainer must never see the team grid — not just have it visually hidden, the query
-  // itself never fetches another coach's row or slots. Only the Head branch below fetches
-  // every active trainer; a Trainer gets ONE row (their own), which is also all
-  // renderMyAvailabilityToggle() below needs to find "me" in — same lookup, just never has
-  // anyone else's data to find in the first place.
-  if (!isHead) {
-    wrap.innerHTML = '<div class="empty">Team availability is visible to the Academic Head only. Use the panel below to manage your own.</div>';
-    try {
-      const myId = window._myTrainerId;
-      const [{data:mySlots}] = await Promise.all([
-        sb.from('trainer_slots').select('*').eq('slot_date', date).eq('trainer_id', myId || '00000000-0000-0000-0000-000000000000'),
-      ]);
-      const { data: myTrainerRow } = myId ? await sb.from('trainers').select('*').eq('id', myId).maybeSingle() : { data: null };
-      _availTrainers = myTrainerRow ? [myTrainerRow] : [];
-      _availSlotsForDate = mySlots||[];
-      _availOnLeaveIds = new Set(); // My Slots panel doesn't render a leave badge; not needed here
-    } catch (e) { console.warn('Could not load your availability:', e.message); _availTrainers = []; _availSlotsForDate = []; }
-    renderMyAvailabilityToggle(date);
-    return;
-  }
-  try{
-    const [{data:trainers},{data:slots},{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
-      sb.from('trainers').select('*').eq('status','active'),
-      sb.from('trainer_slots').select('*').eq('slot_date', date),
-      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',date).gte('end_date',date),
-      mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
-    ]);
-    _availTrainers = trainers||[];
-    _availSlotsForDate = slots||[];
-    const empById = new Map((hrEmployees||[]).map(e=>[e.id,e]));
-    const onLeaveEmails = new Set((approvedLeaves||[]).map(l=>{const e=empById.get(l.employee_id);return e&&(e.portal_email||'').toLowerCase();}).filter(Boolean));
-    _availOnLeaveIds = new Set(_availTrainers.filter(t=>t.portal_email && onLeaveEmails.has(t.portal_email.toLowerCase())).map(t=>t.id));
-
-    if (!_availTrainers.length) { wrap.innerHTML = '<div class="empty">No coaches yet.</div>'; renderMyAvailabilityToggle(date); return; }
-
-    // Resolve batch names for booked slots BEFORE rendering (trainer_slots only stores
-    // batch_id) — one lookup, one render, rather than drafting the table twice.
-    const batchIds = [...new Set(_availSlotsForDate.filter(s=>s.batch_id).map(s=>s.batch_id))];
-    if (batchIds.length) {
-      const { data: batches } = await sb.from('batches').select('id,name').in('id', batchIds);
-      const nameById = new Map((batches||[]).map(b=>[b.id,b.name]));
-      _availSlotsForDate.forEach(s=>{ if (s.batch_id) s._batchName = nameById.get(s.batch_id); });
-    }
-
-    wrap.innerHTML = `<table class="acad-matrix-table"><thead><tr><th>Coach</th>${AVAIL_HOURS.map(h=>`<th>${_availSlotLabel(h)}</th>`).join('')}</tr></thead><tbody>
-      ${_availTrainers.map(t=>{
-        const onLeave = _availOnLeaveIds.has(t.id);
-        // Daily class count — same cap confirmAssignSlot() enforces (pt_max_classes_per_day,
-        // default 5) — shown here so the Head can see "3/5" before even opening the assign
-        // modal, not just get blocked after picking a batch.
-        const dailyCap = t.pt_max_classes_per_day || 5;
-        const bookedToday = _availSlotsForDate.filter(s=>String(s.trainer_id)===String(t.id) && s.status==='booked').length;
-        const atCap = bookedToday >= dailyCap;
-        return `<tr><td>${esc(t.name)} <span style="color:var(--tx3);font-size:10px">${bookedToday}/${dailyCap}${atCap?' · limit reached':''}</span>${onLeave?' <span class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25);font-size:8px">ON LEAVE</span>':''}</td>${
-          AVAIL_HOURS.map(h=>{
-            const slot = _availSlotsForDate.find(s=>String(s.trainer_id)===String(t.id) && s.start_time===h);
-            let bg='rgba(255,255,255,.04)', label='', clickable=false;
-            if (onLeave) { bg='rgba(245,158,11,.15)'; label='Leave'; }
-            else if (slot && slot.status==='booked') { bg='rgba(255,5,82,.18)'; label=slot._batchName||'Booked'; }
-            else if (slot && slot.status==='available') { bg='rgba(16,185,129,.18)'; label='Open'; clickable = isHead; }
-            return `<td style="background:${bg};text-align:center;font-size:10px;padding:6px;${clickable?'cursor:pointer':''}" ${clickable?`onclick="openAssignSlot('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','${date}','${h}')"`:''} title="${esc(label)}">${esc(label)}</td>`;
-          }).join('')
-        }</tr>`;
-      }).join('')}
-    </tbody></table>`;
-    // Custom Time ranges (non-whole-hour trainer_slots rows, e.g. 10:30–12:15) don't align
-    // to the grid's fixed hourly columns above, so they'd otherwise be invisible to the
-    // Head entirely — listed separately here instead, same click-to-assign flow as an open
-    // grid cell (openAssignSlot/confirmAssignSlot don't care whether start_time is a whole
-    // hour or not, only the grid's own cell lookup does).
-    const customRows = _availSlotsForDate.filter(s => !AVAIL_HOURS.includes(s.start_time)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
-    if (customRows.length) {
-      wrap.innerHTML += `<div class="subhead" style="margin:18px 0 8px">Custom Time Ranges</div><div style="display:flex;flex-direction:column;gap:8px">${
-        customRows.map(s => {
-          const t = _availTrainers.find(x=>String(x.id)===String(s.trainer_id));
-          const label = `${_formatTime12(s.start_time)}–${_formatTime12(s.end_time)}`;
-          const open = s.status === 'available';
-          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;background:${s.status==='booked'?'rgba(255,5,82,.1)':'rgba(16,185,129,.1)'};border:1px solid ${s.status==='booked'?'rgba(255,5,82,.25)':'rgba(16,185,129,.25)'}">
-            <span style="font-size:12.5px;color:var(--tx)">${esc(t?t.name:'Unknown coach')} · ${label} · ${s.status==='booked'?('Booked'+(s._batchName?': '+esc(s._batchName):'')):'Available'}</span>
-            ${open ? `<button class="act-btn" onclick="openAssignSlot('${s.trainer_id}','${esc(t?t.name:'').replace(/'/g,"\\'")}','${date}','${s.start_time}','${label}')">Assign</button>` : ''}
-          </div>`;
-        }).join('')
-      }</div>`;
-    }
-  }catch(e){ wrap.innerHTML = '<div class="empty">Could not load availability: '+esc(e.message)+'</div>'; }
-  renderMyAvailabilityToggle(date);
-}
-
-// Trainer's own toggle row — only meaningful for a coach viewing their own date; a Head
-// with no linked trainer row just sees nothing here (role-trainer-only hides the section
-// entirely for non-coach roles anyway, see applyAcadRoleGates).
-async function renderMyAvailabilityToggle(date){
-  const grid = document.getElementById('availMyToggleGrid');
-  if (!grid) return;
-  const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
-  if (!me) { grid.innerHTML = '<div class="empty">No coach profile linked to your login yet — ask HR to link your portal email.</div>'; const cl=document.getElementById('customAvailList'); if(cl) cl.innerHTML=''; return; }
-  grid.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${AVAIL_HOURS.map(h=>{
-    const slot = _availSlotsForDate.find(s=>String(s.trainer_id)===String(me.id) && s.start_time===h);
-    const booked = slot && slot.status==='booked';
-    const available = slot && slot.status==='available';
-    const bg = booked ? 'rgba(255,5,82,.18)' : (available ? 'rgba(16,185,129,.18)' : 'rgba(255,255,255,.04)');
-    const border = booked ? 'rgba(255,5,82,.3)' : (available ? 'rgba(16,185,129,.3)' : 'var(--bd)');
-    return `<button class="act-btn" style="background:${bg};border-color:${border};min-width:90px" ${booked?'disabled':''} onclick="toggleMySlot('${me.id}','${date}','${h}')">
-      ${_availSlotLabel(h)}<br>${booked?('Booked'+(slot._batchName?': '+esc(slot._batchName):'')):(available?'Available (click to remove)':'Click to add')}
-    </button>`;
-  }).join('')}</div>`;
-  renderCustomAvailList();
-}
-async function toggleMySlot(trainerId, date, start){
-  const existing = _availSlotsForDate.find(s=>String(s.trainer_id)===String(trainerId) && s.start_time===start);
-  if (existing && existing.status==='booked') { showToast('warning','This slot is already booked to a batch — ask the Academic Head to reassign it first.'); return; }
-  try{
-    if (existing) { await sb.from('trainer_slots').delete().eq('id', existing.id); showToast('success','Availability removed'); }
-    else {
-      const end = String((parseInt(start,10)+1)%24).padStart(2,'0')+':00';
-      await sb.from('trainer_slots').insert({ trainer_id: trainerId, slot_date: date, start_time: start, end_time: end, status: 'available' });
-      showToast('success','Availability saved');
-    }
-  }catch(e){ showToast('error','Could not update availability: '+e.message); return; }
-  renderAvailabilityGrid();
-}
-
-// ── Custom Time — additional way to add availability beyond the fixed hourly slots above.
-// Same table, same trainer_id/date scoping as toggleMySlot() — a "custom" row is just any
-// trainer_slots row whose start_time isn't one of the 24 whole-hour values, so no new column
-// is needed to tell the two apart; rendered separately here because the hourly grid above
-// can only display exact-hour cells, not an arbitrary 10:30–12:15 range.
+// 24h "HH:MM" -> 12h display ("18:00" -> "6:00PM") and -> minutes-since-midnight. Used
+// throughout this engine (trainer_availability.start_time/end_time are stored the same 24h
+// "HH:MM" way trainer_slots always was).
 function _formatTime12(hhmm){
   const [h,m] = hhmm.split(':').map(Number);
   const h12 = ((h+11)%12)+1;
   return h12+':'+String(m).padStart(2,'0')+(h<12?'AM':'PM');
 }
 function _timeToMinutes(hhmm){ const [h,m]=hhmm.split(':').map(Number); return h*60+m; }
-function renderCustomAvailList(){
-  const el = document.getElementById('customAvailList');
-  if (!el) return;
-  const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
-  const mine = me ? _availSlotsForDate.filter(s => String(s.trainer_id)===String(me.id) && !AVAIL_HOURS.includes(s.start_time)) : [];
-  mine.sort((a,b)=>a.start_time.localeCompare(b.start_time));
-  el.innerHTML = mine.length ? mine.map(s => `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;background:${s.status==='booked'?'rgba(255,5,82,.1)':'rgba(16,185,129,.1)'};border:1px solid ${s.status==='booked'?'rgba(255,5,82,.25)':'rgba(16,185,129,.25)'}">
-      <span style="font-size:12.5px;color:var(--tx)">${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}${s.status==='booked'?' · Booked'+(s._batchName?': '+esc(s._batchName):''):' · Available'}</span>
-      ${s.status==='booked' ? '<span style="font-size:10.5px;color:var(--tx3)">Contact Academic Head to reschedule</span>' : `<button class="act-btn" onclick="removeCustomSlot('${s.id}')">Remove</button>`}
-    </div>`).join('') : '<div class="empty" style="padding:10px 0">No custom time ranges added for this date.</div>';
+// Parses a stored batch time_slot string's LEADING time ("8:00 AM – 9:30 AM" -> "8:00 AM")
+// back into minutes-since-midnight. batches.time_slot is always written by
+// formatBatchTimeRange() in exactly this "h:mm AM/PM – h:mm AM/PM" shape — no new batch column
+// needed to know a batch's own start time.
+function _parseTimeLabelToMinutes(label){
+  const m = /^(\d{1,2}):(\d{2})\s*([AP]M)/i.exec((label||'').trim());
+  if (!m) return null;
+  let h = parseInt(m[1],10) % 12;
+  if (/PM/i.test(m[3])) h += 12;
+  return h*60 + parseInt(m[2],10);
 }
-async function addCustomAvailability(){
-  const me = _availTrainers.find(t => t.portal_email && currentUser.username && t.portal_email.toLowerCase()===currentUser.username.toLowerCase());
-  if (!me) { showToast('error','No coach profile linked to your login yet.'); return; }
-  const date = document.getElementById('availDate')?.value || new Date().toISOString().slice(0,10);
-  // The input's visible .value is the human "10:30 AM" display text written by the clock
-  // picker; the real 24h "HH:MM" it stores internally lives in data-time24 (see
-  // writeClockResult()) — same contract this function always had, just reading from the
-  // dataset now instead of a native <input type="time">'s .value.
-  const start = document.getElementById('customAvailStart')?.dataset.time24;
-  const end = document.getElementById('customAvailEnd')?.dataset.time24;
-  if (!start || !end) { showToast('warning','Pick both a start and an end time.'); return; }
-  const startMin = _timeToMinutes(start), endMin = _timeToMinutes(end);
-  if (endMin <= startMin) { showToast('warning','End Time must be after Start Time.'); return; }
-  // Overlap check against EVERY existing slot this trainer has on this date — both the
-  // fixed hourly ones and any other custom range already added — not just other custom
-  // ones, so a custom 10:30–12:15 can't silently double-book the 11:00–12:00 quick slot.
-  const mine = _availSlotsForDate.filter(s => String(s.trainer_id)===String(me.id));
-  for (const s of mine) {
-    const sStart = _timeToMinutes(s.start_time), sEnd = _timeToMinutes(s.end_time);
-    if (startMin < sEnd && endMin > sStart) {
-      showToast('warning', `This time overlaps with an existing availability range (${_formatTime12(s.start_time)}–${_formatTime12(s.end_time)}).`);
-      return;
-    }
-  }
-  try{
-    await sb.from('trainer_slots').insert({ trainer_id: me.id, slot_date: date, start_time: start, end_time: end, status: 'available' });
-    showToast('success','Custom availability saved');
-  }catch(e){ showToast('error','Could not save availability: '+e.message); return; }
-  document.getElementById('customAvailStart').value=''; document.getElementById('customAvailStart').dataset.time24='';
-  document.getElementById('customAvailEnd').value=''; document.getElementById('customAvailEnd').dataset.time24='';
-  renderAvailabilityGrid();
+function _batchStartMinutes(b){ return _parseTimeLabelToMinutes(b && b.time_slot); }
+// A batch is "currently active" (occupying its trainer's time) purely by date range — the
+// date-driven model the spec describes: active within [start_date, expected_completion_date];
+// a null end date means ongoing/indefinite (never auto-frees on its own until one is set).
+// status 'inactive'/'closed' (the same values checkBatchTrainerConflict's own recurring check
+// already excludes) also takes it out of consideration.
+function isBatchCurrentlyActive(b){
+  if (!b) return false;
+  if (b.status === 'inactive' || b.status === 'closed') return false;
+  const todayStr = new Date().toISOString().slice(0,10);
+  if (b.start_date && todayStr < b.start_date) return false;   // hasn't started yet
+  if (b.expected_completion_date && todayStr > b.expected_completion_date) return false; // ended -> auto free
+  return true;
 }
-async function removeCustomSlot(id){
-  const slot = _availSlotsForDate.find(s => String(s.id)===String(id));
-  if (!slot) return;
-  if (slot.status === 'booked') { showToast('warning','This slot has an assigned class. Contact Academic Head to reschedule.'); return; }
-  try{
-    await sb.from('trainer_slots').delete().eq('id', id);
-    showToast('success','Custom availability removed');
-  }catch(e){ showToast('error','Could not remove availability: '+e.message); return; }
-  renderAvailabilityGrid();
+// Does trainerId have a currently-active batch whose start time falls inside
+// [startTime, endTime)? Returns that batch, or null (meaning the slot is free).
+function findOccupyingBatch(trainerId, startTime, endTime, batches){
+  const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
+  return (batches||[]).find(b => {
+    if (String(b.trainer_id) !== String(trainerId)) return false;
+    if (!isBatchCurrentlyActive(b)) return false;
+    const bStart = _batchStartMinutes(b);
+    return bStart !== null && bStart >= startMin && bStart < endMin;
+  }) || null;
+}
+// "Available again from" — the day after the occupying batch's own expected_completion_date,
+// or null if that batch has no end date set (indefinite — nothing to silently guess at).
+// Built from the Date's own LOCAL fields, not toISOString() — that converts to UTC first, and
+// in a timezone ahead of UTC (e.g. IST) local midnight can still be the previous day in UTC,
+// silently rolling the date back by one (the exact bug already found and fixed once this
+// session in hr.html's shiftHRAttReportMonth for the same reason).
+function availabilityReleaseLabel(batch){
+  if (!batch || !batch.expected_completion_date) return null;
+  const d = new Date(batch.expected_completion_date+'T00:00:00');
+  d.setDate(d.getDate()+1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ── Analog clock time picker ──
-// _clockTarget: which input (customAvailStart/customAvailEnd) this picker is currently
-// editing. _clockHour is always 1-12 (12-hour face); _clockPeriod is 'AM'/'PM'; the two
-// combine with _clockMinute into the real 24h value only at confirm time.
+// ---------- Simple Yes/Cancel confirm — local port (this file doesn't load common.js, see
+// the Celebration Engine port earlier for why; used only to protect an active-batch slot from
+// being removed, spec's "do not silently allow it") ----------
+let _simpleConfirmResolve = null;
+function _showSimpleConfirm(message, opts){
+  opts = opts || {};
+  document.getElementById('simpleConfirmTitle').textContent = opts.title || 'Are you sure?';
+  document.getElementById('simpleConfirmMessage').textContent = message;
+  document.getElementById('simpleConfirmOkBtn').textContent = opts.confirmLabel || 'Confirm';
+  document.getElementById('modalSimpleConfirm').classList.add('on');
+  return new Promise(resolve => { _simpleConfirmResolve = resolve; });
+}
+function _resolveSimpleConfirm(result){
+  document.getElementById('modalSimpleConfirm').classList.remove('on');
+  if (_simpleConfirmResolve) { _simpleConfirmResolve(result); _simpleConfirmResolve = null; }
+}
+
+function _availRowStyle(color){
+  return `display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;background:rgba(${color},.1);border:1px solid rgba(${color},.25)`;
+}
+const _AVAIL_GREEN = '16,185,129', _AVAIL_RED = '255,5,82', _AVAIL_AMBER = '245,158,11';
+
+async function loadAvailabilityTab(){
+  const isHead = isCurrentlyAcademicHead();
+  // Independent of isHead — an Academic Head who ALSO teaches (role 'academic_head', same as
+  // any trainer-capable login per applyAcadRoleGates' own isTrainerCapable check) still needs
+  // to see and manage their OWN recurring availability, not just the team-wide Head views. The
+  // old per-date grid got this right (its Head branch always finished by also rendering the
+  // personal toggle); this is the equivalent fix for the redesigned tab.
+  const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
+  try {
+    if (isHead) {
+      const [{data:trainers}, {data:avail}] = await Promise.all([
+        sb.from('trainers').select('*').eq('status','active'),
+        sb.from('trainer_availability').select('*').eq('is_active', true).order('start_time')
+      ]);
+      _availTrainers = trainers || [];
+      _allAvailability = avail || [];
+      // Reuse window._allBatchesFull — loadHeadView() already fetches every batch joined with
+      // trainers/courses/students (exactly what the Occupied-slot detail view needs), so this
+      // tab never re-queries the same rows a second time. Falls back to a fresh fetch only if
+      // it genuinely hasn't loaded yet. This same full set also covers a Head's OWN batches
+      // below, so a Head-who-also-teaches never needs a second, narrower fetch either.
+      _availBatchesForOccupancy = (window._allBatchesFull && window._allBatchesFull.length)
+        ? window._allBatchesFull
+        : ((await sb.from('batches').select('*, trainers(name), courses(name), students(id)').order('created_at')).data || []);
+      const todayStr = new Date().toISOString().slice(0,10);
+      const [{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
+        mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',todayStr).gte('end_date',todayStr),
+        mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
+      ]);
+      const empById = new Map((hrEmployees||[]).map(e=>[e.id,e]));
+      const onLeaveEmails = new Set((approvedLeaves||[]).map(l=>{const e=empById.get(l.employee_id);return e&&(e.portal_email||'').toLowerCase();}).filter(Boolean));
+      _availOnLeaveIds = new Set(_availTrainers.filter(t=>t.portal_email && onLeaveEmails.has(t.portal_email.toLowerCase())).map(t=>t.id));
+      renderTrainerAvailabilityView();
+      renderFreeSlotsView();
+      if (isTrainerCapable && window._myTrainerId) {
+        _myAvailability = _allAvailability.filter(a => String(a.trainer_id) === String(window._myTrainerId));
+        renderMyAvailabilityList();
+      }
+    } else if (isTrainerCapable) {
+      const myId = window._myTrainerId;
+      const { data: mine } = await sb.from('trainer_availability').select('*').eq('trainer_id', myId||'00000000-0000-0000-0000-000000000000').eq('is_active', true).order('start_time');
+      _myAvailability = mine || [];
+      _availBatchesForOccupancy = myId ? ((await sb.from('batches').select('*').eq('trainer_id', myId)).data || []) : [];
+      renderMyAvailabilityList();
+    }
+  } catch(e) {
+    console.warn('Could not load availability:', e.message);
+    const wrap = document.getElementById(isHead ? 'availByTrainer' : 'availMyList');
+    if (wrap) wrap.innerHTML = '<div class="empty">Could not load availability: '+esc(e.message)+'</div>';
+  }
+}
+
+// Academic Head: every active trainer's declared recurring slots, each shown Free/Occupied —
+// click Free to assign a class, click Occupied to see which batch and when it frees up.
+function renderTrainerAvailabilityView(){
+  const wrap = document.getElementById('availByTrainer');
+  if (!wrap) return;
+  if (!_availTrainers.length) { wrap.innerHTML = '<div class="empty">No coaches yet.</div>'; return; }
+  wrap.innerHTML = _availTrainers.map(t => {
+    const onLeave = _availOnLeaveIds.has(t.id);
+    const mySlots = _allAvailability.filter(a => String(a.trainer_id)===String(t.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+    const occupiedCount = mySlots.filter(s => findOccupyingBatch(t.id, s.start_time, s.end_time, _availBatchesForOccupancy)).length;
+    const rows = mySlots.length ? mySlots.map(s => {
+      const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
+      if (onLeave) {
+        return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">On Leave</span></div>`;
+      }
+      const occ = findOccupyingBatch(t.id, s.start_time, s.end_time, _availBatchesForOccupancy);
+      if (occ) {
+        return `<div style="${_availRowStyle(_AVAIL_RED)};cursor:pointer" onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${occ.name?': '+esc(occ.name):''}</span></div>`;
+      }
+      return `<div style="${_availRowStyle(_AVAIL_GREEN)};cursor:pointer" onclick="openAssignSlot('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','${s.start_time}','${s.end_time}')"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span></div>`;
+    }).join('') : '<div class="empty" style="padding:6px 0">No recurring availability declared yet.</div>';
+    return `<div class="card" style="margin-bottom:12px;padding:14px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <span style="font-weight:700;color:var(--tx)">${esc(t.name)}</span>
+        <span class="badge" style="background:rgba(255,255,255,.05);color:var(--tx3)">${t.type==='pt'?'Part-Time':'Full-Time'}</span>
+        ${mySlots.length ? `<span style="font-size:10.5px;color:var(--tx3)">${mySlots.length-occupiedCount} free / ${mySlots.length} slots</span>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">${rows}</div>
+    </div>`;
+  }).join('');
+}
+
+// Academic Head: compact cross-trainer "who's free when" view (spec's own "AVAILABLE
+// TRAINERS" example) — grouped by exact time window, every trainer currently free during it.
+function renderFreeSlotsView(){
+  const el = document.getElementById('availFreeSlots');
+  if (!el) return;
+  const buckets = new Map(); // "start|end" -> [trainerName, ...]
+  _availTrainers.forEach(t => {
+    if (_availOnLeaveIds.has(t.id)) return;
+    _allAvailability.filter(a=>String(a.trainer_id)===String(t.id)).forEach(s => {
+      if (findOccupyingBatch(t.id, s.start_time, s.end_time, _availBatchesForOccupancy)) return;
+      const key = s.start_time+'|'+s.end_time;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(t.name);
+    });
+  });
+  const keys = [...buckets.keys()].sort((a,b)=>a.localeCompare(b));
+  el.innerHTML = keys.length ? keys.map(k => {
+    const [start,end] = k.split('|');
+    return `<div class="card" style="margin-bottom:10px;padding:12px 14px">
+      <div style="font-weight:700;color:var(--tx);margin-bottom:6px">${_formatTime12(start)} – ${_formatTime12(end)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${buckets.get(k).map(n=>`<span class="badge" style="background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.3)">${esc(n)} · FREE</span>`).join('')}</div>
+    </div>`;
+  }).join('') : '<div class="empty">No trainers currently free — every declared slot is occupied, or nobody has declared availability yet.</div>';
+}
+
+// Trainer: their own recurring slots (My Availability). No date picker anywhere — set once,
+// applies every week until edited/removed. Free/Occupied computed the same way as the Head's
+// view above (findOccupyingBatch), scoped to this trainer's own batches only.
+function renderMyAvailabilityList(){
+  const el = document.getElementById('availMyList');
+  if (!el) return;
+  const myId = window._myTrainerId;
+  if (!myId) { el.innerHTML = '<div class="empty">No coach profile linked to your login yet — ask HR to link your portal email.</div>'; return; }
+  const mine = [..._myAvailability].sort((a,b)=>a.start_time.localeCompare(b.start_time));
+  el.innerHTML = mine.length ? mine.map(s => {
+    const occ = findOccupyingBatch(myId, s.start_time, s.end_time, _availBatchesForOccupancy);
+    const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
+    const releaseLabel = occ ? availabilityReleaseLabel(occ) : null;
+    return `<div style="${_availRowStyle(occ?_AVAIL_RED:_AVAIL_GREEN)}">
+      <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="badge" style="background:${occ?'rgba(255,5,82,.15)':'rgba(16,185,129,.15)'};color:${occ?'var(--brand-3)':'var(--green)'}">${occ?('Occupied'+(occ.name?': '+esc(occ.name):'')):'Free'}</span>
+        ${occ ? `<span style="font-size:10.5px;color:var(--tx3)">${releaseLabel?'Available from '+esc(releaseLabel):''}</span>` : `<button class="act-btn" onclick="removeMyAvailability('${s.id}')">Remove</button>`}
+      </span>
+    </div>`;
+  }).join('') : '<div class="empty" style="padding:8px 0">No recurring availability declared yet — add your working hours below.</div>';
+}
+
+async function addMyAvailability(){
+  const myId = window._myTrainerId;
+  if (!myId) { showToast('warning','No coach profile linked to your login yet — ask HR to link your portal email.'); return; }
+  // The clock-picker input's own .value is the 12h DISPLAY string ("6:00PM") — the real 24h
+  // "HH:MM" this needs to store lives in .dataset.time24 (see confirmClockPicker).
+  const startEl = document.getElementById('myAvailStart'), endEl = document.getElementById('myAvailEnd');
+  const start = startEl.dataset.time24 || '';
+  const end = endEl.dataset.time24 || '';
+  const effFrom = document.getElementById('myAvailEffFrom').value || null;
+  if (!start || !end) { showToast('warning','Set both a start and end time.'); return; }
+  if (_timeToMinutes(end) <= _timeToMinutes(start)) { showToast('warning','End time must be after start time.'); return; }
+  try {
+    const payload = { trainer_id: myId, start_time: start, end_time: end, is_active: true };
+    if (effFrom) payload.effective_from = effFrom;
+    const { error } = await sb.from('trainer_availability').insert(payload);
+    if (error) { showToast('error','Could not save availability: '+error.message); return; }
+    startEl.value = ''; delete startEl.dataset.time24;
+    endEl.value = ''; delete endEl.dataset.time24;
+    document.getElementById('myAvailEffFrom').value = '';
+    showToast('success','Availability added');
+    await loadAvailabilityTab();
+  } catch(e) { showToast('error','Could not save availability: '+e.message); }
+}
+// Protects an active class from being silently orphaned (spec: "Do NOT silently allow it") —
+// a slot currently occupied by an active batch never even offers a Remove button (see
+// renderMyAvailabilityList); this is the defensive backstop for that same rule.
+async function removeMyAvailability(id){
+  const myId = window._myTrainerId;
+  const slot = _myAvailability.find(s=>String(s.id)===String(id));
+  if (!slot) return;
+  const occ = findOccupyingBatch(myId, slot.start_time, slot.end_time, _availBatchesForOccupancy);
+  if (occ) {
+    const releaseLabel = availabilityReleaseLabel(occ);
+    showToast('warning', `This time slot is currently assigned to ${occ.name || 'an active batch'}${releaseLabel?' until '+releaseLabel:''}. Please contact the Academic Head or reassign the batch before removing this availability.`, 7000);
+    return;
+  }
+  const label = `${_formatTime12(slot.start_time)} – ${_formatTime12(slot.end_time)}`;
+  const ok = await _showSimpleConfirm(`Remove ${label} from your recurring availability?`, { title: 'Remove Availability', confirmLabel: 'Remove' });
+  if (!ok) return;
+  try {
+    const { error } = await sb.from('trainer_availability').delete().eq('id', id);
+    if (error) { showToast('error','Could not remove availability: '+error.message); return; }
+    showToast('success','Availability removed');
+    await loadAvailabilityTab();
+  } catch(e) { showToast('error','Could not remove availability: '+e.message); }
+}
+
+// ── Analog clock time picker (unchanged — reused verbatim for My Availability's Start/End
+// Time inputs, same as it previously served the old Custom Time fields) ──
+// _clockTarget: which input this picker is currently editing. _clockHour is always 1-12
+// (12-hour face); _clockPeriod is 'AM'/'PM'; the two combine with _clockMinute into the real
+// 24h value only at confirm time.
 let _clockTarget = null, _clockMode = 'hour', _clockHour = 12, _clockMinute = 0, _clockPeriod = 'AM';
 function openClockPicker(targetId){
   _clockTarget = targetId;
@@ -2786,19 +2878,13 @@ function confirmClockPicker(){
   document.getElementById('modalClockPicker').classList.remove('on');
 }
 
-// Head clicks an open (green) cell → confirm which batch fills it. Conflict prevention:
-// the slot must still exist as an unbooked 'available' row (re-checked at write time, not
-// just trusted from the last render) — if someone else booked it a moment ago, this fails
-// loudly instead of silently double-booking.
-async function openAssignSlot(trainerId, trainerName, date, start, label){
-  _assignSlotCtx = { trainerId, trainerName, date, start };
+// Academic Head — Assign a batch into a FREE slot. Links an existing batch to this trainer
+// (batches.trainer_id/trainer_name); once saved, re-rendering this tab shows it Occupied
+// automatically — nothing else to sync, occupancy is always computed live.
+async function openAssignSlot(trainerId, trainerName, startTime, endTime){
+  _assignSlotCtx = { trainerId, trainerName, startTime, endTime };
   document.getElementById('assignSlotCoach').textContent = trainerName;
-  document.getElementById('assignSlotDate').textContent = date;
-  // label is optional — the main hourly grid never passes one (its cells are always exactly
-  // one of the 24 AVAIL_HOURS values, so _availSlotLabel(start) is correct there); the Custom
-  // Time list below passes its own "10:30AM–12:15PM" label since _availSlotLabel() only knows
-  // how to format a whole hour.
-  document.getElementById('assignSlotTime').textContent = label || _availSlotLabel(start);
+  document.getElementById('assignSlotTime').textContent = `${_formatTime12(startTime)} – ${_formatTime12(endTime)}`;
   const { data: batches } = await sb.from('batches').select('id,name,status').eq('status','active').order('name');
   const sel = document.getElementById('assignSlotBatch');
   sel.innerHTML = '<option value="">— Select batch —</option>' + (batches||[]).map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
@@ -2808,45 +2894,46 @@ async function confirmAssignSlot(){
   if (!_assignSlotCtx) return;
   const batchId = document.getElementById('assignSlotBatch').value;
   if (!batchId) { showToast('warning','Pick a batch first.'); return; }
-  const { trainerId, date, start } = _assignSlotCtx;
-  try{
-    // Re-fetch the specific slot right before writing — the grid's cached copy could be
-    // stale if another Head/tab booked it in the meantime.
-    const { data: fresh } = await sb.from('trainer_slots').select('*').eq('trainer_id', trainerId).eq('slot_date', date).eq('start_time', start).maybeSingle();
-    if (!fresh || fresh.status !== 'available') { showToast('warning','This slot is no longer open — someone else may have just booked it. Refresh and try again.',6000); document.getElementById('modalAssignSlot').classList.remove('on'); renderAvailabilityGrid(); return; }
-    // Daily class cap — defaults to 5, or the trainer's own configured
-    // pt_max_classes_per_day (set by HR on the employee record) when present. Counts
-    // existing BOOKED slots for this trainer on this date, not counting the one being
-    // assigned right now, so "5/5, limit reached" only blocks a genuine 6th class.
-    const capTrainer = _availTrainers.find(x=>String(x.id)===String(trainerId));
-    const dailyCap = (capTrainer && capTrainer.pt_max_classes_per_day) || 5;
-    const { data: todaysBooked } = await sb.from('trainer_slots').select('id').eq('trainer_id', trainerId).eq('slot_date', date).eq('status','booked');
-    const bookedCount = (todaysBooked||[]).length;
-    if (bookedCount >= dailyCap) {
-      showToast('warning', `${capTrainer?capTrainer.name:'This coach'} already has ${bookedCount}/${dailyCap} classes booked on ${date} — daily limit reached. Pick a different date or coach.`, 6500);
+  const { trainerId, trainerName, startTime, endTime } = _assignSlotCtx;
+  try {
+    // Re-check right before writing — the view's cached copy could be stale if another Head/
+    // tab assigned a batch into this same slot in the meantime.
+    const { data: freshBatches } = await sb.from('batches').select('*').eq('trainer_id', trainerId);
+    if (findOccupyingBatch(trainerId, startTime, endTime, freshBatches||[])) {
+      showToast('warning','This slot is no longer free — someone else may have just assigned a class here. Refresh and try again.',6000);
+      document.getElementById('modalAssignSlot').classList.remove('on');
+      loadAvailabilityTab();
       return;
     }
-    const { error } = await sb.from('trainer_slots').update({ status:'booked', batch_id: batchId }).eq('id', fresh.id);
+    const { error } = await sb.from('batches').update({ trainer_id: trainerId, trainer_name: trainerName }).eq('id', batchId);
     if (error) { showToast('error','Unable to assign class. '+error.message); return; }
-    // Keep the batch's own trainer_id/trainer_name in sync (same fields Live Batches/
-    // dashboard/reports already read) — always overwrite, not just on first assignment,
-    // since a Head re-assigning a batch to a different trainer via this same flow should
-    // actually take effect, not silently no-op because someone was already assigned.
-    const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
-    const trainerName = t ? t.name : null;
-    await sb.from('batches').update({ trainer_id: trainerId, trainer_name: trainerName }).eq('id', batchId);
-    // Propagate onto the batch's own students too — this is what actually makes them show
-    // up under the newly assigned trainer's "My Batches"/attendance view: that existing
-    // system (openAtt/saveAtt on the Batches tab) groups students by their OWN trainer_name
-    // field, not by batches.trainer_id, so this assignment would otherwise be invisible to
-    // the trainer despite the batch itself being correctly updated above.
+    // Propagate onto the batch's own students too — My Batches/attendance groups students by
+    // their OWN trainer_name field, not batches.trainer_id, so this would otherwise be
+    // invisible to the newly assigned trainer despite the batch itself being updated above.
     await sb.from('students').update({ trainer_name: trainerName }).eq('batch_id', batchId);
     document.getElementById('modalAssignSlot').classList.remove('on');
     _assignSlotCtx = null;
-    renderAvailabilityGrid();
+    await loadAvailabilityTab();
     if (typeof loadLive === 'function') loadLive();
+    if (typeof loadHeadView === 'function') loadHeadView();
     showToast('success','Class assigned');
-  }catch(e){ showToast('error','Unable to assign class. '+e.message); }
+  } catch(e) { showToast('error','Unable to assign class. '+e.message); }
+}
+// Academic Head — read-only detail for an OCCUPIED slot: which batch, its course, its date
+// range, student count, and when it will next be free.
+function openOccupiedSlot(trainerId, startTime, endTime){
+  const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
+  const batch = findOccupyingBatch(trainerId, startTime, endTime, _availBatchesForOccupancy);
+  document.getElementById('occSlotTrainer').textContent = t ? t.name : '—';
+  document.getElementById('occSlotTime').textContent = `${_formatTime12(startTime)} – ${_formatTime12(endTime)}`;
+  document.getElementById('occSlotBatch').textContent = batch ? batch.name : '—';
+  document.getElementById('occSlotCourse').textContent = batch ? (batch.courses?.name || batch.programme || '—') : '—';
+  document.getElementById('occSlotDates').textContent = batch ? `${batch.start_date||'—'} → ${batch.expected_completion_date||'Ongoing'}` : '—';
+  document.getElementById('occSlotStudents').textContent = batch ? String(batch.students ? batch.students.length : 0) : '—';
+  document.getElementById('occSlotStatus').textContent = batch ? (batch.status||'active') : '—';
+  const releaseLabel = batch ? availabilityReleaseLabel(batch) : null;
+  document.getElementById('occSlotReleaseNote').textContent = releaseLabel ? `Available again from: ${releaseLabel}` : '';
+  document.getElementById('modalOccupiedSlot').classList.add('on');
 }
 
 // ============================================================================
@@ -3144,21 +3231,32 @@ function renderTrainerOptions(selectEl, list, selectedId, availabilityMap) {
     return `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${t.name}${(t.teachable_courses||'').trim() ? '' : ' (courses not set)'}${availLabel}</option>`;
   }).join('');
 }
-// Real availability, sourced from the SAME trainer_slots table the Coach Availability grid
-// reads/writes (not a second system) — one row per trainer_id/slot_date/start_time. Trainers
-// with no row at all for this date+hour are "Not set" (they haven't marked themselves
-// available), distinct from a row that exists but is already 'booked'.
-async function computeTrainerAvailabilityMap(date, hour) {
+// Real availability, sourced from the SAME trainer_availability + batches data the Coach
+// Availability tab's own recurring engine reads (findOccupyingBatch — not a second, separate
+// calculation). No date param anymore — recurring availability has no date dimension at all,
+// so "is this trainer free at this hour" is answered purely from their declared windows plus
+// whichever of their batches is currently active by date range. A trainer with no declared
+// window covering this hour is "not-set" (they haven't offered this hour at all), distinct
+// from a declared window that's currently occupied by an active batch ("booked").
+async function computeTrainerAvailabilityMap(hour) {
   const map = new Map();
-  if (!date || !hour) return map;
-  const { data: slots } = await sb.from('trainer_slots').select('trainer_id,status').eq('slot_date', date).eq('start_time', hour);
-  (slots||[]).forEach(s => map.set(String(s.trainer_id), s.status));
+  if (!hour) return map;
+  const hourMin = _timeToMinutes(hour);
+  const [{data:avail}, {data:batches}] = await Promise.all([
+    sb.from('trainer_availability').select('*').eq('is_active', true),
+    sb.from('batches').select('trainer_id,status,start_date,expected_completion_date,time_slot')
+  ]);
+  (avail||[]).forEach(a => {
+    const startMin = _timeToMinutes(a.start_time), endMin = _timeToMinutes(a.end_time);
+    if (hourMin < startMin || hourMin >= endMin) return; // this declared window doesn't cover the requested hour
+    const occ = findOccupyingBatch(a.trainer_id, a.start_time, a.end_time, batches || []);
+    map.set(String(a.trainer_id), occ ? 'booked' : 'available');
+  });
   return map;
 }
 async function refreshBatchTrainerOptionsForCourse(courseName, selectedId) {
-  const date = document.getElementById('m_b_start')?.value || '';
   const hour = document.getElementById('m_b_time_start')?.value || '';
-  const availMap = await computeTrainerAvailabilityMap(date, hour);
+  const availMap = await computeTrainerAvailabilityMap(hour);
   renderTrainerOptions(document.getElementById('m_b_trainer'), trainersQualifiedFor(courseName, selectedId), selectedId, availMap);
 }
 
@@ -3421,14 +3519,13 @@ async function saveBatchEdit(){
 }
 // Trainer availability check for batch creation. Two layers, both against real data —
 // never hardcoded, always keyed by trainer.id, never by name:
-//  1. That trainer's OTHER active batches (recurring weekly commitments — batches run for
-//     months, well beyond how far ahead trainer_slots is usually marked, so this is the
-//     backstop for the long-term recurring pattern).
-//  2. The trainer's actual marked availability in trainer_slots for this batch's Start
-//     Date + Class Start Time — the SAME table/rows the Coach Availability grid reads and
-//     writes, queried here directly (see computeTrainerAvailabilityMap). No row at all for
-//     that date+hour means "not set" — the trainer hasn't confirmed they're free, so this
-//     blocks too, same as an explicit 'booked' row.
+//  1. That trainer's OTHER active batches (recurring weekly commitments).
+//  2. The trainer's declared RECURRING availability (trainer_availability — the same rows
+//     the Coach Availability tab's "My Availability"/"Trainer Availability" views read,
+//     queried here via computeTrainerAvailabilityMap). No date lookup anymore — recurring
+//     availability has no date dimension; a trainer with no declared window covering this
+//     hour is "not set" (they haven't offered this hour at all), distinct from a declared
+//     window that's currently occupied by an active batch ("booked").
 // Returns null if clear to book, or { reason, message } if blocked.
 async function checkBatchTrainerConflict(){
   const out = document.getElementById('m_b_avail');
@@ -3463,21 +3560,22 @@ async function checkBatchTrainerConflict(){
     return { reason: 'other-batch', message: msg };
   }
 
-  // Layer 2 — the trainer's real marked availability for the batch's Start Date, from
-  // trainer_slots (same data the Coach Availability grid shows).
-  if (startDate) {
-    const availMap = await computeTrainerAvailabilityMap(startDate, hour);
-    const status = availMap.get(String(trainerId));
-    if (status === 'booked') {
-      const msg = `⚠ ${trainerName} already has another class booked on ${startDate} at ${timeLabel}. Please select another time or Trainer.`;
-      out.innerHTML = msg; out.style.color = 'var(--yellow)';
-      return { reason: 'booked', message: msg };
-    }
-    if (status !== 'available') {
-      const msg = `⚠ ${trainerName} has not marked themselves available on ${startDate} at ${timeLabel} yet. Ask them to mark availability first (Coach Availability), or pick another time/Trainer.`;
-      out.innerHTML = msg; out.style.color = 'var(--yellow)';
-      return { reason: 'not-set', message: msg };
-    }
+  // Layer 2 — the trainer's declared recurring availability (trainer_availability), checked
+  // against this exact hour. Date-independent by design (spec: "Remove date selection from
+  // TRAINER availability input") — Layer 1 above already covers date-range/day-of-week
+  // conflicts against other batches; this layer only asks "has this trainer ever offered this
+  // hour as one of their working hours at all, and is it currently free."
+  const availMap = await computeTrainerAvailabilityMap(hour);
+  const status = availMap.get(String(trainerId));
+  if (status === 'booked') {
+    const msg = `⚠ ${trainerName} already has another active class at ${timeLabel}. Please select another time or Trainer.`;
+    out.innerHTML = msg; out.style.color = 'var(--yellow)';
+    return { reason: 'booked', message: msg };
+  }
+  if (status !== 'available') {
+    const msg = `⚠ ${trainerName} has not declared ${timeLabel} as one of their recurring available hours yet. Ask them to add it first (My Availability), or pick another time/Trainer.`;
+    out.innerHTML = msg; out.style.color = 'var(--yellow)';
+    return { reason: 'not-set', message: msg };
   }
 
   out.innerHTML = `✓ ${esc(trainerName)} is available at this time. Preparation buffer: available. Conflict: none.`;
@@ -3486,8 +3584,8 @@ async function checkBatchTrainerConflict(){
 }
 // Fires on any schedule field change (Start Date, Class Start Time, day chips) — refreshes
 // the Trainer/Coach dropdown's "— Available/Unavailable/Not set" labels AND re-runs the
-// conflict check, so the two always agree with each other and with what's actually in
-// trainer_slots at that moment.
+// conflict check, so the two always agree with each other and with the trainer's declared
+// recurring availability at that moment.
 async function onBatchScheduleFieldChanged(){
   const courseName = courseById[document.getElementById('m_b_type')?.value]?.name || null;
   const trainerSel = document.getElementById('m_b_trainer');
@@ -3497,8 +3595,9 @@ async function onBatchScheduleFieldChanged(){
 
 // Formats a batch's Class Start Time (an AVAIL_HOURS value, e.g. "08:00") + its duration
 // in minutes into the same human-readable range string batches.time_slot has always stored
-// (e.g. "8:00 AM – 9:30 AM") — display-only; the real, queryable value used for the
-// trainer_slots availability check is the raw hour itself, kept in m_b_time_start.
+// (e.g. "8:00 AM – 9:30 AM") — this stored string is also what _batchStartMinutes() parses
+// back out for the recurring-availability occupancy check (findOccupyingBatch above), since
+// no separate raw-hour column exists on `batches` itself.
 function formatBatchTimeRange(hourStr, durationMinutes){
   const [h,m] = (hourStr||'0:0').split(':').map(Number);
   const fmt = mins => {
@@ -3536,8 +3635,8 @@ async function saveBatch(){
   const {data:dupe}=await sb.from('batches').select('id').ilike('name',name).limit(1);
   if(dupe&&dupe.length){showToast('error',`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
   // Hard block on a trainer conflict — checked against BOTH their other recurring batches
-  // AND their real marked availability in trainer_slots (see checkBatchTrainerConflict).
-  // Never silently creates a conflicting booking; the Head picks another time/Trainer instead.
+  // AND their declared recurring availability (see checkBatchTrainerConflict). Never silently
+  // creates a conflicting booking; the Head picks another time/Trainer instead.
   if (trainer_id) {
     const conflict = await checkBatchTrainerConflict();
     if (conflict) { showToast('warning', conflict.message, 6500); return; }
@@ -3557,13 +3656,10 @@ async function saveBatch(){
   if(error){showToast('error','Unable to save changes. '+error.message);return;}
   const picked=[...document.querySelectorAll('#m_b_students input:checked')].map(x=>x.value);
   if(picked.length)await assignStudents(picked,newBatch);
-  // Book the matching trainer_slots row too, if the trainer had marked it available — same
-  // "assign a class into an already-available slot" pattern confirmAssignSlot() uses on the
-  // Coach Availability page, so a batch created here shows up there as booked, not just here.
-  if (trainer_id && start_date && startHour) {
-    const { data: slotRow } = await sb.from('trainer_slots').select('id,status').eq('trainer_id',trainer_id).eq('slot_date',start_date).eq('start_time',startHour).maybeSingle();
-    if (slotRow && slotRow.status==='available') await sb.from('trainer_slots').update({status:'booked',batch_id:newBatch.id}).eq('id',slotRow.id);
-  }
+  // No trainer_slots bookkeeping needed here anymore — under the recurring availability
+  // model, whether this trainer's matching slot shows Occupied is computed live from this
+  // very batch row (findOccupyingBatch, see the Availability tab) the moment the Coach
+  // Availability tab is next rendered. Nothing to write, nothing that can drift out of sync.
   document.getElementById('m_b_name').value=''; document.getElementById('m_b_time_start').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value=''; document.getElementById('m_b_duration').value='60'; document.getElementById('m_b_buffer').value='0';
   document.querySelectorAll('#m_b_days .dchip.on').forEach(x=>x.classList.remove('on'));
   document.getElementById('m_b_students').innerHTML='';
