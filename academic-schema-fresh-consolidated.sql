@@ -236,3 +236,24 @@ drop policy if exists trainer_availability_allow_all on trainer_availability;
 create policy trainer_availability_allow_all on trainer_availability for all using (true) with check (true);
 
 NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
+-- Phase 3 — Safe (soft) batch delete. Idempotent, safe to re-run.
+--
+-- deleteBatch() used to hard-delete the batches row outright, which either
+-- failed with an FK error once any student/attendance/session row referenced
+-- it, or (for a genuinely empty batch) succeeded but left every reader with
+-- no way to distinguish "never existed" from "was deleted on purpose" — and
+-- more importantly, gave HR/Academic no way to preserve a completed batch's
+-- history while still removing it from every active/upcoming view.
+--
+-- deleted_at IS NULL means the batch is live (same as every existing query's
+-- current behavior, since this column doesn't exist for any row until this
+-- migration runs — the app's own client-side checks already treat a missing
+-- deleted_at exactly the same as a null one, so nothing breaks before this
+-- is applied, it just means Delete Batch doesn't fully take effect yet).
+-- ============================================================================
+alter table batches add column if not exists deleted_at timestamptz;
+create index if not exists batches_deleted_at_idx on batches (deleted_at);
+
+NOTIFY pgrst, 'reload schema';

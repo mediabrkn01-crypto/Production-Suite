@@ -572,7 +572,7 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="mhint">Class days prefill from the course — tap to change per batch, even midway.</div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Masterclass Day</span><select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select></label>
-            <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60"/></label>
+            <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60" oninput="_refreshBatchTimeLabel()"/></label>
           </div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Preparation Buffer (minutes)</span><input id="m_b_buffer" type="number" placeholder="0" value="0"/></label>
@@ -1443,11 +1443,18 @@ async function loadLive(){
   // status, for the legacy-completion check below.
   const baseMap={};window._baseMap=baseMap;
   const statusMap={};
+  const deletedNames=new Set();
   try{
-    let baseQuery=sb.from('batches').select('name,baseline_sessions,status');
+    // select('*') rather than naming columns explicitly — on a database where the deleted_at
+    // migration hasn't been run yet, naming a column that doesn't exist errors the WHOLE query
+    // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
+    let baseQuery=sb.from('batches').select('*');
     if(!isHead) baseQuery = myBatchNames.length ? baseQuery.in('name', myBatchNames) : null;
     if(baseQuery){const {data:bb}=await baseQuery;
-      (bb||[]).forEach(function(b){baseMap[b.name]=+b.baseline_sessions||0; statusMap[b.name]=b.status||null;});}
+      (bb||[]).forEach(function(b){
+        baseMap[b.name]=+b.baseline_sessions||0; statusMap[b.name]=b.status||null;
+        if (_isBatchDeleted(b)) deletedNames.add(b.name);
+      });}
   }catch(e){}
   // Completion is judged by TWO signals, either one sufficient \u2014 not session progress alone.
   //   1. batches.status already 'closed'/'completed'/'finished' \u2014 some legacy batches were
@@ -1483,7 +1490,10 @@ async function loadLive(){
     const { dn, total } = progressOf(b);
     return dn >= total;
   };
-  const all=Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
+  // Soft-deleted batches (deleteBatch()) never appear in My Batches/Live Batches/Finished
+  // Batches — deletedNames comes from the same batches fetch just above (keyed by real batch
+  // name, matching b.raw the same way baseMap/statusMap already do).
+  const all=Object.values(map).filter(b=>!deletedNames.has(b.raw||b.name)).sort((a,b)=>a.name.localeCompare(b.name));
   const active=all.filter(b=>!isBatchFinished(b));
   // Previous Classes, newest-completed first \u2014 no real "completion date" is tracked
   // anywhere in this data model, so planned_end_date (when set) is the closest real signal
@@ -2692,13 +2702,21 @@ function _parseTimeLabelToMinutes(label){
   return h*60 + mins;
 }
 function _batchStartMinutes(b){ return _parseTimeLabelToMinutes(b && b.time_slot); }
+// Single shared check for "was this batch soft-deleted" (see deleteBatch() — sets
+// deleted_at rather than removing the row, so history is never orphaned). !!undefined is
+// false, same as !!null — a database that hasn't had the deleted_at migration run yet
+// behaves identically to "nothing is deleted", never breaking any view that filters on this.
+function _isBatchDeleted(b){ return !!(b && b.deleted_at); }
 // A batch is "currently active" (occupying its trainer's time) purely by date range — the
 // date-driven model the spec describes: active within [start_date, expected_completion_date];
 // a null end date means ongoing/indefinite (never auto-frees on its own until one is set).
 // status 'inactive'/'closed' (the same values checkBatchTrainerConflict's own recurring check
-// already excludes) also takes it out of consideration.
+// already excludes) also takes it out of consideration — as does a soft-deleted batch, so
+// deleting a batch releases its trainer_availability slot the exact same way a completed one
+// does, with zero separate cleanup step.
 function isBatchCurrentlyActive(b){
   if (!b) return false;
+  if (_isBatchDeleted(b)) return false;
   if (b.status === 'inactive' || b.status === 'closed') return false;
   const todayStr = new Date().toISOString().slice(0,10);
   if (b.start_date && todayStr < b.start_date) return false;   // hasn't started yet
@@ -3122,7 +3140,7 @@ async function loadClassesTab(){
     let query = sb.from('batches').select('*').eq('status','active');
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const { data: batches } = await query;
-    const rows = batches || [];
+    const rows = (batches || []).filter(b => !_isBatchDeleted(b));
     const todaysEl = document.getElementById('classesToday');
     const upcomingEl = document.getElementById('classesUpcoming');
     if (!rows.length) {
@@ -3213,7 +3231,7 @@ async function loadScheduleTab(){
     let query = sb.from('batches').select('*, students(id)').eq('status','active');
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const {data:batches} = await query;
-    let rows = batches||[];
+    let rows = (batches||[]).filter(b => !_isBatchDeleted(b));
     // My Calendar only ever reflects CURRENT capacity — a batch whose sessions are 100% done
     // has already released its time slot (same completion rule now applied to My Batches and
     // the recurring Availability engine), so it disappears from here too instead of still
@@ -3363,8 +3381,12 @@ async function loadReportsTab(){
 async function loadHeadView(){
   await loadTrainersTable();
 
-  const { data: batches } = await sb.from('batches').select('*, trainers(name), courses(name), students(id)').order('created_at');
-  window._allBatchesFull = batches||[];
+  const { data: rawBatches } = await sb.from('batches').select('*, trainers(name), courses(name), students(id)').order('created_at');
+  // Soft-deleted batches (deleteBatch()) never appear here or in window._allBatchesFull —
+  // which the Availability engine, Create Batch's conflict checks, and checkBatchTrainerConflict
+  // all read from — so a deleted batch disappears from every one of those in one place.
+  const batches = (rawBatches||[]).filter(b => !_isBatchDeleted(b));
+  window._allBatchesFull = batches;
   document.getElementById('batchTable').innerHTML = (batches||[]).map(b => {
     const cn=b.courses?.name||courseLabel(b.batch_type);
     const n=(b.students?b.students.length:0), cap=b.capacity;
@@ -3405,7 +3427,8 @@ async function loadTrainerView(){
   const { data: myTrainer } = await sb.from('trainers').select('*').ilike('name', currentUser.name).single();
   if (!myTrainer) return;
 
-  const { data: batches } = await sb.from('batches').select('*, students(id)').eq('trainer_id', myTrainer.id);
+  const { data: rawBatches } = await sb.from('batches').select('*, students(id)').eq('trainer_id', myTrainer.id);
+  const batches = (rawBatches||[]).filter(b => !_isBatchDeleted(b));
   // Real progress per batch — baseline_sessions (pre-tracking progress) + actual marked
   // attendance rows for that batch name, same source loadLive()'s Head-facing cards already
   // use, just scoped here to only this trainer's own (already-scoped) batch list.
@@ -3498,7 +3521,12 @@ async function computeTrainerAvailabilityMap(hour) {
   const hourMin = _timeToMinutes(hour);
   const [{data:avail}, {data:batches}] = await Promise.all([
     sb.from('trainer_availability').select('*').eq('is_active', true),
-    sb.from('batches').select('trainer_id,status,start_date,expected_completion_date,time_slot')
+    // select('*') rather than naming columns (including deleted_at) explicitly — on a
+    // database where the deleted_at migration hasn't been run yet, naming a column that
+    // doesn't exist makes the WHOLE query error out (PGRST 42703), not just omit that one
+    // field; select('*') degrades gracefully instead (same fix already applied once in
+    // common.js for the identical reason, photo_base64).
+    sb.from('batches').select('*')
   ]);
   (avail||[]).forEach(a => {
     const startMin = _timeToMinutes(a.start_time), endMin = _timeToMinutes(a.end_time);
@@ -3892,7 +3920,7 @@ function findOccupyingBatchInRange(trainerId, startTime, endTime, batches, reqSt
   const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','closed','completed','finished'].includes(b.status)) return false;
+    if (['inactive','closed','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
     const bStart = _batchStartMinutes(b);
     if (bStart === null || bStart < startMin || bStart >= endMin) return false;
     return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
@@ -3904,7 +3932,7 @@ function findExactTimeConflict(trainerId, time24, batches, reqStart, reqEnd) {
   const min = _timeToMinutes(time24);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','closed','completed','finished'].includes(b.status)) return false;
+    if (['inactive','closed','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
     if (_batchStartMinutes(b) !== min) return false;
     return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
   }) || null;
@@ -3940,13 +3968,32 @@ async function refreshAvailableClassTimes(){
     return `<button type="button" class="act-btn m_b_time_pill" style="margin:3px 6px 3px 0" onclick="selectBatchTime('${s.start_time}','${label.replace(/'/g,"\\'")}',this)">${esc(label)} <span style="color:var(--green);font-size:9.5px">AVAILABLE</span></button>`;
   }).join('');
 }
+// Shows BOTH start and end time, always driven by the actual Class Duration field (never a
+// hardcoded 60 minutes) — reuses formatBatchTimeRange(), the exact same function saveBatch()
+// itself uses to build the stored time_slot, so what's shown here during selection can never
+// disagree with what actually gets saved. Called after picking a time (pill or custom) AND
+// whenever Class Duration changes, so the displayed end time always reflects the current
+// duration even if it's edited after a time was already chosen.
+function _refreshBatchTimeLabel(){
+  const label = document.getElementById('m_b_time_custom_label');
+  const time24 = document.getElementById('m_b_time_start')?.value || '';
+  if (!label) return;
+  if (!time24) { label.textContent = ''; return; }
+  const duration = parseInt(document.getElementById('m_b_duration')?.value, 10) || 60;
+  const isCustom = document.getElementById('m_b_time_start').dataset.custom === '1';
+  label.innerHTML = (isCustom ? 'Selected (custom): ' : 'Selected: ') + '<b>' + esc(formatBatchTimeRange(time24, duration)) + '</b>';
+}
 function selectBatchTime(hhmm, label, btn){
   document.getElementById('m_b_time_start').value = hhmm;
-  document.getElementById('m_b_time_custom_label').textContent = 'Selected: ' + label;
+  document.getElementById('m_b_time_start').dataset.custom = '';
   document.querySelectorAll('.m_b_time_pill').forEach(b=>b.classList.remove('on'));
   if (btn) btn.classList.add('on');
+  _refreshBatchTimeLabel();
   onBatchScheduleFieldChanged();
 }
+// Custom Time — spec: must show BOTH Start Time and End Time (End Time driven by the real
+// Class Duration field, not a fixed 1-hour assumption); uses the existing themed clock picker
+// for picking the start, never a 24-hour dropdown.
 function openCustomBatchTime(){
   const trainerId = document.getElementById('m_b_trainer')?.value || '';
   if (!trainerId) { showToast('warning','Pick a Trainer / Coach first.'); return; }
@@ -3962,28 +4009,30 @@ async function onCustomBatchTimeChosen(time24){
   const trainerId = document.getElementById('m_b_trainer')?.value || '';
   if (!trainerId) return;
   const trainerName = (_allActiveTrainers.find(t=>String(t.id)===String(trainerId))||{}).name || 'This trainer';
-  const label = _formatTime12(time24);
+  const startLabel = _formatTime12(time24);
   const startDate = document.getElementById('m_b_start')?.value || '';
   const endDate = document.getElementById('m_b_completion')?.value || '';
   const batches = await _allBatchesForAvailabilityCheck();
   const conflict = findExactTimeConflict(trainerId, time24, batches, startDate, endDate);
   if (conflict) {
-    showToast('warning', `${trainerName} already has "${conflict.name}" scheduled at ${label}${conflict.expected_completion_date?' until '+conflict.expected_completion_date:''}. Pick a different time.`, 7500);
+    showToast('warning', `Trainer already has another class during this time — "${conflict.name}" at ${startLabel}${conflict.expected_completion_date?' until '+conflict.expected_completion_date:''}. Pick a different time.`, 7500);
     return;
   }
   const { data: avail } = await sb.from('trainer_availability').select('start_time,end_time').eq('trainer_id', trainerId).eq('is_active', true);
   const min = _timeToMinutes(time24);
   const withinDeclared = (avail||[]).some(s => min >= _timeToMinutes(s.start_time) && min < _timeToMinutes(s.end_time));
   if (!withinDeclared) {
+    const duration = parseInt(document.getElementById('m_b_duration')?.value, 10) || 60;
     const ok = await _showSimpleConfirm(
-      `${label} is outside ${trainerName}'s regular declared availability.\n\nUse this time for this batch anyway? This only applies to this one batch — it will not change ${trainerName}'s permanent recurring availability.`,
-      { title: 'Time Outside Declared Availability', confirmLabel: 'Confirm Custom Time' }
+      `${formatBatchTimeRange(time24, duration)} is outside ${trainerName}'s regular declared availability.\n\nUse this custom time for this batch? This only applies to this one batch — it will not change ${trainerName}'s permanent My Availability.`,
+      { title: 'Time Outside Declared Availability', confirmLabel: 'Use Custom Time' }
     );
     if (!ok) return;
   }
   document.getElementById('m_b_time_start').value = time24;
-  document.getElementById('m_b_time_custom_label').textContent = 'Selected (custom): ' + label;
+  document.getElementById('m_b_time_start').dataset.custom = '1';
   document.querySelectorAll('.m_b_time_pill').forEach(b=>b.classList.remove('on'));
+  _refreshBatchTimeLabel();
   onBatchScheduleFieldChanged();
 }
 
@@ -4065,13 +4114,32 @@ async function saveBatch(){
   acadSwitchTab('live');
 }
 
+// FIX: this used to call confirmDelete(), which calls showPrompt() — a function that only
+// ever existed in common.js, which this file doesn't load (same standalone-file reason
+// documented elsewhere in this file, e.g. above acadSyncTrainersFromHRLocal). Every click on
+// Delete Batch threw a silent ReferenceError, so nothing ever happened — "Created batches
+// cannot be deleted." Uses the local _showSimpleConfirm modal instead (already built for My
+// Availability's own removal-protection), matching the spec's exact "DELETE BATCH? / Are you
+// sure...? / [Cancel] [Delete Batch]" wording.
+//
+// SAFE DELETE: soft-delete (sets deleted_at) rather than physically removing the row, so a
+// batch's student roster/attendance/class-log/session history is never orphaned regardless of
+// whether it has any history at all — one rule, not a "does this batch have history"
+// conditional. Every view that lists batches (Batches table, My Batches, Classes/Upcoming, My
+// Calendar, the Availability engine's occupancy check, Create Batch's own conflict checks)
+// already filters out any row with deleted_at set — see _isBatchDeleted()/the .filter() calls
+// throughout this file — so a deleted batch disappears from all of them immediately on the
+// next render, and its occupied trainer_availability slot frees up automatically the exact
+// same way a completed batch's does (findOccupyingBatch/findOccupyingBatchInRange already skip
+// any batch that isn't currently "active" from this app's point of view).
 async function deleteBatch(id,name){
   if (!requireHeadAccess()) return;
-  if (!(await confirmDelete('batch',name||''))) return;
-  const {error}=await sb.from('batches').delete().eq('id', id);
-  if(error){showToast('error','Unable to delete batch — students or sessions may be linked. '+error.message,6000);return;}
-  await loadHeadView(); await loadStats();
-  showToast('success','Batch deleted successfully');
+  const ok = await _showSimpleConfirm('Are you sure you want to delete this batch?', { title: 'Delete Batch — ' + (name||'this batch'), confirmLabel: 'Delete Batch' });
+  if (!ok) return;
+  const {error}=await sb.from('batches').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  if(error){showToast('error','Unable to delete batch. '+error.message,6000);return;}
+  await loadHeadView(); await loadStats(); await loadLive();
+  showToast('success','Batch deleted');
 }
 
 async function saveAssignment(){
