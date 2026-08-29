@@ -3103,34 +3103,49 @@ function openOccupiedSlot(trainerId, startTime, endTime){
 }
 
 // ============================================================================
-// Classes — today's + next-7-days sessions, drawn straight from `sessions`.
+// Classes — Today's Classes + Upcoming (Next 7 Days), GENERATED from each active batch's own
+// recurring schedule (day_pattern + time_slot + start_date/expected_completion_date), via
+// generateBatchOccurrences() — the same generator My Calendar (loadScheduleTab) uses. This
+// used to read only the `sessions` table, which has no row at all unless someone manually
+// created one for that exact date — a batch with a real Mon–Fri recurring schedule and no
+// sessions rows always showed "Nothing scheduled", regardless of how real its schedule was.
 // ============================================================================
 async function loadClassesTab(){
   try{
     const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
-    const today = new Date().toISOString().slice(0,10);
-    const soon = new Date(); soon.setDate(soon.getDate()+7);
-    const soonStr = soon.toISOString().slice(0,10);
-    let query = sb.from('sessions').select('*').gte('session_date', today).lte('session_date', soonStr).order('session_date');
-    // Scoped at the QUERY level, not fetched-then-hidden — a Trainer's own batch ids are
-    // resolved first (window._myTrainerId, set by loadTrainerView() earlier in boot()), then
-    // `sessions` is filtered to only those batch_ids server-side. `sessions` has no direct
-    // trainer_id column, batch_id is the only link back to a trainer, hence the extra lookup.
-    if (!isHead) {
-      const myId = window._myTrainerId;
-      if (!myId) { document.getElementById('classesToday').innerHTML = '<div class="empty">No coach profile linked to your login yet.</div>'; document.getElementById('classesUpcoming').innerHTML = ''; return; }
-      const { data: myBatches } = await sb.from('batches').select('id').eq('trainer_id', myId);
-      const myBatchIds = (myBatches||[]).map(b=>b.id);
-      if (!myBatchIds.length) { document.getElementById('classesToday').innerHTML = '<div class="empty">No classes scheduled today.</div>'; document.getElementById('classesUpcoming').innerHTML = '<div class="empty">Nothing scheduled in the next 7 days.</div>'; return; }
-      query = query.in('batch_id', myBatchIds);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const soon = new Date(now); soon.setDate(soon.getDate()+7);
+    const soonStr = `${soon.getFullYear()}-${String(soon.getMonth()+1).padStart(2,'0')}-${String(soon.getDate()).padStart(2,'0')}`;
+    // Only active batches — same status='active' scoping My Calendar already uses, so a
+    // finished/closed batch never generates a "class" that no longer actually happens.
+    let query = sb.from('batches').select('*').eq('status','active');
+    if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
+    const { data: batches } = await query;
+    const rows = batches || [];
+    const todaysEl = document.getElementById('classesToday');
+    const upcomingEl = document.getElementById('classesUpcoming');
+    if (!rows.length) {
+      if (todaysEl) todaysEl.innerHTML = '<div class="empty">No classes scheduled today.</div>';
+      if (upcomingEl) upcomingEl.innerHTML = '<div class="empty">Nothing scheduled in the next 7 days.</div>';
+      return;
     }
-    const {data:sessions} = await query;
-    const rows = sessions||[];
-    const todays = rows.filter(s=>s.session_date===today);
-    const upcoming = rows.filter(s=>s.session_date>today);
-    const row = s => `<div class="dash-row"><span>${esc(s.type||'Session')} ${s.batch_id?('· batch '+esc(String(s.batch_id))):''}</span><span style="color:var(--tx3)">${s.session_date}${s.status?(' · '+esc(s.status)):''}</span></div>`;
-    document.getElementById('classesToday').innerHTML = todays.length ? todays.map(row).join('') : '<div class="empty">No classes scheduled today.</div>';
-    document.getElementById('classesUpcoming').innerHTML = upcoming.length ? upcoming.map(row).join('') : '<div class="empty">Nothing scheduled in the next 7 days.</div>';
+    let allOccurrences = [];
+    rows.forEach(b => { allOccurrences = allOccurrences.concat(generateBatchOccurrences(b, today, soonStr)); });
+    allOccurrences.sort((a,b) => a.date === b.date ? (a.startTime - b.startTime) : a.date.localeCompare(b.date));
+    const todays = allOccurrences.filter(o => o.date === today);
+    const upcoming = allOccurrences.filter(o => o.date > today);
+    const DOW_LABEL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const card = o => {
+      const b = o.batch;
+      const dateLabel = new Date(o.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+      return `<div class="dash-row" style="cursor:pointer" onclick="openBatchDetails('${b.id}')">
+        <span><b style="color:var(--tx)">${esc(DOW_LABEL[o.dow])}, ${esc(dateLabel)}</b> — ${esc(b.name)}${b.programme?' · '+esc(b.programme):''}</span>
+        <span style="color:var(--tx3)">${esc(b.time_slot||'')}</span>
+      </div>`;
+    };
+    if (todaysEl) todaysEl.innerHTML = todays.length ? todays.map(card).join('') : '<div class="empty">No classes scheduled today.</div>';
+    if (upcomingEl) upcomingEl.innerHTML = upcoming.length ? upcoming.map(card).join('') : '<div class="empty">Nothing scheduled in the next 7 days.</div>';
   }catch(e){ console.warn('Classes tab failed to load:', e.message); }
 }
 
@@ -3841,6 +3856,37 @@ async function onBatchScheduleFieldChanged(){
 // scheduling a batch that may start in the future.
 function _dateRangesOverlap(aStart, aEnd, bStart, bEnd) {
   return (aStart||'0000-01-01') <= (bEnd||'9999-12-31') && (bStart||'0000-01-01') <= (aEnd||'9999-12-31');
+}
+// Generates concrete calendar-date class occurrences for one batch within [rangeStart,
+// rangeEnd] (inclusive) — from day_pattern + time_slot + start_date/expected_completion_date,
+// the same fields My Calendar (loadScheduleTab) already reads. This is the single source both
+// My Calendar and the Classes tab (Today's Classes / Upcoming) generate from — neither one
+// requires a manually-created row per occurrence; a batch's own recurring schedule is enough.
+function generateBatchOccurrences(b, rangeStart, rangeEnd) {
+  const DAY_INDEX = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+  const tokens = (b.day_pattern||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const dayTokens = tokens.map(t=>t.replace(/\s*·.*$/,'').trim()).filter(d=>DAY_INDEX.hasOwnProperty(d));
+  const startMin = _batchStartMinutes(b);
+  if (!dayTokens.length || startMin === null) return [];
+  // Clip the batch's own [start_date, expected_completion_date] (null end = ongoing) against
+  // the requested window — occurrences only exist where the two overlap.
+  const batchStart = b.start_date || '0000-01-01';
+  const batchEnd = b.expected_completion_date || '9999-12-31';
+  const effStart = batchStart > rangeStart ? batchStart : rangeStart;
+  const effEnd = batchEnd < rangeEnd ? batchEnd : rangeEnd;
+  if (effStart > effEnd) return [];
+  const wantedDows = new Set(dayTokens.map(d=>DAY_INDEX[d]));
+  const occurrences = [];
+  let cur = new Date(effStart+'T00:00:00');
+  const end = new Date(effEnd+'T00:00:00');
+  while (cur <= end) {
+    if (wantedDows.has(cur.getDay())) {
+      const dateStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+      occurrences.push({ date: dateStr, dow: cur.getDay(), batch: b, startTime: startMin });
+    }
+    cur.setDate(cur.getDate()+1);
+  }
+  return occurrences;
 }
 function findOccupyingBatchInRange(trainerId, startTime, endTime, batches, reqStart, reqEnd) {
   const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
