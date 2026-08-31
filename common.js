@@ -191,24 +191,42 @@ async function fetchDeptOnLeaveToday() {
     }
 }
 
+// Work From Home is its own resolved status, never folded into "On Leave" — same
+// leave_type==='Work From Home' distinction hr.html's own Attendance Report/Dashboard
+// already use (hr-badge-wfh, the dedicated WFH tile). This widget used to badge every
+// approved leave request "On Leave" regardless of type, which is what made a WFH row
+// (e.g. Ali's) show up here as "On Leave" — generic by leave_type value, not any specific
+// employee's name, so this fixes it for everyone, not just one person.
 async function renderDeptOnLeaveWidget(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
     const rows = await fetchDeptOnLeaveToday();
     if (!rows.length) {
-        el.innerHTML = `<p class="text-[#4a5182] text-xs italic py-3 text-center">No one on your team is on leave today.</p>`;
+        el.innerHTML = `<p class="text-[#4a5182] text-xs italic py-3 text-center">No one on your team is on leave or working from home today.</p>`;
         return;
     }
-    el.innerHTML = rows.map(({ employee, leave }) => `
+    const row = ({ employee, leave }, isWfh) => `
         <div class="flex items-center gap-3 p-3 rounded-xl" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
             ${hrAvatarHTML(employee, 36)}
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-bold text-white truncate">${employee.full_name}</div>
                 <div class="text-[11px] text-[#6b74a0]">${leave.start_date} → ${leave.end_date}</div>
             </div>
-            <span class="hr-badge hr-badge-on_leave shrink-0">On Leave</span>
+            <span class="hr-badge ${isWfh ? 'hr-badge-wfh' : 'hr-badge-on_leave'} shrink-0">${isWfh ? 'Work From Home' : 'On Leave'}</span>
         </div>
-    `).join('');
+    `;
+    const wfhRows = rows.filter(r => r.leave.leave_type === 'Work From Home');
+    const leaveRows = rows.filter(r => r.leave.leave_type !== 'Work From Home');
+    let html = '';
+    if (leaveRows.length) {
+        html += `<h4 class="text-[11px] font-bold uppercase tracking-wider text-[#6b74a0] mb-2">On Leave Today</h4>`;
+        html += `<div class="space-y-2 mb-4">${leaveRows.map(r => row(r, false)).join('')}</div>`;
+    }
+    if (wfhRows.length) {
+        html += `<h4 class="text-[11px] font-bold uppercase tracking-wider text-[#6b74a0] mb-2">Working From Home Today</h4>`;
+        html += `<div class="space-y-2">${wfhRows.map(r => row(r, true)).join('')}</div>`;
+    }
+    el.innerHTML = html;
 }
 
 // Team-leave notifications: a division-mate's leave just became approved. Fires into the
@@ -241,7 +259,16 @@ async function checkDeptLeaveNotifications() {
             if (!_lastKnownDeptLeaveIds.has(l.id)) {
                 if (hadBaseline) {
                     const who = byId[l.employee_id]?.full_name || 'A team member';
-                    addNotif('team_leave', `${who} is on leave from ${l.start_date} to ${l.end_date}.`, null, l.id);
+                    // Work From Home is its own resolved status, never worded as "on leave" —
+                    // resolved from the actual request's leave_type (generic, works for every
+                    // employee), same distinction renderDeptOnLeaveWidget/notifMeta now use.
+                    // The actual-leave wording/format below is unchanged from before this fix.
+                    if (l.leave_type === 'Work From Home') {
+                        const range = l.start_date === l.end_date ? `on ${l.start_date}` : `from ${l.start_date} to ${l.end_date}`;
+                        addNotif('team_wfh', `${who} is working from home ${range}.`, null, l.id);
+                    } else {
+                        addNotif('team_leave', `${who} is on leave from ${l.start_date} to ${l.end_date}.`, null, l.id);
+                    }
                 }
                 _lastKnownDeptLeaveIds.add(l.id);
                 changed = true;
@@ -416,6 +443,7 @@ async function loadMyHRData() {
                     return { icon: 'megaphone', color: n.priority === 'urgent' ? 'red' : 'orange', label: priorityLabel, onClick: annId ? `if(typeof openAnnouncementDetail==='function')openAnnouncementDetail('${annId}');` : null };
                 }
                 case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: null };
+                case 'team_wfh': return { icon: 'home', color: 'purple', label: '🏠 Team Member Working From Home', onClick: null };
                 case 'birthday': return { icon: 'cake', color: 'orange', label: '🎂 Happy Birthday!', onClick: null };
                 case 'work_anniversary': return { icon: 'award', color: 'orange', label: '🏆 Work Anniversary', onClick: null };
                 case 'celebration': return { icon: 'party-popper', color: 'orange', label: '🎉 Celebration', onClick: null };

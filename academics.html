@@ -670,30 +670,41 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
       </div>
 
-      <!-- My Leave — apply, view balances, view request history. Same hr_leave_requests
-           table as HR's own Leave Management (see saveLeave()) — HR reviews and
-           approves/rejects, this is a read/write view onto that one shared system. -->
+      <!-- My Leave — matches index.html/common.js's own My Leave layout (see initMyLeave()/
+           submitMyLeave() there): a request-form card, a balances card, a request-history
+           card, in that order — this is a LOCAL PORT of the same visual structure, not a new
+           design (academics.html doesn't load common.js, same standalone-file reason
+           documented elsewhere in this file, e.g. above acadSyncTrainersFromHRLocal).
+           Functionally this already went through the exact same hr_leave_requests table/HR
+           review workflow as index.html — only the layout below changed, matching it. The
+           team-wide "on leave today" block that used to sit at the top of this page was
+           removed (this is the employee's PERSONAL leave page, not a team view) — Academic
+           Head/Coordinator team-leave visibility already lives on Overview's own dashboard
+           (dashOnLeave, loadAcadDashboard) and Coach Availability, unchanged. -->
       <div class="acad-tab" id="tab-acad-leave">
         <div class="section" id="leaveShared">
-          <h2>My Leave <span class="tag">HR</span></h2>
-          <div class="lv-note">Goes through the same HR Leave Management system as every other department — HR reviews and approves/rejects, and the approved status is what the rest of Academic (dashboard, Coach Availability, scheduling) reads.</div>
-          <div class="subhead" style="margin:4px 0 10px">On leave today (whole team)</div>
-          <div id="onLeaveToday" class="loading">Loading…</div>
-          <div class="subhead" style="margin:18px 0 10px">Apply for leave</div>
-          <div class="lv-row">
-            <label class="lv-field"><span>Type</span>
-              <select id="lv_type"><option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option><option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option></select>
-            </label>
-            <label class="lv-field"><span>From</span><input id="lv_from" type="date"/></label>
-            <label class="lv-field"><span>To</span><input id="lv_to" type="date"/></label>
-            <label class="lv-field lv-grow"><span>Reason</span><input id="lv_reason" placeholder="Optional"/></label>
-            <button class="lv-apply" onclick="saveLeave()">Submit to HR</button>
+          <h2>My Leave</h2>
+          <div class="lv-note">Request leave and track your balance — goes through the same HR Leave Management system as every other department; HR reviews and approves/rejects, and the approved status is what the rest of Academic (dashboard, Coach Availability, scheduling) reads.</div>
+          <div class="card" style="padding:16px 18px;margin:14px 0 18px">
+            <div class="lv-row">
+              <label class="lv-field"><span>Leave Type</span>
+                <select id="lv_type"><option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option><option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option></select>
+              </label>
+              <label class="lv-field"><span>Start Date</span><input id="lv_from" type="date"/></label>
+              <label class="lv-field"><span>End Date</span><input id="lv_to" type="date"/></label>
+              <label class="lv-field lv-grow"><span>Reason</span><input id="lv_reason" placeholder="Optional"/></label>
+              <button class="lv-apply" onclick="saveLeave()">Submit Request</button>
+            </div>
+            <div id="lv_no_hr_link" class="empty" style="display:none;margin-top:8px">No HR employee record is linked to your login yet — ask HR to link your portal email before applying for leave.</div>
           </div>
-          <div id="lv_no_hr_link" class="empty" style="display:none;margin-top:8px">No HR employee record is linked to your login yet — ask HR to link your portal email before applying for leave.</div>
-          <div class="subhead" style="margin:18px 0 10px">My Balances</div>
-          <div class="acad-dash-tiles" id="leaveBalances"></div>
-          <div class="subhead" style="margin:18px 0 10px">My Requests</div>
-          <div id="myLeaveHistory" class="loading">Loading…</div>
+          <div class="card" style="padding:16px 18px;margin-bottom:18px">
+            <div class="subhead" style="margin:0 0 10px">My Balances</div>
+            <div class="acad-dash-tiles" id="leaveBalances"></div>
+          </div>
+          <div class="card" style="padding:16px 18px">
+            <div class="subhead" style="margin:0 0 10px">My Requests</div>
+            <div id="myLeaveHistory" class="loading">Loading…</div>
+          </div>
         </div>
         <div class="section role-restricted-only hidden" id="clockOnly">
           <h2>My Workspace</h2>
@@ -751,11 +762,13 @@ details[open] .rawsum::before{content:'▾ '}
         </div>
       </div>
 
-      <!-- Team Members — Education-division colleagues on approved leave today, same
-           hr_leave_requests source the rest of this file's leave features already use. -->
+      <!-- Team Members — Education-division colleagues on approved leave OR Work From Home
+           today, same hr_leave_requests source the rest of this file's leave features already
+           use. Split into two groups (loadTeamTab) rather than one tag — a WFH colleague is
+           still working, not "on leave", same distinction the rest of the app now uses. -->
       <div class="acad-tab" id="tab-acad-team">
         <div class="section">
-          <h2>Team Members <span class="tag">On Leave Today</span></h2>
+          <h2>Team Members</h2>
           <div id="teamOnLeaveList" class="loading">Loading…</div>
         </div>
       </div>
@@ -2251,7 +2264,12 @@ async function loadAcadDashboard(){
       // through hr_employees first. Falls back to a name match only for a trainer with no
       // portal_email on file at all (not yet linked by HR).
       const empById = new Map((hrEmployees || []).map(e => [e.id, e]));
-      const onLeaveToday = (approvedLeaves || []).filter(l => l.start_date <= today && l.end_date >= today)
+      // Work From Home is its own resolved status, never folded into "On Leave" — a coach
+      // working from home is still working (available for scheduling), not absent. Same
+      // leave_type==='Work From Home' distinction hr.html's own Attendance Report/Dashboard
+      // and the Team Members widget (common.js) already use — resolved generically from the
+      // request's own leave_type, not any specific coach's name.
+      const onLeaveToday = (approvedLeaves || []).filter(l => l.leave_type !== 'Work From Home' && l.start_date <= today && l.end_date >= today)
         .map(l => {
           const emp = empById.get(l.employee_id);
           return { ...l, from_date: l.start_date, to_date: l.end_date, _email: (emp && emp.portal_email || '').toLowerCase(), _name: (emp && emp.full_name || '').toLowerCase() };
@@ -2672,8 +2690,19 @@ async function loadTeamTab(){
       mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',today).gte('end_date',today)
     ]);
     const byId = new Map((employees||[]).map(e=>[e.id,e]));
-    const rows = (leaves||[]).map(l=>({emp:byId.get(l.employee_id), leave:l})).filter(r=>r.emp);
-    el.innerHTML = rows.length ? rows.map(r => `<div class="acad-leave-row"><span class="acad-avatar-dot">${esc((r.emp.full_name||'?').slice(0,1).toUpperCase())}</span><span style="flex:1">${esc(r.emp.full_name)}</span><span style="color:var(--tx3)">${r.leave.start_date} → ${r.leave.end_date}</span></div>`).join('') : '<div class="empty">No one on your team is on leave today.</div>';
+    const allRows = (leaves||[]).map(l=>({emp:byId.get(l.employee_id), leave:l})).filter(r=>r.emp);
+    // Work From Home is its own resolved status, never folded into "On Leave" — a colleague
+    // working from home is still working. Same leave_type==='Work From Home' distinction
+    // hr.html's own Attendance Report/Dashboard and common.js's renderDeptOnLeaveWidget (the
+    // Media Suite version of this exact widget) already use — resolved generically from the
+    // request's own leave_type, not any specific employee's name.
+    const wfhRows = allRows.filter(r => r.leave.leave_type === 'Work From Home');
+    const leaveRows = allRows.filter(r => r.leave.leave_type !== 'Work From Home');
+    const row = (r, isWfh) => `<div class="acad-leave-row"><span class="acad-avatar-dot">${esc((r.emp.full_name||'?').slice(0,1).toUpperCase())}</span><span style="flex:1">${esc(r.emp.full_name)}</span><span class="badge ${isWfh?'':'b-inactive'}" style="${isWfh?'background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)':''}">${isWfh?'Work From Home':'On Leave'}</span></div>`;
+    let html = '';
+    if (leaveRows.length) html += '<div class="subhead" style="margin:0 0 8px">On Leave Today</div>' + leaveRows.map(r=>row(r,false)).join('');
+    if (wfhRows.length) html += '<div class="subhead" style="margin:'+(leaveRows.length?'18px':'0')+' 0 8px">Working From Home Today</div>' + wfhRows.map(r=>row(r,true)).join('');
+    el.innerHTML = html || '<div class="empty">No one on your team is on leave today.</div>';
   } catch(e) { el.innerHTML = '<div class="empty">Could not load team status: '+esc(e.message)+'</div>'; }
 }
 
@@ -4514,22 +4543,15 @@ async function loadLeaveBalances(){
     }).join('');
   } catch(e) { el.innerHTML = '<div class="empty">Could not load balances: '+esc(e.message)+'</div>'; }
 }
+// My Leave \u2014 personal leave only (see the HTML comment above tab-acad-leave). Used to also
+// fetch and render a company-wide "on leave today" chip list here first \u2014 removed; that's
+// team information, not this employee's own leave, and it already duplicated what Overview's
+// own dashboard (dashOnLeave, Head/Coordinator-only) already shows. loadMyLeaveHistory() and
+// loadLeaveBalances() are unchanged, just no longer preceded by that fetch.
 async function loadLeave(){
-  const el=document.getElementById('onLeaveToday');if(!el)return;
-  try{
-    const d=new Date().toISOString().slice(0,10);
-    const [{data:approved}, {data:employees}] = await Promise.all([
-      mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',d).gte('end_date',d),
-      mediaHrDB.from('hr_employees').select('id,full_name')
-    ]);
-    const nameOf = id => { const m=(employees||[]).find(e=>e.id===id); return m ? m.full_name : id; };
-    const lvs=(approved||[]).map(l=>'<span class="lv-chip"><i class="ti ti-plane-departure"></i>'+esc(nameOf(l.employee_id))+'<span class="lv-sub">'+esc(l.leave_type||'Leave')+' \u00b7 till '+l.end_date+(l.reason?' \u00b7 '+esc(l.reason):'')+'</span></span>').join('');
-    el.className='lv-chips';
-    el.innerHTML=lvs||'<div class="lv-none">No one on leave today.</div>';
-  }catch(e){el.className='';el.innerHTML='<div class="empty">Could not load HR leave data: '+esc(e.message)+'</div>';}
   loadMyLeaveHistory();
   loadLeaveBalances();
-  // loadAttendanceCalendar() used to also fire from here — moved out (see
+  // loadAttendanceCalendar() used to also fire from here \u2014 moved out (see
   // ACAD_LAZY_TAB_LOADERS): My Attendance is its own separate tab, so opening My Leave no
   // longer eagerly fetches a different tab's calendar data too.
 }
