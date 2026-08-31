@@ -1669,9 +1669,8 @@ async function loadLive(){
   };
   const isBatchFinished = b => {
     const status = statusMap[b.raw||b.name];
-    if (status==='closed' || status==='completed' || status==='finished') return true;
     const { dn, total } = progressOf(b);
-    return dn >= total;
+    return _acadIsFinishedByStatusOrProgress(status, dn, total);
   };
   // Soft-deleted batches (deleteBatch()) never appear in My Batches/Live Batches/Finished
   // Batches — deletedNames comes from the same batches fetch just above (keyed by real batch
@@ -2063,6 +2062,11 @@ async function boot(){
   // this device's already-known notifications immediately, and the actual DB checks run in
   // the background without ever delaying the rest of boot()/the dashboard render.
   _acadInitNotifications();
+  // Realtime sync (see _acadInitRealtime's own header comment) — subscribed once here,
+  // right after window._myTrainerId is known (needed for the server-side trainer_id filter)
+  // and BEFORE the data-loading Promise.all below, so it never delays first render; opening
+  // the WebSocket connections doesn't block on anything.
+  _acadInitRealtime();
   await refreshActiveDelegation();
   // Re-checks roughly once a minute for as long as this tab stays open — the delegation
   // itself always expires purely by its own end_datetime falling out of the live query in
@@ -2484,6 +2488,7 @@ function notifMeta(n) {
     case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "acadSwitchTab('leave')" };
     case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: "acadSwitchTab('team')" };
     case 'team_wfh': return { icon: 'home', color: 'purple', label: '🏠 Team Member Working From Home', onClick: "acadSwitchTab('team')" };
+    case 'new_batch': return { icon: 'calendar-plus', color: 'green', label: '🆕 New Batch Assigned', onClick: "acadSwitchTab('live')" };
     case 'announcement': {
       const priorityLabel = n.priority === 'urgent' ? '🚨 Urgent Announcement' : n.priority === 'important' ? '⚠️ Important Announcement' : '📢 Company Announcement';
       return { icon: 'megaphone', color: n.priority === 'urgent' ? 'red' : 'orange', label: priorityLabel, onClick: "acadSwitchTab('announcements')" };
@@ -2644,6 +2649,136 @@ function _acadInitNotifications(){
   _acadCheckNotifications();
   if (!window._acadNotifInterval) window._acadNotifInterval = setInterval(_acadCheckNotifications, 20000);
 }
+
+// ============================================================================
+// AcademicRealtime — ONE centralized realtime layer (Supabase Realtime), subscribed once
+// per login (spec #14: never a new subscription per tab switch — _acadRealtimeChannels'
+// own length guard makes _acadInitRealtime() itself idempotent), covering the tables that
+// actually drive My Batches/Finished Batches/My Availability/My Calendar/Classes/Attendance/
+// Dashboard: batches, attendance, students, trainer_availability. On any relevant change,
+// this debounces (spec #20: "debounce burst updates") and re-runs the SAME existing loaders
+// every other refresh path in this file already uses (loadHeadView/loadTrainerView/
+// loadLive/loadAcadDashboard, plus whichever lazy tab happens to be open) — every view
+// consumes one normalized refetch of current data, never a bespoke per-component patch and
+// never a fourth independently-computed answer to "what does this batch look like right
+// now." This is a deliberate, disclosed scope choice: a full granular "only the exact
+// changed row patches its own DOM node" architecture would be substantially more code/risk
+// for the same acceptance tests — re-running these already-correct, already-tested loaders
+// on a live Postgres change achieves the same observable result (no manual refresh, every
+// open session converges to current data within the debounce window) with far less new
+// surface area to get wrong.
+// ============================================================================
+let _acadRealtimeChannels = [];
+let _acadRealtimeDebounceTimer = null;
+function _acadScheduleRealtimeRefresh(){
+  clearTimeout(_acadRealtimeDebounceTimer);
+  // ~600ms — long enough to coalesce a burst of related writes (e.g. Save Attendance &
+  // Class Log fires one attendance INSERT per student) into a single refresh, short enough
+  // that "no refresh required" still feels immediate (spec's own acceptance tests).
+  _acadRealtimeDebounceTimer = setTimeout(_acadRealtimeRefresh, 600);
+}
+async function _acadRealtimeRefresh(){
+  if (!currentUser) return; // a stray late event after logout — nothing to refresh into
+  const { isHead, isTrainerCapable, isRestricted } = applyAcadRoleGates();
+  // Same parallel refresh boot() itself already does — one normalized state update, not a
+  // bespoke query per realtime event type (spec #12/13).
+  await Promise.all([
+    isHead ? loadHeadView() : (isRestricted ? Promise.resolve() : loadCourses()),
+    isTrainerCapable ? loadTrainerView() : Promise.resolve(),
+    isRestricted ? Promise.resolve() : loadLive(),
+    isHead ? loadStats() : Promise.resolve(),
+  ]);
+  await loadAcadDashboard();
+  // Availability/Classes/My Calendar are lazy-tab-loaded and cache themselves after first
+  // visit (_acadLazyTabLoaded) — a realtime change never re-fetches them on its own unless
+  // the affected tab happens to be the one currently open, matching deleteBatch()'s own
+  // identical pattern (see there) rather than inventing a second one.
+  ['availability','classes','schedule'].forEach(t => {
+    const tabEl = document.getElementById('tab-acad-' + t);
+    if (tabEl && tabEl.classList.contains('on')) {
+      _acadLazyTabLoaded.delete(t);
+      acadEnsureTabLoaded(t);
+    }
+  });
+}
+// New-batch-assignment notification (spec #4/#10) — fires only for the TRAINER side (a
+// trainer can never create a batch themselves, so any INSERT they're notified about is
+// always someone else's action — no self-notification risk to guard against) and only when
+// the new row's trainer_id is genuinely theirs.
+function _acadNotifyNewBatchAssignment(newRow){
+  if (!newRow || !window._myTrainerId || String(newRow.trainer_id) !== String(window._myTrainerId)) return;
+  const timeLabel = newRow.time_slot || 'time not yet set';
+  addNotif('new_batch', `${newRow.name} — ${timeLabel}`, 'Academic Head', newRow.id);
+}
+function _acadInitRealtime(){
+  // Idempotent — a second call (e.g. boot() somehow running twice for one login) never
+  // stacks a second set of channels; existing ones are torn down first if present.
+  _acadTeardownRealtime();
+  if (typeof sb === 'undefined' || !sb || typeof sb.channel !== 'function') return; // defensive — never blocks boot() if realtime isn't available for some reason
+  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  const myTrainerId = window._myTrainerId;
+
+  // batches — new/reassigned/completed/deleted batches. Server-side filtered to this
+  // trainer's own rows when we know their trainer_id and they're not Head (spec #11/#20 —
+  // "use filtered subscriptions where supported," "account-specific realtime filters," never
+  // broadcast every Academic event to every trainer UI). Known, disclosed limitation: a
+  // trainer_id-filtered subscription only ever matches a row's CURRENT trainer_id, so a
+  // batch being reassigned AWAY from this trainer to someone else won't itself trigger a
+  // refresh on the losing trainer's screen — the far more common/important direction
+  // (assignment TO them, completion, deletion of their own batch) is covered either way.
+  const batchesConfig = { event: '*', schema: 'public', table: 'batches' };
+  if (!isHead && myTrainerId) batchesConfig.filter = 'trainer_id=eq.' + myTrainerId;
+  const batchesChannel = sb.channel('acad-rt-batches-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', batchesConfig, (payload) => {
+      if (payload.eventType === 'INSERT' && !isHead) _acadNotifyNewBatchAssignment(payload.new);
+      _acadScheduleRealtimeRefresh();
+    })
+    .subscribe();
+  _acadRealtimeChannels.push(batchesChannel);
+
+  // attendance — session progress changes (Mark Attendance), including the automatic
+  // finish-on-final-session case (spec #7): no separate "mark batch completed" step exists
+  // or is needed — _acadIsFinishedByStatusOrProgress() already re-evaluates completion from
+  // live progress on every refresh, so the moment the last required session lands, the very
+  // next _acadRealtimeRefresh() (triggered by this same INSERT) moves the batch into
+  // Finished Batches and frees its availability slot on its own.
+  const attChannel = sb.channel('acad-rt-attendance-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => _acadScheduleRealtimeRefresh())
+    .subscribe();
+  _acadRealtimeChannels.push(attChannel);
+
+  // students — batch membership changes (Manage Students / Edit Batch add-remove) drive
+  // student counts/capacity/attendance rosters everywhere a batch's roster is shown.
+  // Server-side filtered by trainer_name for a non-Head login (the column this table
+  // actually has for that purpose), unfiltered for Head.
+  const studentsConfig = { event: '*', schema: 'public', table: 'students' };
+  if (!isHead && currentUser.name) studentsConfig.filter = 'trainer_name=eq.' + currentUser.name;
+  const studentsChannel = sb.channel('acad-rt-students-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', studentsConfig, () => _acadScheduleRealtimeRefresh())
+    .subscribe();
+  _acadRealtimeChannels.push(studentsChannel);
+
+  // trainer_availability — a trainer's own declared recurring slots changing (or, for Head,
+  // any trainer's) — feeds Coach Availability/My Availability directly.
+  const availConfig = { event: '*', schema: 'public', table: 'trainer_availability' };
+  if (!isHead && myTrainerId) availConfig.filter = 'trainer_id=eq.' + myTrainerId;
+  const availChannel = sb.channel('acad-rt-availability-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', availConfig, () => _acadScheduleRealtimeRefresh())
+    .subscribe();
+  _acadRealtimeChannels.push(availChannel);
+}
+function _acadTeardownRealtime(){
+  _acadRealtimeChannels.forEach(ch => { try { sb.removeChannel(ch); } catch(e) {} });
+  _acadRealtimeChannels = [];
+  clearTimeout(_acadRealtimeDebounceTimer);
+}
+// Cleanup on tab close (spec #14: "on logout/account switch, unsubscribe/cleanup all old
+// Academic channels") — logout()/acadSwitchToAccount() both navigate away via location.href
+// in this file (unlike index.html's own in-place account switch), which already tears down
+// every WebSocket connection on its own; this is an explicit, defensive backstop for the
+// same reason clearCurrentUserProfileCache() is called explicitly in logout() even though
+// the navigation makes it non-load-bearing there too.
+window.addEventListener('beforeunload', _acadTeardownRealtime);
 
 // Sidebar tab switching for the Academic Module shell. Nothing here re-fetches data —
 // every tab's content is already rendered by boot() (loadLive/loadHeadView/loadTrainerView/
@@ -3244,6 +3379,21 @@ function _batchStartMinutes(b){ return _parseTimeLabelToMinutes(b && b.time_slot
 // false, same as !!null — a database that hasn't had the deleted_at migration run yet
 // behaves identically to "nothing is deleted", never breaking any view that filters on this.
 function _isBatchDeleted(b){ return !!(b && b.deleted_at); }
+// ONE normalized "is this batch finished" rule (spec: "must NOT simultaneously be finished
+// in Finished Batches + active in My Batches + occupied in My Availability") — either signal
+// is sufficient alone: an explicit legacy status field (some batches were marked done this
+// way before session-based progress tracking existed, and their baseline_sessions was never
+// backfilled to match — session progress alone would never cross 100% for these), OR session
+// progress itself reaching the batch's real total. Every view that needs to know whether a
+// batch is finished calls this ONE function — loadLive()'s own isBatchFinished (Finished
+// Batches / My Batches split), loadTrainerView()'s My Batches filter, and (via
+// window._acadFinishedBatchNames, built from loadLive()'s own finished set) the Availability
+// engine's isBatchCurrentlyActive/findOccupyingBatchInRange/findExactTimeConflict — never a
+// second, independently-computed answer.
+function _acadIsFinishedByStatusOrProgress(status, done, total){
+  if (status==='closed' || status==='completed' || status==='finished') return true;
+  return !!(total && done >= total);
+}
 // A batch is "currently active" (occupying its trainer's time) purely by date range — the
 // date-driven model the spec describes: active within [start_date, expected_completion_date];
 // a null end date means ongoing/indefinite (never auto-frees on its own until one is set).
@@ -3992,7 +4142,15 @@ async function loadTrainerView(){
     const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
     return { total, done, pct: total ? Math.round((done/total)*100) : 0 };
   };
-  const myActiveBatches = (batches||[]).filter(b => { const { total, done } = progressOf(b); return !(total && done >= total); });
+  // BUG FIX (real, confirmed live — a legacy batch marked done via status='closed' with its
+  // baseline_sessions never backfilled to match, e.g. the real "The Fluent Force" batch:
+  // status='closed', 6/42 sessions): this filter used to check session progress ONLY, never
+  // status — so a batch Finished Batches (and now the Availability engine, via
+  // window._acadFinishedBatchNames) already correctly treats as finished by its STATUS alone
+  // kept showing here as if still active. Same shared rule as everywhere else now
+  // (_acadIsFinishedByStatusOrProgress) — one normalized answer, not a third one computed
+  // here that could disagree with the other two.
+  const myActiveBatches = (batches||[]).filter(b => { const { total, done } = progressOf(b); return !_acadIsFinishedByStatusOrProgress(b.status, done, total); });
   document.getElementById('myBatches').innerHTML = myActiveBatches.map(b => {
     const { total, pct } = progressOf(b);
     const statusOk = b.status !== 'inactive' && b.status !== 'closed';

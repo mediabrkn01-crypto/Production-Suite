@@ -257,3 +257,39 @@ alter table batches add column if not exists deleted_at timestamptz;
 create index if not exists batches_deleted_at_idx on batches (deleted_at);
 
 NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
+-- Phase 4 — Enable Supabase Realtime on the Academic module's own tables.
+-- Idempotent, safe to re-run. REQUIRED for academics.html's realtime sync
+-- layer (_acadInitRealtime) to receive any live events at all.
+--
+-- Live-tested against the actual project (fevqnpllmarhoqdzpatq) BEFORE this
+-- migration: a real subscribed postgres_changes channel on `batches` and on
+-- `students` received ZERO events after real, confirmed-200 UPDATEs on real
+-- rows — proving these tables were never added to the supabase_realtime
+-- publication (the anon key can open a Realtime websocket and get
+-- SUBSCRIBED, since that only needs the publication to exist, but no table
+-- ever emits an event until it's explicitly added to it). This has nothing
+-- to do with RLS or the anon key's permissions — it's a project-level
+-- setting only a migration with elevated (non-anon) access can change, so it
+-- could not be applied directly and must be run once, manually, the same way
+-- every other Phase in this file already is.
+--
+-- ADD TABLE is a no-op (with a harmless notice, not an error) if a table is
+-- already published — safe to re-run this whole block.
+-- ============================================================================
+alter publication supabase_realtime add table batches;
+alter publication supabase_realtime add table attendance;
+alter publication supabase_realtime add table students;
+alter publication supabase_realtime add table trainer_availability;
+
+-- REPLICA IDENTITY FULL so DELETE/UPDATE payloads carry the full OLD row
+-- (default identity only sends the primary key) — the realtime layer's own
+-- refresh is a blanket refetch either way, not a payload-driven DOM patch,
+-- so this isn't load-bearing for academics.html today, but it's what lets a
+-- future consumer (or Supabase's own dashboard/logs) see full before/after
+-- values on these tables instead of just an id.
+alter table batches replica identity full;
+alter table attendance replica identity full;
+alter table students replica identity full;
+alter table trainer_availability replica identity full;
