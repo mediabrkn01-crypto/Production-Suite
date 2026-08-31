@@ -352,7 +352,7 @@ details[open] .rawsum::before{content:'▾ '}
     <div class="sidebar-nav-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden">
       <div style="margin-bottom:14px">
         <div class="nav-section-title">ACADEMIC</div>
-        <button class="acad-nav-link sidebar-link active" id="nav-acad-dashboard" onclick="acadSwitchTab('dashboard')"><i data-lucide="layout-dashboard" style="width:14px;height:14px"></i> Overview</button>
+        <button class="acad-nav-link sidebar-link active" id="nav-acad-dashboard" onclick="acadSwitchTab('dashboard')"><i data-lucide="layout-dashboard" style="width:14px;height:14px"></i> Dashboard</button>
         <!-- Coaches (full roster) and Reports (company-wide aggregates) are Academic Head-
              only concepts per the Strict Trainer/Coach Access Control spec — a Trainer has no
              "My Coaches"/"My Reports" equivalent, so these are simply hidden, not reused. -->
@@ -451,6 +451,16 @@ details[open] .rawsum::before{content:'▾ '}
             <i data-lucide="calendar" style="width:13px;height:13px"></i>
             <span id="acad-date-text"></span>
           </div>
+          <!-- Notification bell — LOCAL PORT of index.html/common.js's own notification bell
+               (academics.html doesn't load common.js — same standalone-file reason documented
+               elsewhere in this file). Markup/ids match index.html's corner-bell-btn/
+               notif-badge-corner exactly; see the notification system block below (toggleNotifPanel/
+               renderNotifBadges/etc.) for the ported logic, and #notif-panel further down for the
+               panel itself. -->
+          <span class="glass-button-wrap rounded-full" style="position:relative"><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
+            <i data-lucide="bell" class="w-4 h-4"></i>
+          </button>
+          <span id="notif-badge-corner" class="hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
           <!-- Clock In/Out used to be a small pill crammed into this header row — index.html
                never puts it here at all, it's a dedicated Attendance card in the dashboard
                body (see #attendance-clock-card below). Moved to match, not just restyled in
@@ -463,6 +473,20 @@ details[open] .rawsum::before{content:'▾ '}
           <span class="glass-button-wrap rounded-full"><button id="acad-backlink-btn" onclick="location.href='index.html'" title="Back to Media Suite" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
             <i data-lucide="arrow-left" class="w-4 h-4"></i>
           </button></span>
+        </div>
+      </div>
+
+      <!-- Notification panel — LOCAL PORT of index.html's #notif-panel, same markup/classes. -->
+      <div id="notif-panel" class="hidden fixed inset-0 z-[70] flex items-start justify-end p-4 pt-16 bg-black/60 backdrop-blur-sm" onclick="if(event.target===this)closeNotifPanel()">
+        <div class="w-full max-w-md bg-[#0b0d19] border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden animate-item">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+            <h3 class="font-bold text-sm text-white flex items-center gap-2"><i data-lucide="bell" class="w-4 h-4 text-white/70"></i> Notifications</h3>
+            <button onclick="closeNotifPanel()" class="text-[#4a5182] hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+          <div id="notif-list" class="max-h-[75vh] overflow-y-auto divide-y divide-white/[0.05]"></div>
+          <div class="px-4 py-2 border-t border-white/[0.06]">
+            <button onclick="markAllNotifsRead()" class="text-[10px] text-white/70 hover:underline font-bold uppercase tracking-wide">Mark all as read</button>
+          </div>
         </div>
       </div>
       <!-- Celebration banner slot — see the local Celebration Engine port above
@@ -1851,6 +1875,11 @@ async function boot(){
       window._myTrainerId = myTrainerRow ? myTrainerRow.id : null;
     } catch (e) { window._myTrainerId = null; }
   }
+  // Notifications — deliberately NOT awaited (see _acadInitNotifications' own comment):
+  // loadNotifs()/renderNotifBadges() are instant localStorage reads so the bell reflects
+  // this device's already-known notifications immediately, and the actual DB checks run in
+  // the background without ever delaying the rest of boot()/the dashboard render.
+  _acadInitNotifications();
   await refreshActiveDelegation();
   // Re-checks roughly once a minute for as long as this tab stays open — the delegation
   // itself always expires purely by its own end_datetime falling out of the live query in
@@ -2179,6 +2208,252 @@ function runAcadCelebrationCheck() {
   }).catch(e => {
     console.error('Celebration engine: could not resolve this employee\'s HR record —', e.message);
   });
+}
+
+// ============================================================================
+// Notifications — LOCAL PORT of index.html/common.js's own notification bell +
+// panel (academics.html doesn't load common.js — same standalone-file reason
+// documented elsewhere in this file, e.g. above acadSyncTrainersFromHRLocal).
+// Core state/rendering functions below keep the EXACT SAME names and the EXACT
+// SAME localStorage keys (be_notifs_<email>/be_read_notifs_<email>) as
+// common.js's own — this file, index.html and hr.html are all served from the
+// same origin in production, so a notification generated by any of them is
+// already visible in the others' own bell too, without a second table or a
+// second architecture (no `academic_notifications` table — matches the spec's
+// own "same shared data source" requirement). Only the CHECKER functions below
+// (_acadCheck*) are Academic-specific, since they read Academic's own already-
+// loaded data (assignments, this login's own leave requests, Education-division
+// leave/WFH) rather than duplicating common.js's HR-wide checks.
+//
+// PERFORMANCE: none of this runs inside boot()'s own awaited chain — see the
+// very end of boot() where _acadInitNotifications() is called WITHOUT await,
+// so a slow/failing notification check can never delay the dashboard render
+// (spec item 6/8, "notifications must not slow academic.html"). loadNotifs()
+// itself is a pure localStorage read (no network), so calling it eagerly is
+// free; the actual DB-touching checks (_acadCheckNotifications) fetch only a
+// small recent set (this login's own leave requests + Education-division
+// approved leave/WFH + already-known assignments — never a full history) and
+// are throttled to run at most once every 20s, same as common.js's own
+// checkForHRNotifications, plus one immediate run right after the shell paints.
+// ============================================================================
+let notifications = [];
+let _readNotifIds = new Set();
+const NOTIF_COLOR_CLASSES = {
+  orange: { bg: 'bg-orange-500/20', icon: 'text-white/70', title: 'text-orange-300' },
+  red: { bg: 'bg-red-500/20', icon: 'text-red-400', title: 'text-red-300' },
+  green: { bg: 'bg-green-500/20', icon: 'text-green-400', title: 'text-green-300' },
+  purple: { bg: 'bg-purple-500/20', icon: 'text-purple-400', title: 'text-purple-300' },
+};
+function _acadNotifStorageKey(){ return 'be_notifs_' + ((currentUser && currentUser.username) || ''); }
+function _acadReadNotifStorageKey(){ return 'be_read_notifs_' + ((currentUser && currentUser.username) || ''); }
+function loadNotifs() {
+  try { notifications = JSON.parse(localStorage.getItem(_acadNotifStorageKey()) || '[]'); } catch(e) { notifications = []; }
+  try { _readNotifIds = new Set(JSON.parse(localStorage.getItem(_acadReadNotifStorageKey()) || '[]')); } catch(e) { _readNotifIds = new Set(); }
+  notifications = notifications.filter(n => !_readNotifIds.has(n.id));
+}
+function saveNotifs() {
+  localStorage.setItem(_acadNotifStorageKey(), JSON.stringify(notifications.slice(0, 50)));
+  localStorage.setItem(_acadReadNotifStorageKey(), JSON.stringify([..._readNotifIds].slice(0, 200)));
+}
+function addNotif(type, topic, assignedTo, taskId, priority) {
+  // Stable id per (type, task) — a regenerated notification for the same underlying
+  // event always gets the same id, so a dismissed notification can never come back
+  // (same reasoning as common.js's own addNotif).
+  const newId = taskId ? `${type}_${taskId}` : `${type}_${Date.now()}`;
+  if (_readNotifIds.has(newId)) return; // permanently dismissed — never re-add
+  if (notifications.some(n => n.id === newId)) return; // already showing
+  notifications.unshift({ id: newId, type, topic, assignedTo, time: new Date().toISOString(), priority: priority || null });
+  saveNotifs();
+  renderNotifBadges();
+}
+function dismissNotif(id) {
+  _readNotifIds.add(id);
+  notifications = notifications.filter(n => n.id !== id);
+  saveNotifs();
+  renderNotifBadges();
+  renderNotifList();
+}
+function markAllNotifsRead() {
+  notifications.forEach(n => _readNotifIds.add(n.id));
+  notifications = [];
+  saveNotifs();
+  renderNotifBadges();
+  renderNotifList();
+}
+function notifTimeAgo(iso) {
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return Math.floor(h / 24) + 'd ago';
+  } catch(e) { return ''; }
+}
+// Same type set as common.js's own notifMeta — WFH is its own case (🏠, purple),
+// never folded into the leave case (🌴, orange), matching the shared status
+// mapping fixed elsewhere in this file (loadTeamTab, loadAcadDashboard).
+function notifMeta(n) {
+  switch (n.type) {
+    case 'new_task': return { icon: 'plus-circle', color: 'orange', label: '🆕 New Task Assigned', onClick: "acadSwitchTab('tasks')" };
+    case 'leave_approved': return { icon: 'check-circle-2', color: 'green', label: '✅ Leave Approved', onClick: "acadSwitchTab('leave')" };
+    case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "acadSwitchTab('leave')" };
+    case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: "acadSwitchTab('team')" };
+    case 'team_wfh': return { icon: 'home', color: 'purple', label: '🏠 Team Member Working From Home', onClick: "acadSwitchTab('team')" };
+    case 'announcement': {
+      const priorityLabel = n.priority === 'urgent' ? '🚨 Urgent Announcement' : n.priority === 'important' ? '⚠️ Important Announcement' : '📢 Company Announcement';
+      return { icon: 'megaphone', color: n.priority === 'urgent' ? 'red' : 'orange', label: priorityLabel, onClick: "acadSwitchTab('announcements')" };
+    }
+    default: return { icon: 'bell', color: 'orange', label: '🔔 Notification', onClick: null };
+  }
+}
+function renderNotifBadges() {
+  const total = notifications.length;
+  const badge = document.getElementById('notif-badge-corner');
+  if (badge) {
+    if (total > 0) {
+      badge.textContent = total > 99 ? '99+' : total;
+      badge.style.display = 'flex';
+      badge.classList.remove('hidden');
+    } else {
+      badge.style.display = 'none';
+      badge.classList.add('hidden');
+    }
+  }
+}
+function renderNotifList() {
+  const list = document.getElementById('notif-list');
+  if (!list) return;
+  if (notifications.length === 0) {
+    list.innerHTML = `<p class="text-center text-[#4a5182] text-xs italic py-6">No new notifications.</p>`;
+    return;
+  }
+  list.innerHTML = notifications.map(n => {
+    const meta = notifMeta(n);
+    const c = NOTIF_COLOR_CLASSES[meta.color] || NOTIF_COLOR_CLASSES.orange;
+    const timeAgo = notifTimeAgo(n.time);
+    const assignedLine = n.assignedTo ? `<p class="text-[11px] text-[#6b74a0] mt-0.5">By: <span class="text-gray-200 font-semibold">${esc(n.assignedTo)}</span></p>` : '';
+    const rowClick = meta.onClick ? ` cursor-pointer` : '';
+    const rowOnClick = meta.onClick ? ` onclick="dismissNotif('${n.id}');${meta.onClick}"` : '';
+    return `<div class="flex items-start gap-3 px-4 py-4 hover:bg-white/[0.03] transition${rowClick}"${rowOnClick}>
+      <div class="w-9 h-9 rounded-full ${c.bg} flex items-center justify-center shrink-0 mt-0.5">
+        <i data-lucide="${meta.icon}" class="w-4 h-4 ${c.icon}"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-bold ${c.title} mb-1">${meta.label}</p>
+        <p class="text-sm font-bold text-white leading-snug break-words">${esc(n.topic)}</p>
+        ${assignedLine}
+        <p class="text-[10px] text-[#4a5182] mt-1.5">${timeAgo}</p>
+      </div>
+      <button onclick="event.stopPropagation();dismissNotif('${n.id}')" title="Dismiss" class="text-gray-600 hover:text-red-400 p-1.5 shrink-0 transition rounded-lg hover:bg-red-500/10 mt-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    </div>`;
+  }).join('');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  const isHidden = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden');
+  if (isHidden) {
+    renderNotifList();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    // Opening = seen: hide the corner badge count. Notifications stay listed until
+    // dismissed individually or via Mark All Read (same as common.js's own panel).
+    const nb = document.getElementById('notif-badge-corner'); if (nb) { nb.style.display = 'none'; nb.classList.add('hidden'); }
+  }
+}
+function closeNotifPanel() {
+  document.getElementById('notif-panel')?.classList.add('hidden');
+}
+
+// ---- Checkers: generate Academic-specific notifications from already-scoped data ----
+// Each is deliberately small — a handful of rows, never a full history — and each is its
+// own try/catch so one failing check can never block the others or anything else in boot().
+let _acadLastNotifPoll = 0;
+async function _acadCheckTaskNotifications(){
+  if (!window._myTrainerId) return;
+  try {
+    const hadBaseline = localStorage.getItem('be_acad_known_tasks_' + window._myTrainerId) !== null;
+    let known; try { known = new Set(JSON.parse(localStorage.getItem('be_acad_known_tasks_' + window._myTrainerId) || '[]')); } catch(e) { known = new Set(); }
+    const { data: tasks } = await sb.from('assignments').select('id,task,status,assigned_by').eq('trainer_id', window._myTrainerId).order('created_at', { ascending: false }).limit(20);
+    (tasks || []).forEach(t => {
+      if (!known.has(t.id)) {
+        if (hadBaseline) addNotif('new_task', t.task, t.assigned_by || null, t.id);
+        known.add(t.id);
+      }
+    });
+    localStorage.setItem('be_acad_known_tasks_' + window._myTrainerId, JSON.stringify([...known].slice(-200)));
+  } catch(e) { /* best-effort — never blocks anything else */ }
+}
+async function _acadCheckMyLeaveStatusNotifications(){
+  if (!window._mediaEmployeeId) return;
+  try {
+    const key = 'be_acad_known_leave_statuses_' + window._mediaEmployeeId;
+    const hadBaseline = localStorage.getItem(key) !== null;
+    let known; try { known = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) { known = {}; }
+    const { data: mine } = await mediaHrDB.from('hr_leave_requests').select('id,status,leave_type,start_date,end_date').eq('employee_id', window._mediaEmployeeId);
+    (mine || []).forEach(r => {
+      if (hadBaseline && known[r.id] && known[r.id] !== r.status && (r.status === 'approved' || r.status === 'rejected')) {
+        addNotif(r.status === 'approved' ? 'leave_approved' : 'leave_rejected', `${r.leave_type} — ${r.start_date} → ${r.end_date}`, null, r.id + '_' + r.status);
+      }
+      known[r.id] = r.status;
+    });
+    localStorage.setItem(key, JSON.stringify(known));
+  } catch(e) { /* best-effort */ }
+}
+// Team leave/WFH — Education-division colleagues, same generic leave_type distinction
+// (never folded into "leave") used everywhere else this file already fixed it
+// (loadTeamTab, loadAcadDashboard's onLeaveToday). Deliberately not scoped by role —
+// every Academic login sees their own division's leave/WFH notifications, same as
+// common.js's own department-scoped checkDeptLeaveNotifications.
+async function _acadCheckDeptLeaveNotifications(){
+  try {
+    const key = 'be_acad_known_dept_leaves_' + ((currentUser && currentUser.username) || '');
+    const hadBaseline = localStorage.getItem(key) !== null;
+    let known; try { known = new Set(JSON.parse(localStorage.getItem(key) || '[]')); } catch(e) { known = new Set(); }
+    const { data: employees } = await mediaHrDB.from('hr_employees').select('id,full_name').eq('division','education').eq('employment_status','active');
+    const byId = new Map((employees||[]).map(e=>[e.id,e]));
+    if (!byId.size) return;
+    const { data: leaves } = await mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').in('employee_id', [...byId.keys()]);
+    (leaves || []).forEach(l => {
+      if (window._mediaEmployeeId && l.employee_id === window._mediaEmployeeId) return; // don't notify me about my own leave
+      if (!known.has(l.id)) {
+        if (hadBaseline) {
+          const who = byId.get(l.employee_id)?.full_name || 'A team member';
+          if (l.leave_type === 'Work From Home') {
+            const range = l.start_date === l.end_date ? `on ${l.start_date}` : `from ${l.start_date} to ${l.end_date}`;
+            addNotif('team_wfh', `${who} is working from home ${range}.`, null, l.id);
+          } else {
+            addNotif('team_leave', `${who} is on leave from ${l.start_date} to ${l.end_date}.`, null, l.id);
+          }
+        }
+        known.add(l.id);
+      }
+    });
+    localStorage.setItem(key, JSON.stringify([...known].slice(-300)));
+  } catch(e) { /* best-effort */ }
+}
+async function _acadCheckNotifications(){
+  const now = Date.now();
+  if (now - _acadLastNotifPoll < 20000) return; // throttled, same as common.js's own 20s poll
+  _acadLastNotifPoll = now;
+  await Promise.all([
+    _acadCheckTaskNotifications(),
+    _acadCheckMyLeaveStatusNotifications(),
+    _acadCheckDeptLeaveNotifications(),
+  ]);
+}
+// Entry point — called from boot() WITHOUT await (see there). loadNotifs()/renderNotifBadges()
+// are synchronous localStorage reads (instant, no network) so the bell shows whatever this
+// device already knew about immediately; _acadCheckNotifications() then runs its small DB
+// checks in the background and the badge updates itself if anything new turns up.
+function _acadInitNotifications(){
+  loadNotifs();
+  renderNotifBadges();
+  _acadCheckNotifications();
+  if (!window._acadNotifInterval) window._acadNotifInterval = setInterval(_acadCheckNotifications, 20000);
 }
 
 // Sidebar tab switching for the Academic Module shell. Nothing here re-fetches data —
