@@ -1189,6 +1189,10 @@ function applyCurrentUserProfileToDOM(profile) {
         if (sidebarAvatar) sidebarAvatar.innerHTML = hrAvatarHTML(profile.raw, 28);
         const sidebarAvatarMobile = document.getElementById('sidebar-user-avatar-mobile');
         if (sidebarAvatarMobile) sidebarAvatarMobile.innerHTML = hrAvatarHTML(profile.raw, 26);
+        // Top-right account-menu trigger avatar (index.html) — same single photo source as
+        // every other avatar this function already applies, not a second image field.
+        const topbarAvatar = document.getElementById('topbar-account-avatar');
+        if (topbarAvatar) topbarAvatar.innerHTML = hrAvatarHTML(profile.raw, 30);
     }
     if (profile.designation) {
         // user-role-badge (index.html's top sidebar identity block, under "Media Suite") used

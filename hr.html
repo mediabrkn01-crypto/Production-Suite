@@ -41,6 +41,8 @@
          first paint. -->
     <link rel="stylesheet" href="sidebar-collapse.css">
     <script src="sidebar-collapse.js"></script>
+    <link rel="stylesheet" href="account-menu.css">
+    <script src="account-menu.js"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -722,16 +724,19 @@
                             <i data-lucide="plus-circle" style="width:13px;height:13px"></i> Add another account
                         </a>
                     </div>
-                    <button id="account-switcher-trigger" onclick="toggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,0.8);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(255,107,6,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06"></div>
-                            <div class="be-profile-text">
-                                <div id="hr-active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9"></div>
-                                <div id="hr-active-role-display" style="font-size:9px;color:#808a9d"></div>
-                            </div>
+                    <!-- Sidebar profile card — now display-only (spec: the large Switch Account
+                         panel no longer permanently occupies sidebar space; that interaction
+                         moved to the top-right avatar menu, hr-topbar-account-btn, which
+                         (unlike index.html's dashboard-scoped header) is always visible on
+                         every HR subtab, mobile included, so no separate mobile fallback is
+                         needed here the way index.html keeps one). -->
+                    <div id="account-switcher-trigger" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,0.8);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px">
+                        <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06"></div>
+                        <div class="be-profile-text">
+                            <div id="hr-active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9"></div>
+                            <div id="hr-active-role-display" style="font-size:9px;color:#808a9d"></div>
                         </div>
-                        <i data-lucide="chevrons-up-down" class="be-nav-label" style="width:13px;height:13px;color:#808a9d"></i>
-                    </button>
+                    </div>
                 </div>
                 <button onclick="logoutFromHR()" class="sidebar-link" style="width:100%;text-align:left">
                     <i data-lucide="log-out" style="width:14px;height:14px"></i> Logout
@@ -754,13 +759,25 @@
                         <i data-lucide="bell" class="w-4 h-4"></i>
                         <span id="hr-topbar-notif-badge" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center px-1" style="background:linear-gradient(135deg,var(--brand-1),var(--brand-3))"></span>
                     </button>
-                    <div class="flex items-center gap-2 pl-2 border-l border-white/[0.06]">
+                    <button id="hr-topbar-account-btn" class="flex items-center gap-2 pl-2 border-l border-white/[0.06]" style="background:transparent;border-top:none;border-right:none;border-bottom:none;cursor:pointer;position:relative">
                         <div id="hr-topbar-avatar" class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style="background:linear-gradient(135deg,var(--brand-1),var(--brand-3))"></div>
                         <div class="hidden md:block leading-tight">
                             <div id="hr-topbar-name" class="text-xs font-bold text-white"></div>
                             <div id="hr-topbar-role" class="text-[10px] text-[#6b74a0]"></div>
                         </div>
-                    </div>
+                    </button>
+                    <script>
+                    if (typeof initAccountMenu === 'function') initAccountMenu({
+                        trigger: '#hr-topbar-account-btn',
+                        getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
+                        getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
+                        onSwitchAccount: (email) => switchToAccount(email),
+                        onRemoveAccount: (email) => removeSavedAccount(email),
+                        onAddAccount: () => startAddAccountFlow(),
+                        onLogout: () => logoutFromHR(),
+                        getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
+                    });
+                    </script>
                 </div>
             </div>
 

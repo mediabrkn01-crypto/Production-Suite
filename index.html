@@ -648,6 +648,8 @@
          already exists by the time each page calls it right after its own <aside> markup. -->
     <link rel="stylesheet" href="sidebar-collapse.css">
     <script src="sidebar-collapse.js"></script>
+    <link rel="stylesheet" href="account-menu.css">
+    <script src="account-menu.js"></script>
 
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -1024,16 +1026,19 @@
                         </button>
                     </div>
 
-                    <button id="account-switcher-trigger" onclick="toggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,0.8);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(255,107,6,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">MA</div>
-                            <div class="be-profile-text">
-                                <div id="active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9">Master Admin</div>
-                                <div id="sidebar-user-role" style="font-size:9px;color:#808a9d">HR</div>
-                            </div>
+                    <!-- Desktop sidebar profile card — now display-only (spec: the large Switch
+                         Account panel no longer permanently occupies sidebar space; that
+                         interaction moved to the top-right avatar menu, see account-menu.js).
+                         The mobile version below (account-switcher-trigger-mobile) is left
+                         exactly as it was — mobile's existing drawer-based switcher is
+                         untouched, per spec's own "do not break the existing mobile drawer." -->
+                    <div id="account-switcher-trigger" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,0.8);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px">
+                        <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">MA</div>
+                        <div class="be-profile-text">
+                            <div id="active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9">Master Admin</div>
+                            <div id="sidebar-user-role" style="font-size:9px;color:#808a9d">HR</div>
                         </div>
-                        <i data-lucide="chevrons-up-down" class="be-nav-label" style="width:13px;height:13px;color:#808a9d"></i>
-                    </button>
+                    </div>
                 </div>
 
                 <!-- Logout — admin only -->
@@ -1313,6 +1318,26 @@
                             <i data-lucide="bell" class="w-4 h-4"></i>
                         </button>
                         <span id="notif-badge-corner" class="hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
+                        <!-- Top-right profile/account menu — Switch Account/Add Another
+                             Account/Logout now live here (closed by default), replacing the
+                             old always-mounted sidebar panel. See account-menu.js. Kept
+                             separate from the bell above (spec: never merge notifications
+                             into account switching). -->
+                        <button id="topbar-account-btn" class="glass-button" style="width:36px;height:36px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;position:relative">
+                            <span id="topbar-account-avatar" style="display:flex;width:30px;height:30px;border-radius:50%;overflow:hidden"><div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">?</div></span>
+                        </button>
+                        <script>
+                        if (typeof initAccountMenu === 'function') initAccountMenu({
+                          trigger: '#topbar-account-btn',
+                          getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
+                          getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
+                          onSwitchAccount: (email) => switchToAccount(email),
+                          onRemoveAccount: (email) => removeSavedAccount(email),
+                          onAddAccount: () => startAddAccountFlow(),
+                          onLogout: () => logoutPortal(),
+                          getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
+                        });
+                        </script>
                     </div>
                 </div>
 

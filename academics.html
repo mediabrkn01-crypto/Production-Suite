@@ -283,6 +283,8 @@ details[open] .rawsum::before{content:'▾ '}
      already exists by the time each page calls it right after its own <aside> markup. -->
 <link rel="stylesheet" href="sidebar-collapse.css">
 <script src="sidebar-collapse.js"></script>
+<link rel="stylesheet" href="account-menu.css">
+<script src="account-menu.js"></script>
 </head>
 <body>
 
@@ -468,6 +470,28 @@ details[open] .rawsum::before{content:'▾ '}
             <i data-lucide="bell" class="w-4 h-4"></i>
           </button>
           <span id="notif-badge-corner" class="hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
+          <!-- Top-right profile/account menu — Switch Account/Add Another Account/Logout now
+               live here too (closed by default), matching index.html/hr.html's own new
+               top-right menu (account-menu.js). The existing sidebar profile card
+               (acad-account-switcher-trigger) is left working as-is — academics.html has only
+               one profile trigger total (no separate desktop/mobile split the way index.html
+               has), so removing it would leave mobile with no switcher at all; this header is
+               simply an additional, always-visible entry point. -->
+          <span class="glass-button-wrap rounded-full"><button id="acad-topbar-account-btn" class="glass-button" style="width:40px;height:40px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center">
+            <span id="acad-topbar-account-avatar" style="display:flex;width:30px;height:30px;border-radius:50%;overflow:hidden"><span class="acad-avatar-dot" style="width:30px;height:30px;font-size:11px">?</span></span>
+          </button></span>
+          <script>
+          if (typeof initAccountMenu === 'function') initAccountMenu({
+            trigger: '#acad-topbar-account-btn',
+            getCurrentUser: () => ({ name: (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '', role: (typeof currentUser !== 'undefined' && currentUser && currentUser.role) || '', email: (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || '' }),
+            getSavedAccounts: () => (typeof _acadGetSavedAccounts === 'function' ? _acadGetSavedAccounts() : []),
+            onSwitchAccount: (email) => acadSwitchToAccount(email),
+            onRemoveAccount: (email) => _acadRemoveSavedAccount(email),
+            onAddAccount: () => { location.href = 'index.html'; },
+            onLogout: () => logout(),
+            getPhotos: async (emails) => (typeof _acadLoadSwitcherPhotos === 'function' ? await _acadLoadSwitcherPhotos(emails) : {}),
+          });
+          </script>
           <!-- Clock In/Out used to be a small pill crammed into this header row — index.html
                never puts it here at all, it's a dedicated Attendance card in the dashboard
                body (see #attendance-clock-card below). Moved to match, not just restyled in
@@ -1413,7 +1437,13 @@ async function _acadLoadSwitcherPhotos(emails){
   _acadSwitcherPhotoCache = {};
   if (!emails.length) return _acadSwitcherPhotoCache;
   try {
-    const { data } = await mediaHrDB.from('hr_employees').select('portal_email,photo_base64,photo_url').in('portal_email', emails);
+    // BUG FIX: full_name wasn't in this select list — a matched employee with no photo on
+    // file (the common case) resolved to {portal_email, photo_base64:null, photo_url:null}
+    // with no name field at all, which the top-right account-menu's shared avatarHTML() then
+    // treated as a truthy-but-nameless record, breaking the initials fallback ("?" instead
+    // of real initials). Harmless for _acadSwitcherAvatarHTML's own local use (it never reads
+    // rec.name), but the shared account-menu.js code does.
+    const { data } = await mediaHrDB.from('hr_employees').select('portal_email,full_name,photo_base64,photo_url').in('portal_email', emails);
     (data||[]).forEach(e => { if (e.portal_email) _acadSwitcherPhotoCache[e.portal_email.toLowerCase()] = e; });
   } catch(e) { /* best-effort — initials fallback already rendered */ }
   return _acadSwitcherPhotoCache;
@@ -1917,6 +1947,10 @@ async function boot(){
   const roleElMobile = document.getElementById('acad-user-role-mobile'); if (roleElMobile) roleElMobile.textContent = roleLabel;
   const avatarElMobile = document.getElementById('acad-user-avatar-mobile'); if (avatarElMobile) avatarElMobile.textContent = initials || '?';
   document.getElementById('acad-role-badge').textContent = roleLabel;
+  // Top-right account-menu avatar — initials immediately (real photo swaps in once My
+  // Profile's own loader runs, same as the sidebar avatar above); never left as "?".
+  const topbarAvatarEl = document.getElementById('acad-topbar-account-avatar');
+  if (topbarAvatarEl) topbarAvatarEl.innerHTML = '<span class="acad-avatar-dot" style="width:30px;height:30px;font-size:11px">' + esc(initials || '?') + '</span>';
   // Same live-updating format as index.html's header-date-text (updates every second) —
   // this used to be a one-time, differently-formatted stamp ("Mon, Aug 24, 2026, 3:00"),
   // the one real mismatch against the otherwise-identical date chip on the other two pages.
@@ -2926,6 +2960,10 @@ async function loadMyProfileTab(){
     if (avatarWrap) avatarWrap.innerHTML = _acadAvatarHTML(me, 28);
     const avatarWrapMobile = document.getElementById('acad-user-avatar-wrap-mobile');
     if (avatarWrapMobile) avatarWrapMobile.innerHTML = _acadAvatarHTML(me, 26);
+    // Top-right account-menu trigger avatar — same single photo source as the sidebar/My
+    // Profile avatars right above, not a second image field.
+    const topbarAvatar = document.getElementById('acad-topbar-account-avatar');
+    if (topbarAvatar) topbarAvatar.innerHTML = _acadAvatarHTML(me, 30);
     const divisionLabel = ({education:'Education',production:'Production House',hr:'HR',accounts:'Accounts',other:'Other'})[me.division] || me.division;
     const roleInfo = _acadRoleInfo(me);
     body.innerHTML = [
