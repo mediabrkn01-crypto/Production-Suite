@@ -403,6 +403,70 @@
         .stat-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; color: #808a9d; text-transform: uppercase; line-height: 1; margin-bottom: 4px; }
         .stat-num { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1; }
 
+        /* ── Compact metrics strip (redesign of the 5 stat-card-new cards above into one
+           panel) — .stat-card-new/.stat-icon-box/.stat-label/.stat-num above are left in
+           place (still used by the Academic Overview dashboard elsewhere in this file),
+           this is a separate, additive set of classes only #metrics-counter-container's own
+           two render branches (renderCountersGrid) use. ── */
+        .metric-strip {
+            display: flex;
+            flex-wrap: wrap;
+            background: rgba(13,17,28,0.75);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+        }
+        .metric-item {
+            flex: 1 1 0;
+            min-width: 150px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px 12px;
+            position: relative;
+            border-left: 1px solid rgba(255,255,255,0.06);
+            transition: background 0.18s;
+        }
+        .metric-item:first-child { border-left: none; }
+        .metric-item[data-clickable] { cursor: pointer; }
+        .metric-item[data-clickable]:hover { background: rgba(255,255,255,0.025); }
+        .metric-item[data-clickable]:hover .metric-ring { border-color: var(--mc); box-shadow: 0 0 0 3px var(--mc-glow); }
+        .metric-item[data-clickable]:hover .metric-label { color: #c7cbe0; }
+        .metric-ring {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--mc-dim);
+            background: var(--mc-bg);
+            color: var(--mc);
+            transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .metric-body { min-width: 0; flex: 1; }
+        .metric-value { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1.1; }
+        .metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; color: #808a9d; text-transform: uppercase; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.18s; }
+        .metric-status { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #6b74a0; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .metric-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mc); flex-shrink: 0; }
+        .metric-chevron { color: #4a5182; flex-shrink: 0; margin-left: auto; }
+
+        @media (max-width: 900px) {
+            .metric-item { flex: 1 1 33%; border-left: none; border-top: 1px solid rgba(255,255,255,0.06); }
+            .metric-item:nth-child(-n+3) { border-top: none; }
+        }
+        @media (max-width: 640px) {
+            .metric-item { flex: 1 1 50%; }
+            .metric-item:nth-child(-n+2) { border-top: none; }
+            .metric-item:nth-child(2n+1) { border-left: none; }
+        }
+        @media (max-width: 420px) {
+            .metric-item { flex: 1 1 100%; border-left: none !important; }
+            .metric-item:not(:first-child) { border-top: 1px solid rgba(255,255,255,0.06); }
+        }
+
         /* ── Mobile: hide desktop sidebar, show hamburger topbar ── */
         #mobile-topbar { display: none; }
         #mobile-nav-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; backdrop-filter: blur(4px); }
@@ -2989,6 +3053,25 @@
             }
         }
 
+        // Shared builder for the compact metrics strip (redesign of the old 5 separate
+        // stat-card-new + sparkline cards into one panel) — used by both branches of
+        // renderCountersGrid() below so the employee view and the admin/manager view render
+        // through the exact same markup/CSS, not two copies.
+        function metricStripHTML(items) {
+            return '<div class="metric-strip">' + items.map(function(m) {
+                var clickable = m.onclick ? ' data-clickable onclick="' + m.onclick + '"' : '';
+                var chevron = m.onclick ? '<svg class="metric-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' : '';
+                return '<div class="metric-item"' + clickable + ' style="--mc:' + m.color + ';--mc-dim:' + m.color + '55;--mc-bg:' + m.color + '1f;--mc-glow:' + m.color + '33">'
+                    + '<div class="metric-ring"><i data-lucide="' + m.icon + '" style="width:20px;height:20px"></i></div>'
+                    + '<div class="metric-body">'
+                        + '<div class="metric-value">' + m.value + '</div>'
+                        + '<div class="metric-label" title="' + m.label + '">' + m.label + '</div>'
+                        + '<div class="metric-status"><span class="metric-dot"></span>' + m.status + '</div>'
+                    + '</div>'
+                    + chevron
+                + '</div>';
+            }).join('') + '</div>';
+        }
         function renderCountersGrid() {
             const container = document.getElementById('metrics-counter-container');
             if(!container) return;
@@ -3001,15 +3084,29 @@
                 let compPosters = myTasks.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
                 let reworks = myTasks.filter(t => t.status === 'Rework Required').length;
 
-                                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3";
-                container.innerHTML = `<div class=\"stat-card-new\" onclick=\"switchTab('pipeline')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#3b82f6;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.22)\"><i data-lucide=\"clock\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">ACTIVE QUEUE</div><div class=\"stat-num\">${pending}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ tasks pending</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s0\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#3b82f6\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#3b82f6\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C6,24 12,20 18,22 C24,24 30,16 36,14 C42,12 48,18 54,16 C60,14 66,6 72,8 C78,10 84,4 90,6\" fill=\"none\" stroke=\"url(#s0)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.22)\"><i data-lucide=\"clapperboard\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE VIDEOS</div><div class=\"stat-num\">${compVideos}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ completed</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s1\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#10b981\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#10b981\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,24 C4,20 8,28 14,22 C20,16 26,26 32,20 C38,14 44,22 50,16 C56,10 62,18 68,12 C74,6 80,14 86,8\" fill=\"none\" stroke=\"url(#s1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.15s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.22)\"><i data-lucide=\"image\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE THUMBS</div><div class=\"stat-num\">${compThumbs}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ completed</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s2\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#06b6d4\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#06b6d4\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,28 C8,26 16,24 24,22 C32,20 40,16 48,14 C56,12 64,8 72,6 C80,4 88,3 96,2\" fill=\"none\" stroke=\"url(#s2)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.3s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#f97316;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.22)\"><i data-lucide=\"palette\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE POSTERS</div><div class=\"stat-num\">${compPosters}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ completed</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s3\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#f97316\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#f97316\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,22 C6,24 12,18 18,20 C24,22 30,14 36,16 C42,18 48,10 54,12 C60,14 66,8 72,10 C78,12 84,6 90,8\" fill=\"none\" stroke=\"url(#s3)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.45s\"/></svg></div><div class=\"stat-card-new\" ><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#ec4899;background:rgba(236,72,153,0.12);border:1px solid rgba(236,72,153,0.22)\"><i data-lucide=\"refresh-cw\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">REWORK PHASE</div><div class=\"stat-num\">${reworks}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">! flagged</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s4\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#ec4899\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#ec4899\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C5,22 10,28 16,20 C22,12 28,24 34,18 C40,12 46,20 52,14 C58,8 64,16 70,10 C76,4 82,12 88,6\" fill=\"none\" stroke=\"url(#s4)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.6s\"/></svg></div>`;            } else {
+                container.className = "";
+                container.innerHTML = metricStripHTML([
+                    { icon: 'clock', color: '#3b82f6', label: 'ACTIVE QUEUE', value: pending, status: 'tasks pending', onclick: "switchTab('pipeline')" },
+                    { icon: 'clapperboard', color: '#10b981', label: 'DONE VIDEOS', value: compVideos, status: 'Completed', onclick: "switchTab('history')" },
+                    { icon: 'image', color: '#06b6d4', label: 'DONE THUMBS', value: compThumbs, status: 'Completed', onclick: "switchTab('history')" },
+                    { icon: 'palette', color: '#f97316', label: 'DONE POSTERS', value: compPosters, status: 'Completed', onclick: "switchTab('history')" },
+                    { icon: 'refresh-cw', color: '#ec4899', label: 'REWORK PHASE', value: reworks, status: 'flagged', onclick: null },
+                ]);
+            } else {
                 let activeTasksCount = assignmentsList.filter(t => t.status !== 'Completed').length;
                 let compVideos = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Video Editing').length;
                 let compThumbs = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Thumbnail').length;
                 let compPosters = assignmentsList.filter(t => t.status === 'Completed' && t.type === 'Poster Design').length;
 
-                                container.className = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3";
-                container.innerHTML = `<div class=\"stat-card-new\" onclick=\"switchTab('settings')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.22)\"><i data-lucide=\"users\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">ACTIVE CREW</div><div class=\"stat-num\">${userRoster.length}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 2 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s0\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#a78bfa\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#a78bfa\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C6,24 12,20 18,22 C24,24 30,16 36,14 C42,12 48,18 54,16 C60,14 66,6 72,8 C78,10 84,4 90,6\" fill=\"none\" stroke=\"url(#s0)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('dashboard')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#ec4899;background:rgba(236,72,153,0.12);border:1px solid rgba(236,72,153,0.22)\"><i data-lucide=\"video\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">ACTIVE PIPELINE</div><div class=\"stat-num\">${activeTasksCount}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 1 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s1\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#ec4899\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#ec4899\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,24 C4,20 8,28 14,22 C20,16 26,26 32,20 C38,14 44,22 50,16 C56,10 62,18 68,12 C74,6 80,14 86,8\" fill=\"none\" stroke=\"url(#s1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.15s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#10b981;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.22)\"><i data-lucide=\"clapperboard\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE VIDEOS</div><div class=\"stat-num\">${compVideos}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 8 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s2\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#10b981\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#10b981\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,28 C8,26 16,24 24,22 C32,20 40,16 48,14 C56,12 64,8 72,6 C80,4 88,3 96,2\" fill=\"none\" stroke=\"url(#s2)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.3s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.22)\"><i data-lucide=\"image\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE THUMBS</div><div class=\"stat-num\">${compThumbs}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 6 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s3\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#06b6d4\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#06b6d4\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,22 C6,24 12,18 18,20 C24,22 30,14 36,16 C42,18 48,10 54,12 C60,14 66,8 72,10 C78,12 84,6 90,8\" fill=\"none\" stroke=\"url(#s3)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.45s\"/></svg></div><div class=\"stat-card-new\" onclick=\"switchTab('history')\" style=\"cursor:pointer\"><div class=\"stat-card-top\"><div class=\"stat-icon-box\" style=\"color:#f97316;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.22)\"><i data-lucide=\"palette\" style=\"width:18px;height:18px\"></i></div><div><div class=\"stat-label\">DONE POSTERS</div><div class=\"stat-num\">${compPosters}</div><div style=\"font-size:10px;color:#10b981;margin-top:3px\">↑ 5 this month</div></div></div><svg viewBox=\"0 0 96 30\" preserveAspectRatio=\"none\" style=\"width:100%;height:32px;display:block;margin-top:8px\"><defs><linearGradient id=\"s4\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#f97316\" stop-opacity=\"0.02\"/><stop offset=\"100%\" stop-color=\"#f97316\" stop-opacity=\"0.9\"/></linearGradient></defs><path d=\"M0,26 C5,22 10,28 16,20 C22,12 28,24 34,18 C40,12 46,20 52,14 C58,8 64,16 70,10 C76,4 82,12 88,6\" fill=\"none\" stroke=\"url(#s4)\" stroke-width=\"2.5\" stroke-linecap=\"round\" class=\"spk-line\" style=\"animation-delay:0.6s\"/></svg></div>`;            }
+                container.className = "";
+                container.innerHTML = metricStripHTML([
+                    { icon: 'users', color: '#a78bfa', label: 'ACTIVE CREW', value: userRoster.length, status: 'this month', onclick: "switchTab('settings')" },
+                    { icon: 'video', color: '#ec4899', label: 'ACTIVE PIPELINE', value: activeTasksCount, status: 'this month', onclick: "switchTab('dashboard')" },
+                    { icon: 'clapperboard', color: '#10b981', label: 'DONE VIDEOS', value: compVideos, status: 'this month', onclick: "switchTab('history')" },
+                    { icon: 'image', color: '#06b6d4', label: 'DONE THUMBS', value: compThumbs, status: 'this month', onclick: "switchTab('history')" },
+                    { icon: 'palette', color: '#f97316', label: 'DONE POSTERS', value: compPosters, status: 'this month', onclick: "switchTab('history')" },
+                ]);
+            }
             lucide.createIcons();
         }
 
