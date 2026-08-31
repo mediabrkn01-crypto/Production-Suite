@@ -1116,15 +1116,24 @@ details[open] .rawsum::before{content:'▾ '}
 
 <div class="modal-bg" id="modalBatchEdit"><div class="modal" style="width:480px;max-height:88vh;overflow:auto">
   <h3 id="be_title">Edit Batch</h3>
-  <select id="be_trainer"></select>
+  <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Batch Name</span><input id="be_name" type="text" placeholder="Batch name"/></label>
+  <select id="be_trainer" onchange="_beOnTrainerChange()"></select>
+  <div id="be_conflict" class="mhint" style="display:none;margin-bottom:6px"></div>
   <input id="be_cap" type="number" placeholder="Max students (capacity)"/>
   <label class="lv-field lv-grow" style="margin-bottom:6px;margin-top:6px"><span>Expected completion date</span><input id="be_completion" type="date"/></label>
   <textarea id="be_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
+  <div class="subhead" style="margin:12px 0 8px">Progress / session correction</div>
+  <div class="mrow" style="align-items:center;gap:8px">
+    <span style="font-size:12.5px;color:var(--tx3)">Total Sessions: <b id="be_total_sessions" style="color:var(--tx)">—</b></span>
+    <label class="lv-field" style="margin:0;flex:1"><span>Completed Sessions</span><input id="be_sessions_done" type="number" min="0" oninput="_beRecalcProgress()"/></label>
+  </div>
+  <div class="mhint">Calculated Progress: <b id="be_calc_pct" style="color:var(--tx)">—</b> — use this only to correct imported/legacy/missing session data. It sets the batch's baseline; going forward, Mark Attendance still adds on top of it. Reaching the total automatically completes the batch everywhere.</div>
   <div class="subhead" style="margin:12px 0 8px">Students in this batch</div>
   <div id="be_current" class="pick-list"></div>
   <div class="subhead" style="margin:12px 0 8px">Add unassigned students</div>
+  <div id="be_seats_hint" class="mhint"></div>
   <div id="be_pool" class="pick-list"></div>
-  <div class="mhint">Tick to add. Untick a current student to remove them (back to Unassigned).</div>
+  <div class="mhint">Tick to add. Untick a current student to remove them (back to Unassigned) — their past attendance history is kept, they're just no longer an active member of this batch.</div>
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchEdit')">Cancel</button><button class="btn-save" onclick="saveBatchEdit()">Save Changes</button></div>
 </div></div>
 
@@ -1789,8 +1798,7 @@ async function loadLive(){
           ${isPrevious ? `<span class="badge b-active">Completed</span>
           <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
           ` : `
-          ${isHead&&!b.elite?`<button class="act-btn" onclick="renameBatch(${i})">Rename</button>`:''}
-          ${isHead?`<button class="act-btn" onclick="setBaseline(${i})">Set Progress</button>`:''}
+          ${isHead?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
           <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
           <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
           `}
@@ -1813,37 +1821,26 @@ async function loadLive(){
   // Previous Classes \u2014 its own tab/nav item now (see acadSwitchTab('previous')), not an
   // inline <details> at the bottom of the active list. Indices continue from active.length
   // since window._liveBatches is still the one combined active+previous array every
-  // onclick handler above (openAtt/openStu/renameBatch/setBaseline) already indexes into.
+  // onclick handler above (openAtt/openStu/editBatchFromLive) already indexes into.
   const prevEl=document.getElementById('previousClasses');
   if (prevEl) prevEl.innerHTML = previous.length ? previous.map(function(b,i){return card(b,active.length+i,true);}).join('') : '<div class="empty">No completed batches yet.</div>';
 }
-async function setBaseline(i){
+// REPLACED (spec: "Instead of Rename / Set Progress / History / Mark Attendance, recommend
+// [ Edit Batch ] [ History ] [ Mark Attendance ]" — "Rename can also be available inside
+// Edit Batch"): setBaseline() and renameBatch() used to be their own card buttons, each opening
+// a bare showPrompt() text box. Both are now fields inside the one Edit Batch modal
+// (openBatchEdit/saveBatchEdit) — Batch Name and Progress/Session Correction — alongside every
+// other real edit (trainer, schedule, students), instead of a separate, disconnected action per
+// field. editBatchFromLive() below is the Live Batches card's own entry point into that same
+// modal (its cards are keyed by batch NAME, loadLive() never carries the real batches.id, so
+// this resolves it once before opening — same resolution openAtt's class-log lookup already
+// does for the identical reason).
+async function editBatchFromLive(i){
   if(!requireHeadAccess())return;
-  const b=window._liveBatches[i];if(!b)return;
-  const name=b.raw||b.name;
-  // Same real sessions_total the finished-batch resolver itself uses (window._acadTotalMap,
-  // built by loadLive()) — not a second, independent b.elite?20:32 guess that could clamp this
-  // baseline to the wrong ceiling for a 25- or 42-session batch.
-  const total=(window._acadTotalMap&&window._acadTotalMap[name])||(b.elite?20:32);
-  const cur=(window._baseMap&&window._baseMap[name])||0;
-  const v=await showPrompt(`Sessions already completed for "${name}" before tracking started (0\u2013${total}):\nGoing forward, attendance adds on top of this.`, { defaultValue: String(cur) });
-  if(v===null)return;
-  const n=Math.max(0,Math.min(total,parseInt(v)||0));
-  try{
-    let {data:ex}=await sb.from('batches').select('id').eq('name',name).maybeSingle();
-    if(ex&&ex.id)await sb.from('batches').update({baseline_sessions:n}).eq('id',ex.id);
-    else await sb.from('batches').insert({name:name,baseline_sessions:n,status:'active'});
-  }catch(e){showToast('error','Save failed \u2014 run the baseline migration (adds baseline_sessions).');return;}
-  loadLive();
-}
-async function renameBatch(i){
   const b=window._liveBatches[i]; if(!b||!b.raw)return;
-  const nn=await showPrompt('Rename batch \u201c'+b.raw+'\u201d to:', { defaultValue: b.raw });
-  if(!nn||nn.trim()===''||nn===b.raw)return;
-  const {error}=await sb.from('students').update({batch_name:nn.trim()}).eq('batch_name',b.raw);
-  if(error){showToast('error','Rename failed: '+error.message);return;}
-  await sb.from('attendance').update({batch_name:nn.trim()}).eq('batch_name',b.raw);
-  showToast('success','Renamed to '+nn.trim()); loadLive();
+  const {data:row}=await sb.from('batches').select('id').eq('name',b.raw).maybeSingle();
+  if(!row||!row.id){showToast('error','Could not find this batch\u2019s database record.');return;}
+  await openBatchEdit(row.id);
 }
 async function openAtt(i){
   const b=window._liveBatches[i]; if(!b)return; window._attBatch=b;
@@ -3092,15 +3089,16 @@ async function loadStats(){
     const att = await _acadFetchAllRows('attendance', 'batch_name,session_num');
     sessionsCompleted = new Set(att.map(a => a.batch_name+'|'+a.session_num)).size;
   } catch (e) { console.warn('Could not load sessions-completed count:', e.message); }
-  // Same acadStatTile() icon+color+sparkline component the Overview dashboard and Reports
-  // already use — this grid was still the old plain label/value cards, the one place left
-  // that hadn't been brought in line with the rest of the redesigned Academic module.
-  document.getElementById('statgrid').innerHTML = [
-    acadStatTile('users', '#3b82f6', trainers?.length||0, 'Active Trainers', "acadSwitchTab('trainers')"),
-    acadStatTile('layers', '#ff0552', (batches||[]).filter(b => !_isBatchDeleted(b)).length, 'Total Batches', "acadSwitchTab('live')"),
-    acadStatTile('graduation-cap', '#10b981', students?.length||0, 'Total Students', "acadSwitchTab('students')"),
-    acadStatTile('check-circle', '#f59e0b', sessionsCompleted, 'Sessions Completed', "acadSwitchTab('live')"),
-  ].join('');
+  // Same compact radial metricStripHTML() component the Overview dashboard already uses (and
+  // index.html/hr.html's own dashboards) — this grid was still the old acadStatTile()
+  // rectangular-card-plus-sparkline design, the one place left that hadn't been brought in
+  // line. Same exact metrics/values as before (spec: "no new data"), just the shared design.
+  document.getElementById('statgrid').innerHTML = metricStripHTML([
+    { icon: 'users', color: '#3b82f6', label: 'Active Trainers', value: trainers?.length||0, status: 'active roster', onclick: "acadSwitchTab('trainers')" },
+    { icon: 'layers', color: '#ff0552', label: 'Total Batches', value: (batches||[]).filter(b => !_isBatchDeleted(b)).length, status: 'all batches', onclick: "acadSwitchTab('live')" },
+    { icon: 'graduation-cap', color: '#10b981', label: 'Total Students', value: students?.length||0, status: 'enrolled', onclick: "acadSwitchTab('students')" },
+    { icon: 'check-circle', color: '#f59e0b', label: 'Sessions Completed', value: sessionsCompleted, status: 'all-time', onclick: "acadSwitchTab('live')" },
+  ]);
   lucide.createIcons();
 }
 
@@ -4638,21 +4636,89 @@ async function saveManageStudents(){
   // student/batch mutation in this file already calls, not a new refresh path.
   await loadHeadView(); await loadStats(); await loadLive();
 }
+// Real completed-session count for a batch by its actual name (baseline + distinct marked
+// attendance sessions) — same rule progressOf()/loadLive() use, just callable standalone for
+// a single batch (Edit Batch only needs this one batch's number, not the whole table).
+async function _acadRealDoneCount(realName, baselineSessions){
+  try {
+    const { data } = await sb.from('attendance').select('session_num').eq('batch_name', realName);
+    const marked = new Set((data||[]).map(r=>r.session_num)).size;
+    return (+baselineSessions||0) + marked;
+  } catch(e) { return +baselineSessions||0; }
+}
+function _beRecalcProgress(){
+  const total = +(document.getElementById('be_total_sessions').dataset.val)||0;
+  const done = Math.max(0, parseInt(document.getElementById('be_sessions_done').value)||0);
+  const pct = total ? Math.min(100, Math.round(done/total*100)) : 0;
+  document.getElementById('be_calc_pct').textContent = total ? (pct+'% ('+Math.min(done,total)+' of '+total+')') : '—';
+}
+// Same recurring-schedule conflict rule Create Batch's own checkBatchTrainerConflict (Layer 1)
+// uses — reused here rather than a second implementation, just scoped to "would switching THIS
+// batch to this trainer collide with one of their OTHER active batches at this batch's own
+// existing day_pattern/time_slot." Only fires when the trainer selection actually changes.
+function _beCheckTrainerConflict(newTrainerId, batch){
+  if (!newTrainerId || String(newTrainerId)===String(batch.trainer_id)) return null;
+  const days = (batch.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(Boolean);
+  const startLabel = (batch.time_slot||'').split(' – ')[0].split('-')[0].trim();
+  if (!days.length || !startLabel) return null; // nothing concrete to check against
+  const others = (window._allBatchesFull||[]).filter(o => String(o.trainer_id)===String(newTrainerId) && o.id!==batch.id && o.status!=='inactive' && o.status!=='closed' && !_isBatchDeleted(o) && !(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(o.name)));
+  const conflict = others.find(o => {
+    const otherDays=(o.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(d=>days.includes(d));
+    return otherDays.length && (o.time_slot||'').toLowerCase().includes(startLabel.toLowerCase());
+  });
+  return conflict || null;
+}
+// Live re-check as soon as the trainer selection changes (not just at Save) — same warning
+// saveBatchEdit() itself blocks on, shown early so the Head sees it before even trying to save.
+function _beOnTrainerChange(){
+  const el=document.getElementById('be_conflict');
+  if (!_editBatch) return;
+  const trSel=document.getElementById('be_trainer');
+  const conflict=_beCheckTrainerConflict(trSel.value, _editBatch);
+  if (conflict) {
+    const trainerName=(trSel.options[trSel.selectedIndex]||{}).text||'';
+    el.style.display=''; el.style.color='var(--yellow)';
+    el.textContent = '⚠ '+trainerName+' is already teaching "'+conflict.name+'" at this same day/time ('+(conflict.day_pattern||'')+' · '+(conflict.time_slot||'')+'). Choose a different trainer or change this batch’s schedule first.';
+  } else {
+    el.style.display='none';
+  }
+}
 async function openBatchEdit(id){
   if(!requireHeadAccess())return;
-  const {data:b}=await sb.from('batches').select('*').eq('id',id).single();
+  const {data:b}=await sb.from('batches').select('*, courses(max_students)').eq('id',id).single();
   if(!b)return;_editBatch=b;
   document.getElementById('be_title').textContent='Edit Batch · '+b.name;
+  document.getElementById('be_name').value=b.name||'';
+  document.getElementById('be_conflict').style.display='none';
   if(!_allActiveTrainers.length) await populateTrainerSelects();
   renderTrainerOptions(document.getElementById('be_trainer'), trainersQualifiedFor(b.programme, b.trainer_id), b.trainer_id);
   document.getElementById('be_cap').value=b.capacity||'';
   document.getElementById('be_completion').value=b.expected_completion_date||'';
   document.getElementById('be_notes').value=b.notes||'';
+  // Progress/session correction — same real sessions_total column the rest of the file now
+  // reads (no b.elite?20:32 guess here either), and the real current done count so this opens
+  // pre-filled with what's actually true today, not zero.
+  const total = +b.sessions_total || 0;
+  document.getElementById('be_total_sessions').dataset.val = total;
+  document.getElementById('be_total_sessions').textContent = total || '—';
+  const doneNow = await _acadRealDoneCount(b.name, b.baseline_sessions);
+  document.getElementById('be_sessions_done').value = doneNow;
+  document.getElementById('be_sessions_done').max = total || '';
+  _beRecalcProgress();
   const {data:cur}=await sb.from('students').select('*').eq('batch_id',id);
-  document.getElementById('be_current').innerHTML=(cur&&cur.length)?cur.map(s=>'<label class="pick-row"><input type="checkbox" checked value="'+s.id+'"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+(s.preferred_slot?'<span class="pm">'+esc(s.preferred_slot)+'</span>':'')+'</label>').join(''):'<div class="mhint" style="padding:8px">No students in this batch yet.</div>';
+  const currentRows = cur||[];
+  document.getElementById('be_current').innerHTML=currentRows.length?currentRows.map(s=>'<label class="pick-row"><input type="checkbox" checked value="'+s.id+'"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+(s.preferred_slot?'<span class="pm">'+esc(s.preferred_slot)+'</span>':'')+'</label>').join(''):'<div class="mhint" style="padding:8px">No students in this batch yet.</div>';
   let pool=await unassignedStudents(b.programme||null);
   if(!pool.length)pool=await unassignedStudents(null);
   document.getElementById('be_pool').innerHTML=pool.length?pool.map(pickRow).join(''):'<div class="mhint" style="padding:8px">No unassigned students available.</div>';
+  // Capacity check (spec Part 8) — same resolution order Manage Students already uses:
+  // explicit batch capacity, else the course's configured max_students, else uncapped.
+  const capacity = b.capacity || (b.courses && b.courses.max_students) || null;
+  const available = capacity ? Math.max(0, capacity - currentRows.length) : null;
+  const seatsHint = document.getElementById('be_seats_hint');
+  seatsHint.textContent = capacity ? ('Available seats: '+available+' of '+capacity) : 'No capacity limit set on this batch/course.';
+  const atCapacity = available !== null && available <= 0;
+  document.querySelectorAll('#be_pool input[type=checkbox]').forEach(cb => cb.disabled = atCapacity);
   document.getElementById('modalBatchEdit').classList.add('on');
 }
 async function saveBatchEdit(){
@@ -4660,17 +4726,73 @@ async function saveBatchEdit(){
   const trSel=document.getElementById('be_trainer');
   const trainer_id=trSel.value||null;
   const trainer_name=trSel.value?((trSel.options[trSel.selectedIndex]||{}).text||null):null;
+  // Trainer/time conflict validation (spec Part 11) — only when the trainer selection actually
+  // changed; blocks the save outright rather than silently double-booking.
+  const conflict = _beCheckTrainerConflict(trainer_id, b);
+  if (conflict) {
+    const el=document.getElementById('be_conflict');
+    el.style.display=''; el.style.color='var(--yellow)';
+    el.textContent = '⚠ '+trainer_name+' is already teaching "'+conflict.name+'" at this same day/time ('+(conflict.day_pattern||'')+' · '+(conflict.time_slot||'')+'). Choose a different trainer or change this batch’s schedule first.';
+    return;
+  }
+  const newName=(document.getElementById('be_name').value||'').trim();
   const capacity=parseInt(document.getElementById('be_cap').value)||null;
   const expected_completion_date=document.getElementById('be_completion').value||null;
   const notes=document.getElementById('be_notes').value.trim()||null;
-  await sb.from('batches').update({trainer_id,trainer_name,capacity,expected_completion_date,notes}).eq('id',b.id);
   const removeIds=[...document.querySelectorAll('#be_current input:not(:checked)')].map(x=>x.value);
   const addIds=[...document.querySelectorAll('#be_pool input:checked')].map(x=>x.value);
+  // Capacity re-check against the LIVE count right before writing (spec Part 8 — same
+  // discipline Manage Students already uses, never trust only the client-side disabled state).
+  if (addIds.length) {
+    const { data: curNow } = await sb.from('students').select('id').eq('batch_id', b.id);
+    const currentCount = (curNow||[]).length - removeIds.length;
+    const capacityForCheck = capacity || (b.courses && b.courses.max_students) || null;
+    if (capacityForCheck && currentCount + addIds.length > capacityForCheck) {
+      const room = Math.max(0, capacityForCheck - currentCount);
+      showToast('error', `This batch only has ${room} seat${room===1?'':'s'} left (capacity ${capacityForCheck}) — pick ${room} or fewer.`, 6000);
+      return;
+    }
+  }
+  await sb.from('batches').update({trainer_id,trainer_name,capacity,expected_completion_date,notes}).eq('id',b.id);
+  // RENAME (spec Part 2/3 — root cause fix): batches.name itself now actually gets updated,
+  // not just the students/attendance rows that reference it by string — every occupancy/
+  // progress lookup in this file keys off batches.name (isBatchCurrentlyActive,
+  // window._acadFinishedBatchNames, setBaseline/openAtt), so leaving it stale silently broke
+  // all of those for a renamed batch. students updated by batch_id (a real FK, not a name
+  // match); attendance has no batch_id column, so it's still matched by the OLD name string,
+  // same as before.
+  if (newName && newName !== b.name) {
+    await sb.from('batches').update({name:newName}).eq('id',b.id);
+    await sb.from('students').update({batch_name:newName}).eq('batch_id',b.id);
+    await sb.from('attendance').update({batch_name:newName}).eq('batch_name',b.name);
+  }
   if(removeIds.length)await sb.from('students').update({batch_id:null,batch_name:'Unassigned'}).in('id',removeIds);
-  if(addIds.length)await assignStudents(addIds,{id:b.id,name:b.name,trainer_name});
+  if(addIds.length)await assignStudents(addIds,{id:b.id,name:newName||b.name,trainer_name});
   await sb.from('students').update({trainer_name}).eq('batch_id',b.id);
+  // PROGRESS / SESSION CORRECTION (spec Part 4) — only writes when the Head actually changed
+  // the value from what openBatchEdit pre-filled (the real current done count), so opening and
+  // closing this modal without touching the field never overwrites baseline_sessions with a
+  // redundant identical write. Stored as baseline_sessions, same field Mark Attendance already
+  // adds on top of — desired total done minus already-marked sessions, clamped to zero, so this
+  // is a correction to the STARTING point, never a value that fights with real attendance rows.
+  const total = +document.getElementById('be_total_sessions').dataset.val || 0;
+  const desiredDone = Math.max(0, Math.min(total||9999, parseInt(document.getElementById('be_sessions_done').value)||0));
+  const doneBefore = await _acadRealDoneCount(b.name, b.baseline_sessions);
+  if (desiredDone !== doneBefore) {
+    const realName = newName || b.name;
+    const { data: marked } = await sb.from('attendance').select('session_num').eq('batch_name', realName);
+    const markedCount = new Set((marked||[]).map(r=>r.session_num)).size;
+    const newBaseline = Math.max(0, desiredDone - markedCount);
+    await sb.from('batches').update({baseline_sessions:newBaseline}).eq('id',b.id);
+  }
   closeModal('batchEdit');
+  // If completed sessions reached the total, the standard completion workflow (spec Part 4's
+  // own "automatically trigger the standard batch completion workflow") isn't a separate step
+  // to run here — it's the same one shared rule (_acadIsFinishedByStatusOrProgress) every
+  // loadLive() call already re-evaluates from live data, and loadLive() is part of this exact
+  // refresh chain right below.
   await loadHeadView();await loadStats();await loadLive();
+  showToast('success','Batch updated');
 }
 // Trainer availability check for batch creation. Two layers, both against real data —
 // never hardcoded, always keyed by trainer.id, never by name:
@@ -5240,33 +5362,67 @@ let _openClock=null;
 // Drives the same #attendance-clock-card structure index.html uses (card visible, status
 // text + which of the two buttons shows) \u2014 index.html's own clockin/clockout buttons swap
 // via the same hidden-class toggle pattern used here.
-function _setAttendanceCardState(statusText, clockedIn, disabled){
+// BUG FIX (Attendance Clock-In state machine \u2014 confirmed live against a real screenshot: after
+// Clock Out, the card kept showing a big "CLOCK IN" button, just disabled \u2014 easy to miss that
+// it's disabled, and not the genuinely distinct "completed for today" state the rest of the
+// suite already has). index.html's own reference implementation (common.js
+// refreshAttendanceClockCard/handleClockIn/handleClockOut) already gets this right: three real
+// states \u2014 not clocked in (Clock In visible), clocked in (Clock Out visible), completed for
+// today (BOTH buttons hidden, a plain "Completed today: X \u2192 Y" line, no button that could be
+// clicked/mistaken for available). This is a LOCAL PORT of that exact same state machine \u2014 same
+// three states, same source of truth (the day's own attendance_logs row, not a client-side
+// disabled flag) \u2014 since academics.html doesn't load common.js (its own established
+// standalone-file convention, see the header note near tryMediaSSO). One shared attendance rule,
+// not two: this file was never meant to invent its own.
+function _setAttendanceCardState(mode, opts){
+  opts = opts || {};
   const card=document.getElementById('attendance-clock-card'); if(card) card.classList.remove('hidden');
-  const statusEl=document.getElementById('attendance-status-text'); if(statusEl) statusEl.textContent=statusText;
+  const statusEl=document.getElementById('attendance-status-text');
   const inBtn=document.getElementById('attendance-clockin-btn');
   const outBtn=document.getElementById('attendance-clockout-btn');
-  if(inBtn) inBtn.classList.toggle('hidden', clockedIn);
-  if(outBtn) outBtn.classList.toggle('hidden', !clockedIn);
-  if(inBtn) inBtn.disabled = !!disabled;
+  if (mode==='in') {
+    if (statusEl) statusEl.innerHTML = 'Clocked in at <b>'+esc(opts.inTime)+"</b>. Don't forget to clock out!";
+    if (inBtn) { inBtn.classList.add('hidden'); inBtn.disabled=false; }
+    if (outBtn) outBtn.classList.remove('hidden');
+  } else if (mode==='done') {
+    // STATE 3 \u2014 clocked in AND out today: no Clock In button at all (not even disabled), so
+    // there is nothing on screen that could be misread as "you can clock in again today."
+    if (statusEl) statusEl.innerHTML = 'Completed today: <b>'+esc(opts.inTime)+' \u2192 '+esc(opts.outTime)+'</b>.';
+    if (inBtn) inBtn.classList.add('hidden');
+    if (outBtn) outBtn.classList.add('hidden');
+  } else {
+    if (statusEl) statusEl.textContent = "You haven't clocked in yet today.";
+    if (inBtn) { inBtn.classList.remove('hidden'); inBtn.disabled=false; }
+    if (outBtn) outBtn.classList.add('hidden');
+  }
 }
 async function initClock(){
   try{
+    const fmt = iso => new Date(iso).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     if(_authSource==='media'){
       const today=new Date().toISOString().slice(0,10);
       const {data,error}=await mediaHrDB.from('attendance_logs').select('*').eq('employee_email',currentUser.username).eq('log_date',today).limit(1);
       if(error)return;
       const rec=data&&data[0];
       _openClock = (rec && !rec.log_out_time) ? rec : null;
-      if (_openClock) _setAttendanceCardState('Clocked in at '+new Date(_openClock.log_in_time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+". Don't forget to clock out!", true, false);
-      else if (rec) _setAttendanceCardState('Clocked out for today.', false, true);
-      else _setAttendanceCardState("You haven't clocked in yet today.", false, false);
+      if (_openClock) _setAttendanceCardState('in', { inTime: fmt(_openClock.log_in_time) });
+      else if (rec) _setAttendanceCardState('done', { inTime: fmt(rec.log_in_time), outTime: fmt(rec.log_out_time) });
+      else _setAttendanceCardState('none');
       return;
     }
-    const {data,error}=await sb.from('timeclock').select('*').eq('username',currentUser.username).is('clock_out',null).order('clock_in',{ascending:false}).limit(1);
+    // Same STATE 3 fix for the other SSO source's own table (timeclock) \u2014 this used to only
+    // ever check for an OPEN (clock_out is null) row, with no date scoping at all, so a
+    // same-day completed clock-in/out was invisible to this query entirely and the card fell
+    // straight back to "You haven't clocked in yet today" with a fully-enabled Clock In button
+    // \u2014 an even more direct version of the same double-clock-in bug.
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const {data,error}=await sb.from('timeclock').select('*').eq('username',currentUser.username).gte('clock_in',todayStart.toISOString()).order('clock_in',{ascending:false}).limit(1);
     if(error)return;
-    _openClock=(data&&data[0])||null;
-    if (_openClock) _setAttendanceCardState('Clocked in at '+new Date(_openClock.clock_in).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+". Don't forget to clock out!", true, false);
-    else _setAttendanceCardState("You haven't clocked in yet today.", false, false);
+    const rec=(data&&data[0])||null;
+    _openClock = (rec && !rec.clock_out) ? rec : null;
+    if (_openClock) _setAttendanceCardState('in', { inTime: fmt(_openClock.clock_in) });
+    else if (rec) _setAttendanceCardState('done', { inTime: fmt(rec.clock_in), outTime: fmt(rec.clock_out) });
+    else _setAttendanceCardState('none');
   }catch(e){}
 }
 async function clockToggle(){
@@ -5286,10 +5442,18 @@ async function clockToggle(){
       await initClock();
       return;
     }
-    if(_openClock)await sb.from('timeclock').update({clock_out:new Date().toISOString()}).eq('id',_openClock.id);
-    else await sb.from('timeclock').insert({username:currentUser.username});
+    if(_openClock){
+      await sb.from('timeclock').update({clock_out:new Date().toISOString()}).eq('id',_openClock.id);
+    } else {
+      // Same today-scoped re-check as the media branch above \u2014 never insert a second row for
+      // a day that already has a completed clock-in/out.
+      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+      const {data:already}=await sb.from('timeclock').select('id').eq('username',currentUser.username).gte('clock_in',todayStart.toISOString()).limit(1);
+      if(already && already[0]){ await initClock(); return; }
+      await sb.from('timeclock').insert({username:currentUser.username});
+    }
     await initClock();
-  }catch(e){alert('Clock failed \u2014 run the Phase 1 migration first.');}
+  }catch(e){showToast('error','Clock failed \u2014 run the Phase 1 migration first.');}
 }
 // Mirrors the Media Suite's own hrSyncClockToAttendance() \u2014 same table, same upsert-by-day
 // logic \u2014 so the HR Attendance tab there shows this exact clock-in without needing HR to
