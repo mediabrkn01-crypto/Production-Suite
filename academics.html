@@ -285,6 +285,8 @@ details[open] .rawsum::before{content:'▾ '}
 <script src="sidebar-collapse.js"></script>
 <link rel="stylesheet" href="account-menu.css">
 <script src="account-menu.js"></script>
+<link rel="stylesheet" href="dashboard-metrics.css">
+<script src="dashboard-metrics.js"></script>
 </head>
 <body>
 
@@ -2679,18 +2681,22 @@ async function loadAcadDashboard(){
       const soonStr = soon.toISOString().slice(0, 10);
       const upcomingAvail = batchesActive.filter(b => b.expected_completion_date && b.expected_completion_date >= today && b.expected_completion_date <= soonStr);
 
-      document.getElementById('dashSummary').innerHTML = [
-        acadStatTile('users', '#3b82f6', activeTrainers.length, 'Total Coaches', "acadSwitchTab('trainers')"),
-        acadStatTile('check-circle', '#10b981', availableCoaches.length, 'Available Coaches', "acadSwitchTab('availability')"),
-        acadStatTile('clock', '#f97316', ftCount, 'Full-Time Coaches', "acadSwitchTab('trainers')"),
-        acadStatTile('clock-4', '#7c3aed', ptCount, 'Part-Time Coaches', "acadSwitchTab('trainers')"),
-        acadStatTile('layers', '#ff0552', batchesActive.length, 'Active Batches', "acadSwitchTab('live')"),
-        acadStatTile('calendar-plus', '#f59e0b', upcomingBatches.length, 'Upcoming Batches', "acadSwitchTab('live')"),
-        acadStatTile('graduation-cap', '#3b82f6', (students || []).length, 'Students', "acadSwitchTab('students')"),
-        acadStatTile('presentation', '#10b981', todaysClasses, "Today's Classes", "acadSwitchTab('classes')"),
-        acadStatTile('palmtree', '#f59e0b', onLeaveTrainers.length, 'On Leave', "acadSwitchTab('attendance')"),
-        acadStatTile('calendar-clock', '#7c3aed', upcomingAvail.length, 'Upcoming Availability', "acadSwitchTab('availability')")
-      ].join('');
+      // Redesigned into the same compact metric-strip component index.html/hr.html's own
+      // dashboards use (shared dashboard-metrics.css/js) — same structure, Academic's own
+      // data/colors/labels (the same colors acadStatTile already used here, unchanged; the
+      // old per-tile decorative sparkline is gone, per spec, replaced by the ring itself).
+      document.getElementById('dashSummary').innerHTML = metricStripHTML([
+        { icon: 'users', color: '#3b82f6', label: 'Total Coaches', value: activeTrainers.length, status: 'active roster', onclick: "acadSwitchTab('trainers')" },
+        { icon: 'check-circle', color: '#10b981', label: 'Available Coaches', value: availableCoaches.length, status: 'free right now', onclick: "acadSwitchTab('availability')" },
+        { icon: 'clock', color: '#f97316', label: 'Full-Time Coaches', value: ftCount, status: 'full-time', onclick: "acadSwitchTab('trainers')" },
+        { icon: 'clock-4', color: '#7c3aed', label: 'Part-Time Coaches', value: ptCount, status: 'part-time', onclick: "acadSwitchTab('trainers')" },
+        { icon: 'layers', color: '#ff0552', label: 'Active Batches', value: batchesActive.length, status: 'in progress', onclick: "acadSwitchTab('live')" },
+        { icon: 'calendar-plus', color: '#f59e0b', label: 'Upcoming Batches', value: upcomingBatches.length, status: 'starting soon', onclick: "acadSwitchTab('live')" },
+        { icon: 'graduation-cap', color: '#3b82f6', label: 'Students', value: (students || []).length, status: 'enrolled', onclick: "acadSwitchTab('students')" },
+        { icon: 'presentation', color: '#10b981', label: "Today's Classes", value: todaysClasses, status: 'scheduled today', onclick: "acadSwitchTab('classes')" },
+        { icon: 'palmtree', color: '#f59e0b', label: 'On Leave', value: onLeaveTrainers.length, status: 'today', onclick: "acadSwitchTab('attendance')" },
+        { icon: 'calendar-clock', color: '#7c3aed', label: 'Upcoming Availability', value: upcomingAvail.length, status: 'next 7 days', onclick: "acadSwitchTab('availability')" },
+      ]);
       lucide.createIcons();
 
       document.getElementById('dashOnLeave').innerHTML = onLeaveTrainers.length
@@ -2705,19 +2711,19 @@ async function loadAcadDashboard(){
         : '<div class="empty">No batches completing in the next 7 days.</div>';
 
     } else {
-      // Same acadStatTile() component the Head dashboard uses above — this branch used to
-      // render a much older plain `<div class="card"><div class="lbl">…</div><div class="val">
-      // …</div></div>` with no icon/color/sparkline at all, which is exactly why a Trainer's
-      // Overview tab looked flat and inconsistent next to Media Suite's Pipeline Matrix (and
-      // next to the Head's own dashboard, one role over). Same component, same colors already
-      // used elsewhere in this file — not a new palette, just applied here too.
-      const tiles = [acadStatTile('layers', '#ff0552', activeBatches.length, 'Active Batches', "acadSwitchTab('live')")];
+      // Same shared metric-strip component the Head dashboard uses above (dashboard-metrics.
+      // css/js) — this branch used to render a much older plain `<div class="card">...`
+      // with no icon/color at all, which is exactly why a Trainer's Overview tab looked flat
+      // and inconsistent next to Media Suite's Pipeline Matrix (and next to the Head's own
+      // dashboard, one role over). Same component, same colors already used elsewhere in
+      // this file — not a new palette, just applied here too.
+      const tiles = [{ icon: 'layers', color: '#ff0552', label: 'Active Batches', value: activeBatches.length, status: 'in progress', onclick: "acadSwitchTab('live')" }];
       if (isTrainerCapable) {
-        tiles.push(acadStatTile('book-marked', '#3b82f6', countRows('#myBatches tr'), 'My Batches', "acadSwitchTab('mybatches')"));
+        tiles.push({ icon: 'book-marked', color: '#3b82f6', label: 'My Batches', value: countRows('#myBatches tr'), status: 'assigned to you', onclick: "acadSwitchTab('mybatches')" });
         const pendingCount = Array.from(document.querySelectorAll('#myTasks tr')).filter(r => r.children[3] && /pending|in.progress/i.test(r.children[3].textContent)).length;
-        tiles.push(acadStatTile('list-check', '#f59e0b', pendingCount, 'Pending Tasks', "acadSwitchTab('tasks')"));
+        tiles.push({ icon: 'list-check', color: '#f59e0b', label: 'Pending Tasks', value: pendingCount, status: 'needs attention', onclick: "acadSwitchTab('tasks')" });
       }
-      document.getElementById('dashSummary').innerHTML = tiles.join('');
+      document.getElementById('dashSummary').innerHTML = metricStripHTML(tiles);
       lucide.createIcons();
       document.getElementById('acadOnLeaveSection').style.display = 'none';
       document.getElementById('acadUpcomingAvailSection').style.display = 'none';

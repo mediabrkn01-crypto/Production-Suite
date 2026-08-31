@@ -1,0 +1,83 @@
+/* ============================================================================
+   SHARED compact metrics strip — index.html, hr.html, academics.html all
+   include this one file (paired with dashboard-metrics.js's single
+   metricStripHTML() builder). Redesign of the old per-page stat cards
+   (each with its own decorative, non-data-driven sparkline SVG) into one
+   grouped panel: radial icon ring, value, label, status dot+text, optional
+   chevron, thin dividers between items. Structure/behavior is shared here;
+   each page supplies its own metric data/colors/click targets at the call
+   site — see each page's own dashboard render function.
+   ============================================================================ */
+.metric-strip {
+    display: flex;
+    flex-wrap: wrap;
+    background: rgba(13,17,28,0.75);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    backdrop-filter: blur(12px);
+    overflow: hidden;
+}
+.metric-item {
+    flex: 1 1 0;
+    min-width: 150px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 15px 12px;
+    position: relative;
+    border-left: 1px solid rgba(255,255,255,0.06);
+    transition: background 0.18s;
+}
+/* A page with enough metrics to wrap to a second row on desktop width itself (not just at a
+   narrow viewport — academics.html's 10-item Head dashboard is the one real case here) can
+   end up with a stray vertical border-left on whichever item happens to start row 2, with
+   nothing above it to visually connect to. flex-wrap doesn't expose "which items start a
+   wrapped row" in pure CSS to condition it away cleanly; left as a minor, easy-to-live-with
+   cosmetic edge case on that one page rather than adding real complexity for it —
+   index.html's 5 items and hr.html's 7 both comfortably fit one row at any real desktop
+   width and never hit this at all. */
+.metric-strip > .metric-item:first-child { border-left: none; }
+.metric-item[data-clickable] { cursor: pointer; }
+.metric-item[data-clickable]:hover { background: rgba(255,255,255,0.025); }
+.metric-item[data-clickable]:hover .metric-ring { border-color: var(--mc); box-shadow: 0 0 0 3px var(--mc-glow); }
+.metric-item[data-clickable]:hover .metric-label { color: #c7cbe0; }
+.metric-ring {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--mc-dim);
+    background: var(--mc-bg);
+    color: var(--mc);
+    transition: border-color 0.18s, box-shadow 0.18s;
+}
+.metric-body { min-width: 0; flex: 1; }
+.metric-value { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1.1; }
+/* BUG (caught live, hr.html): a genuinely long real label ("Pending Leave Requests", 23
+   chars — longer than anything Media/Academic's own metrics use) truncated to an unreadable
+   fragment at nowrap+ellipsis, even with plenty of item width. Letting the label WRAP
+   instead (no white-space:nowrap) fixes that with zero data/label text changes — short
+   labels (Media/Academic's own, all comfortably one line at these widths) are unaffected,
+   they just never wrap since they don't need to. line-height/max-width keep a wrapped label
+   to two lines, never spilling past its own item into the sibling's.*/
+.metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; color: #808a9d; text-transform: uppercase; margin-top: 3px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; transition: color 0.18s; }
+.metric-status { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #6b74a0; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mc); flex-shrink: 0; }
+.metric-chevron { color: #4a5182; flex-shrink: 0; margin-left: auto; }
+
+@media (max-width: 900px) {
+    .metric-item { flex: 1 1 33%; border-left: none; border-top: 1px solid rgba(255,255,255,0.06); }
+    .metric-item:nth-child(-n+3) { border-top: none; }
+}
+@media (max-width: 640px) {
+    .metric-item { flex: 1 1 50%; }
+    .metric-item:nth-child(-n+2) { border-top: none; }
+    .metric-item:nth-child(2n+1) { border-left: none; }
+}
+@media (max-width: 420px) {
+    .metric-item { flex: 1 1 100%; border-left: none !important; }
+    .metric-item:not(:first-child) { border-top: 1px solid rgba(255,255,255,0.06); }
+}

@@ -43,6 +43,8 @@
     <script src="sidebar-collapse.js"></script>
     <link rel="stylesheet" href="account-menu.css">
     <script src="account-menu.js"></script>
+    <link rel="stylesheet" href="dashboard-metrics.css">
+    <script src="dashboard-metrics.js"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -2454,27 +2456,39 @@
             const donutLabel = document.getElementById('hr-dash-att-donut-label'); if (donutLabel) donutLabel.textContent = todayAtt.applicable > 0 ? `${todayAtt.present} of ${todayAtt.applicable} employees` : 'Everyone is off today';
 
             // ── Overview tiles — same numbers as before, restyled as colored icon-boxes.
-            // Colors are drawn from the existing --purple/--blue/--amber/--pink/--cyan palette
-            // already declared in :root above; no new colors introduced. ──
+            // Same colors as before (the existing --purple/--blue/--amber/--pink/--cyan
+            // palette declared in :root above) — no new colors introduced, just literal hex
+            // here since metricStripHTML() (shared dashboard-metrics.js) needs a real hex
+            // value to build its own alpha-suffixed ring/background/glow shades, which a
+            // CSS var() reference can't do. ──
             const stats = [
-                { key: 'total', label: 'Total Employees', sub: 'Across all departments', num: total, icon: 'users', color: 'var(--blue)' },
-                { key: 'present', label: 'Present Today', sub: 'Marked attendance', num: todayPresent, icon: 'user-check', color: 'var(--green)' },
-                { key: 'leave', label: 'On Leave', sub: 'Enjoying time off', num: onLeaveToday, icon: 'palmtree', color: 'var(--amber)' },
-                { key: 'wfh', label: 'Work From Home', sub: 'Working remotely today', num: wfhToday, icon: 'home', color: 'var(--purple)' },
-                { key: 'new', label: 'New Employees', sub: 'This month', num: newThisMonth, icon: 'user-plus', color: 'var(--purple)' },
-                { key: 'pending_leave', label: 'Pending Leave Requests', sub: 'Requires approval', num: pendingLeave, icon: 'calendar-clock', color: 'var(--cyan)' },
-                { key: 'pending_payroll', label: 'Pending Payroll', sub: 'This payroll cycle', num: pendingPayroll, icon: 'wallet', color: 'var(--pink)' }
+                { key: 'total', label: 'Total Employees', sub: 'Across all departments', num: total, icon: 'users', color: '#3b82f6' },
+                { key: 'present', label: 'Present Today', sub: 'Marked attendance', num: todayPresent, icon: 'user-check', color: '#10b981' },
+                { key: 'leave', label: 'On Leave', sub: 'Enjoying time off', num: onLeaveToday, icon: 'palmtree', color: '#f59e0b' },
+                { key: 'wfh', label: 'Work From Home', sub: 'Working remotely today', num: wfhToday, icon: 'home', color: '#7c3aed' },
+                { key: 'new', label: 'New Employees', sub: 'This month', num: newThisMonth, icon: 'user-plus', color: '#7c3aed' },
+                { key: 'pending_leave', label: 'Pending Leave Requests', sub: 'Requires approval', num: pendingLeave, icon: 'calendar-clock', color: '#06b6d4' },
+                { key: 'pending_payroll', label: 'Pending Payroll', sub: 'This payroll cycle', num: pendingPayroll, icon: 'wallet', color: '#ec4899' }
             ];
-            // Every card opens the same detail modal, scoped to that card's own category
+            // Every item opens the same detail modal, scoped to that item's own category
             // (spec item 5) — hrOpenDashboardDetail resolves the exact list from the exact same
             // hrLeaveRequests/hrAttendance/hrEmployees/hrPayroll arrays this function itself just
-            // used, so the modal can never disagree with the number on the card.
-            document.getElementById('hr-dash-stats').innerHTML = stats.map(s => `
-                <div class="hr-stat-card" onclick="hrOpenDashboardDetail('${s.key}')" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hrOpenDashboardDetail('${s.key}');}">
-                    <div style="background:color-mix(in srgb, ${s.color} 16%, transparent);color:${s.color};border-radius:10px;padding:9px;flex-shrink:0"><i data-lucide="${s.icon}" style="width:18px;height:18px"></i></div>
-                    <div style="min-width:0"><div class="num">${s.num}</div><div class="label" style="text-transform:none;letter-spacing:normal;font-size:11px;color:#c7cbe0;font-weight:600">${s.label}</div><div style="font-size:10px;color:#6b74a0;margin-top:1px">${s.sub}</div></div>
-                </div>
-            `).join('');
+            // used, so the modal can never disagree with the number shown. Redesigned into the
+            // same compact metric-strip component index.html's own dashboard uses (shared
+            // dashboard-metrics.css/js) — same structure, HR's own data/colors/labels.
+            // BUG (caught live): #hr-dash-stats keeps its OWN "grid grid-cols-2 md:grid-
+            // cols-3 lg:grid-cols-6" class from the old 7-separate-card layout — with a
+            // single .metric-strip child, a fixed 6-column grid squeezes that one child into
+            // 1/6 of the row width instead of letting it span full width, which then makes
+            // the strip's own internal flex-wrap stack every item vertically. Clearing the
+            // container's className (same fix already applied in index.html's own
+            // renderCountersGrid) lets .metric-strip's own CSS own the full row.
+            const hrDashStatsEl = document.getElementById('hr-dash-stats');
+            hrDashStatsEl.className = '';
+            hrDashStatsEl.innerHTML = metricStripHTML(stats.map(s => ({
+                icon: s.icon, color: s.color, label: s.label, value: s.num, status: s.sub,
+                onclick: "hrOpenDashboardDetail('" + s.key + "')"
+            })));
             if (window.lucide) lucide.createIcons();
 
             const pendingRows = hrLeaveRequests.filter(r => r.status === 'pending').slice(0, 8);

@@ -403,68 +403,8 @@
         .stat-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; color: #808a9d; text-transform: uppercase; line-height: 1; margin-bottom: 4px; }
         .stat-num { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1; }
 
-        /* ── Compact metrics strip (redesign of the 5 stat-card-new cards above into one
-           panel) — .stat-card-new/.stat-icon-box/.stat-label/.stat-num above are left in
-           place (still used by the Academic Overview dashboard elsewhere in this file),
-           this is a separate, additive set of classes only #metrics-counter-container's own
-           two render branches (renderCountersGrid) use. ── */
-        .metric-strip {
-            display: flex;
-            flex-wrap: wrap;
-            background: rgba(13,17,28,0.75);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 14px;
-            backdrop-filter: blur(12px);
-            overflow: hidden;
-        }
-        .metric-item {
-            flex: 1 1 0;
-            min-width: 150px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 15px 12px;
-            position: relative;
-            border-left: 1px solid rgba(255,255,255,0.06);
-            transition: background 0.18s;
-        }
-        .metric-item:first-child { border-left: none; }
-        .metric-item[data-clickable] { cursor: pointer; }
-        .metric-item[data-clickable]:hover { background: rgba(255,255,255,0.025); }
-        .metric-item[data-clickable]:hover .metric-ring { border-color: var(--mc); box-shadow: 0 0 0 3px var(--mc-glow); }
-        .metric-item[data-clickable]:hover .metric-label { color: #c7cbe0; }
-        .metric-ring {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid var(--mc-dim);
-            background: var(--mc-bg);
-            color: var(--mc);
-            transition: border-color 0.18s, box-shadow 0.18s;
-        }
-        .metric-body { min-width: 0; flex: 1; }
-        .metric-value { font-size: 22px; font-weight: 700; color: #f1f5f9; line-height: 1.1; }
-        .metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; color: #808a9d; text-transform: uppercase; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.18s; }
-        .metric-status { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #6b74a0; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .metric-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mc); flex-shrink: 0; }
-        .metric-chevron { color: #4a5182; flex-shrink: 0; margin-left: auto; }
-
-        @media (max-width: 900px) {
-            .metric-item { flex: 1 1 33%; border-left: none; border-top: 1px solid rgba(255,255,255,0.06); }
-            .metric-item:nth-child(-n+3) { border-top: none; }
-        }
-        @media (max-width: 640px) {
-            .metric-item { flex: 1 1 50%; }
-            .metric-item:nth-child(-n+2) { border-top: none; }
-            .metric-item:nth-child(2n+1) { border-left: none; }
-        }
-        @media (max-width: 420px) {
-            .metric-item { flex: 1 1 100%; border-left: none !important; }
-            .metric-item:not(:first-child) { border-top: 1px solid rgba(255,255,255,0.06); }
+        /* .metric-strip/.metric-item/etc — now in shared dashboard-metrics.css (see <head>),
+           reused by index.html/hr.html/academics.html. */
         }
 
         /* ── Mobile: hide desktop sidebar, show hamburger topbar ── */
@@ -714,6 +654,8 @@
     <script src="sidebar-collapse.js"></script>
     <link rel="stylesheet" href="account-menu.css">
     <script src="account-menu.js"></script>
+    <link rel="stylesheet" href="dashboard-metrics.css">
+    <script src="dashboard-metrics.js"></script>
 
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -3053,25 +2995,8 @@
             }
         }
 
-        // Shared builder for the compact metrics strip (redesign of the old 5 separate
-        // stat-card-new + sparkline cards into one panel) — used by both branches of
-        // renderCountersGrid() below so the employee view and the admin/manager view render
-        // through the exact same markup/CSS, not two copies.
-        function metricStripHTML(items) {
-            return '<div class="metric-strip">' + items.map(function(m) {
-                var clickable = m.onclick ? ' data-clickable onclick="' + m.onclick + '"' : '';
-                var chevron = m.onclick ? '<svg class="metric-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' : '';
-                return '<div class="metric-item"' + clickable + ' style="--mc:' + m.color + ';--mc-dim:' + m.color + '55;--mc-bg:' + m.color + '1f;--mc-glow:' + m.color + '33">'
-                    + '<div class="metric-ring"><i data-lucide="' + m.icon + '" style="width:20px;height:20px"></i></div>'
-                    + '<div class="metric-body">'
-                        + '<div class="metric-value">' + m.value + '</div>'
-                        + '<div class="metric-label" title="' + m.label + '">' + m.label + '</div>'
-                        + '<div class="metric-status"><span class="metric-dot"></span>' + m.status + '</div>'
-                    + '</div>'
-                    + chevron
-                + '</div>';
-            }).join('') + '</div>';
-        }
+        // metricStripHTML() — now in shared dashboard-metrics.js (see <head>), reused by
+        // index.html/hr.html/academics.html.
         function renderCountersGrid() {
             const container = document.getElementById('metrics-counter-container');
             if(!container) return;
