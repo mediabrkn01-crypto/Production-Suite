@@ -287,6 +287,7 @@ details[open] .rawsum::before{content:'▾ '}
 <script src="account-menu.js"></script>
 <link rel="stylesheet" href="dashboard-metrics.css">
 <script src="dashboard-metrics.js"></script>
+<script src="shared-greeting.js"></script>
 </head>
 <body>
 
@@ -461,6 +462,23 @@ details[open] .rawsum::before{content:'▾ '}
     <div class="acad-main" style="flex:1;overflow-y:auto;padding:24px 28px">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" style="margin-bottom:22px">
         <div>
+          <!-- Live time-of-day greeting (shared-greeting.js) — same component index.html/
+               hr.html use, small on purpose so it never competes with the real page title
+               (spec item 5). -->
+          <p id="live-greeting" class="text-xs" style="font-weight:600;color:var(--tx3);margin-bottom:2px"></p>
+          <script>
+          if (typeof initLiveGreeting === 'function') {
+            // currentUser (this file's own login var, set once SSO/login resolves further
+            // down in this same script) — same value the sidebar/topbar avatar's own name
+            // label already shows, not a second name source. Not yet declared this early —
+            // fine, neutral greeting shows first, window._beRefreshGreeting (called from
+            // boot(), once login resolves) updates it live.
+            window._beRefreshGreeting = initLiveGreeting({
+              mount: '#live-greeting',
+              getName: () => (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || null,
+            });
+          }
+          </script>
           <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Academic Command Center</h1>
           <p class="text-[#6b74a0] text-xs md:text-sm mt-1" id="acad-subtitle">Coaches, batches, availability and scheduling — Broken English Academic.</p>
         </div>
@@ -504,15 +522,13 @@ details[open] .rawsum::before{content:'▾ '}
           <!-- Clock In/Out used to be a small pill crammed into this header row — index.html
                never puts it here at all, it's a dedicated Attendance card in the dashboard
                body (see #attendance-clock-card below). Moved to match, not just restyled in
-               place. Logout also used to have its own circular icon button here — index.html
-               has no header logout at all, only the sidebar's text+icon link (which this
-               file's sidebar already matches) — removed rather than kept and restyled, since
-               index.html's actual pattern is "no header logout button." Back-to-Media-Suite
-               has no index.html equivalent (Academic-specific), kept as the one legitimate
-               header control beyond the date chip. -->
-          <span class="glass-button-wrap rounded-full"><button id="acad-backlink-btn" onclick="location.href='index.html'" title="Back to Media Suite" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
-            <i data-lucide="arrow-left" class="w-4 h-4"></i>
-          </button></span>
+               place. The header used to also carry a circular "Back to Media Suite" button
+               here — removed: with Switch Account/Add Another Account/Logout all now living
+               in the top-right account menu above (which already routes correctly to
+               index.html/hr.html/academics.html per account), a second, separate back/logout-
+               style control right next to it was redundant. index.html has no header logout
+               at all either — only the sidebar's own link — so this also brings academics.html
+               in line with that same "no extra header control" pattern. -->
         </div>
       </div>
 
@@ -1949,6 +1965,9 @@ async function boot(){
   const roleLabel = currentUser.role.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
   const initials = (currentUser.name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
   document.getElementById('acad-user-name').textContent = currentUser.name || '—';
+  // Live greeting (shared-greeting.js) — currentUser is real now, refresh immediately rather
+  // than waiting for its own once-a-minute tick to pick up the name.
+  if (typeof window._beRefreshGreeting === 'function') window._beRefreshGreeting();
   document.getElementById('acad-user-role').textContent = roleLabel;
   document.getElementById('acad-user-avatar').textContent = initials || '?';
   // Same summary, mirrored onto the mobile topbar — visible immediately on a phone too.
@@ -1967,7 +1986,6 @@ async function boot(){
   if (!window._acadDateTimeInterval) window._acadDateTimeInterval = setInterval(updateAcadHeaderDateTime, 1000);
   // Same-tab navigation either way (see logout()) — no "close tab" special case needed.
   document.getElementById('acad-logout-label').textContent = 'Log Out';
-  document.getElementById('acad-backlink-btn').style.display = 'inline-flex';
 
   // Resolve this login's own trainer_id, and check for an active delegation, BEFORE the
   // first (and only) call to applyAcadRoleGates() below — that function permanently REMOVES

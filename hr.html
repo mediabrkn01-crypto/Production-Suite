@@ -45,6 +45,7 @@
     <script src="account-menu.js"></script>
     <link rel="stylesheet" href="dashboard-metrics.css">
     <script src="dashboard-metrics.js"></script>
+    <script src="shared-greeting.js"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -794,6 +795,24 @@
             <div id="tab-content-hr" class="space-y-6">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
+                        <!-- Live time-of-day greeting (shared-greeting.js) — same component
+                             index.html/academics.html use, small on purpose so it never
+                             competes with the real page title (spec item 5). -->
+                        <p id="live-greeting" class="text-xs font-semibold text-[#8b93b8] mb-1"></p>
+                        <script>
+                        if (typeof initLiveGreeting === 'function') {
+                          // activeUser (common.js, loaded later in this document) resolves to
+                          // the real HR/user_roster display name — same value the topbar's own
+                          // name label already shows, not a second name source. Not yet
+                          // declared this early — fine, neutral greeting shows first,
+                          // window._beRefreshGreeting (called once login resolves, see there)
+                          // updates it live.
+                          window._beRefreshGreeting = initLiveGreeting({
+                            mount: '#live-greeting',
+                            getName: () => (typeof activeUser !== 'undefined' && activeUser) || null,
+                          });
+                        }
+                        </script>
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Management</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee management, attendance, leave, payroll and workforce overview.</p>
                     </div>
@@ -2395,6 +2414,9 @@
             const topAvatar = document.getElementById('hr-topbar-avatar');
             if (topAvatar) topAvatar.textContent = (activeUser || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();
             const topName = document.getElementById('hr-topbar-name'); if (topName) topName.textContent = activeUser || '';
+            // Live greeting (shared-greeting.js) — activeUser is real now, refresh immediately
+            // rather than waiting for its own once-a-minute tick to pick up the name.
+            if (typeof window._beRefreshGreeting === 'function') window._beRefreshGreeting();
             const topRole = document.getElementById('hr-topbar-role');
             if (topRole) {
                 // Real designation when this admin has their own HR record on file, same as

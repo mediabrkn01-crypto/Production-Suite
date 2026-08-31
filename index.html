@@ -656,6 +656,7 @@
     <script src="account-menu.js"></script>
     <link rel="stylesheet" href="dashboard-metrics.css">
     <script src="dashboard-metrics.js"></script>
+    <script src="shared-greeting.js"></script>
 
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -1309,6 +1310,30 @@
                 <div id="celebration-banner-slot" class="be-celeb-banner-slot"></div>
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
+                        <!-- Live time-of-day greeting (shared-greeting.js) — small on purpose,
+                             sits above the real page title so it never competes with it (spec
+                             item 5). Rendered immediately with a neutral "Good Afternoon!" the
+                             instant this element exists, not gated on any data load; updates in
+                             place once the real name resolves and once a minute after that so
+                             the greeting itself flips Morning→Afternoon→Evening→Night live. -->
+                        <p id="live-greeting" class="text-xs font-semibold text-[#8b93b8] mb-1"></p>
+                        <script>
+                        if (typeof initLiveGreeting === 'function') {
+                          // Name priority (spec item 6): employee display name → profile full
+                          // name → auth display name → safe fallback. activeUser (common.js,
+                          // loaded later in this same document) already resolves to the real
+                          // HR/user_roster display name by the time login completes — same
+                          // value the sidebar/topbar avatar's own name label already shows, not
+                          // a second name source. Not yet declared at THIS point in page load
+                          // (common.js hasn't loaded yet) — that's fine, the neutral "Good
+                          // Afternoon!" shows first, window._beRefreshGreeting (called from
+                          // launchSession() once login resolves, see there) updates it live.
+                          window._beRefreshGreeting = initLiveGreeting({
+                            mount: '#live-greeting',
+                            getName: () => (typeof activeUser !== 'undefined' && activeUser) || null,
+                          });
+                        }
+                        </script>
                         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Media Production Matrix</h1>
                         <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
                     </div>
@@ -2768,6 +2793,9 @@
                 if (ini) ini.textContent = initials;
             }
             hrFetchAndApplyMyPhoto();
+            // Live greeting (shared-greeting.js) — activeUser is real now, refresh immediately
+            // rather than waiting for its own once-a-minute tick to pick up the name.
+            if (typeof window._beRefreshGreeting === 'function') window._beRefreshGreeting();
 
             // Not awaited — the Pipeline table (from syncLedgerEngine above) already rendered
             // with whatever was in hrEmployees at that moment; re-render once the self/team HR
