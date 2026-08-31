@@ -422,11 +422,18 @@ details[open] .rawsum::before{content:'▾ '}
         <button class="acad-nav-link sidebar-link" id="nav-acad-team" onclick="acadSwitchTab('team')"><i data-lucide="users-round" style="width:14px;height:14px"></i> Team Members</button>
       </div>
     </div>
-    <div style="flex-shrink:0">
-      <!-- Account Switcher — same shared be_saved_accounts localStorage key index.html's own
-           switcher reads/writes, so an account saved on either page is switchable from both.
-           Was missing from this sidebar entirely before (a real gap: "why did Account Switch
-           disappear inside Academic" was a fair question — there was nothing here at all). -->
+    <div style="flex-shrink:0;display:none">
+      <!-- Sidebar profile card + Logout — HIDDEN (not deleted): account controls now live
+           only in the top-right avatar menu (account-menu.js), per spec — "Sidebar:
+           Navigation only. Top header: Profile/account controls." Left as display:none
+           rather than removed outright so every existing boot()/_acad* function that still
+           writes into these ids (acad-user-name/-role/-avatar, acad-logout-label) keeps
+           working completely unchanged — those still feed the top-right menu's own display
+           via the same underlying currentUser/session data (spec item 6: removing this card
+           must not remove profile data from the system, and it doesn't — it's the same data,
+           just not rendered in two places at once anymore).
+           Account Switcher — same shared be_saved_accounts localStorage key index.html's own
+           switcher reads/writes, so an account saved on either page is switchable from both. -->
       <div style="position:relative">
         <div id="acad-account-switcher-panel" class="hidden" style="position:absolute;bottom:100%;left:0;width:100%;margin-bottom:8px;background:rgba(10,14,23,.98);border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 20px 40px rgba(0,0,0,.8);overflow:hidden;z-index:30">
           <div style="padding:8px 12px;font-size:10px;color:#808a9d;text-transform:uppercase;font-weight:700;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.06)">Switch Account</div>
@@ -2453,6 +2460,9 @@ function toggleNotifPanel() {
   const panel = document.getElementById('notif-panel');
   if (!panel) return;
   const isHidden = panel.classList.contains('hidden');
+  // Mutual exclusion with the top-right account menu (spec: opening one closes the other,
+  // never overlapping) — see account-menu.js's own registry.
+  if (isHidden && typeof window._beCloseOverlays === 'function') window._beCloseOverlays();
   panel.classList.toggle('hidden');
   if (isHidden) {
     renderNotifList();
@@ -2465,6 +2475,9 @@ function toggleNotifPanel() {
 function closeNotifPanel() {
   document.getElementById('notif-panel')?.classList.add('hidden');
 }
+// Registers this panel's own close with the shared overlay registry (account-menu.js) so
+// opening the account menu also closes this — same mutual-exclusion, other direction.
+if (typeof window._beRegisterOverlayCloser === 'function') window._beRegisterOverlayCloser(closeNotifPanel);
 
 // ---- Checkers: generate Academic-specific notifications from already-scoped data ----
 // Each is deliberately small — a handful of rows, never a full history — and each is its

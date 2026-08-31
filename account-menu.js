@@ -25,18 +25,29 @@
     trigger.dataset.amInit = '1';
     trigger.classList.add('am-trigger');
 
-    // BUG: trigger.closest('[style*="relative"]') matched the TRIGGER ITSELF whenever the
-    // trigger button's own inline style happened to contain "position:relative" (true for
-    // every one of these three pages' circular header buttons) — closest() includes the
-    // starting element, so the dropdown was being appended INSIDE the 36px circular button
-    // and immediately clipped by its own overflow:hidden, invisible even with .am-open set.
-    // The wrap must always be the trigger's PARENT, never the trigger itself.
-    var wrap = trigger.parentElement;
-    if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
-
+    // BUG (fixed once already): the dropdown used to be appended as a CHILD of the header
+    // row near the trigger (position:absolute, relying on a positioned ancestor). That's
+    // fragile against stacking contexts it has no control over — any later sibling with its
+    // own backdrop-filter/filter/transform (e.g. academics.html's own .card class, used by
+    // the Attendance card right below the header) establishes a NEW stacking context, and
+    // painted on top of the dropdown regardless of the dropdown's own z-index, since z-index
+    // only orders elements within the SAME stacking context. Rather than chase every current
+    // and future card style that might do this, the dropdown is now a PORTAL: a single direct
+    // child of <body>, position:fixed, positioned by reading the trigger's own
+    // getBoundingClientRect() at open time — this makes it immune to every ancestor's
+    // overflow/transform/filter/backdrop-filter by construction, not by z-index tuning.
     var dropdown = document.createElement('div');
     dropdown.className = 'am-dropdown';
-    wrap.appendChild(dropdown);
+    document.body.appendChild(dropdown);
+
+    function positionDropdown() {
+      var r = trigger.getBoundingClientRect();
+      var width = dropdown.offsetWidth || 260;
+      var left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
+      var top = r.bottom + 10;
+      dropdown.style.top = top + 'px';
+      dropdown.style.left = left + 'px';
+    }
 
     var view = 'main'; // 'main' | 'switch'
     var photoCache = null;
@@ -128,10 +139,18 @@
       });
     }
 
+    function onReposition() { if (dropdown.classList.contains('am-open')) positionDropdown(); }
+
     function open() {
+      // Mutual exclusion with the notification panel (spec: opening one closes the other,
+      // never overlapping) — and with any OTHER account-menu instance on the same page.
+      window._beCloseOverlays && window._beCloseOverlays(close);
       view = 'main';
       renderMain();
       dropdown.classList.add('am-open');
+      positionDropdown();
+      window.addEventListener('scroll', onReposition, true);
+      window.addEventListener('resize', onReposition);
       // Photos load AFTER the initials-only menu is already open (never blocks opening) —
       // same progressive pattern as the sidebar switcher this replaces.
       if (typeof opts.getPhotos === 'function' && !photoCache) {
@@ -141,11 +160,15 @@
         (opts.getSavedAccounts() || []).forEach(function (a) { if (a.email) emails.push(a.email); });
         opts.getPhotos(emails).then(function (map) {
           photoCache = map || {};
-          if (dropdown.classList.contains('am-open')) { if (view === 'main') renderMain(); else renderSwitch(); }
+          if (dropdown.classList.contains('am-open')) { if (view === 'main') renderMain(); else renderSwitch(); positionDropdown(); }
         });
       }
     }
-    function close() { dropdown.classList.remove('am-open'); }
+    function close() {
+      dropdown.classList.remove('am-open');
+      window.removeEventListener('scroll', onReposition, true);
+      window.removeEventListener('resize', onReposition);
+    }
 
     trigger.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -155,5 +178,21 @@
       if (!dropdown.contains(e.target) && e.target !== trigger && !trigger.contains(e.target)) close();
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+    // Registry other overlays (the notification panel) can call into to close this menu
+    // when THEY open — see window._beRegisterOverlayCloser below and each page's own
+    // toggleNotifPanel(), which now calls window._beCloseOverlays() before opening.
+    if (typeof window._beRegisterOverlayCloser === 'function') window._beRegisterOverlayCloser(close);
+  };
+
+  // Shared overlay-close registry — any overlay (account menu, notification panel) can
+  // register its own close function here, and call window._beCloseOverlays(exceptFn) before
+  // opening itself to close every OTHER registered overlay first (spec: opening one closes
+  // the other). exceptFn lets an overlay close every closer except its own, so open() above
+  // doesn't immediately close itself.
+  var _overlayClosers = [];
+  window._beRegisterOverlayCloser = function (fn) { _overlayClosers.push(fn); };
+  window._beCloseOverlays = function (exceptFn) {
+    _overlayClosers.forEach(function (fn) { if (fn !== exceptFn) fn(); });
   };
 })();

@@ -643,6 +643,9 @@ async function loadMyHRData() {
         function toggleNotifPanel() {
             const panel = document.getElementById('notif-panel');
             const isHidden = panel.classList.contains('hidden');
+            // Mutual exclusion with the top-right account menu (spec: opening one closes the
+            // other, never overlapping) — see account-menu.js's own registry.
+            if (isHidden && typeof window._beCloseOverlays === 'function') window._beCloseOverlays();
             panel.classList.toggle('hidden');
             if (isHidden) {
                 renderNotifList();
@@ -651,6 +654,19 @@ async function loadMyHRData() {
                 // Notifications stay listed until dismissed individually or via Mark All Read.
                 const _nb=document.getElementById('notif-badge-corner'); if(_nb){_nb.style.display='none';_nb.classList.add('hidden');}
             }
+        }
+        // Registers this panel's own close with the shared overlay registry (account-menu.js)
+        // so opening the account menu also closes this — same mutual-exclusion, other
+        // direction. Not a reference to closeNotifPanel() itself — that function only exists
+        // in index.html's own inline script (defined AFTER this file loads), not here or in
+        // hr.html (which doesn't use this floating panel at all — its own bell routes to a
+        // dedicated tab instead) — so this closes the panel directly by its own class/id,
+        // the same thing closeNotifPanel() does, without a load-order dependency on it.
+        if (typeof window._beRegisterOverlayCloser === 'function') {
+            window._beRegisterOverlayCloser(function () {
+                const panel = document.getElementById('notif-panel');
+                if (panel) panel.classList.add('hidden');
+            });
         }
 
 // ── loadHRNotifBaseline (orig line 7373) ──

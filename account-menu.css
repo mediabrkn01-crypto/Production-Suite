@@ -18,10 +18,16 @@
 }
 .am-trigger:hover { background: rgba(255,255,255,.05); }
 
+/* position:fixed — a direct child of <body> (see account-menu.js), top/left set in JS from
+   the trigger's own getBoundingClientRect() at open time. Immune to any ancestor's
+   overflow/transform/filter/backdrop-filter stacking-context tricks by construction — see
+   account-menu.js's own comment for the bug this replaced (the dropdown used to render
+   BEHIND cards using backdrop-filter, e.g. academics.html's Attendance card). z-index sits
+   above the notification panel's own z-[70] (Tailwind) so the two never fight if somehow
+   both were open at once — see account-menu.js's notif/account mutual-close wiring, the
+   normal way that's avoided. */
 .am-dropdown {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
+  position: fixed;
   width: 260px;
   max-height: 80vh;
   overflow-y: auto;
@@ -29,15 +35,15 @@
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 14px;
   box-shadow: 0 20px 50px rgba(0,0,0,.6);
-  z-index: 60;
+  z-index: 80;
   display: none;
 }
 .am-dropdown.am-open { display: block; }
 
-/* Stays inside the viewport on narrow screens — spec item 12 — rather than a
-   fixed right:0 that could push part of the panel off a small screen. */
+/* Stays inside the viewport on narrow screens — spec item 12/10. JS's positionDropdown()
+   already clamps left/right; this just gives it a sensible fixed width to clamp against. */
 @media (max-width: 480px) {
-  .am-dropdown { position: fixed; top: 60px; right: 8px; left: 8px; width: auto; }
+  .am-dropdown { width: calc(100vw - 16px); }
 }
 
 .am-current {
