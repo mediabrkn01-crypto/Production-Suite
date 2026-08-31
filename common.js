@@ -38,7 +38,14 @@ const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
 // under the current login. See academics.html for the matching change.
 const ACAD_SUPABASE_URL = SUPABASE_URL;
 const ACAD_SUPABASE_KEY = SUPABASE_ANON_KEY;
-const acadDB = supabase.createClient(ACAD_SUPABASE_URL, ACAD_SUPABASE_KEY);
+// BUG FIX: this used to call createClient() a second time with the SAME url/key as
+// dbInstance above (already the same consolidated project — see the comment two lines up).
+// Two separate supabase-js clients means two separate internal GoTrueClient instances on
+// one page, which is exactly what the "Multiple GoTrueClient instances detected" console
+// warning is about — and, more importantly, two independent auth/session state machines
+// that can drift out of sync with each other. Since it's provably the same project/key,
+// acadDB is just an alias for the one real client now, not a second instance.
+const acadDB = dbInstance;
 
 // ---------- Session / identity ----------
 let currentUser = null; // bridge var: { name, username, role } so ported Academic functions (written against currentUser.role) work unchanged

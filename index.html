@@ -2662,6 +2662,20 @@
                     return;
                 }
 
+                // BUG FIX: this form doubles as "Add Another Account" (startAddAccountFlow) —
+                // logging into a second account WITHOUT a page reload while already signed in
+                // as someone else, the same in-place account-switch path as switchToAccount()
+                // (see the identical comment/fix there). Without this, the first account's
+                // hrEmployees/hrLeaveRequests/hrPayroll/etc stayed cached forever via the
+                // myHRDataLoaded once-per-page-load guard, even after adding/logging into a
+                // different account this same way.
+                myHRDataLoaded = false;
+                hrEmployees = []; hrAttendance = []; hrLeaveRequests = []; hrLeaveBalances = [];
+                hrPayroll = []; hrSalaryHistory = [];
+                if (typeof clearCurrentUserProfileCache === 'function') clearCurrentUserProfileCache();
+                if (typeof loadNotifs === 'function') loadNotifs();
+                if (typeof renderNotifBadges === 'function') renderNotifBadges();
+
                 localStorage.setItem('be_active_user', activeUser);
                 localStorage.setItem('be_active_role', activeRole);
                 localStorage.setItem('be_active_email', activeEmail);
@@ -3225,6 +3239,29 @@
             activeUser = target.name;
             activeRole = target.role;
             activeEmail = target.email;
+
+            // BUG FIX (root cause of "previous account's data stays visible after switching"):
+            // myHRDataLoaded is a load-once-per-page-load guard (see ensureHRDataLoaded in
+            // common.js) — it never expected an account switch mid-session, so once true it
+            // permanently skipped loadMyHRData() for the REST of the session, meaning
+            // hrEmployees/hrLeaveRequests/hrLeaveBalances/hrPayroll/hrSalaryHistory/hrAttendance
+            // stayed on whichever account loaded first, forever — regardless of how many times
+            // you switched accounts after that. Reset the guard AND the arrays themselves here
+            // (defensive — so nothing can render one stale frame off the old arrays before the
+            // next ensureHRDataLoaded() call, e.g. from launchSession() below, refetches for the
+            // new activeEmail). clearCurrentUserProfileCache() is the same call logoutPortal()
+            // already makes — myHREmployeeRecord()'s own key-mismatch check would eventually
+            // self-heal, but clearing it here means the very first read after switching is
+            // already correct, not a stale hit that only heals on the read after that.
+            myHRDataLoaded = false;
+            hrEmployees = []; hrAttendance = []; hrLeaveRequests = []; hrLeaveBalances = [];
+            hrPayroll = []; hrSalaryHistory = [];
+            if (typeof clearCurrentUserProfileCache === 'function') clearCurrentUserProfileCache();
+            // Notifications/badge are keyed by activeEmail in localStorage already (correct,
+            // per-account) but the in-memory `notifications`/`_readNotifIds` arrays still held
+            // the OLD account's loaded set until explicitly reloaded for the new one.
+            if (typeof loadNotifs === 'function') loadNotifs();
+            if (typeof renderNotifBadges === 'function') renderNotifBadges();
 
             localStorage.setItem('be_active_user', activeUser);
             localStorage.setItem('be_active_role', activeRole);
