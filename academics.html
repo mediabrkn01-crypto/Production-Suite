@@ -1184,7 +1184,14 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const MEDIA_SUPABASE_URL = 'https://fevqnpllmarhoqdzpatq.supabase.co';
 const MEDIA_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA';
-const mediaHrDB = supabase.createClient(MEDIA_SUPABASE_URL, MEDIA_SUPABASE_KEY);
+// BUG FIX: this used to call createClient() a second time with the SAME url/key as sb above
+// (already the same consolidated project — see the comment right above). Two separate
+// supabase-js clients on one page means two internal GoTrueClient instances (the exact
+// "Multiple GoTrueClient instances detected" console warning), plus twice the client-side
+// bookkeeping for zero benefit since it's provably the same project/key. mediaHrDB is now
+// just an alias for sb, same fix already applied to index.html/common.js's own dbInstance/
+// acadDB pair.
+const mediaHrDB = sb;
 // Tracks which parent app authenticated the current session, so "Sign Out" / "back" links
 // send the user to the right place instead of always assuming index.html (BEOS).
 let _authSource = 'beos'; // 'beos' | 'media'
@@ -1359,6 +1366,12 @@ async function doLogin(){
   document.getElementById('auth-loading-screen').style.display = 'none';
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
+  // BUG FIX: lucide.createIcons() used to only run at boot()'s very LAST line — after the
+  // full data-loading chain — so every sidebar/header <i data-lucide> stayed as blank raw
+  // tags (no glyph) for the entire boot() duration, even though #app itself was already
+  // visible. Rendering icons here, the instant #app is shown, decouples "icons visible" from
+  // "data loaded" — static shell paints complete immediately, boot() then loads data behind it.
+  if (typeof lucide !== 'undefined') lucide.createIcons();
   boot();
 }
 
@@ -4913,12 +4926,22 @@ async function tryMediaSSO(){
     currentUser={username:s.email,name:rec.full_name||s.name,role:isHead?'academic_head':'trainer'};
     _authSource='media';
     window._mediaEmployeeId=rec.id; // used by clock in/out to sync into the Media Suite's own hr_attendance table
+    // BUG FIX (duplicate request): _acadGetMyHREmployeeRecord() used to always fetch
+    // hr_employees fresh on its own first call (its own cache, _myHREmployeeRecord, starts
+    // null every page load) — but `rec` right here IS that exact same row, already fetched
+    // one line up. runAcadCelebrationCheck() (the very first thing boot() does) calls
+    // _acadGetMyHREmployeeRecord() immediately, so without this it re-fetched the identical
+    // row a second time on every single SSO login. Seeding the cache here removes that dupe.
+    _myHREmployeeRecord = rec;
     // No real password to store here (SSO-only entry) — matches how index.html's own
     // trySSOFromAcademic() saves a switchable account for this same reason.
     _acadSaveAccountForSwitching(currentUser.name, currentUser.role, currentUser.username, '');
     document.getElementById('auth-loading-screen').style.display='none';
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='flex';
+    // BUG FIX: see the identical comment above doLogin()'s own version — icons render the
+    // instant #app is shown, not stuck blank for boot()'s whole data-loading duration.
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     boot();
     _applyAuthSourceUI();
     return true;
@@ -4939,6 +4962,9 @@ async function tryMediaSSO(){
     document.getElementById('auth-loading-screen').style.display='none';
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='flex';
+    // BUG FIX: see the identical comment above doLogin()'s own version — icons render the
+    // instant #app is shown, not stuck blank for boot()'s whole data-loading duration.
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     boot();
   }catch(_){location.href='index.html';}
 })();
