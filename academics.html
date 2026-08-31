@@ -1433,28 +1433,35 @@ async function loadLive(){
   const myBatchNames=[...new Set(Object.values(map).map(b=>b.raw).filter(Boolean))];
   // sessions done per batch (by attendance)
   const doneMap={};
-  try{
-    let attQuery=sb.from('attendance').select('batch_name,session_num');
-    if(!isHead) attQuery = myBatchNames.length ? attQuery.in('batch_name', myBatchNames) : null;
-    if(attQuery){const {data:att}=await attQuery;
-      (att||[]).forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});}
-  }catch(e){}
   // manual baseline progress (sessions already done before tracking started) + the batch's own
   // status, for the legacy-completion check below.
   const baseMap={};window._baseMap=baseMap;
   const statusMap={};
   const deletedNames=new Set();
+  // PERFORMANCE: the attendance query and the batches/baseline query below are independent of
+  // each other (both only depend on myBatchNames, computed above) — they used to run one after
+  // the other with a full await each, adding their times together for no reason. Firing both at
+  // once and awaiting together halves this section's wall-clock cost; each still degrades
+  // gracefully to an empty map on its own failure exactly as before (own try/catch each).
+  let attQuery=sb.from('attendance').select('batch_name,session_num');
+  if(!isHead) attQuery = myBatchNames.length ? attQuery.in('batch_name', myBatchNames) : null;
+  // select('*') rather than naming columns explicitly — on a database where the deleted_at
+  // migration hasn't been run yet, naming a column that doesn't exist errors the WHOLE query
+  // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
+  let baseQuery=sb.from('batches').select('*');
+  if(!isHead) baseQuery = myBatchNames.length ? baseQuery.in('name', myBatchNames) : null;
+  const [attResult, baseResult] = await Promise.all([
+    attQuery ? attQuery.then(r=>r).catch(()=>({data:null})) : Promise.resolve({data:null}),
+    baseQuery ? baseQuery.then(r=>r).catch(()=>({data:null})) : Promise.resolve({data:null}),
+  ]);
   try{
-    // select('*') rather than naming columns explicitly — on a database where the deleted_at
-    // migration hasn't been run yet, naming a column that doesn't exist errors the WHOLE query
-    // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
-    let baseQuery=sb.from('batches').select('*');
-    if(!isHead) baseQuery = myBatchNames.length ? baseQuery.in('name', myBatchNames) : null;
-    if(baseQuery){const {data:bb}=await baseQuery;
-      (bb||[]).forEach(function(b){
-        baseMap[b.name]=+b.baseline_sessions||0; statusMap[b.name]=b.status||null;
-        if (_isBatchDeleted(b)) deletedNames.add(b.name);
-      });}
+    (attResult.data||[]).forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});
+  }catch(e){}
+  try{
+    (baseResult.data||[]).forEach(function(b){
+      baseMap[b.name]=+b.baseline_sessions||0; statusMap[b.name]=b.status||null;
+      if (_isBatchDeleted(b)) deletedNames.add(b.name);
+    });
   }catch(e){}
   // Completion is judged by TWO signals, either one sufficient \u2014 not session progress alone.
   //   1. batches.status already 'closed'/'completed'/'finished' \u2014 some legacy batches were
@@ -1847,29 +1854,39 @@ async function boot(){
   acadApplyRoleLabels(isHead);
   renderDelegationBanner();
 
-  if (isHead) {
-    await loadHeadView(); // also loads Trainers table + Courses (see loadHeadView)
-    buildDayChips(); typeChanged(); // prime the Create Batch tab so it's ready on first visit
-  } else if (!isRestricted) {
-    // Coaches roster is Academic Head-only now (Strict Trainer/Coach Access Control) — a
-    // Trainer no longer even fetches it, not just doesn't see the nav item for it.
-    await loadCourses();
-  }
-  if (isTrainerCapable) await loadTrainerView();
-
   if (isRestricted) {
     document.getElementById('liveSection').style.display = 'none';
     document.getElementById('statgrid').style.display = 'none';
-  } else {
+  } else if (!isHead) {
+    // statgrid ("Active Trainers"/"Total Batches"/"Total Students"/"Sessions Completed") is
+    // company-wide by definition — Head-only, not just hidden for the fully-restricted role.
+    // A Trainer previously got these numbers fetched (and rendered into a DOM node they just
+    // didn't happen to scroll to) even though item 8 explicitly forbids showing them.
+    const sg = document.getElementById('statgrid'); if (sg) sg.style.display = 'none';
+  }
+  // PERFORMANCE: these four loaders used to run one after another (loadHeadView, then
+  // loadTrainerView, then loadLive, then loadStats) — each one's own DB round trips only
+  // started once the previous loader's had all fully finished, so their times simply added
+  // together even though none of them reads a value another one sets. Each writes into its
+  // own separate DOM region (Coaches/Batches table + Trainer selects + Courses, My Batches
+  // table, Live/Finished Batches, the stat grid) and only ever reads currentUser/window
+  // globals that were already set above — so running their queries concurrently produces the
+  // exact same end state, just in roughly max(their times) instead of the sum of all four.
+  // loadAcadDashboard() still runs afterward, unchanged — it genuinely does read what
+  // loadLive()/loadTrainerView() just wrote (window._liveBatches, the #myBatches/#myTasks
+  // DOM rows), so it can't join this same parallel batch.
+  await Promise.all([
+    isHead ? loadHeadView() // also loads Trainers table + Courses (see loadHeadView)
+      // Coaches roster is Academic Head-only now (Strict Trainer/Coach Access Control) — a
+      // Trainer no longer even fetches it, not just doesn't see the nav item for it.
+      : (isRestricted ? Promise.resolve() : loadCourses()),
+    isTrainerCapable ? loadTrainerView() : Promise.resolve(),
     // loadLive() itself scopes the students/attendance/baseline queries by trainer_name
     // when the caller isn't Head (see there) — same tab either way, real server-side scope.
-    await loadLive();
-  }
-  // statgrid ("Active Trainers"/"Total Batches"/"Total Students"/"Sessions Completed") is
-  // company-wide by definition — Head-only, not just hidden for the fully-restricted role.
-  // A Trainer previously got these numbers fetched (and rendered into a DOM node they just
-  // didn't happen to scroll to) even though item 8 explicitly forbids showing them.
-  if (isHead) await loadStats(); else { const sg = document.getElementById('statgrid'); if (sg) sg.style.display = 'none'; }
+    isRestricted ? Promise.resolve() : loadLive(),
+    isHead ? loadStats() : Promise.resolve(),
+  ]);
+  if (isHead) { buildDayChips(); typeChanged(); } // prime the Create Batch tab so it's ready on first visit
   initClock();
   // PERFORMANCE: every loadXTab() call that used to sit here (Availability, Classes,
   // Students, Schedule, Reports, Delegation, My Profile, Announcements, Documents,
@@ -2379,6 +2396,18 @@ async function acadSyncTrainersFromHRLocal(){
     if (error || !eduEmployees) return;
     const { data: existingTrainers } = await sb.from('trainers').select('id,name,status');
     const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
+    // PERFORMANCE ROOT CAUSE (biggest single contributor to slow Academic Head logins): this
+    // used to `await` one update/insert PER Education employee, one at a time, inside a plain
+    // for-loop — a classic N+1 write pattern. With N real employees (14 in production at time
+    // of writing) that's up to N sequential network round trips — easily 2-4+ seconds on its
+    // own — before loadTrainersTable() could even run its own trainers/batches fetch, which
+    // itself was the very first thing boot() awaited for an Academic Head. Every write here is
+    // independent (keyed by its own employee/trainer id, no write depends on another's
+    // result), so firing them all at once and awaiting together produces the exact same end
+    // state — same rows, same final values — in roughly one round trip's worth of wall-clock
+    // time instead of N. Nothing about WHAT gets written changed, only that they no longer
+    // wait on each other.
+    const writes = [];
     for (const emp of eduEmployees) {
       if (!emp.full_name) continue;
       const key = emp.full_name.trim().toLowerCase();
@@ -2401,9 +2430,9 @@ async function acadSyncTrainersFromHRLocal(){
       };
       const existing = existingByName.get(key);
       if (existing) {
-        await sb.from('trainers').update({ status, ...coachFields }).eq('id', existing.id);
+        writes.push(sb.from('trainers').update({ status, ...coachFields }).eq('id', existing.id));
       } else {
-        await sb.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields });
+        writes.push(sb.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields }));
       }
     }
     // Prune the other direction too: a trainers row that doesn't match ANY current
@@ -2417,8 +2446,9 @@ async function acadSyncTrainersFromHRLocal(){
     const eduNames = new Set(eduEmployees.filter(e => e.full_name).map(e => e.full_name.trim().toLowerCase()));
     const orphaned = (existingTrainers || []).filter(t => t.status !== 'inactive' && !eduNames.has(String(t.name).trim().toLowerCase()));
     for (const o of orphaned) {
-      await sb.from('trainers').update({ status: 'inactive' }).eq('id', o.id);
+      writes.push(sb.from('trainers').update({ status: 'inactive' }).eq('id', o.id));
     }
+    await Promise.all(writes);
   } catch (e) {
     console.warn('Trainer sync from HR failed:', e.message);
   }
