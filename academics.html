@@ -1132,8 +1132,9 @@ details[open] .rawsum::before{content:'▾ '}
   <div id="be_current" class="pick-list"></div>
   <div class="subhead" style="margin:12px 0 8px">Add unassigned students</div>
   <div id="be_seats_hint" class="mhint"></div>
-  <div id="be_pool" class="pick-list"></div>
-  <div class="mhint">Tick to add. Untick a current student to remove them (back to Unassigned) — their past attendance history is kept, they're just no longer an active member of this batch.</div>
+  <input id="be_pool_search" type="text" placeholder="Search students…" oninput="_beFilterPool()" style="margin-bottom:6px"/>
+  <div id="be_pool" class="pick-list" onchange="_beUpdateSelectedCount()"></div>
+  <div class="mhint"><span id="be_selected_count">0 selected</span> — tick to add. Untick a current student to remove them (back to Unassigned) — their past attendance history is kept, they're just no longer an active member of this batch.</div>
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchEdit')">Cancel</button><button class="btn-save" onclick="saveBatchEdit()">Save Changes</button></div>
 </div></div>
 
@@ -1709,16 +1710,16 @@ async function loadLive(){
       if (_isBatchDeleted(b)) deletedNames.add(b.name);
     });
   }catch(e){}
-  // Completion is judged by TWO signals, either one sufficient \u2014 not session progress alone.
-  //   1. batches.status already 'closed'/'completed'/'finished' \u2014 some legacy batches were
-  //      marked done this way before session-based progress tracking existed here, and their
-  //      baseline_sessions was never backfilled to match (e.g. a 42-session batch closed at
-  //      baseline 13) \u2014 progress alone would never cross 100% for these, so they'd stay stuck
-  //      showing as active forever. Checked by the batch's REAL name (b.raw||b.name) since an
-  //      Elite (1:1) card's own .name is a combined "Batch \u00b7 Student" display key, not what's
-  //      actually stored in batches.status.
-  //   2. Session progress reaching 100% (baseline + actually-marked attendance >= total) \u2014 the
-  //      live signal for batches tracked entirely through attendance, unchanged from before.
+  // Completion is judged by SESSION PROGRESS reaching 100% (baseline + actually-marked
+  // attendance >= the batch's real sessions_total) \u2014 the actual, sole source of truth in
+  // practice. batches.status is only trusted for the explicit 'completed'/'finished' values (an
+  // intentional manual-closure marker no current workflow writes yet, but the spec still wants
+  // room for one). status='closed' is deliberately NOT treated as sufficient on its own anymore
+  // \u2014 BUG FIX, confirmed live: audited every real batch with status='closed' (4 of them,
+  // legacy-migrated) and NONE are actually session-complete (28/42, 23/42, 31/42, 7/42) \u2014
+  // 'closed' turns out to be leftover import metadata, not a real completion signal, and
+  // trusting it made 4 genuinely still-active batches vanish into Finished Batches. See
+  // _acadIsFinishedByStatusOrProgress's own header comment for the full audit.
   // isBatchFinished() is the one shared definition \u2014 also used by the Coach Availability
   // engine and My Calendar (both already use the equivalent date/status check independently;
   // this is loadLive()'s own copy of the same rule, since it's the one place with access to
@@ -3494,21 +3495,37 @@ function _isBatchDeleted(b){ return !!(b && b.deleted_at); }
 // window._acadFinishedBatchNames, built from loadLive()'s own finished set) the Availability
 // engine's isBatchCurrentlyActive/findOccupyingBatchInRange/findExactTimeConflict — never a
 // second, independently-computed answer.
+// BUG FIX, CONFIRMED LIVE — this used to also treat status==='closed' as sufficient on its own
+// to call a batch finished. Audited every real batch with status='closed' in the live database
+// (4 of them, all legacy-migrated): NONE are actually session-complete — "Beyond the Basics" is
+// 28/42 (67%), "The Fluent Force" 23/42 (55%), "Verbal Vortex" 31/42 (74%), "English Hive 02F"
+// 7/42 (17%). 'closed' turns out to be leftover legacy-import metadata, not a real completion
+// signal — nothing in this app ever writes status='closed' as an intentional "mark this batch
+// done" action (checked: zero call sites). Trusting it made 4 genuinely still-active batches
+// disappear into Finished Batches and silently free their trainers' occupied slots. 'completed'/
+// 'finished' are kept as the explicit-closure signal the spec still allows for ("if a legacy
+// batch has an explicitly verified/manual completion record, preserve it") — currently unused
+// in real data (zero rows), but a real, intentional value a future explicit close action could
+// set, unlike 'closed'. Session completion is now the actual, sole source of truth in practice.
 function _acadIsFinishedByStatusOrProgress(status, done, total){
-  if (status==='closed' || status==='completed' || status==='finished') return true;
+  if (status==='completed' || status==='finished') return true;
   return !!(total && done >= total);
 }
 // A batch is "currently active" (occupying its trainer's time) purely by date range — the
 // date-driven model the spec describes: active within [start_date, expected_completion_date];
 // a null end date means ongoing/indefinite (never auto-frees on its own until one is set).
-// status 'inactive'/'closed' (the same values checkBatchTrainerConflict's own recurring check
-// already excludes) also takes it out of consideration — as does a soft-deleted batch, so
+// status 'inactive' (a genuine manual deactivation, unused in current data but a real distinct
+// signal from 'closed') also takes it out of consideration — as does a soft-deleted batch, so
 // deleting a batch releases its trainer_availability slot the exact same way a completed one
-// does, with zero separate cleanup step.
+// does, with zero separate cleanup step. BUG FIX: 'closed' used to be excluded here too, as its
+// own independent signal — removed (see _acadIsFinishedByStatusOrProgress's own header comment
+// for why 'closed' isn't trustworthy on its own); a status='closed'-but-not-actually-done batch
+// now correctly keeps occupying its trainer's slot via the progress-based check right below,
+// the one shared answer, instead of a second one computed here that could disagree with it.
 function isBatchCurrentlyActive(b){
   if (!b) return false;
   if (_isBatchDeleted(b)) return false;
-  if (b.status === 'inactive' || b.status === 'closed') return false;
+  if (b.status === 'inactive') return false;
   // BUG FIX: a batch finished purely by session-progress (loadLive()'s own isBatchFinished —
   // baseline + marked attendance reaching sessions_total, with no explicit status field ever
   // set) used to keep blocking its trainer's slot forever, since this function only ever
@@ -4207,10 +4224,10 @@ async function loadHeadView(){
     <td data-label="Course">${esc(cn)}${b.sessions_total?' · '+b.sessions_total+'s':''}</td>
     <td data-label="Schedule">${b.day_pattern||''} ${b.time_slot||''}</td>
     <td data-label="Students" style="color:${seatCol}">${seats}</td>
-    <td data-label="Status"><span class="badge ${b.status!=='inactive'&&b.status!=='closed'?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
+    <td data-label="Status"><span class="badge ${b.status!=='inactive'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name))?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
     <td data-label="Start Date">${b.start_date||'—'}</td>
     <td data-label="End Date">${b.expected_completion_date||'—'}</td>
-    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${(b.status!=='inactive'&&b.status!=='closed'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)))?` <button class="act-btn" onclick="openManageStudents('${b.id}')">Manage Students</button>`:''} <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
+    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${(b.status!=='inactive'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)))?` <button class="act-btn" onclick="openManageStudents('${b.id}')">Manage Students</button>`:''} <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
   }).join('') || '<tr><td colspan="9" class="empty">No batches yet</td></tr>';
 
   const { data: assigns } = await sb.from('assignments').select('*, trainers(name)').order('created_at',{ascending:false});
@@ -4270,7 +4287,11 @@ async function loadTrainerView(){
   const myActiveBatches = (batches||[]).filter(b => { const { total, done } = progressOf(b); return !_acadIsFinishedByStatusOrProgress(b.status, done, total); });
   document.getElementById('myBatches').innerHTML = myActiveBatches.map(b => {
     const { total, pct } = progressOf(b);
-    const statusOk = b.status !== 'inactive' && b.status !== 'closed';
+    // BUG FIX: this row already only exists because myActiveBatches (above) determined the
+    // batch is genuinely NOT finished — 'closed' no longer means "not active" on its own (see
+    // _acadIsFinishedByStatusOrProgress), so a row here is always active regardless of its raw
+    // status string; only 'inactive' (a real, separate manual-deactivation signal) still dims it.
+    const statusOk = b.status !== 'inactive';
     return `<tr><td data-label="Batch">${esc(b.name)}</td><td data-label="Schedule">${esc(b.day_pattern||'')} ${esc(b.time_slot||'')}</td><td data-label="Course">${esc(b.programme||'—')}</td><td data-label="Students">${b.students?.length||0}</td>
       <td data-label="Status"><span class="badge ${statusOk?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
       <td data-label="Progress" style="min-width:110px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gk)"></div></div><span style="font-size:10.5px;color:var(--tx3);min-width:30px">${total?pct+'%':'—'}</span></div></td></tr>`;
@@ -4519,13 +4540,20 @@ function typeChanged(){
 /* ── unassigned-student helpers (assign registered students to batches) ── */
 async function unassignedStudents(courseName){
   const {data}=await sb.from('students').select('*').is('batch_id',null);
-  let rows=(data||[]).filter(s=>!s.batch_name||s.batch_name==='Unassigned'||s.batch_name==='');
+  // Eligible = genuinely unassigned AND not a student whose programme is already Completed
+  // (real students.status values in this database are "In Progress"/"Completed" — a Completed
+  // student has finished their whole programme and isn't a candidate to re-assign into a new
+  // active batch; nothing else in this file filtered that out before).
+  let rows=(data||[]).filter(s=>(!s.batch_name||s.batch_name==='Unassigned'||s.batch_name==='')&&s.status!=='Completed');
   if(courseName)rows=rows.filter(s=>(s.programme||'')===courseName);
   return rows.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 }
 function pickRow(s){
   const slot=s.preferred_slot?'<span class="pm">'+esc(s.preferred_slot)+'</span>':(s.programme?'<span class="pm">'+esc(s.programme)+'</span>':'');
-  return '<label class="pick-row"><input type="checkbox" value="'+s.id+'"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+slot+'</label>';
+  // data-search: name + uin + contact (email/phone, whichever this row has) lowercased — the
+  // one field Edit Batch's own search box (be_pool_search/_beFilterPool) filters rows against.
+  const searchKey=[s.name,s.uin,s.contact].filter(Boolean).join(' ').toLowerCase();
+  return '<label class="pick-row" data-search="'+esc(searchKey)+'"><input type="checkbox" value="'+s.id+'"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+slot+'</label>';
 }
 async function loadBatchPool(courseName){
   const el=document.getElementById('m_b_students');if(!el)return;
@@ -4652,6 +4680,22 @@ function _beRecalcProgress(){
   const pct = total ? Math.min(100, Math.round(done/total*100)) : 0;
   document.getElementById('be_calc_pct').textContent = total ? (pct+'% ('+Math.min(done,total)+' of '+total+')') : '—';
 }
+// Instant client-side filter against the pool already loaded by openBatchEdit (spec: "search
+// must work instantly against the loaded eligible students") — no new query per keystroke, just
+// showing/hiding rows already in the DOM, matched against pickRow()'s own data-search attribute
+// (name + uin + contact).
+function _beFilterPool(){
+  const q=(document.getElementById('be_pool_search').value||'').trim().toLowerCase();
+  document.querySelectorAll('#be_pool .pick-row').forEach(row => {
+    const hit = !q || (row.dataset.search||'').includes(q);
+    row.style.display = hit ? '' : 'none';
+  });
+}
+function _beUpdateSelectedCount(){
+  const n=document.querySelectorAll('#be_pool input:checked').length;
+  const el=document.getElementById('be_selected_count');
+  if (el) el.textContent = n+' selected';
+}
 // Same recurring-schedule conflict rule Create Batch's own checkBatchTrainerConflict (Layer 1)
 // uses — reused here rather than a second implementation, just scoped to "would switching THIS
 // batch to this trainer collide with one of their OTHER active batches at this batch's own
@@ -4661,7 +4705,7 @@ function _beCheckTrainerConflict(newTrainerId, batch){
   const days = (batch.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(Boolean);
   const startLabel = (batch.time_slot||'').split(' – ')[0].split('-')[0].trim();
   if (!days.length || !startLabel) return null; // nothing concrete to check against
-  const others = (window._allBatchesFull||[]).filter(o => String(o.trainer_id)===String(newTrainerId) && o.id!==batch.id && o.status!=='inactive' && o.status!=='closed' && !_isBatchDeleted(o) && !(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(o.name)));
+  const others = (window._allBatchesFull||[]).filter(o => String(o.trainer_id)===String(newTrainerId) && o.id!==batch.id && o.status!=='inactive' && !_isBatchDeleted(o) && !(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(o.name)));
   const conflict = others.find(o => {
     const otherDays=(o.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(d=>days.includes(d));
     return otherDays.length && (o.time_slot||'').toLowerCase().includes(startLabel.toLowerCase());
@@ -4719,6 +4763,8 @@ async function openBatchEdit(id){
   seatsHint.textContent = capacity ? ('Available seats: '+available+' of '+capacity) : 'No capacity limit set on this batch/course.';
   const atCapacity = available !== null && available <= 0;
   document.querySelectorAll('#be_pool input[type=checkbox]').forEach(cb => cb.disabled = atCapacity);
+  document.getElementById('be_pool_search').value='';
+  _beUpdateSelectedCount();
   document.getElementById('modalBatchEdit').classList.add('on');
 }
 async function saveBatchEdit(){
@@ -4824,8 +4870,12 @@ async function checkBatchTrainerConflict(){
   // time_slot this form saves, so same-hour batches always match reliably.
   const startLabel = formatBatchTimeRange(hour, 0).split(' – ')[0];
 
-  // Layer 1 — recurring weekly overlap against this trainer's other batches.
-  const others = (window._allBatchesFull||[]).filter(b => String(b.trainer_id)===String(trainerId) && b.status!=='inactive' && b.status!=='closed');
+  // Layer 1 — recurring weekly overlap against this trainer's other batches. 'closed' no longer
+  // excluded here on its own (see _acadIsFinishedByStatusOrProgress) — a status='closed'-but-
+  // not-actually-done batch should still block a new assignment at the same slot, same as any
+  // other genuinely active batch; window._acadFinishedBatchNames (progress-based) is what
+  // actually determines "already finished, no longer blocking" now.
+  const others = (window._allBatchesFull||[]).filter(b => String(b.trainer_id)===String(trainerId) && b.status!=='inactive' && !(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)));
   const recurringConflict = others.find(b => {
     const otherDays = (b.day_pattern||'').split(/[,·]/).map(s=>s.trim()).filter(d=>days.includes(d));
     return otherDays.length && (b.time_slot||'').toLowerCase().includes(startLabel.toLowerCase());
@@ -4924,7 +4974,7 @@ function findOccupyingBatchInRange(trainerId, startTime, endTime, batches, reqSt
   const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','closed','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (['inactive','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
     // Same fix as isBatchCurrentlyActive() — a batch finished purely by session progress
     // (no explicit status field) must not keep counting as occupying here either.
     if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
@@ -4939,7 +4989,7 @@ function findExactTimeConflict(trainerId, time24, batches, reqStart, reqEnd) {
   const min = _timeToMinutes(time24);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','closed','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (['inactive','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
     if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
     if (_batchStartMinutes(b) !== min) return false;
     return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
