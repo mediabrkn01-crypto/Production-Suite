@@ -277,6 +277,12 @@ tr.clickable{cursor:pointer}
 .rawsum::before{content:'▸ ';color:var(--k1)}
 details[open] .rawsum::before{content:'▾ '}
 </style>
+<!-- Shared collapsible sidebar (index.html/hr.html/academics.html all include the same two
+     files) — see sidebar-collapse.js's own header comment. Loaded plain (no defer) since it's a
+     tiny same-origin file — negligible parse cost, and guarantees initSidebarCollapse()
+     already exists by the time each page calls it right after its own <aside> markup. -->
+<link rel="stylesheet" href="sidebar-collapse.css">
+<script src="sidebar-collapse.js"></script>
 </head>
 <body>
 
@@ -339,11 +345,11 @@ details[open] .rawsum::before{content:'▾ '}
 </div>
 
 <div id="app" class="w-full h-full flex flex-col md:flex-row overflow-hidden" style="height:100vh">
-  <aside class="w-full md:w-56 flex flex-col z-20" style="flex-shrink:0;height:100%;overflow:hidden">
+  <aside id="be-sidebar" class="w-full md:w-56 flex flex-col z-20" style="flex-shrink:0;height:100%;overflow:hidden">
     <div style="flex-shrink:0">
       <div style="display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.05);margin-bottom:14px">
         <img src="Broken English Final Logo-03.png" alt="Broken English Logo" style="height:32px;width:auto;object-fit:contain" onerror="this.style.display='none'"/>
-        <div>
+        <div class="be-brand-text">
           <div style="font-size:13px;font-weight:700;letter-spacing:.5px;line-height:1;color:#f1f5f9">Academic</div>
           <div style="font-size:9px;letter-spacing:.5px;font-weight:600;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" id="acad-role-badge"></div>
         </div>
@@ -427,12 +433,12 @@ details[open] .rawsum::before{content:'▾ '}
         <button id="acad-account-switcher-trigger" onclick="acadToggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,.8);border:1px solid rgba(255,255,255,.08);margin-bottom:8px;cursor:pointer">
           <div style="display:flex;align-items:center;gap:8px">
             <div id="acad-user-avatar-wrap"><div id="acad-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,.15);border:1px solid rgba(255,107,6,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">?</div></div>
-            <div style="text-align:left">
+            <div style="text-align:left" class="be-profile-text">
               <div id="acad-user-name" style="font-size:11px;font-weight:600;color:#f1f5f9">—</div>
               <div id="acad-user-role" style="font-size:9px;color:#808a9d">—</div>
             </div>
           </div>
-          <i data-lucide="chevrons-up-down" style="width:13px;height:13px;color:#808a9d"></i>
+          <i data-lucide="chevrons-up-down" class="be-nav-label" style="width:13px;height:13px;color:#808a9d"></i>
         </button>
       </div>
       <button id="acad-logout-btn" onclick="logout()" style="width:100%;display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;font-weight:500;color:#ef4444;background:transparent;border:none;cursor:pointer">
@@ -440,6 +446,7 @@ details[open] .rawsum::before{content:'▾ '}
       </button>
     </div>
   </aside>
+  <script>if (typeof initSidebarCollapse === 'function') initSidebarCollapse('#be-sidebar');</script>
     <div class="acad-main" style="flex:1;overflow-y:auto;padding:24px 28px">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" style="margin-bottom:22px">
         <div>
@@ -1397,17 +1404,61 @@ function acadToggleAccountSwitcher(){
   panel.classList.toggle('hidden');
   if (opening) acadRenderAccountSwitcherList();
 }
+// Photo cache — same hr_employees.photo_base64/photo_url field My Profile/the sidebar
+// avatar already read, single source of truth (spec: never a second account-switcher-only
+// avatar field). Loaded once per panel-open, non-blocking (panel already shows initials).
+let _acadSwitcherPhotoCache = null;
+async function _acadLoadSwitcherPhotos(emails){
+  if (_acadSwitcherPhotoCache) return _acadSwitcherPhotoCache;
+  _acadSwitcherPhotoCache = {};
+  if (!emails.length) return _acadSwitcherPhotoCache;
+  try {
+    const { data } = await mediaHrDB.from('hr_employees').select('portal_email,photo_base64,photo_url').in('portal_email', emails);
+    (data||[]).forEach(e => { if (e.portal_email) _acadSwitcherPhotoCache[e.portal_email.toLowerCase()] = e; });
+  } catch(e) { /* best-effort — initials fallback already rendered */ }
+  return _acadSwitcherPhotoCache;
+}
+function _acadSwitcherAvatarHTML(a){
+  const rec = _acadSwitcherPhotoCache && _acadSwitcherPhotoCache[(a.email||'').toLowerCase()];
+  const photo = rec && (rec.photo_base64 || rec.photo_url);
+  const initials = esc((a.name||'?').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?');
+  if (photo) return `<img src="${esc(photo)}" alt="" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'acad-avatar-dot',style:'width:22px;height:22px;font-size:9px',textContent:'${initials}'}))">`;
+  return `<span class="acad-avatar-dot" style="width:22px;height:22px;font-size:9px">${initials}</span>`;
+}
 function acadRenderAccountSwitcherList(){
   const list = document.getElementById('acad-account-switcher-list');
   if (!list) return;
   const accounts = _acadGetSavedAccounts();
   const others = accounts.filter(a => (a.email||'').toLowerCase() !== (currentUser?.username||'').toLowerCase());
-  list.innerHTML = others.length ? others.map(a => `
-    <button onclick="acadSwitchToAccount('${esc(a.email)}')" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 12px;background:transparent;border:none;color:var(--tx2);cursor:pointer;text-align:left;font-size:12px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='transparent'">
-      <span class="acad-avatar-dot" style="width:22px;height:22px;font-size:9px">${esc((a.name||'?').slice(0,1).toUpperCase())}</span>
-      <span style="flex:1;min-width:0"><div style="color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div><div style="font-size:9.5px;color:var(--tx3)">${esc(a.role||'')}</div></span>
-    </button>
-  `).join('') : '<div style="padding:12px;font-size:11px;color:var(--tx3)">No other saved accounts on this device.</div>';
+  const row = a => `
+    <div style="width:100%;display:flex;align-items:center;gap:6px;padding:4px 6px">
+      <button onclick="acadSwitchToAccount('${esc(a.email)}')" style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:4px 6px;background:transparent;border:none;color:var(--tx2);cursor:pointer;text-align:left;font-size:12px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='transparent'">
+        ${_acadSwitcherAvatarHTML(a)}
+        <span style="flex:1;min-width:0"><div style="color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.name)}">${esc(a.name)}</div><div style="font-size:9.5px;color:var(--tx3)">${esc(a.role||'')}</div></span>
+      </button>
+      <button onclick="event.stopPropagation();_acadRemoveSavedAccount('${esc(a.email)}')" title="Remove saved account" style="background:transparent;border:none;color:var(--tx3);cursor:pointer;padding:4px;flex-shrink:0">
+        <i data-lucide="x" style="width:13px;height:13px"></i>
+      </button>
+    </div>`;
+  list.innerHTML = others.length ? others.map(row).join('') : '<div style="padding:12px;font-size:11px;color:var(--tx3)">No other saved accounts on this device.</div>';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  const emails = accounts.map(a=>a.email).filter(Boolean);
+  if (emails.length && !_acadSwitcherPhotoCache) {
+    _acadLoadSwitcherPhotos(emails).then(() => {
+      list.innerHTML = others.length ? others.map(row).join('') : '<div style="padding:12px;font-size:11px;color:var(--tx3)">No other saved accounts on this device.</div>';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+  }
+}
+// Removing a saved account only ever touches this device's local shortcut list — never the
+// employee record/auth account/other users (spec Part 9). The CURRENT account can't be
+// removed from this list at all (acadRenderAccountSwitcherList already excludes it, matching
+// the "don't silently remove the active account" requirement by construction, not a confirm
+// dialog this codebase has no existing pattern for).
+function _acadRemoveSavedAccount(email){
+  const accounts = _acadGetSavedAccounts().filter(a => a.email.toLowerCase() !== email.toLowerCase());
+  try { localStorage.setItem('be_saved_accounts', JSON.stringify(accounts)); } catch(_) {}
+  acadRenderAccountSwitcherList();
 }
 // Switching always routes through index.html's SSO bridge (same one My Workspace links
 // use) — it re-verifies the target account server-side and correctly lands them in either

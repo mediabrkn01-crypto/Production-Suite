@@ -1,0 +1,110 @@
+/* ============================================================================
+   SHARED collapsible sidebar — used by index.html, hr.html, academics.html.
+   One file, included via <link> by all three, so collapse/expand behaviour
+   (widths, transition, tooltip, toggle button) can never drift between pages
+   even though each page keeps its own nav menu/branding/colors untouched.
+   See sidebar-collapse.js for the JS half (auto-wraps nav labels, persists
+   state, injects the toggle button).
+   ============================================================================ */
+
+.be-aside {
+  position: relative; /* toggle button anchors to this, not the page */
+  transition: width .18s ease;
+  overflow: visible !important; /* toggle button sits half outside the edge */
+}
+
+/* Collapsed width sits in the 64-80px range the spec asks for; expanded
+   width is left alone (index/hr/academic all already use Tailwind's w-56 =
+   224px, inside the spec's own 220-260px suggestion) — collapse only ever
+   narrows, it doesn't touch the expanded size any page already has. */
+.be-aside.be-collapsed { width: 72px !important; min-width: 72px !important; }
+
+/* Labels/section headings hidden when collapsed — sidebar-collapse.js wraps
+   each nav link's trailing text (and each section heading) in .be-nav-label
+   at runtime, so no per-page markup edits were needed to reach this class. */
+.be-aside.be-collapsed .be-nav-label { display: none !important; }
+/* Icons/badges/avatar stay — nothing in this rule touches them. A link's
+   icon is always the direct FIRST child skipped by the label-wrap sweep. */
+.be-aside.be-collapsed .sidebar-link,
+.be-aside.be-collapsed .acad-nav-link {
+  justify-content: center;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.be-aside.be-collapsed .be-brand-text { display: none; }
+.be-aside.be-collapsed .be-profile-text { display: none; }
+.be-aside.be-collapsed #account-switcher-trigger,
+.be-aside.be-collapsed #acad-account-switcher-trigger {
+  justify-content: center;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+/* The Switch Account popup is width:100% of its (relative) parent — fine at
+   full sidebar width, but a 72px rail would make it unreadably narrow.
+   Pin it to a real readable width when collapsed, position unchanged. */
+.be-aside.be-collapsed #account-switcher-panel,
+.be-aside.be-collapsed #acad-account-switcher-panel {
+  width: 240px !important;
+}
+
+/* Toggle button — floats near the right edge, anchored to the <aside>
+   itself (not the scrollable nav list inside it), so it never scrolls
+   away — spec's own "must remain vertically accessible" requirement. */
+.be-sidebar-toggle {
+  position: absolute;
+  top: 22px;
+  right: -13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #171a2b;
+  border: 1px solid rgba(255,255,255,.14);
+  color: #c7cbe0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 25;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  transition: border-color .15s, color .15s;
+}
+.be-sidebar-toggle:hover { border-color: rgba(255,107,6,.5); color: #fff; }
+.be-sidebar-toggle svg { width: 13px; height: 13px; }
+
+/* Pure-CSS tooltip fallback for collapsed nav icons — native title="" already
+   covers this (set by sidebar-collapse.js), this is a nicer-looking layer on
+   top of it for pointer users; never relied on for touch/mobile (collapse
+   itself is desktop/tablet-only, see the media query below). */
+.be-aside.be-collapsed [data-be-tip] { position: relative; }
+.be-aside.be-collapsed [data-be-tip]:hover::after {
+  content: attr(data-be-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #14172a;
+  border: 1px solid rgba(255,255,255,.12);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(0,0,0,.5);
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* Collapse is a desktop/tablet feature only — on narrow viewports every one
+   of these three pages already switches to its own mobile drawer nav, which
+   must keep working completely unchanged (spec Part 2: don't leave a
+   permanently narrow icon rail covering mobile content). Forcing expanded
+   state below this width means a collapsed preference from a previous
+   desktop session can never leak into the mobile drawer. */
+@media (max-width: 767px) {
+  .be-aside.be-collapsed { width: 100% !important; min-width: 0 !important; }
+  .be-aside.be-collapsed .be-nav-label,
+  .be-aside.be-collapsed .be-brand-text,
+  .be-aside.be-collapsed .be-profile-text { display: revert !important; }
+  .be-sidebar-toggle { display: none !important; }
+}

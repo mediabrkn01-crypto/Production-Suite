@@ -2270,7 +2270,25 @@ function hrOfficialEventFor(employee, dateStr) {
             localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
         }
 
-        function removeSavedAccount(email) {
+        // Removing the CURRENTLY ACTIVE account needs a confirm — spec: "do not silently
+        // remove it without confirmation." No existing custom-modal component exists in this
+        // file to reuse, and this codebase avoids native confirm()/alert() elsewhere, so this
+        // uses a lightweight two-click pattern instead: the first click on the current
+        // account's × arms it (button turns into "Sure?" for a few seconds), the second click
+        // within that window actually removes it. Removing a NON-current saved account is
+        // unchanged — still one click, nothing risky about it.
+        let _pendingRemoveEmail = null, _pendingRemoveTimer = null;
+        function removeSavedAccount(email, btnEl) {
+            const isCurrent = email.toLowerCase() === (activeEmail || '').toLowerCase();
+            if (isCurrent && _pendingRemoveEmail !== email.toLowerCase()) {
+                _pendingRemoveEmail = email.toLowerCase();
+                if (btnEl) { btnEl.textContent = 'Sure?'; btnEl.classList.add('text-red-400'); }
+                clearTimeout(_pendingRemoveTimer);
+                _pendingRemoveTimer = setTimeout(() => { _pendingRemoveEmail = null; renderAccountSwitcherList(); }, 4000);
+                return;
+            }
+            clearTimeout(_pendingRemoveTimer);
+            _pendingRemoveEmail = null;
             let accounts = getSavedAccounts();
             accounts = accounts.filter(a => a.email.toLowerCase() !== email.toLowerCase());
             localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
@@ -2311,6 +2329,23 @@ function hrOfficialEventFor(employee, dateStr) {
             document.getElementById('account-switcher-panel-mobile')?.classList.add('hidden');
         }
 
+        // Photo cache for the Switch Account list — keyed by lowercased portal_email, one
+        // shared cache/query for however many accounts are saved (not one query per account).
+        // Single source of truth: hr_employees.photo_base64/photo_url, the SAME field My
+        // Profile/the sidebar profile card already read (via hrAvatarHTML) — never a second,
+        // account-switcher-only avatar field (spec: "single source, employee/profile avatar").
+        let _switcherPhotoCache = null; // null = not fetched yet this page load
+        async function _loadSwitcherPhotos(emails) {
+            if (_switcherPhotoCache) return _switcherPhotoCache;
+            _switcherPhotoCache = {};
+            try {
+                const db = (typeof dbInstance !== 'undefined' && dbInstance) || (typeof mediaHrDB !== 'undefined' && mediaHrDB);
+                if (!db || !emails.length) return _switcherPhotoCache;
+                const { data } = await db.from('hr_employees').select('portal_email,full_name,photo_base64,photo_url').in('portal_email', emails);
+                (data || []).forEach(e => { if (e.portal_email) _switcherPhotoCache[e.portal_email.toLowerCase()] = e; });
+            } catch (e) { /* best-effort — initials fallback already rendered, never blocks the panel */ }
+            return _switcherPhotoCache;
+        }
         function renderAccountSwitcherList() {
             const accounts = getSavedAccounts();
             const targets = [
@@ -2318,37 +2353,52 @@ function hrOfficialEventFor(employee, dateStr) {
                 document.getElementById('account-switcher-list-mobile')
             ];
 
-            targets.forEach(list => {
-                if (!list) return;
-                list.innerHTML = '';
-
-                if (accounts.length === 0) {
-                    list.innerHTML = `<p class="px-3 py-3 text-[11px] text-[#4a5182] italic">No saved accounts yet.</p>`;
-                    return;
-                }
-
-                accounts.forEach(acc => {
-                    const isCurrent = acc.email.toLowerCase() === (activeEmail || '').toLowerCase();
-                    const initials = acc.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
-                    const emailLiteral = jsStringLiteral(acc.email);
-                    list.innerHTML += `
+            const rowHTML = acc => {
+                const isCurrent = acc.email.toLowerCase() === (activeEmail || '').toLowerCase();
+                const emailLiteral = jsStringLiteral(acc.email);
+                // hrAvatarHTML falls back to initials on its own when no photo is on file yet
+                // (cache still loading, or this employee genuinely has none) — never a blank.
+                const cached = _switcherPhotoCache && _switcherPhotoCache[acc.email.toLowerCase()];
+                const avatarHTML = (typeof hrAvatarHTML === 'function')
+                    ? hrAvatarHTML(cached || acc.name, 28)
+                    : `<div class="w-7 h-7 rounded-full bg-transparent flex items-center justify-center text-gray-300 font-bold text-[10px] shrink-0">${acc.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}</div>`;
+                return `
                         <div class="flex items-center gap-2 px-3 py-2 hover:bg-transparent transition-colors ${isCurrent ? 'bg-transparent/60' : ''}">
                             <button onclick="switchToAccount(${emailLiteral})" class="flex items-center gap-2.5 flex-1 text-left min-w-0">
-                                <div class="w-7 h-7 rounded-full bg-transparent flex items-center justify-center text-gray-300 font-bold text-[10px] shrink-0">${initials}</div>
+                                ${avatarHTML}
                                 <div class="min-w-0">
-                                    <p class="text-xs font-bold text-white truncate">${escapeChatHtml(acc.name)} ${isCurrent ? '<span class="text-emerald-400">(current)</span>' : ''}</p>
+                                    <p class="text-xs font-bold text-white truncate" title="${escapeChatHtml(acc.name)}">${escapeChatHtml(acc.name)} ${isCurrent ? '<span class="text-emerald-400">(current)</span>' : ''}</p>
                                     <p class="text-[10px] text-[#4a5182] truncate">${acc.role}</p>
                                 </div>
                             </button>
-                            <button onclick="removeSavedAccount(${emailLiteral})" title="Remove saved account" class="text-[#4a5182] hover:text-red-400 p-1 shrink-0">
+                            <button onclick="event.stopPropagation();removeSavedAccount(${emailLiteral}, this)" title="Remove saved account" class="text-[#4a5182] hover:text-red-400 p-1 shrink-0">
                                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
                             </button>
                         </div>
                     `;
-                });
+            };
+
+            targets.forEach(list => {
+                if (!list) return;
+                if (accounts.length === 0) {
+                    list.innerHTML = `<p class="px-3 py-3 text-[11px] text-[#4a5182] italic">No saved accounts yet.</p>`;
+                    return;
+                }
+                list.innerHTML = accounts.map(rowHTML).join('');
             });
 
             if (window.lucide) lucide.createIcons();
+
+            // Photos load AFTER the initials-only list is already on screen (spec item 14 —
+            // never block the panel opening on a query) — once resolved, re-render in place so
+            // real photos swap in without the user having to close/reopen the panel.
+            const emails = accounts.map(a => a.email).filter(Boolean);
+            if (emails.length && !_switcherPhotoCache) {
+                _loadSwitcherPhotos(emails).then(() => {
+                    targets.forEach(list => { if (list) list.innerHTML = accounts.map(rowHTML).join(''); });
+                    if (window.lucide) lucide.createIcons();
+                });
+            }
         }
 
         function switchToAccount(email) {

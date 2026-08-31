@@ -642,6 +642,12 @@
     100%{transform:translateY(320px) rotate(360deg);opacity:0}
 }
     </style>
+    <!-- Shared collapsible sidebar (index.html/hr.html/academics.html all include the same
+         two files) — see sidebar-collapse.js's own header comment. Loaded plain (no defer) since it's a
+         tiny same-origin file — negligible parse cost, and guarantees initSidebarCollapse()
+         already exists by the time each page calls it right after its own <aside> markup. -->
+    <link rel="stylesheet" href="sidebar-collapse.css">
+    <script src="sidebar-collapse.js"></script>
 
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -917,12 +923,12 @@
 
     <div id="main-application-frame" class="w-full h-full flex flex-col md:flex-row opacity-0 pointer-events-none transition-opacity duration-300 overflow-hidden">
         
-        <aside class="w-full md:w-56 flex flex-col z-20" style="background:rgba(10,14,23,0.95);border-right:1px solid rgba(255,255,255,0.07);padding:16px 12px;flex-shrink:0;height:100%;overflow:hidden">
+        <aside id="be-sidebar" class="w-full md:w-56 flex flex-col z-20" style="background:rgba(10,14,23,0.95);border-right:1px solid rgba(255,255,255,0.07);padding:16px 12px;flex-shrink:0;height:100%;overflow:hidden">
             <!-- Brand (fixed) -->
             <div style="flex-shrink:0">
                 <div style="display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:14px">
                     <img src="Broken English Final Logo-03.png" alt="Broken English Logo" style="height:32px;width:auto;object-fit:contain">
-                    <div>
+                    <div class="be-brand-text">
                         <div style="font-size:13px;font-weight:700;letter-spacing:0.5px;line-height:1;color:#f1f5f9">Media Suite</div>
                         <div id="user-role-badge" style="font-size:9px;letter-spacing:0.5px;font-weight:600;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"></div>
                     </div>
@@ -1021,12 +1027,12 @@
                     <button id="account-switcher-trigger" onclick="toggleAccountSwitcher()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(18,24,38,0.8);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(255,107,6,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
                         <div style="display:flex;align-items:center;gap:8px">
                             <div id="sidebar-user-avatar" style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,6,0.15);border:1px solid rgba(255,107,6,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ff6b06">MA</div>
-                            <div>
+                            <div class="be-profile-text">
                                 <div id="active-user-display" style="font-size:11px;font-weight:600;color:#f1f5f9">Master Admin</div>
                                 <div id="sidebar-user-role" style="font-size:9px;color:#808a9d">HR</div>
                             </div>
                         </div>
-                        <i data-lucide="chevrons-up-down" style="width:13px;height:13px;color:#808a9d"></i>
+                        <i data-lucide="chevrons-up-down" class="be-nav-label" style="width:13px;height:13px;color:#808a9d"></i>
                     </button>
                 </div>
 
@@ -1037,6 +1043,7 @@
                 </button>
             </div>
         </aside>
+        <script>if (typeof initSidebarCollapse === 'function') initSidebarCollapse('#be-sidebar');</script>
 
         <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" style="background:var(--bg-base)">
 
@@ -3145,12 +3152,9 @@
             localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
         }
 
-        function removeSavedAccount(email) {
-            let accounts = getSavedAccounts();
-            accounts = accounts.filter(a => a.email.toLowerCase() !== email.toLowerCase());
-            localStorage.setItem('be_saved_accounts', JSON.stringify(accounts));
-            renderAccountSwitcherList();
-        }
+        // removeSavedAccount() used to be redefined here too, shadowing common.js's own copy
+        // the same way renderAccountSwitcherList() did (see the comment further down) — never
+        // got the current-account confirm safeguard added there. Deleted.
 
         function toggleAccountSwitcher() {
             const desktopPanel = document.getElementById('account-switcher-panel');
@@ -3186,45 +3190,11 @@
             return div.innerHTML;
         }
 
-        function renderAccountSwitcherList() {
-            const accounts = getSavedAccounts();
-            const targets = [
-                document.getElementById('account-switcher-list'),
-                document.getElementById('account-switcher-list-mobile')
-            ];
-
-            targets.forEach(list => {
-                if (!list) return;
-                list.innerHTML = '';
-
-                if (accounts.length === 0) {
-                    list.innerHTML = `<p class="px-3 py-3 text-[11px] text-[#4a5182] italic">No saved accounts yet.</p>`;
-                    return;
-                }
-
-                accounts.forEach(acc => {
-                    const isCurrent = acc.email.toLowerCase() === (activeEmail || '').toLowerCase();
-                    const initials = acc.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
-                    const emailLiteral = jsStringLiteral(acc.email);
-                    list.innerHTML += `
-                        <div class="flex items-center gap-2 px-3 py-2 hover:bg-transparent transition-colors ${isCurrent ? 'bg-transparent/60' : ''}">
-                            <button onclick="switchToAccount(${emailLiteral})" class="flex items-center gap-2.5 flex-1 text-left min-w-0">
-                                <div class="w-7 h-7 rounded-full bg-transparent flex items-center justify-center text-gray-300 font-bold text-[10px] shrink-0">${initials}</div>
-                                <div class="min-w-0">
-                                    <p class="text-xs font-bold text-white truncate">${escapeChatHtml(acc.name)} ${isCurrent ? '<span class="text-emerald-400">(current)</span>' : ''}</p>
-                                    <p class="text-[10px] text-[#4a5182] truncate">${acc.role}</p>
-                                </div>
-                            </button>
-                            <button onclick="removeSavedAccount(${emailLiteral})" title="Remove saved account" class="text-[#4a5182] hover:text-red-400 p-1 shrink-0">
-                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                            </button>
-                        </div>
-                    `;
-                });
-            });
-
-            lucide.createIcons();
-        }
+        // renderAccountSwitcherList() used to be redefined here too — a byte-for-byte
+        // duplicate of common.js's own copy that silently shadowed it (function
+        // re-declaration, last one loaded wins) and never got the photo-lookup/current-
+        // account enhancements added there. Deleted — index.html already <script
+        // src="common.js">s the one real copy, so this needed no replacement, just removal.
 
         function switchToAccount(email) {
             const accounts = getSavedAccounts();
