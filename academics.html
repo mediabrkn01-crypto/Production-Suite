@@ -710,7 +710,10 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="section">
           <h2>Trainers</h2>
           <div class="lv-note">Synced automatically from HR (Department = Education) — the Academic module never creates or edits employee records directly. To add, remove, or change a Trainer/Coach, use HR → Employees.</div>
-          <table><thead><tr><th>Name</th><th>Type</th><th>Active Batches</th><th>Weekly Load</th><th>Status</th><th>Actions</th></tr></thead>
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--tx3);margin:2px 0 10px;cursor:pointer">
+            <input type="checkbox" id="trainerShowInactive" onchange="loadTrainersTable()" style="accent-color:var(--brand-3)"> Show Inactive
+          </label>
+          <table><thead><tr><th>Name</th><th>Type</th><th>Active Batches</th><th>Weekly Load</th><th>Status</th></tr></thead>
             <tbody id="trainerTable"></tbody></table>
         </div>
       </div>
@@ -1583,6 +1586,36 @@ function _applyAuthSourceUI(){
   }
 }
 
+// ROOT CAUSE, CONFIRMED LIVE against the real database: PostgREST (Supabase's REST layer)
+// silently caps any unpaginated select() at 1000 rows — the real `attendance` table already
+// has 1033 rows and is only growing. loadLive()'s own Head-side query
+// (sb.from('attendance').select('batch_name,session_num'), no filter — a Head needs every
+// batch's progress, not just their own) was one plain select() with no ORDER BY and no
+// pagination, so it silently got an ARBITRARY 1000-row slice of the table — and because
+// there's no ORDER BY, *which* 33 rows are missing isn't even stable between two requests a
+// few seconds apart. This is the actual, generic root cause of a batch's computed session
+// progress flip-flopping between reads (confirmed live: the real "The Fluent League (U 05)
+// Jun 19" batch computed 32/32 marked sessions on one fetch and 28/32 on the next, several
+// seconds apart, with ZERO real attendance rows written in between) — not a resolver-logic
+// disagreement, a truncated-fetch bug. Every unfiltered, whole-table select in this file now
+// goes through this helper instead, looping .range() pages until a page comes back short of
+// pageSize (the real, complete row count, in one deterministic order every time — necessary
+// specifically because the missing-33-of-1033 default behavior is silent, never an error).
+async function _acadFetchAllRows(table, select, extra){
+  const pageSize = 1000;
+  let all = [], from = 0;
+  for (;;) {
+    let q = sb.from(table).select(select).order('id', { ascending: true }).range(from, from + pageSize - 1);
+    if (typeof extra === 'function') q = extra(q);
+    const { data, error } = await q;
+    if (error) { console.warn('_acadFetchAllRows('+table+') failed:', error.message); break; }
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 async function loadLive(){
   const isHead=currentUser.role==='founder'||currentUser.role==='academic_head';
   // Scoped at the query level for a Trainer (was: fetch every student, then filter the
@@ -1613,29 +1646,57 @@ async function loadLive(){
   // status, for the legacy-completion check below.
   const baseMap={};window._baseMap=baseMap;
   const statusMap={};
+  const totalMap={};window._acadTotalMap=totalMap; // real sessions_total per batch — see progressOf()
   const deletedNames=new Set();
   // PERFORMANCE: the attendance query and the batches/baseline query below are independent of
   // each other (both only depend on myBatchNames, computed above) — they used to run one after
   // the other with a full await each, adding their times together for no reason. Firing both at
   // once and awaiting together halves this section's wall-clock cost; each still degrades
   // gracefully to an empty map on its own failure exactly as before (own try/catch each).
-  let attQuery=sb.from('attendance').select('batch_name,session_num');
-  if(!isHead) attQuery = myBatchNames.length ? attQuery.in('batch_name', myBatchNames) : null;
+  // BUG FIX, CONFIRMED LIVE (see _acadFetchAllRows' own header comment): the real `attendance`
+  // table already has 1033+ rows, past PostgREST's silent 1000-row default cap — a Head's own
+  // unfiltered select() here (needs every batch's progress, not just their own) used to just
+  // get an arbitrary ~1000-row slice with no ORDER BY, so the exact same batch's computed
+  // session count could differ between two reads seconds apart with no real data change in
+  // between. That's the actual cause of a batch reading "finished" in one screen/moment and
+  // "still active" in another — not two disagreeing resolvers, a truncated, unstable-order
+  // fetch feeding the one shared resolver two different answers. _acadFetchAllRows pages
+  // through the whole table deterministically (ordered by id) so isHead now always sees every
+  // real attendance row, every time. A Trainer's own scoped query (their own batches only)
+  // goes through the same helper for the identical reason, even though it's far less likely to
+  // individually cross 1000 rows today — one fetch path, not two, so it can never silently
+  // regress the same way if a single trainer's own batch history eventually grows that large.
+  // Still fired alongside baseQuery below, not awaited one-after-the-other — same PERFORMANCE
+  // reasoning as before, _acadFetchAllRows just replaces a single select() call with its own
+  // (possibly multi-page) promise chain underneath.
+  const attPromise = isHead
+    ? _acadFetchAllRows('attendance', 'batch_name,session_num')
+    : (myBatchNames.length ? _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.in('batch_name', myBatchNames)) : Promise.resolve([]));
   // select('*') rather than naming columns explicitly — on a database where the deleted_at
   // migration hasn't been run yet, naming a column that doesn't exist errors the WHOLE query
   // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
   let baseQuery=sb.from('batches').select('*');
   if(!isHead) baseQuery = myBatchNames.length ? baseQuery.in('name', myBatchNames) : null;
-  const [attResult, baseResult] = await Promise.all([
-    attQuery ? attQuery.then(r=>r).catch(()=>({data:null})) : Promise.resolve({data:null}),
+  const [attRows, baseResult] = await Promise.all([
+    attPromise.catch(()=>[]),
     baseQuery ? baseQuery.then(r=>r).catch(()=>({data:null})) : Promise.resolve({data:null}),
   ]);
   try{
-    (attResult.data||[]).forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});
+    attRows.forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});
   }catch(e){}
   try{
     (baseResult.data||[]).forEach(function(b){
       baseMap[b.name]=+b.baseline_sessions||0; statusMap[b.name]=b.status||null;
+      // BUG FIX (rule: "do not hardcode progress percentages" — confirmed live, root cause of
+      // a batch reading FINISHED in one place while genuinely still active): progressOf() used
+      // to guess each batch's required session count as b.elite?20:32, a hardcoded stand-in for
+      // the REAL batches.sessions_total column this exact fetch already has on every real row
+      // (checked live across all 52 real batches — every one has sessions_total set: Elite is
+      // always 20 same as the guess, but group batches are 42 or 25, never 32). The real "The
+      // Fluent League (U 05) Jun 19" batch (sessions_total=42, 32 sessions actually done) was
+      // reading as 32/32 · 100% FINISHED under the old guess — genuinely only 76% done. totalMap
+      // makes every progress calculation in this file use the batch's own real configured total.
+      totalMap[b.name]=+b.sessions_total||0;
       if (_isBatchDeleted(b)) deletedNames.add(b.name);
     });
   }catch(e){}
@@ -1654,7 +1715,11 @@ async function loadLive(){
   // this is loadLive()'s own copy of the same rule, since it's the one place with access to
   // this particular baseline/doneMap shape).
   const progressOf = b => {
-    const total=b.elite?20:32;
+    // Real configured total from the batch's own sessions_total column (totalMap, built just
+    // above) — the b.elite?20:32 guess is now only a last-resort fallback for the one case that
+    // can't have a totalMap entry: a batch with students but a since-deleted/never-synced
+    // batches row (rare — myBatchNames/baseQuery already scope to real batches.name values).
+    const total=(totalMap[b.raw||b.name])||(b.elite?20:32);
     // BUG FIX: this used to read doneMap[b.name] \u2014 for an Elite (1:1) card, b.name is the
     // COMBINED "Elite \u2014 Kiran \u00b7 Kiran" display key (batch + student), which never matches any
     // real attendance.batch_name row ("Elite \u2014 Kiran"). Every Elite batch's actually-marked
@@ -1756,7 +1821,10 @@ async function setBaseline(i){
   if(!requireHeadAccess())return;
   const b=window._liveBatches[i];if(!b)return;
   const name=b.raw||b.name;
-  const total=b.elite?20:32;
+  // Same real sessions_total the finished-batch resolver itself uses (window._acadTotalMap,
+  // built by loadLive()) — not a second, independent b.elite?20:32 guess that could clamp this
+  // baseline to the wrong ceiling for a 25- or 42-session batch.
+  const total=(window._acadTotalMap&&window._acadTotalMap[name])||(b.elite?20:32);
   const cur=(window._baseMap&&window._baseMap[name])||0;
   const v=await showPrompt(`Sessions already completed for "${name}" before tracking started (0\u2013${total}):\nGoing forward, attendance adds on top of this.`, { defaultValue: String(cur) });
   if(v===null)return;
@@ -1779,7 +1847,10 @@ async function renameBatch(i){
 }
 async function openAtt(i){
   const b=window._liveBatches[i]; if(!b)return; window._attBatch=b;
-  const total=b.elite?20:32; let next=1,dn=0;
+  // Same real sessions_total resolver as everywhere else (window._acadTotalMap) — this modal's
+  // own "session X of Y" label used to show the b.elite?20:32 guess, not this batch's actual
+  // configured total.
+  const total=(window._acadTotalMap&&window._acadTotalMap[b.raw||b.name])||(b.elite?20:32); let next=1,dn=0;
   // BUG FIX (root cause of Elite/1:1 batches showing 0/20 despite real marked sessions):
   // b.name is the DISPLAY key loadLive() builds for the card ("<real batch name> · <student
   // name>" for Elite/1:1 batches, so two Elite batches sharing one real batch_name+trainer
@@ -2766,6 +2837,32 @@ function _acadInitRealtime(){
     .on('postgres_changes', availConfig, () => _acadScheduleRealtimeRefresh())
     .subscribe();
   _acadRealtimeChannels.push(availChannel);
+
+  // trainers — HR → Academic sync (spec: "if HR activates/disables/deletes a trainer,
+  // Academic updates without refresh"). This table only ever changes two ways: (a)
+  // acadSyncTrainersFromHRLocal() writing a status flip from an hr_employees change (see the
+  // hr_employees channel right below — that's the actual originating HR edit, this is its
+  // downstream effect), or (b) another open Academic tab's own sync run doing the same. Either
+  // way, subscribing here is what lets every OTHER open tab (this one didn't do the write
+  // itself) converge the instant it happens, not just the tab that happened to run the sync.
+  const trainersChannel = sb.channel('acad-rt-trainers-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'trainers' }, () => _acadScheduleRealtimeRefresh())
+    .subscribe();
+  _acadRealtimeChannels.push(trainersChannel);
+
+  // hr_employees — the actual originating HR edit (Add/Edit Employee, Department = Education).
+  // No trainers-table change fires on its own here; HR only ever writes hr_employees, so THIS
+  // session must itself re-run acadSyncTrainersFromHRLocal() (the same sync boot() already
+  // runs once at login) to turn that into the trainers-table write the channel above then
+  // propagates to every other open tab. Debounced through the same _acadScheduleRealtimeRefresh
+  // queue as everything else, just with the sync step chained in front of it.
+  const hrEmpChannel = sb.channel('acad-rt-hremployees-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_employees' }, async () => {
+      await acadSyncTrainersFromHRLocal();
+      _acadScheduleRealtimeRefresh();
+    })
+    .subscribe();
+  _acadRealtimeChannels.push(hrEmpChannel);
 }
 function _acadTeardownRealtime(){
   _acadRealtimeChannels.forEach(ch => { try { sb.removeChannel(ch); } catch(e) {} });
@@ -2989,8 +3086,11 @@ async function loadStats(){
   // number of sessions actually delivered, not one row per student marked present in it.
   let sessionsCompleted = 0;
   try {
-    const { data: att } = await sb.from('attendance').select('batch_name,session_num');
-    sessionsCompleted = new Set((att||[]).map(a => a.batch_name+'|'+a.session_num)).size;
+    // Same 1000-row PostgREST cap fix as loadLive() (see _acadFetchAllRows) — this was
+    // another plain, unfiltered whole-`attendance`-table select(), silently truncated the
+    // same way, undercounting this tile once the real table passed 1000 rows.
+    const att = await _acadFetchAllRows('attendance', 'batch_name,session_num');
+    sessionsCompleted = new Set(att.map(a => a.batch_name+'|'+a.session_num)).size;
   } catch (e) { console.warn('Could not load sessions-completed count:', e.message); }
   // Same acadStatTile() icon+color+sparkline component the Overview dashboard and Reports
   // already use — this grid was still the old plain label/value cards, the one place left
@@ -3103,13 +3203,19 @@ async function loadTrainersTable(){
     rec.count++; rec.hrs += hrs;
     byTrainer[b.trainer_id] = rec;
   });
-  document.getElementById('trainerTable').innerHTML = (trainers||[]).map(t => {
+  // RULE (spec item 9/17): HR is the single trainer lifecycle owner — this table's default
+  // view shows only active, trainer-eligible employees, matching every other "active trainer"
+  // list in this file (Coach Availability, Create Batch's trainer selector, dashboard tiles).
+  // An inactive/HR-revoked trainer is never mixed into the default rows; "Show Inactive"
+  // (checkbox above) is an explicit opt-in to see them, never the default.
+  const showInactive = document.getElementById('trainerShowInactive')?.checked;
+  const visibleTrainers = showInactive ? (trainers||[]) : (trainers||[]).filter(t => t.status === 'active');
+  document.getElementById('trainerTable').innerHTML = visibleTrainers.map(t => {
     const load = byTrainer[t.id] || { count: 0, hrs: 0 };
     return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((t.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(t.name)}</div></td><td data-label="Type">${t.type==='pt'?'Part-time':'Full-time'}</td>
     <td data-label="Active Batches">${load.count}</td><td data-label="Weekly Load">${load.hrs?Math.round(load.hrs)+'h':'0h'}</td>
-    <td data-label="Status"><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td>
-    <td data-label="Actions"><button class="act-btn" onclick="deleteTrainer('${t.id}','${esc(t.name)}')" style="border-color:rgba(237,31,81,.4);color:var(--k1)">Delete</button></td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">No trainers yet</td></tr>';
+    <td data-label="Status"><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td></tr>`;
+  }).join('') || `<tr><td colspan="5" class="empty">${showInactive ? 'No trainers yet' : 'No active trainers — check “Show Inactive” to see revoked/former coaches'}</td></tr>`;
 }
 // ============================================================================
 // Native "My Workspace" common items — My Profile, Announcements, My Documents,
@@ -3505,7 +3611,20 @@ async function loadAvailabilityTab(){
       const myId = window._myTrainerId;
       const { data: mine } = await sb.from('trainer_availability').select('*').eq('trainer_id', myId||'00000000-0000-0000-0000-000000000000').eq('is_active', true).order('start_time');
       _myAvailability = mine || [];
-      _availBatchesForOccupancy = myId ? ((await sb.from('batches').select('*').eq('trainer_id', myId)).data || []) : [];
+      // ONE AVAILABILITY RESOLVER (fix for Trainer's own My Availability disagreeing with the
+      // Academic Head's Coach Availability for the exact same slot): this used to run its own
+      // separate, narrower query here (batches filtered to trainer_id only, no
+      // deleted-batch/`isBatchFinished`-set correlation) instead of the SAME batches data every
+      // other occupancy check in this file resolves through. findOccupyingBatch/
+      // isBatchCurrentlyActive still do the actual free/occupied logic identically either way,
+      // but a Trainer's own screen could still end up looking at a differently-shaped/differently
+      // -fetched batches array than the Head's screen did, at a different moment in time (its own
+      // request, its own round trip). _allBatchesForAvailabilityCheck() is the one shared fetch
+      // (window._allBatchesFull when already loaded, one fresh `select('*')` otherwise) every
+      // other date-range occupancy check (findOccupyingBatchInRange, checkBatchTrainerConflict)
+      // already uses — reusing it here means a Trainer and a Head looking at the same trainer's
+      // same slot are always reading from the identical batch rows, not two independent fetches.
+      _availBatchesForOccupancy = await _allBatchesForAvailabilityCheck();
       renderMyAvailabilityList();
     }
   } catch(e) {
@@ -4266,14 +4385,12 @@ async function deleteStudent(){
   loadLive();loadStats();
   showToast('success','Student deleted successfully');
 }
-async function deleteTrainer(id, name){
-  if (!requireHeadAccess()) return;
-  if (!(await confirmDelete('trainer',name))) return;
-  const {error}=await sb.from('trainers').delete().eq('id', id);
-  if(error){showToast('error','Unable to delete trainer — they still have batches or sessions linked. Reassign or delete those first.',6000);return;}
-  await loadHeadView(); await loadStats();
-  showToast('success','Trainer removed successfully');
-}
+// REMOVED (spec item 10): Academic used to be able to hard-delete a trainers row directly
+// (deleteTrainer(id,name), sb.from('trainers').delete()) even though this same screen's own
+// note says "the Academic module never creates or edits employee records directly." HR is
+// the sole trainer lifecycle owner (acadSyncTrainersFromHRLocal) — deactivating/removing a
+// Trainer/Coach now only ever happens via HR → Employees, which flows back into this table's
+// status column (active/inactive) on the next sync, same as any other HR-driven change.
 async function deleteCourse(id, name){
   if (!requireHeadAccess()) return;
   if (!(await confirmDelete('course', name))) return; // type-DELETE guard — same as deleteTrainer/deleteStudent/deleteBatch
