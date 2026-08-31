@@ -1091,6 +1091,26 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchDetails')">Close</button><button class="btn-save" id="bd_att_btn">View Attendance</button></div>
 </div></div>
 
+<!-- Manage Students — Academic Head only, active batches only (spec Issue 3). Focused on
+     membership only (not trainer/dates/notes, which stays Edit Batch's own job) — reuses the
+     exact same unassignedStudents()/assignStudents() functions Edit Batch and Create Batch
+     already use, so there is one real "add a student to a batch" operation in this file, not
+     a second one. -->
+<div class="modal-bg" id="modalManageStudents"><div class="modal" style="width:480px;max-height:88vh;overflow:auto">
+  <h3 id="ms_title">Manage Students</h3>
+  <div class="acad-dash-tiles" style="margin-bottom:14px">
+    <div class="acad-stat-card" style="cursor:default"><div><div class="val" id="ms_current_count">—</div><div class="lbl">Current Students</div></div></div>
+    <div class="acad-stat-card" style="cursor:default"><div><div class="val" id="ms_capacity">—</div><div class="lbl">Capacity</div></div></div>
+    <div class="acad-stat-card" style="cursor:default"><div><div class="val" id="ms_available">—</div><div class="lbl">Available Seats</div></div></div>
+  </div>
+  <div class="subhead" style="margin:0 0 8px">Currently Enrolled</div>
+  <div id="ms_current" class="pick-list"></div>
+  <div class="subhead" style="margin:14px 0 8px">Add Eligible Students</div>
+  <div id="ms_pool" class="pick-list"></div>
+  <div id="ms_full_hint" class="mhint" style="display:none;color:var(--yellow)">This batch is at capacity — remove a student above before adding more.</div>
+  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('manageStudents')">Close</button><button class="btn-save" onclick="saveManageStudents()">Add Selected Students</button></div>
+</div></div>
+
 <div class="modal-bg" id="modalBatchEdit"><div class="modal" style="width:480px;max-height:88vh;overflow:auto">
   <h3 id="be_title">Edit Batch</h3>
   <select id="be_trainer"></select>
@@ -1664,6 +1684,19 @@ async function loadLive(){
   const previous=all.filter(isBatchFinished)
     .sort((a,b)=> (b.end||'').localeCompare(a.end||'') || a.name.localeCompare(b.name));
   window._liveBatches=active.concat(previous);
+  // BUG FIX (root cause of a finished batch still blocking trainer availability): a batch can
+  // become "finished" purely by SESSION PROGRESS reaching its total (isBatchFinished above,
+  // the same rule Finished Batches itself uses) with no explicit status='closed'/'completed'
+  // field ever set — isBatchCurrentlyActive() (the Availability engine's own gatekeeper,
+  // findOccupyingBatch/findOccupyingBatchInRange) only ever checked status/dates/deleted, so
+  // it had no way to know a progress-finished batch was done and kept treating its slot as
+  // occupied forever. One shared source of truth instead of two disagreeing ones: every real
+  // batch name that loadLive() itself just classified as finished (the exact same computation
+  // Finished Batches displays) is exposed here so isBatchCurrentlyActive() can check it too —
+  // see there. Refreshed on every loadLive() call, which already re-runs after saveAtt()
+  // (marking the session that pushes a batch to 100%) and after deleteBatch(), so this needs
+  // no separate cache-invalidation step of its own.
+  window._acadFinishedBatchNames = new Set(previous.map(b => b.raw || b.name));
   // Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance,
   // same Head-only click-to-view-student behavior), cleaner presentation: a real header row
   // with a course badge, the roster as individual chips instead of a run-on dot-separated
@@ -1748,7 +1781,15 @@ async function renameBatch(i){
 async function openAtt(i){
   const b=window._liveBatches[i]; if(!b)return; window._attBatch=b;
   const total=b.elite?20:32; let next=1,dn=0;
-  try{const {data}=await sb.from('attendance').select('session_num').eq('batch_name',b.name);
+  // BUG FIX (root cause of Elite/1:1 batches showing 0/20 despite real marked sessions):
+  // b.name is the DISPLAY key loadLive() builds for the card ("<real batch name> · <student
+  // name>" for Elite/1:1 batches, so two Elite batches sharing one real batch_name+trainer
+  // don't collapse into a single card) — never the real attendance.batch_name value, which
+  // is b.raw. This modal's own "X of Y done" count query used b.name here, so it silently
+  // searched for attendance rows that could never exist for any Elite batch — same class of
+  // bug already fixed on loadLive()'s own read side two commits ago (doneMap[b.raw||b.name]),
+  // just never applied to this modal or to saveAtt()'s own insert below.
+  try{const {data}=await sb.from('attendance').select('session_num').eq('batch_name',b.raw||b.name);
     const nums=[...new Set((data||[]).map(r=>r.session_num))]; dn=nums.length; next=(nums.length?Math.max.apply(null,nums):0)+1;}catch(e){}
   document.getElementById('att_num').value=next;
   document.getElementById('att_title').innerHTML=esc(b.name)+' <span style="font-weight:400;opacity:.6;font-size:13px">\u00b7 session '+next+' of '+total+' \u00b7 '+dn+' done</span>';
@@ -1782,7 +1823,24 @@ async function saveAtt(){
   const b=window._attBatch; if(!b)return;
   const num=parseInt(document.getElementById('att_num').value)||1;
   const date=document.getElementById('att_date').value||new Date().toISOString().slice(0,10);
-  const rows=b.students.map(function(s,j){return {batch_name:b.name,student_uin:s.uin,session_num:num,session_date:date,status:document.getElementById('att_'+j).checked?'present':'absent',marked_by:currentUser.name};});
+  // BUG FIX: batch_name must be the REAL batch_name (b.raw) — see the identical comment in
+  // openAtt() above. Writing b.name here (the display key) was the actual root cause: every
+  // Elite/1:1 attendance row got saved under a batch_name no read-side query (doneMap,
+  // Finished Batches, Session History) could ever match, so real marked sessions never
+  // counted toward progress no matter how many were saved.
+  const realBatchName = b.raw||b.name;
+  const rows=b.students.map(function(s,j){return {batch_name:realBatchName,student_uin:s.uin,session_num:num,session_date:date,status:document.getElementById('att_'+j).checked?'present':'absent',marked_by:currentUser.name};});
+  // BUG FIX (spec: "prevent duplicate session counting" / editing an already-marked session):
+  // this used to be a bare insert — re-opening and re-saving a session_num that already had
+  // attendance rows (editing it, not creating it) INSERTED a second set of rows instead of
+  // replacing the first, rather than double-counting the SESSION (doneMap dedupes by
+  // session_num via a Set, so progress itself stayed correct), it silently duplicated/
+  // conflicted the underlying attendance records — Session History's present/absent counts
+  // for that date would then double-count or show stale+new statuses together. Delete any
+  // existing rows for this exact (batch, session_num) first, so a re-save is a true edit —
+  // same one-session-one-set-of-rows invariant "Prevent Duplicate Session Counting" asks for.
+  const { error: delErr } = await sb.from('attendance').delete().eq('batch_name', realBatchName).eq('session_num', num);
+  if (delErr) { showToast('error','Save failed: '+delErr.message); return; }
   const {error}=await sb.from('attendance').insert(rows);
   if(error){showToast('error','Save failed: '+error.message);return;}
   // Class log \u2014 same `sessions` table the old standalone "Logs" tab used, one row per
@@ -3197,6 +3255,13 @@ function isBatchCurrentlyActive(b){
   if (!b) return false;
   if (_isBatchDeleted(b)) return false;
   if (b.status === 'inactive' || b.status === 'closed') return false;
+  // BUG FIX: a batch finished purely by session-progress (loadLive()'s own isBatchFinished —
+  // baseline + marked attendance reaching sessions_total, with no explicit status field ever
+  // set) used to keep blocking its trainer's slot forever, since this function only ever
+  // checked status/dates. window._acadFinishedBatchNames is the exact same finished-set
+  // Finished Batches itself is built from (see loadLive()) — one shared answer to "is this
+  // batch actually done," not a second, disagreeing one computed here.
+  if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
   const todayStr = new Date().toISOString().slice(0,10);
   if (b.start_date && todayStr < b.start_date) return false;   // hasn't started yet
   if (b.expected_completion_date && todayStr > b.expected_completion_date) return false; // ended -> auto free
@@ -3878,7 +3943,7 @@ async function loadHeadView(){
     <td data-label="Status"><span class="badge ${b.status!=='inactive'&&b.status!=='closed'?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
     <td data-label="Start Date">${b.start_date||'—'}</td>
     <td data-label="End Date">${b.expected_completion_date||'—'}</td>
-    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button> <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
+    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${(b.status!=='inactive'&&b.status!=='closed'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)))?` <button class="act-btn" onclick="openManageStudents('${b.id}')">Manage Students</button>`:''} <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
   }).join('') || '<tr><td colspan="9" class="empty">No batches yet</td></tr>';
 
   const { data: assigns } = await sb.from('assignments').select('*, trainers(name)').order('created_at',{ascending:false});
@@ -4235,6 +4300,69 @@ async function openBatchDetails(id){
 }
 
 let _editBatch=null;
+// Manage Students — Academic Head only (requireHeadAccess), active batches only (the calling
+// Actions-column button is only rendered for a batch that isn't inactive/closed/finished, see
+// loadHeadView above). Genuinely a subset of what Edit Batch already does (assignStudents()/
+// unassignedStudents() — the same two functions, not a second implementation), the real gap
+// this adds is CAPACITY VALIDATION, which Edit Batch's own saveBatchEdit() never enforced —
+// per spec, this must never allow a batch to exceed its course/batch capacity.
+let _msBatch = null;
+async function openManageStudents(id){
+  if (!requireHeadAccess()) return;
+  const { data: b } = await sb.from('batches').select('*, courses(name, type, max_students)').eq('id', id).single();
+  if (!b) return;
+  _msBatch = b;
+  document.getElementById('ms_title').textContent = 'Manage Students · ' + b.name;
+  const { data: cur } = await sb.from('students').select('*').eq('batch_id', id);
+  const currentRows = cur || [];
+  // Capacity: the batch's own explicit capacity if set (matches Create/Edit Batch's own
+  // convention), else the course's configured max_students (Foundation/Bridge/etc — spec's
+  // own "use current course configuration"), else uncapped (null = no limit enforced, same
+  // as everywhere else in this file that already treats a missing capacity as unlimited).
+  const capacity = b.capacity || (b.courses && b.courses.max_students) || null;
+  const available = capacity ? Math.max(0, capacity - currentRows.length) : null;
+  document.getElementById('ms_current_count').textContent = currentRows.length;
+  document.getElementById('ms_capacity').textContent = capacity ? capacity : '∞';
+  document.getElementById('ms_available').textContent = available === null ? '∞' : available;
+  document.getElementById('ms_current').innerHTML = currentRows.length
+    ? currentRows.map(s => '<div class="pick-row" style="cursor:default"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span></div>').join('')
+    : '<div class="mhint" style="padding:8px">No students in this batch yet.</div>';
+  let pool = await unassignedStudents(b.programme || null);
+  if (!pool.length) pool = await unassignedStudents(null);
+  document.getElementById('ms_pool').innerHTML = pool.length
+    ? pool.map(pickRow).join('')
+    : '<div class="mhint" style="padding:8px">No unassigned students available.</div>';
+  const fullHint = document.getElementById('ms_full_hint');
+  const saveBtn = document.querySelector('#modalManageStudents .btn-save');
+  const atCapacity = available !== null && available <= 0;
+  fullHint.style.display = atCapacity ? '' : 'none';
+  document.querySelectorAll('#ms_pool input[type=checkbox]').forEach(cb => cb.disabled = atCapacity);
+  if (saveBtn) saveBtn.disabled = atCapacity;
+  document.getElementById('modalManageStudents').classList.add('on');
+}
+async function saveManageStudents(){
+  if (!requireHeadAccess() || !_msBatch) return;
+  const b = _msBatch;
+  const picked = [...document.querySelectorAll('#ms_pool input:checked')].map(x => x.value);
+  if (!picked.length) { showToast('warning','Pick at least one student to add.'); return; }
+  // Re-check capacity against the LIVE count right before writing — the modal's own snapshot
+  // could be stale if another tab/Head added students in the meantime; never trust only the
+  // client-side disabled-checkbox state for something that must actually hold true.
+  const { data: cur } = await sb.from('students').select('id').eq('batch_id', b.id);
+  const currentCount = (cur || []).length;
+  const capacity = b.capacity || (b.courses && b.courses.max_students) || null;
+  if (capacity && currentCount + picked.length > capacity) {
+    const room = Math.max(0, capacity - currentCount);
+    showToast('error', `This batch only has ${room} seat${room===1?'':'s'} left (capacity ${capacity}) — pick ${room} or fewer.`, 6000);
+    return;
+  }
+  await assignStudents(picked, { id: b.id, name: b.name, trainer_name: b.trainer_name || null });
+  closeModal('manageStudents');
+  showToast('success', picked.length + ' student' + (picked.length===1?'':'s') + ' added to ' + b.name);
+  // Refresh every view the spec asks to update immediately — same loaders every other
+  // student/batch mutation in this file already calls, not a new refresh path.
+  await loadHeadView(); await loadStats(); await loadLive();
+}
 async function openBatchEdit(id){
   if(!requireHeadAccess())return;
   const {data:b}=await sb.from('batches').select('*').eq('id',id).single();
@@ -4400,6 +4528,9 @@ function findOccupyingBatchInRange(trainerId, startTime, endTime, batches, reqSt
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
     if (['inactive','closed','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    // Same fix as isBatchCurrentlyActive() — a batch finished purely by session progress
+    // (no explicit status field) must not keep counting as occupying here either.
+    if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
     const bStart = _batchStartMinutes(b);
     if (bStart === null || bStart < startMin || bStart >= endMin) return false;
     return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
@@ -4412,6 +4543,7 @@ function findExactTimeConflict(trainerId, time24, batches, reqStart, reqEnd) {
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
     if (['inactive','closed','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
     if (_batchStartMinutes(b) !== min) return false;
     return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
   }) || null;
