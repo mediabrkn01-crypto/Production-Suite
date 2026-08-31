@@ -2528,11 +2528,17 @@ async function loadAcadDashboard(){
         mediaHrDB.from('hr_leave_requests').select('*').eq('status', 'approved'),
         mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
       ]);
+      // BUG FIX: deleteBatch() soft-deletes (sets deleted_at) rather than removing the row —
+      // this fetch used to read allBatches raw, so a deleted batch kept counting as "active"
+      // here forever (Active Batches tile, Becoming Available Soon, Available Coaches) even
+      // though every OTHER batch-consuming view already filters this. Same _isBatchDeleted
+      // check used everywhere else in this file — generic, not name-specific.
+      const liveAllBatches = (allBatches || []).filter(b => !_isBatchDeleted(b));
       const activeTrainers = (trainers || []).filter(t => t.status === 'active');
       const ftCount = activeTrainers.filter(t => t.type !== 'pt').length;
       const ptCount = activeTrainers.filter(t => t.type === 'pt').length;
-      const batchesActive = (allBatches || []).filter(b => b.status === 'active' && (!b.expected_completion_date || b.expected_completion_date >= today));
-      const upcomingBatches = (allBatches || []).filter(b => b.start_date && b.start_date > today);
+      const batchesActive = liveAllBatches.filter(b => b.status === 'active' && (!b.expected_completion_date || b.expected_completion_date >= today));
+      const upcomingBatches = liveAllBatches.filter(b => b.start_date && b.start_date > today);
       const busyTrainerIds = new Set(batchesActive.filter(b => b.trainer_id).map(b => b.trainer_id));
       const todaysClasses = (sessions || []).filter(s => s.session_date === today).length;
       // On leave today: hr_leave_requests is keyed by employee_id, not portal_email, so map
@@ -2663,7 +2669,7 @@ async function loadStats(){
   // that hadn't been brought in line with the rest of the redesigned Academic module.
   document.getElementById('statgrid').innerHTML = [
     acadStatTile('users', '#3b82f6', trainers?.length||0, 'Active Trainers', "acadSwitchTab('trainers')"),
-    acadStatTile('layers', '#ff0552', batches?.length||0, 'Total Batches', "acadSwitchTab('live')"),
+    acadStatTile('layers', '#ff0552', (batches||[]).filter(b => !_isBatchDeleted(b)).length, 'Total Batches', "acadSwitchTab('live')"),
     acadStatTile('graduation-cap', '#10b981', students?.length||0, 'Total Students', "acadSwitchTab('students')"),
     acadStatTile('check-circle', '#f59e0b', sessionsCompleted, 'Sessions Completed', "acadSwitchTab('live')"),
   ].join('');
@@ -4274,7 +4280,7 @@ function findExactTimeConflict(trainerId, time24, batches, reqStart, reqEnd) {
 async function _allBatchesForAvailabilityCheck() {
   if (window._allBatchesFull && window._allBatchesFull.length) return window._allBatchesFull;
   const { data } = await sb.from('batches').select('*');
-  return data || [];
+  return (data || []).filter(b => !_isBatchDeleted(b));
 }
 async function refreshAvailableClassTimes(){
   const wrap = document.getElementById('m_b_time_slots');
@@ -4472,7 +4478,21 @@ async function deleteBatch(id,name){
   if (!ok) return;
   const {error}=await sb.from('batches').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if(error){showToast('error','Unable to delete batch. '+error.message,6000);return;}
-  await loadHeadView(); await loadStats(); await loadLive();
+  // BUG FIX: this used to refresh loadHeadView/loadStats/loadLive only — loadAcadDashboard()
+  // (Dashboard's own "Becoming Available Soon"/Active Batches/Available Coaches tiles) was
+  // never re-run, so a just-deleted batch kept showing there as stale data until the next
+  // full page boot. Every view/cache is derived live from `batches` on every call — nothing
+  // here is a separately-stored cache — so re-running the loaders is the whole invalidation.
+  await loadHeadView(); await loadStats(); await loadLive(); await loadAcadDashboard();
+  // Coach Availability/Classes/My Calendar are lazy-tab-loaded (ACAD_LAZY_TAB_LOADERS) —
+  // cached after first visit for the rest of the session, so a delete needs to explicitly
+  // drop their cache flags too, or a tab already opened before the delete would keep showing
+  // the deleted batch until a full page reload. Un-cache them and, if already open right now,
+  // reload immediately so the UI updates with no refresh needed.
+  ['availability','classes','schedule'].forEach(t => _acadLazyTabLoaded.delete(t));
+  if (document.getElementById('tab-acad-availability')?.classList.contains('on') && typeof loadAvailabilityTab === 'function') { loadAvailabilityTab(); _acadLazyTabLoaded.add('availability'); }
+  if (document.getElementById('tab-acad-classes')?.classList.contains('on') && typeof loadClassesTab === 'function') { loadClassesTab(); _acadLazyTabLoaded.add('classes'); }
+  if (document.getElementById('tab-acad-schedule')?.classList.contains('on') && typeof loadScheduleTab === 'function') { loadScheduleTab(); _acadLazyTabLoaded.add('schedule'); }
   showToast('success','Batch deleted');
 }
 
