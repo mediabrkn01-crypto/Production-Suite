@@ -975,10 +975,10 @@ details[open] .rawsum::before{content:'▾ '}
                dark UI. Matches the exact dark input treatment .lv-field input/select already
                use elsewhere (same background/border/radius/color tokens), just applied
                directly since these don't sit inside a .lv-field wrapper. -->
-          <input id="stu_search" placeholder="Search students by name, ID, or contact…" oninput="renderStudentsTable()" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;margin-bottom:8px"/>
+          <input id="stu_search" placeholder="Search students by name, ID, or contact…" oninput="_acadStuFilterChanged()" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;margin-bottom:8px"/>
           <div class="mrow" style="margin-bottom:12px">
-            <select id="stu_filter_batch" onchange="renderStudentsTable()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All batches</option></select>
-            <select id="stu_filter_status" onchange="renderStudentsTable()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
+            <select id="stu_filter_batch" onchange="_acadStuFilterChanged()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All batches</option></select>
+            <select id="stu_filter_status" onchange="_acadStuFilterChanged()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
               <option value="">All statuses</option>
               <option value="New">New</option>
               <option value="Unassigned">Unassigned</option>
@@ -987,15 +987,15 @@ details[open] .rawsum::before{content:'▾ '}
               <option value="On Freeze">On Freeze</option>
               <option value="Dropped">Dropped</option>
             </select>
-            <select id="stu_filter_payment" onchange="renderStudentsTable()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
+            <select id="stu_filter_payment" onchange="_acadStuFilterChanged()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
               <option value="">All payments</option>
               <option value="Paid">Payment Complete</option>
               <option value="Partial">Partial Payment</option>
               <option value="Pending">Payment Pending</option>
               <option value="None">No Payment Recorded</option>
             </select>
-            <select id="stu_filter_course" onchange="renderStudentsTable()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All courses</option></select>
-            <select id="stu_sort" onchange="renderStudentsTable()" style="flex:1;min-width:150px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
+            <select id="stu_filter_course" onchange="_acadStuFilterChanged()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All courses</option></select>
+            <select id="stu_sort" onchange="_acadStuFilterChanged()" style="flex:1;min-width:150px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
               <option value="new_first">Sort: New Students First</option>
               <option value="oldest_first">Sort: Oldest Students First</option>
               <option value="name_az">Sort: Name A → Z</option>
@@ -1007,6 +1007,11 @@ details[open] .rawsum::before{content:'▾ '}
           </div>
           <table><thead><tr><th>Name</th><th>Batch</th><th>Course</th><th>Coach</th><th>Status</th><th>Payment</th><th>Enrolled</th><th>Actions</th></tr></thead>
             <tbody id="studentsList"></tbody></table>
+          <!-- Server-side pagination (production scalability refactor, Phase 5/20) — empty/
+               hidden in fallback mode (pre-migration), populated by _acadStuPager() once the
+               get_students_page RPC is live. Tiny UI addition, only shows when there's
+               something to paginate through. -->
+          <div id="stu_pager" style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px"></div>
         </div>
       </div>
 
@@ -2883,7 +2888,10 @@ function _acadInitRealtime(){
   // queue as everything else, just with the sync step chained in front of it.
   const hrEmpChannel = sb.channel('acad-rt-hremployees-' + (currentUser.username || 'anon'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_employees' }, async () => {
-      await acadSyncTrainersFromHRLocal();
+      // force=true — this IS the real, actual HR change the throttle in
+      // acadSyncTrainersFromHRLocal exists to defer to; it should never be skipped just
+      // because a page-load sync happened to run in the last 2 minutes.
+      await acadSyncTrainersFromHRLocal(true);
       _acadScheduleRealtimeRefresh();
     })
     .subscribe();
@@ -3142,12 +3150,39 @@ async function loadStats(){
 // variables (mediaHrDB/sb) and doesn't load common.js, that shared copy silently never ran
 // for the app everyone actually uses. This port is the fix: same logic, this file's own
 // variables, called from boot() below so every Academic session re-syncs on load.
-async function acadSyncTrainersFromHRLocal(){
+// Production refactor Phase 14/15 — this used to run its full write pass on EVERY single
+// Academic page load/boot AND every realtime-triggered refresh (loadHeadView → this), which
+// meant an Academic Head opening the app wrote N rows to `trainers` just by loading the page,
+// every time. Two independent fixes:
+//   1. THROTTLE (this wrapper): skip the whole sync unless it's actually due — either forced
+//      (the hr_employees realtime handler passes force=true, since that IS a real HR change
+//      worth syncing immediately) or the last run was more than 2 minutes ago. Session-local
+//      (module-scope var, not persisted) — a fresh page load still syncs once, just not on
+//      every lazy-tab reload/realtime tick in between.
+//   2. DIFF-AWARE WRITES (acadSyncTrainersFromHRLocalNow below): only actually issue an
+//      update for a trainer row whose fields genuinely changed. Writing identical values
+//      every time was also a real, confirmed bug beyond wasted requests — this codebase's own
+//      `trainers` realtime channel (added for HR→Academic live sync) fires on ANY row change
+//      regardless of whether values differ, so an unconditional rewrite-every-time here could
+//      re-trigger that channel, scheduling another refresh → another sync → another identical
+//      rewrite → another realtime event, indefinitely. Skipping no-op writes closes that loop
+//      at the source instead of just slowing it down.
+let _acadLastTrainerSyncAt = 0;
+async function acadSyncTrainersFromHRLocal(force){
+  const now = Date.now();
+  if (!force && (now - _acadLastTrainerSyncAt) < 120000) return; // < 2 min since last real sync — skip
+  _acadLastTrainerSyncAt = now;
+  await acadSyncTrainersFromHRLocalNow();
+}
+async function acadSyncTrainersFromHRLocalNow(){
   if (typeof mediaHrDB === 'undefined' || !mediaHrDB) return;
   try {
     const { data: eduEmployees, error } = await mediaHrDB.from('hr_employees').select('*').eq('division', 'education');
     if (error || !eduEmployees) return;
-    const { data: existingTrainers } = await sb.from('trainers').select('id,name,status');
+    // select('*') here (not just id/name/status) is what makes the diff in the loop below
+    // possible — comparing against the full real row, not just the 3 columns a write always
+    // touched blindly before.
+    const { data: existingTrainers } = await sb.from('trainers').select('*');
     const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
     // PERFORMANCE ROOT CAUSE (biggest single contributor to slow Academic Head logins): this
     // used to `await` one update/insert PER Education employee, one at a time, inside a plain
@@ -3183,7 +3218,8 @@ async function acadSyncTrainersFromHRLocal(){
       };
       const existing = existingByName.get(key);
       if (existing) {
-        writes.push(sb.from('trainers').update({ status, ...coachFields }).eq('id', existing.id));
+        const changed = existing.status !== status || Object.keys(coachFields).some(k => (existing[k] ?? null) !== (coachFields[k] ?? null));
+        if (changed) writes.push(sb.from('trainers').update({ status, ...coachFields }).eq('id', existing.id));
       } else {
         writes.push(sb.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields }));
       }
@@ -3201,7 +3237,7 @@ async function acadSyncTrainersFromHRLocal(){
     for (const o of orphaned) {
       writes.push(sb.from('trainers').update({ status: 'inactive' }).eq('id', o.id));
     }
-    await Promise.all(writes);
+    if (writes.length) await Promise.all(writes);
   } catch (e) {
     console.warn('Trainer sync from HR failed:', e.message);
   }
@@ -4026,65 +4062,62 @@ async function loadClassesTab(){
 // Students — full roster across all batches, drawn from `students`.
 // ============================================================================
 let _allStudents = [];
-let _acadPaymentByStudent = {}; // student_id -> { fee, discount, paid, status } — built once per
-// loadStudentsTab() call, not re-queried on every sort/filter/search keystroke (spec: "should
-// feel instant... do not refetch the entire database every time").
+let _acadPaymentByStudent = {}; // student_id -> { fee, discount, paid, status } — FALLBACK-mode
+// only (see below). Built once per loadStudentsTab() call, not re-queried on every sort/
+// filter/search keystroke.
+// PRODUCTION SCALABILITY REFACTOR — Phase 5/8/20: this tab used to download the ENTIRE
+// students table (plus the entire payments/payment_entries tables) on every load, then
+// search/filter/sort/paginate all of it in the browser. At 100,000 students that's ~774MB and
+// silently truncates at PostgREST's 1,000-row cap besides. Replaced with a single RPC call —
+// get_students_page() (see the Phase 5 migration in academic-schema-fresh-consolidated.sql) —
+// that does the search/filter/sort/pagination and the New/In-Progress/Completed + payment
+// status computation ENTIRELY IN SQL, returning only the current page (default 50 rows) plus
+// a total count. Browser memory now stays flat regardless of total student count.
+//
+// FALLBACK, not a hard requirement: if the migration hasn't been run yet, the RPC call fails
+// (function doesn't exist) and this transparently falls back to the exact old behavior
+// (_acadStudentLifecycleStatus/_acadStudentPaymentStatus, full fetch, client-side everything)
+// — same degrade-gracefully convention already used everywhere else in this file for an
+// unrun migration (e.g. batches.deleted_at). The page keeps working either way; it only gets
+// the real scalability win once the migration is applied.
+let _acadStudentsMode = null; // 'rpc' | 'fallback' — decided on first load, cached for the session
+let _acadStudentsPage = 1;
+const _ACAD_STUDENTS_PAGE_SIZE = 50;
+let _acadStudentsTotal = 0;
+let _acadStudentsPageRows = [];
 async function loadStudentsTab(){
-  try{
-    const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
-    // Scoped at the query level for a Trainer — trainer_name is the same field students'
-    // own batch-assignment already keys off of (see assignStudents()/saveBatch()), and the
-    // same match loadLive() already used client-side; pushed into the query itself here so
-    // another Trainer's students never leave the database in the response at all.
-    let query = sb.from('students').select('*').order('enrolled_date',{ascending:false});
-    if (!isHead) query = query.ilike('trainer_name', currentUser.name);
-    const [studentsResult, paymentsResult, entriesResult] = await Promise.all([
-      query,
-      // select('*') rather than naming columns — CONFIRMED LIVE: the real payments table only
-      // has id/student_id/course_fee/created_at right now (discount/discount_by/next_due/note
-      // from savePlan()'s own upsert don't exist as real columns in production yet, a separate,
-      // pre-existing gap outside this change's scope) — naming a missing column here would 42703
-      // the WHOLE query out, same reasoning as batches' own select('*') a few screens over.
-      sb.from('payments').select('*').then(r=>r).catch(()=>({data:[]})),
-      sb.from('payment_entries').select('student_id,amount').then(r=>r).catch(()=>({data:[]})),
+  const isHead = isCurrentlyAcademicHead();
+  await _acadLoadStudentFilterOptions(isHead);
+  _acadStudentsPage = 1;
+  await renderStudentsTable();
+}
+// Batch/course filter dropdowns used to be built from the full student list already in
+// memory — now that the full list is never downloaded, they need their own tiny query
+// instead (name-only, not full rows; scoped to this trainer's own batches for a Trainer
+// login, same visibility boundary as before).
+async function _acadLoadStudentFilterOptions(isHead){
+  try {
+    let bq = sb.from('batches').select('name').order('name');
+    if (!isHead && window._myTrainerId) bq = bq.eq('trainer_id', window._myTrainerId);
+    const [{ data: batchRows }, courseRows] = await Promise.all([
+      bq,
+      COURSE_ROWS.length ? Promise.resolve(COURSE_ROWS) : sb.from('courses').select('name').order('name').then(r => r.data || []),
     ]);
-    _allStudents = studentsResult.data||[];
-    // Payment status resolver (spec Part 4/5) — derived entirely from the existing
-    // payments/payment_entries tables (course_fee/discount + summed amounts already recorded
-    // via Save Plan/Record Payment, see savePlan()/addPay()), never a new/invented field:
-    //   no `payments` row at all, or a fee of 0/unset -> 'None' (No Payment Recorded)
-    //   paid >= fee - discount (and fee > 0)          -> 'Paid'  (Payment Complete)
-    //   0 < paid < fee - discount                      -> 'Partial'
-    //   a payments row/fee exists but nothing paid yet -> 'Pending'
-    const paidByStudent = {};
-    (entriesResult.data||[]).forEach(e => { paidByStudent[e.student_id] = (paidByStudent[e.student_id]||0) + (+e.amount||0); });
-    _acadPaymentByStudent = {};
-    (paymentsResult.data||[]).forEach(p => {
-      const fee = +p.course_fee||0, discount = +p.discount||0, paid = paidByStudent[p.student_id]||0;
-      const due = Math.max(0, fee - discount);
-      let status = 'None';
-      if (fee > 0) status = paid <= 0 ? 'Pending' : (paid >= due ? 'Paid' : 'Partial');
-      _acadPaymentByStudent[p.student_id] = { fee, discount, paid, status };
-    });
     const batchSel = document.getElementById('stu_filter_batch');
     if (batchSel) {
-      const names = [...new Set(_allStudents.map(s=>s.batch_name).filter(Boolean))].sort();
+      const names = [...new Set((batchRows||[]).map(b=>b.name).filter(Boolean))];
       const cur = batchSel.value;
-      // "__unassigned__" — a NEW/unassigned student has no batch_name to filter by (spec: "For
-      // NEW students, Batch filter result should treat them as Unassigned") — a real pseudo-
-      // value, never a real batch name, so it can't collide with one.
       batchSel.innerHTML = '<option value="">All batches</option><option value="__unassigned__">Unassigned</option>' + names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
       batchSel.value = cur;
     }
     const courseSel = document.getElementById('stu_filter_course');
     if (courseSel) {
-      const courses = [...new Set(_allStudents.map(s=>s.programme).filter(Boolean))].sort();
+      const names = [...new Set((courseRows||[]).map(c=>c.name).filter(Boolean))];
       const cur = courseSel.value;
-      courseSel.innerHTML = '<option value="">All courses</option>' + courses.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      courseSel.innerHTML = '<option value="">All courses</option>' + names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
       courseSel.value = cur;
     }
-    renderStudentsTable();
-  }catch(e){ console.warn('Students tab failed to load:', e.message); }
+  } catch(e) { console.warn('Could not load Students filter options:', e.message); }
 }
 function _acadStudentPaymentStatus(s){
   return (_acadPaymentByStudent[s.id] || { status: 'None' }).status;
@@ -4105,37 +4138,130 @@ function _acadStudentLifecycleStatus(s){
   if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(s.batch_name)) return 'Completed';
   return 'In Progress';
 }
-// Search + batch/status filter over the already-fetched roster — client-side, no re-query,
-// since the whole point of a dedicated Students page is fast search/filter over one list.
-// Group priority for the default sort (spec Part 1/9): NEW/UNASSIGNED first, then IN PROGRESS,
-// then COMPLETED — On Freeze/Dropped (real but less common business states, not in the spec's
-// own 3-group list) sort alongside Completed at the end rather than inventing a 4th/5th group.
+// Group priority for the default sort (spec Part 1/9) — used only by the FALLBACK path now
+// (the RPC path computes this same grouping in SQL, see get_students_page's ORDER BY).
 const _ACAD_STUDENT_SORT_GROUP = { New: 0, Unassigned: 0, 'In Progress': 1, Completed: 2, 'On Freeze': 2, Dropped: 2 };
-function renderStudentsTable(){
-  const q = (document.getElementById('stu_search')?.value||'').trim().toLowerCase();
+const _ACAD_STU_BADGE_STYLE = {
+  'In Progress': 'class="badge b-active"',
+  'Dropped': 'class="badge b-inactive"',
+  'Completed': 'class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25)"',
+  'New': 'class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3);border:1px solid rgba(255,255,255,.12)"',
+  'Unassigned': 'class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)"',
+  'On Freeze': 'class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)"',
+};
+function _acadStuPayBadge(payStatus){
+  return payStatus === 'None'
+    ? `<span style="font-size:10.5px;color:var(--tx3)">—</span>`
+    : `<span class="badge" style="${({Paid:'background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25)',Partial:'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)',Pending:'background:rgba(255,5,82,.12);color:var(--brand-3);border:1px solid rgba(255,5,82,.25)'})[payStatus]}">${_ACAD_PAYMENT_LABEL[payStatus]}</span>`;
+}
+// Avatar-initials + contact under the name — reuses the existing .acad-avatar-dot component
+// already used on the dashboard's On Leave/Upcoming Availability rows. Row-building itself is
+// shared between the RPC path (already-computed statuses in each row) and the fallback path
+// (statuses computed client-side per row) — same markup either way.
+function _acadStuRow(s, lifecycle, payStatus){
+  const badgeStyle = _ACAD_STU_BADGE_STYLE[lifecycle] || 'class="badge"';
+  return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
+  <td data-label="Batch">${s.batch_id?esc(s.batch_name||'—'):'—'}</td><td data-label="Course">${esc(s.programme||'—')}</td><td data-label="Coach">${s.batch_id?esc(s.trainer_name||'—'):'—'}</td>
+  <td data-label="Status"><span ${badgeStyle}>${esc(lifecycle)}</span></td>
+  <td data-label="Payment">${_acadStuPayBadge(payStatus)}</td>
+  <td data-label="Enrolled">${s.enrolled_date||'—'}</td>
+  <td data-label="Actions"><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>`;
+}
+function _acadStuPager(page, pageSize, total){
+  const pagerEl = document.getElementById('stu_pager');
+  if (!pagerEl) return;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total ? (page-1)*pageSize + 1 : 0;
+  const to = Math.min(total, page*pageSize);
+  pagerEl.innerHTML = `<span style="color:var(--tx3);font-size:12px">${from}–${to} of ${total}</span>
+    <button class="act-btn" ${page<=1?'disabled':''} onclick="_acadStuGoPage(${page-1})">‹ Prev</button>
+    <span style="font-size:12px;color:var(--tx3)">Page ${page} of ${totalPages}</span>
+    <button class="act-btn" ${page>=totalPages?'disabled':''} onclick="_acadStuGoPage(${page+1})">Next ›</button>`;
+}
+function _acadStuGoPage(p){
+  if (p < 1) return;
+  _acadStudentsPage = p;
+  renderStudentsTable();
+}
+// Any filter/search/sort change resets to page 1 — otherwise "page 3" of an old filter could
+// silently become an out-of-range page of a new, smaller result set.
+function _acadStuFilterChanged(){
+  _acadStudentsPage = 1;
+  renderStudentsTable();
+}
+async function renderStudentsTable(){
+  const q = (document.getElementById('stu_search')?.value||'').trim();
   const batchF = document.getElementById('stu_filter_batch')?.value||'';
   const statusF = document.getElementById('stu_filter_status')?.value||'';
   const paymentF = document.getElementById('stu_filter_payment')?.value||'';
   const courseF = document.getElementById('stu_filter_course')?.value||'';
   const sortMode = document.getElementById('stu_sort')?.value||'new_first';
+  const isHead = isCurrentlyAcademicHead();
+
+  if (_acadStudentsMode !== 'fallback') {
+    const { data, error } = await sb.rpc('get_students_page', {
+      p_page: _acadStudentsPage, p_page_size: _ACAD_STUDENTS_PAGE_SIZE,
+      p_search: q || null, p_status: statusF || null,
+      p_batch_id: (batchF && batchF !== '__unassigned__') ? (await _acadResolveBatchId(batchF)) : null,
+      p_unassigned_only: batchF === '__unassigned__',
+      p_course: courseF || null,
+      p_trainer_scope: isHead ? null : currentUser.name,
+      p_sort: sortMode, p_payment: paymentF || null,
+    });
+    if (!error) {
+      _acadStudentsMode = 'rpc';
+      _acadStudentsPageRows = data || [];
+      _acadStudentsTotal = (data && data[0] && Number(data[0].total_count)) || 0;
+      const countEl = document.getElementById('studentsCount');
+      if (countEl) countEl.textContent = _acadStudentsTotal;
+      document.getElementById('studentsList').innerHTML = _acadStudentsPageRows.length
+        ? _acadStudentsPageRows.map(s => _acadStuRow(s, s.computed_status, s.payment_status)).join('')
+        : `<tr><td colspan="8" class="empty">${(q||statusF||paymentF||batchF||courseF)?'No students match your search/filter.':'No students yet.'}</td></tr>`;
+      _acadStuPager(_acadStudentsPage, _ACAD_STUDENTS_PAGE_SIZE, _acadStudentsTotal);
+      return;
+    }
+    // RPC unavailable (Phase 5 migration not yet run in this Supabase project) — fall back to
+    // the previous full-fetch-and-filter-client-side behavior, permanently for this session
+    // (no point retrying the RPC every keystroke once it's confirmed missing).
+    console.warn('get_students_page RPC unavailable, falling back to client-side Students filtering:', error.message);
+    _acadStudentsMode = 'fallback';
+  }
+
+  // ---- FALLBACK PATH (pre-refactor behavior, unchanged) ----
+  if (!_allStudents || !_acadFallbackLoaded) {
+    let query = sb.from('students').select('*').order('enrolled_date',{ascending:false});
+    if (!isHead) query = query.ilike('trainer_name', currentUser.name);
+    const [studentsResult, paymentsResult, entriesResult] = await Promise.all([
+      query,
+      sb.from('payments').select('*').then(r=>r).catch(()=>({data:[]})),
+      sb.from('payment_entries').select('student_id,amount').then(r=>r).catch(()=>({data:[]})),
+    ]);
+    _allStudents = studentsResult.data||[];
+    const paidByStudent = {};
+    (entriesResult.data||[]).forEach(e => { paidByStudent[e.student_id] = (paidByStudent[e.student_id]||0) + (+e.amount||0); });
+    _acadPaymentByStudent = {};
+    (paymentsResult.data||[]).forEach(p => {
+      const fee = +p.course_fee||0, discount = +p.discount||0, paid = paidByStudent[p.student_id]||0;
+      const due = Math.max(0, fee - discount);
+      let status = 'None';
+      if (fee > 0) status = paid <= 0 ? 'Pending' : (paid >= due ? 'Paid' : 'Partial');
+      _acadPaymentByStudent[p.student_id] = { fee, discount, paid, status };
+    });
+    _acadFallbackLoaded = true;
+  }
+  const ql = q.toLowerCase();
   const rows = _allStudents.filter(s => {
     if (batchF === '__unassigned__') { if (s.batch_id) return false; }
     else if (batchF && s.batch_name !== batchF) return false;
     if (statusF && _acadStudentLifecycleStatus(s) !== statusF) return false;
     if (paymentF && _acadStudentPaymentStatus(s) !== paymentF) return false;
     if (courseF && s.programme !== courseF) return false;
-    if (q) {
+    if (ql) {
       const hay = [s.name, s.uin, s.contact].filter(Boolean).join(' ').toLowerCase();
-      if (!hay.includes(q)) return false;
+      if (!hay.includes(ql)) return false;
     }
     return true;
   });
-  // All sorting is local, over the already-fetched roster — no re-query on every dropdown
-  // change (spec Part 15: "should feel instant... filter/sort locally where the data is already
-  // loaded"). created_at (real insert timestamp) is the "how new" signal, not enrolled_date
-  // (a business-meaning date the Head can set to anything, including backdated) — matches Part
-  // 11's "student added today" appearing above "student added yesterday" by actual creation
-  // order, not by whatever enrolment date was typed in.
   const byCreatedDesc = (a,b) => (b.created_at||'').localeCompare(a.created_at||'');
   const cmp = {
     new_first: (a,b) => (_ACAD_STUDENT_SORT_GROUP[_acadStudentLifecycleStatus(a)]??1) - (_ACAD_STUDENT_SORT_GROUP[_acadStudentLifecycleStatus(b)]??1) || byCreatedDesc(a,b),
@@ -4149,41 +4275,22 @@ function renderStudentsTable(){
   rows.sort(cmp);
   const countEl = document.getElementById('studentsCount');
   if (countEl) countEl.textContent = rows.length + (rows.length!==_allStudents.length ? ` / ${_allStudents.length}` : '');
-  // Avatar-initials + contact under the name — reuses the existing .acad-avatar-dot
-  // component already used on the dashboard's On Leave/Upcoming Availability rows, not a
-  // new one, matching the two-line student cell in the reference design.
-  document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => {
-    const lifecycle = _acadStudentLifecycleStatus(s);
-    // Batch/Coach show a plain "—" when unassigned (spec's own example table), not the string
-    // "Unassigned" sitting in the Batch cell — that word is reserved for the Status badge/filter
-    // now, so a NEW student's row doesn't say "Unassigned" twice in two different columns.
-    // Only two real badge color classes exist (b-active green / b-inactive red) — New/
-    // Unassigned/On Freeze/Completed get their own neutral inline styles rather than forcing a
-    // 5-state lifecycle into a 2-color system.
-    const badgeStyle = {
-      'In Progress': 'class="badge b-active"',
-      'Dropped': 'class="badge b-inactive"',
-      'Completed': 'class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25)"',
-      'New': 'class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3);border:1px solid rgba(255,255,255,.12)"',
-      'Unassigned': 'class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)"',
-      'On Freeze': 'class="badge" style="background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)"',
-    }[lifecycle] || 'class="badge"';
-    // Payment badge — subtle, no amounts shown here (spec Part 5: "quick visibility," amounts
-    // stay in the student detail modal's own Payments section, unchanged). 'None' (no payments
-    // row at all — the overwhelming majority of real students right now) renders as a plain
-    // dim label, not a colored badge, so it doesn't read as a warning for something that was
-    // simply never entered.
-    const payStatus = _acadStudentPaymentStatus(s);
-    const payBadge = payStatus === 'None'
-      ? `<span style="font-size:10.5px;color:var(--tx3)">—</span>`
-      : `<span class="badge" style="${({Paid:'background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25)',Partial:'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)',Pending:'background:rgba(255,5,82,.12);color:var(--brand-3);border:1px solid rgba(255,5,82,.25)'})[payStatus]}">${_ACAD_PAYMENT_LABEL[payStatus]}</span>`;
-    return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
-    <td data-label="Batch">${s.batch_id?esc(s.batch_name||'—'):'—'}</td><td data-label="Course">${esc(s.programme||'—')}</td><td data-label="Coach">${s.batch_id?esc(s.trainer_name||'—'):'—'}</td>
-    <td data-label="Status"><span ${badgeStyle}>${esc(lifecycle)}</span></td>
-    <td data-label="Payment">${payBadge}</td>
-    <td data-label="Enrolled">${s.enrolled_date||'—'}</td>
-    <td data-label="Actions"><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>`;
-  }).join('') : `<tr><td colspan="8" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
+  document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => _acadStuRow(s, _acadStudentLifecycleStatus(s), _acadStudentPaymentStatus(s))).join('')
+    : `<tr><td colspan="8" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
+  const pagerEl = document.getElementById('stu_pager');
+  if (pagerEl) pagerEl.innerHTML = ''; // no pagination controls in fallback mode — same as before this refactor
+}
+let _acadFallbackLoaded = false;
+// The RPC takes a batch UUID, but the <select> stores the batch NAME (matches every other
+// filter dropdown's own value convention in this file) — resolved once per lookup rather than
+// changing the dropdown's own values, so it stays consistent with stu_filter_course/status.
+let _acadBatchNameToId = null;
+async function _acadResolveBatchId(name){
+  if (!_acadBatchNameToId) {
+    const { data } = await sb.from('batches').select('id,name');
+    _acadBatchNameToId = new Map((data||[]).map(b => [b.name, b.id]));
+  }
+  return _acadBatchNameToId.get(name) || null;
 }
 
 // ============================================================================

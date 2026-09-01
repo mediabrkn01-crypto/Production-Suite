@@ -2707,9 +2707,46 @@
             }
         }
 
+        // BUG FIX / SCALABILITY (production refactor, Phase 2 — confirmed live in the earlier
+        // capacity audit): this used to be `setInterval(() => syncLedgerEngine(false), 4000)` —
+        // EVERY signed-in user, every 4 seconds, forever, running 4 unfiltered full-table reads
+        // (user_roster including its own base64 avatar column, assignments, system_logs,
+        // attendance_logs). Measured at 100 concurrent users that's ~100 queries/sec of pure
+        // idle polling before anyone does anything; at 1,000 users it's ~1,000/sec. Replaced
+        // with realtime: syncLedgerEngine(false) is already the correct "refresh everything
+        // this screen shows" function (it's what every existing post-action call site already
+        // uses after a local mutation) — it just needs to also fire when a DIFFERENT user
+        // changes one of these tables, not on a blind timer. See _beInitRealtime below.
+        let _beRealtimeChannels = [];
+        let _beRealtimeDebounce = null;
+        function _beScheduleRealtimeSync() {
+            clearTimeout(_beRealtimeDebounce);
+            _beRealtimeDebounce = setTimeout(() => { if (activeUser) syncLedgerEngine(false); }, 600);
+        }
+        function _beInitRealtime() {
+            _beTeardownRealtime();
+            if (typeof dbInstance === 'undefined' || !dbInstance || typeof dbInstance.channel !== 'function') return;
+            const tag = (typeof activeEmail === 'string' && activeEmail) || 'anon';
+            ['user_roster', 'assignments', 'system_logs', 'attendance_logs'].forEach(table => {
+                const ch = dbInstance.channel('be-rt-' + table + '-' + tag)
+                    .on('postgres_changes', { event: '*', schema: 'public', table }, () => _beScheduleRealtimeSync())
+                    .subscribe();
+                _beRealtimeChannels.push(ch);
+            });
+        }
+        function _beTeardownRealtime() {
+            _beRealtimeChannels.forEach(ch => { try { dbInstance.removeChannel(ch); } catch (e) {} });
+            _beRealtimeChannels = [];
+            clearTimeout(_beRealtimeDebounce);
+        }
+        window.addEventListener('beforeunload', _beTeardownRealtime);
+        // A lightweight reconciliation poll REPLACES the old 4s loop as a safety net only — not
+        // the primary sync mechanism anymore. Realtime events (above) are what actually keeps
+        // the screen live; this just catches a missed/dropped event or a connection that
+        // silently died, at a cost 45x lower than before.
         setInterval(() => {
             if (activeUser) syncLedgerEngine(false);
-        }, 4000);
+        }, 180000);
 
         // Inline error under the fields, never a browser alert() (spec item 15) — same message
         // text as before, just displayed differently.
@@ -2892,6 +2929,9 @@
             if (!activeUser) return;
 
             await syncLedgerEngine(false);
+            // Realtime replaces the old 4s polling loop — subscribed once per login, right
+            // after the initial sync above so it never delays first render.
+            if (typeof _beInitRealtime === 'function') _beInitRealtime();
 
             // Always refresh the active role from the live roster (fixes stale cached roles)
             const liveMe = userRoster.find(u => u.email === activeEmail || u.name === activeUser);
@@ -3337,8 +3377,11 @@
             localStorage.removeItem('be_active_role');
             localStorage.removeItem('be_active_email');
             // location.reload() below already resets all JS state, including the shared
-            // profile cache — this is explicit/defensive rather than strictly load-bearing.
+            // profile cache and every open WebSocket — these are explicit/defensive backstops
+            // rather than strictly load-bearing, same reasoning as academics.html's own
+            // identical pattern.
             if (typeof clearCurrentUserProfileCache === 'function') clearCurrentUserProfileCache();
+            if (typeof _beTeardownRealtime === 'function') _beTeardownRealtime();
             location.reload();
         }
 
