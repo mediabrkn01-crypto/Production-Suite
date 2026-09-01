@@ -196,12 +196,27 @@
             opacity: .16; filter: blur(70px); top: -60px; left: -60px; pointer-events: none;
         }
         .be-login-visual-inner { position: relative; text-align: center; max-width: 340px; }
-        .be-login-visual-art { display: flex; justify-content: center; margin-bottom: 24px; }
-        .be-login-visual-heading { font-size: 21px; font-weight: 800; color: var(--text-main); line-height: 1.3; margin-bottom: 10px; }
-        .be-login-visual-sub { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+        /* Three real slides now (was: one static illustration + decorative-only dots) — each
+           .be-login-slide-svg is absolutely stacked in this one sized box so swapping which one
+           is .active is a pure opacity/transform crossfade, no layout jump between slides of
+           slightly different visual weight. aspect-ratio matches every slide's own
+           viewBox="0 0 220 160" so the box is correctly sized before any SVG paints. */
+        .be-login-visual-art { position: relative; width: 100%; max-width: 280px; aspect-ratio: 220 / 160; margin: 0 auto 24px; }
+        .be-login-slide-svg {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            opacity: 0; transform: translateX(10px);
+            transition: opacity .3s ease, transform .3s ease;
+        }
+        .be-login-slide-svg.active { opacity: 1; transform: translateX(0); }
+        /* Headline/subtext crossfade the same way (spec: "fade + slight horizontal movement,
+           300-500ms") — JS toggles .be-login-fade on/off around the text swap itself, since
+           these are single elements whose text content changes, not stacked duplicates. */
+        .be-login-visual-heading, .be-login-visual-sub { transition: opacity .3s ease, transform .3s ease; }
+        .be-login-visual-heading.be-login-fade, .be-login-visual-sub.be-login-fade { opacity: 0; transform: translateX(10px); }
         .be-login-dots { display: flex; gap: 6px; justify-content: center; margin-top: 26px; }
-        .be-login-dot { width: 20px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.14); transition: background .25s, width .25s; }
+        .be-login-dot { width: 20px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.14); transition: background .25s, width .25s; border: none; padding: 0; cursor: pointer; }
         .be-login-dot.active { background: linear-gradient(90deg, var(--brand-1), var(--brand-3)); width: 28px; }
+        .be-login-dot:hover:not(.active) { background: rgba(255,255,255,0.28); }
 
         @media (max-width: 860px) {
             .be-login-shell { grid-template-columns: 1fr; min-height: 0; border-radius: 20px; }
@@ -805,35 +820,86 @@
                 <div class="be-login-visual-side">
                     <div class="be-login-visual-glow"></div>
                     <div class="be-login-visual-inner">
-                        <div class="be-login-visual-art" aria-hidden="true">
-                            <svg viewBox="0 0 220 160" style="width:100%;height:auto;max-width:280px">
+                        <!-- Three real slides (was: one static illustration the "carousel" dots
+                             cycled past without anything ever actually changing). Each slide's
+                             SVG is a self-contained illustration — own gradient ids per slide
+                             (s1g#/s2g#/s3g#) so nothing collides now that all three live in the
+                             DOM at once, same orange/pink/red/purple accent family and viewBox
+                             proportions throughout so they read as one set, not three unrelated
+                             images. Headline/sub text live OUTSIDE the art box (one shared
+                             element each, swapped by JS) since there are only three short
+                             strings, not enough to justify stacking six more DOM nodes. -->
+                        <div class="be-login-visual-art" id="be-login-art" aria-hidden="true">
+                            <svg class="be-login-slide-svg active" data-slide="0" viewBox="0 0 220 160">
                                 <defs>
-                                    <linearGradient id="beLoginGrad1" x1="0" y1="0" x2="1" y2="1">
-                                        <stop offset="0%" stop-color="#ff6b06"/><stop offset="100%" stop-color="#ff0552"/>
-                                    </linearGradient>
-                                    <linearGradient id="beLoginGrad2" x1="0" y1="0" x2="1" y2="1">
-                                        <stop offset="0%" stop-color="#f9182f"/><stop offset="100%" stop-color="#7c3aed"/>
-                                    </linearGradient>
+                                    <linearGradient id="s1g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ff6b06"/><stop offset="100%" stop-color="#ff0552"/></linearGradient>
+                                    <linearGradient id="s1g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f9182f"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient>
                                 </defs>
                                 <rect x="18" y="34" width="120" height="86" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)"/>
-                                <rect x="30" y="48" width="70" height="8" rx="4" fill="url(#beLoginGrad1)" opacity="0.85"/>
+                                <rect x="30" y="48" width="70" height="8" rx="4" fill="url(#s1g1)" opacity="0.85"/>
                                 <rect x="30" y="64" width="96" height="6" rx="3" fill="rgba(255,255,255,0.18)"/>
                                 <rect x="30" y="76" width="80" height="6" rx="3" fill="rgba(255,255,255,0.12)"/>
-                                <rect x="30" y="92" width="16" height="20" rx="2" fill="url(#beLoginGrad2)" opacity="0.9"/>
-                                <rect x="52" y="82" width="16" height="30" rx="2" fill="url(#beLoginGrad1)" opacity="0.9"/>
+                                <rect x="30" y="92" width="16" height="20" rx="2" fill="url(#s1g2)" opacity="0.9"/>
+                                <rect x="52" y="82" width="16" height="30" rx="2" fill="url(#s1g1)" opacity="0.9"/>
                                 <rect x="74" y="72" width="16" height="40" rx="2" fill="rgba(255,255,255,0.22)"/>
-                                <circle cx="168" cy="46" r="30" fill="none" stroke="url(#beLoginGrad2)" stroke-width="9" stroke-dasharray="72 116" stroke-linecap="round" transform="rotate(-40 168 46)"/>
+                                <circle cx="168" cy="46" r="30" fill="none" stroke="url(#s1g2)" stroke-width="9" stroke-dasharray="72 116" stroke-linecap="round" transform="rotate(-40 168 46)"/>
                                 <circle cx="168" cy="46" r="30" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="9" stroke-dasharray="44 144" stroke-linecap="round" transform="rotate(100 168 46)"/>
                                 <rect x="150" y="96" width="52" height="40" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)"/>
-                                <path d="M158 122 L168 108 L178 116 L194 100" fill="none" stroke="url(#beLoginGrad1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M158 122 L168 108 L178 116 L194 100" fill="none" stroke="url(#s1g1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <!-- Slide 2 — Work Together / connected workflow: three linked nodes
+                                 (a small team) over a task-checklist card, deliberately a
+                                 different composition (radial/connected vs slide 1's grid-of-
+                                 rectangles) so it can't be mistaken for the same image. -->
+                            <svg class="be-login-slide-svg" data-slide="1" viewBox="0 0 220 160">
+                                <defs>
+                                    <linearGradient id="s2g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ff6b06"/><stop offset="100%" stop-color="#ff0552"/></linearGradient>
+                                    <linearGradient id="s2g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f9182f"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient>
+                                </defs>
+                                <path d="M60 40 L110 90" stroke="rgba(255,255,255,0.2)" stroke-width="2" stroke-dasharray="3 4"/>
+                                <path d="M110 90 L165 50" stroke="rgba(255,255,255,0.2)" stroke-width="2" stroke-dasharray="3 4"/>
+                                <path d="M60 40 L165 50" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="3 4"/>
+                                <circle cx="60" cy="40" r="20" fill="rgba(255,255,255,0.05)" stroke="url(#s2g1)" stroke-width="2.5"/>
+                                <circle cx="60" cy="40" r="7" fill="url(#s2g1)"/>
+                                <circle cx="110" cy="90" r="25" fill="rgba(255,255,255,0.06)" stroke="url(#s2g2)" stroke-width="2.5"/>
+                                <circle cx="110" cy="90" r="8.5" fill="url(#s2g2)"/>
+                                <circle cx="165" cy="50" r="18" fill="rgba(255,255,255,0.05)" stroke="url(#s2g1)" stroke-width="2.5"/>
+                                <circle cx="165" cy="50" r="6.5" fill="url(#s2g1)"/>
+                                <rect x="35" y="112" width="150" height="34" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)"/>
+                                <rect x="47" y="122" width="14" height="14" rx="4" fill="url(#s2g2)" opacity="0.85"/>
+                                <path d="M50 129 L54 133 L61 124" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                <rect x="70" y="123" width="70" height="5" rx="2.5" fill="rgba(255,255,255,0.22)"/>
+                                <rect x="70" y="132" width="50" height="5" rx="2.5" fill="rgba(255,255,255,0.12)"/>
+                            </svg>
+                            <!-- Slide 3 — People. Progress. All in Sync: a calendar/attendance
+                                 grid + a progress ring with a person glyph + a growth sparkline,
+                                 a third distinct composition (dot-grid card + ring+person, not
+                                 bars or connected nodes). -->
+                            <svg class="be-login-slide-svg" data-slide="2" viewBox="0 0 220 160">
+                                <defs>
+                                    <linearGradient id="s3g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ff6b06"/><stop offset="100%" stop-color="#ff0552"/></linearGradient>
+                                    <linearGradient id="s3g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f9182f"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient>
+                                </defs>
+                                <rect x="20" y="30" width="100" height="90" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)"/>
+                                <rect x="20" y="30" width="100" height="22" rx="10" fill="url(#s3g1)" opacity="0.22"/>
+                                <line x1="20" y1="52" x2="120" y2="52" stroke="rgba(255,255,255,0.14)"/>
+                                <circle cx="36" cy="66" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="52" cy="66" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="68" cy="66" r="3" fill="url(#s3g1)"/><circle cx="84" cy="66" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="100" cy="66" r="3" fill="rgba(255,255,255,0.25)"/>
+                                <circle cx="36" cy="82" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="52" cy="82" r="3" fill="url(#s3g2)"/><circle cx="68" cy="82" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="84" cy="82" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="100" cy="82" r="3" fill="rgba(255,255,255,0.25)"/>
+                                <circle cx="36" cy="98" r="3" fill="url(#s3g1)"/><circle cx="52" cy="98" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="68" cy="98" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="84" cy="98" r="3" fill="rgba(255,255,255,0.25)"/><circle cx="100" cy="98" r="3" fill="rgba(255,255,255,0.25)"/>
+                                <circle cx="168" cy="55" r="26" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8"/>
+                                <circle cx="168" cy="55" r="26" fill="none" stroke="url(#s3g2)" stroke-width="8" stroke-dasharray="122 163" stroke-linecap="round" transform="rotate(-90 168 55)"/>
+                                <circle cx="168" cy="49" r="8" fill="rgba(255,255,255,0.85)"/>
+                                <path d="M154 78 q14-14 28 0" fill="rgba(255,255,255,0.85)"/>
+                                <rect x="140" y="96" width="62" height="40" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)"/>
+                                <path d="M148 124 L160 112 L172 118 L188 100" fill="none" stroke="url(#s3g1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </div>
-                        <h3 class="be-login-visual-heading">One Workspace.<br>Everything Connected.</h3>
-                        <p class="be-login-visual-sub">Manage your work, attendance, academics, HR and team activity from one place.</p>
-                        <div class="be-login-dots">
-                            <span class="be-login-dot active" data-slide="0"></span>
-                            <span class="be-login-dot" data-slide="1"></span>
-                            <span class="be-login-dot" data-slide="2"></span>
+                        <h3 class="be-login-visual-heading" id="be-login-heading">One Workspace.<br>Everything Connected.</h3>
+                        <p class="be-login-visual-sub" id="be-login-sub">Manage your work, attendance, academics, HR and team activity from one place.</p>
+                        <div class="be-login-dots" role="tablist" aria-label="Login screen slides">
+                            <span class="be-login-dot active" data-slide="0" role="tab" tabindex="0" aria-label="Slide 1" onclick="beLoginGoToSlide(0, true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();beLoginGoToSlide(0, true);}"></span>
+                            <span class="be-login-dot" data-slide="1" role="tab" tabindex="0" aria-label="Slide 2" onclick="beLoginGoToSlide(1, true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();beLoginGoToSlide(1, true);}"></span>
+                            <span class="be-login-dot" data-slide="2" role="tab" tabindex="0" aria-label="Slide 3" onclick="beLoginGoToSlide(2, true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();beLoginGoToSlide(2, true);}"></span>
                         </div>
                     </div>
                 </div>
@@ -2668,18 +2734,68 @@
             if (window.lucide) lucide.createIcons();
         }
 
-        // Lightweight decorative slide-dot cycle on the login screen's right visual panel
-        // (spec item 5 — "keep this lightweight") — no real slide content changes, just which
-        // dot is lit, and only ticks while the login screen is actually visible.
-        setInterval(() => {
-            const screen = document.getElementById('portal-login-screen');
-            if (!screen || screen.classList.contains('hidden')) return;
-            const dots = document.querySelectorAll('.be-login-dot');
-            if (!dots.length) return;
-            const cur = [...dots].findIndex(d => d.classList.contains('active'));
-            dots.forEach(d => d.classList.remove('active'));
-            dots[(cur + 1) % dots.length].classList.add('active');
-        }, 3000);
+        // Login screen carousel — was a decorative dot-cycle only (dots moved, but the
+        // illustration/headline/subtext never changed underneath them, so it never actually
+        // looked like a carousel). Now three real slides with their own copy, dots that
+        // actually navigate, and a clean auto-rotate/restart-on-manual-interaction cycle.
+        const BE_LOGIN_SLIDES = [
+            { heading: 'One Workspace.<br>Everything Connected.', sub: 'Manage your work, attendance, academics, HR and team activity from one place.' },
+            { heading: 'Work Together.<br>Move Faster.', sub: 'Stay aligned across teams, tasks, schedules and daily operations in real time.' },
+            { heading: 'People. Progress.<br>All in Sync.', sub: 'Track attendance, batches, schedules and performance with one connected system.' },
+        ];
+        let _beLoginSlideIdx = 0;
+        let _beLoginRotateTimer = null;
+        let _beLoginSwapTimer = null; // the in-flight "swap DOM to the new slide" timeout, if any
+        function beLoginGoToSlide(idx, manual) {
+            if (idx === _beLoginSlideIdx) { if (manual) beLoginRestartRotation(); return; }
+            _beLoginSlideIdx = idx;
+            const heading = document.getElementById('be-login-heading');
+            const sub = document.getElementById('be-login-sub');
+            const slide = BE_LOGIN_SLIDES[idx];
+            // BUG FIX: the art (SVG opacity crossfade) and dots used to swap INSTANTLY while
+            // the headline/sub swap was deferred 300ms behind them — a screenshot/glance mid-
+            // transition caught slide 1's art next to slide 2's text with slide 3's dot lit,
+            // three different slides on screen at once. Every visible piece (art, dots, text)
+            // now swaps at the exact same moment — the midpoint of one short fade-out — so the
+            // whole crossfade reads as one coordinated ~400ms transition, not three independently
+            // timed ones.
+            if (heading && sub && slide) heading.classList.add('be-login-fade'), sub.classList.add('be-login-fade');
+            // BUG FIX: a second call to this function landing before the first one's swap timeout
+            // fired (e.g. two auto-rotation ticks close together, or a user clicking two dots
+            // quickly) used to leave TWO pending timeouts in flight — each one closed over its
+            // own `idx`/`slide` and applied unconditionally whenever it fired, so the OLDER
+            // (now-stale) one could still land after the newer one and visibly revert the DOM to
+            // the wrong slide while _beLoginSlideIdx already correctly pointed at the latest one.
+            // Cancelling any prior pending swap here means only the most recent call's callback
+            // can ever actually touch the DOM.
+            clearTimeout(_beLoginSwapTimer);
+            _beLoginSwapTimer = setTimeout(() => {
+                if (heading && sub && slide) {
+                    heading.innerHTML = slide.heading;
+                    sub.textContent = slide.sub;
+                    heading.classList.remove('be-login-fade');
+                    sub.classList.remove('be-login-fade');
+                }
+                document.querySelectorAll('.be-login-slide-svg').forEach(svg => {
+                    svg.classList.toggle('active', Number(svg.dataset.slide) === idx);
+                });
+                document.querySelectorAll('.be-login-dot').forEach(dot => {
+                    const isActive = Number(dot.dataset.slide) === idx;
+                    dot.classList.toggle('active', isActive);
+                    dot.setAttribute('aria-selected', String(isActive));
+                });
+            }, 180);
+            if (manual) beLoginRestartRotation();
+        }
+        function beLoginRestartRotation() {
+            clearInterval(_beLoginRotateTimer);
+            _beLoginRotateTimer = setInterval(() => {
+                const screen = document.getElementById('portal-login-screen');
+                if (!screen || screen.classList.contains('hidden')) return; // only while the login screen is actually visible
+                beLoginGoToSlide((_beLoginSlideIdx + 1) % BE_LOGIN_SLIDES.length, false);
+            }, 4500); // spec: "every 4-5 seconds"
+        }
+        beLoginRestartRotation();
 
         async function handlePortalLogin() {
             const userInput = document.getElementById('portal-user-input').value.trim().toLowerCase();
