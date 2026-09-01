@@ -32,23 +32,31 @@
       var startAfter = icon || link.firstElementChild;
       if (!startAfter) return;
       var frag = document.createDocumentFragment();
+      var badges = []; // BUG FIX: badges used to be left exactly where they started (right
+      // after the icon), while the label text got moved into a span appended at the very END
+      // of the link — so a badge authored AFTER its label in markup (icon, text, badge —
+      // meant to sit flush right via its own ml-auto) visually jumped to BEFORE the label
+      // instead ("🔔  [3]  Notifications"). Collected here and re-appended, in their original
+      // order, right after the label span below — so DOM order (and ml-auto's right-alignment)
+      // matches what the page actually authored again.
       var node = startAfter.nextSibling;
       var labelText = '';
       while (node) {
         var next = node.nextSibling;
         var isBadge = node.nodeType === 1 && /badge/i.test(node.id + ' ' + node.className);
-        if (isBadge) { node = next; continue; } // leave badge where it is, outside the label span
+        if (isBadge) { badges.push(node); node = next; continue; }
         if (node.nodeType === 3) labelText += node.textContent;
         else if (node.nodeType === 1) labelText += node.textContent;
         frag.appendChild(node);
         node = next;
       }
       labelText = labelText.replace(/\s+/g, ' ').trim();
-      if (!frag.childNodes.length) return;
+      if (!frag.childNodes.length && !badges.length) return;
       var span = document.createElement('span');
       span.className = 'be-nav-label';
       span.appendChild(frag);
       link.appendChild(span);
+      badges.forEach(function (b) { link.appendChild(b); });
       if (labelText) {
         link.setAttribute('data-be-tip', labelText);
         if (!link.title) link.title = labelText; // native tooltip fallback, always present
@@ -96,6 +104,22 @@
       collapsed = !collapsed;
       setCollapsed(collapsed);
       applyState(aside, toggleBtn, collapsed);
+    });
+
+    // Hover auto-expand/auto-close: while the sidebar is in its collapsed (icon-rail) state,
+    // moving the mouse onto it temporarily shows full labels/widths again; moving off closes it
+    // back to the rail. Purely a visual, temporary state (be-hover-expanded) — never touches
+    // `collapsed`/localStorage, so the persisted collapsed preference (and what the toggle
+    // button/icon show) is completely unaffected; leaving the sidebar with the mouse still
+    // leaves it exactly as collapsed as it was. No-op while already expanded — nothing to
+    // auto-open that isn't already open.
+    aside.addEventListener('mouseenter', function () {
+      if (!collapsed) return;
+      aside.classList.add('be-hover-expanded');
+      if (window.lucide) window.lucide.createIcons();
+    });
+    aside.addEventListener('mouseleave', function () {
+      aside.classList.remove('be-hover-expanded');
     });
 
     // A tab switch inside the app (switchTab/acadSwitchTab/switchHRSubtab)
