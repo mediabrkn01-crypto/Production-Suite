@@ -28,8 +28,17 @@
     var links = aside.querySelectorAll('.sidebar-link, .acad-nav-link');
     links.forEach(function (link) {
       if (link.querySelector('.be-nav-label')) return; // already wrapped
-      var icon = link.querySelector('i[data-lucide], svg');
-      var startAfter = icon || link.firstElementChild;
+      // BUG FIX: this used to find the icon via querySelector (searches ALL descendants), not
+      // just the link's own first child — harmless for a bare <i> icon, but wrong for a nav
+      // link whose icon is now wrapped together with its own corner notification badge (e.g.
+      // Notifications: <span style="position:relative"><i>…</i><span id="…badge…">…</span>
+      // </span> Notifications) — it would reach past that wrapper and grab the inner <i>
+      // directly, so the walk below started from INSIDE the wrapper and treated the badge as a
+      // stray sibling to rescue, ripping it out of its own icon-relative positioning and
+      // reattaching it as a direct child of the link instead. The icon (bare, or wrapped with
+      // its own badge) is always the link's literal first element child in every real nav link
+      // here — using that directly keeps an icon+badge wrapper intact and untouched.
+      var startAfter = link.firstElementChild;
       if (!startAfter) return;
       var frag = document.createDocumentFragment();
       var badges = []; // BUG FIX: badges used to be left exactly where they started (right

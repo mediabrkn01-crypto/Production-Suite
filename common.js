@@ -547,16 +547,30 @@ async function loadMyHRData() {
                     badge.classList.add('hidden');
                 }
             }
-            // Also update sidebar and mobile notification badges
+            // Also update sidebar and mobile notification badges — both now the same small
+            // corner-overlay dot on the bell icon (nested inside its own position:relative
+            // wrapper) as notif-badge-corner above, not a separate floating box sitting beside
+            // the label (which used to land at the far right of the row, or — once collapsed —
+            // detached from the icon entirely with nothing to sit next to). display:'flex' (not
+            // 'inline-block') so the count is actually centered inside the circle, same as
+            // notif-badge-corner/notif-badge-mobile already do.
             const sidebarBadge = document.getElementById('notif-badge-sidebar');
             if (sidebarBadge) {
-                sidebarBadge.textContent = total;
-                sidebarBadge.style.display = total > 0 ? 'inline-block' : 'none';
+                sidebarBadge.textContent = total > 99 ? '99+' : total;
+                sidebarBadge.style.display = total > 0 ? 'flex' : 'none';
             }
             const mobileBadge = document.getElementById('notif-badge-mobile');
             if (mobileBadge) {
-                mobileBadge.textContent = total;
+                mobileBadge.textContent = total > 99 ? '99+' : total;
                 mobileBadge.style.display = total > 0 ? 'flex' : 'none';
+            }
+            // Mobile hamburger-drawer's own Notifications row — previously had no badge/count
+            // at all, so an employee had to open the drawer and click in blind to find out
+            // whether anything was waiting.
+            const mobileDrawerBadge = document.getElementById('notif-badge-mobile-drawer');
+            if (mobileDrawerBadge) {
+                mobileDrawerBadge.textContent = total > 99 ? '99+' : total;
+                mobileDrawerBadge.style.display = total > 0 ? 'flex' : 'none';
             }
         }
 
