@@ -5176,6 +5176,30 @@ async function saveBatchEdit(){
 //     availability has no date dimension; a trainer with no declared window covering this
 //     hour is "not set" (they haven't offered this hour at all), distinct from a declared
 //     window that's currently occupied by an active batch ("booked").
+// DROPDOWN AUDIT FOLLOW-UP (item 1): the canonical, single-source-of-truth trainer-eligibility
+// check — the SAME get_available_trainers() RPC that builds the Available Trainers dropdown,
+// just narrowed to one trainer id via its p_trainer_id param. This is what saveBatch() calls at
+// the moment of Create Batch, not a second reimplementation of the rule — closes the exact race
+// condition the spec calls out: dropdown said available, another Head books the trainer before
+// this form's Save, this re-check catches it server-side instead of trusting the stale
+// selection. Falls back to the older client-side checkBatchTrainerConflict() (defined right
+// below) only if the RPC itself is unreachable — same degrade-gracefully convention as every
+// other RPC in this file, not a parallel implementation of the eligibility rule itself.
+async function _beValidateTrainerForSave(trainerId, hour, duration, days, startDate, endDate, courseName){
+  if (!trainerId) return { ok:false, message:'Pick a Trainer / Coach — the dropdown only offers trainers who are actually available at the Batch Time you picked.' };
+  const { data, error } = await sb.rpc('get_available_trainers', {
+    p_start_time: hour, p_duration_minutes: duration,
+    p_days: (days && days.length) ? days : null, p_start_date: startDate || null, p_end_date: endDate || null,
+    p_course: courseName, p_trainer_id: trainerId
+  });
+  if (!error) {
+    const stillValid = (data || []).some(t => String(t.id) === String(trainerId));
+    return stillValid ? { ok:true } : { ok:false, message:'This trainer is no longer available for the selected slot. Please choose another trainer.' };
+  }
+  console.warn('get_available_trainers (final save-time check) unavailable, falling back to client-side conflict check:', error.message);
+  const conflict = await checkBatchTrainerConflict();
+  return conflict ? { ok:false, message: conflict.message } : { ok:true };
+}
 // Returns null if clear to book, or { reason, message } if blocked.
 async function checkBatchTrainerConflict(){
   const out = document.getElementById('m_b_avail');
@@ -5503,12 +5527,15 @@ async function saveBatch(){
   // ambiguous, not just untidy.
   const {data:dupe}=await sb.from('batches').select('id').ilike('name',name).limit(1);
   if(dupe&&dupe.length){showToast('error',`A batch named "${name}" already exists. Batch names must be unique — try adding a date or section, e.g. "${name} — B".`);return;}
-  // Hard block on a trainer conflict — checked against BOTH their other recurring batches
-  // AND their declared recurring availability (see checkBatchTrainerConflict). Never silently
-  // creates a conflicting booking; the Head picks another time/Trainer instead.
-  if (trainer_id) {
-    const conflict = await checkBatchTrainerConflict();
-    if (conflict) { showToast('warning', conflict.message, 6500); return; }
+  // Final canonical re-check (dropdown audit item 1) — re-runs the EXACT SAME
+  // get_available_trainers() query the dropdown used, narrowed to this one trainer, instead of
+  // trusting the selection made possibly minutes ago. Closes the race condition where another
+  // Academic Head books this trainer for the same slot between this form opening and Save.
+  const finalCheck = await _beValidateTrainerForSave(trainer_id, startHour, class_duration_minutes, days, start_date, expected_completion_date, c?c.name:null);
+  if (!finalCheck.ok) {
+    showToast('warning', finalCheck.message, 7000);
+    await refreshAvailableTrainersForTime(); // drop the now-invalid trainer from the dropdown immediately
+    return;
   }
   const day_pattern=days.join(', ')+(mc?` · MC ${mc}`:'');
   // Real name from the trainer record itself, by id — never parsed out of the option's
