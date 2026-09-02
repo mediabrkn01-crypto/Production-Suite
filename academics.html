@@ -265,6 +265,14 @@ tr.clickable{cursor:pointer}
 .pick-row:hover{background:rgba(255,255,255,.03);}
 .pick-row input{width:auto;margin:0;accent-color:var(--k1);}
 .pick-row .pm{color:var(--tx3);font-size:11px;margin-left:auto;}
+/* Create Batch's "Find Matching Students" step — a student whose preferred_slot fully covers
+   the picked Class Start Time window is highlighted, not filtered out by default, so the Head
+   still sees every unassigned/course-eligible student unless they opt into "match only". */
+.pick-row-match{background:rgba(46,204,113,.07);border:1px solid rgba(46,204,113,.18);}
+.pick-row .pm-match{color:var(--green);font-weight:600;}
+.pick-row .pm-nopref{color:var(--tx3);font-style:italic;}
+.pick-group-label{font-family:inherit;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);padding:8px 10px 4px;}
+.pick-group-label-secondary{border-top:1px solid rgba(255,255,255,.06);margin-top:6px;}
 
 .daychips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
 .dchip{padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--tx2);font-size:12px;font-weight:600;cursor:pointer;user-select:none;transition:all .15s}
@@ -639,50 +647,49 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-createbatch">
         <div class="section role-head-only hidden">
           <h2>Create Batch</h2>
-          <div class="mhint" style="margin-bottom:10px">Pick the course first — it fills sessions, days &amp; capacity. Then tick students at the bottom.</div>
+          <div class="mhint" style="margin-bottom:10px">Batch Time selects the Trainer — set the batch's own time first, then pick from only the trainers genuinely available then.</div>
           <div class="subhead" style="margin:4px 0 8px">Batch Information</div>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Batch Name</span><input id="m_b_name" placeholder="Batch name (e.g. Phrase Factory)"/></label>
-          <div class="mrow">
-            <label class="lv-field" style="flex:1"><span>Course</span><select id="m_b_type" onchange="typeChanged()"></select></label>
-            <label class="lv-field" style="flex:1"><span>Trainer / Coach</span><select id="m_b_trainer" onchange="checkBatchTrainerConflict();refreshAvailableClassTimes();"></select></label>
+          <!-- SCHEDULING WORKFLOW UPDATE (main rule: TIME SELECTS THE TRAINER, not the other way
+               round) — Batch Time is now the primary input, set right after Batch Name and
+               independent of Course/Trainer/Days/Dates. Every later field (Trainer, then
+               Students) is filtered by whatever's already been set here. #m_b_time_start stays
+               the real value every downstream function (saveBatch, checkBatchTrainerConflict,
+               formatBatchTimeRange) already reads. -->
+          <div class="subhead" style="margin:10px 0 6px">Batch Time</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button type="button" class="act-btn" onclick="pickBatchStartTime()">Pick Batch Time</button>
+            <span id="m_b_time_custom_label" style="font-size:11px;color:var(--tx3)"></span>
           </div>
+          <input type="hidden" id="m_b_time_start">
+          <input type="hidden" id="m_b_time_custom_hidden">
+          <div class="mhint" style="margin-top:6px">Set the batch's own class time before Course/Days/Dates — Trainer and Students below are both filtered against it.</div>
+          <label class="lv-field lv-grow" style="margin:10px 0 6px"><span>Course</span><select id="m_b_type" onchange="typeChanged()"></select></label>
           <div class="mhint" id="m_b_hint">Pick a course — its sessions, days and capacity prefill below.</div>
           <div class="subhead" style="margin:10px 0 6px">Schedule</div>
           <div class="daychips" id="m_b_days" onclick="onBatchScheduleFieldChanged()"></div>
-          <div class="mhint">Class days prefill from the course — tap to change per batch, even midway.</div>
+          <div class="mhint">Class days prefill from the course — tap to change per batch, even midway. Trainer availability below is re-checked against whichever days are ticked.</div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Masterclass Day</span><select id="m_b_mc"><option value="Sat">MC · Saturday</option><option value="Sun">MC · Sunday</option><option value="Fri">MC · Friday</option><option value="">No masterclass</option></select></label>
-            <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60" oninput="_refreshBatchTimeLabel()"/></label>
+            <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="m_b_duration" type="number" placeholder="60" value="60" oninput="onBatchDurationChanged()"/></label>
           </div>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Preparation Buffer (minutes)</span><input id="m_b_buffer" type="number" placeholder="0" value="0"/></label>
-            <label class="lv-field" style="flex:1"><span>Max Students</span><input id="m_b_cap" type="number" placeholder="Max students"/></label>
+            <label class="lv-field" style="flex:1"><span>Max Students</span><input id="m_b_cap" type="number" placeholder="Max students" oninput="_m_b_updateSeats()"/></label>
           </div>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Total Sessions</span><input id="m_b_sessions" type="number" placeholder="Total sessions"/></label>
           <div class="mrow">
             <label class="lv-field" style="flex:1"><span>Start Date</span><input id="m_b_start" type="date" onchange="onBatchScheduleFieldChanged()"/></label>
             <label class="lv-field" style="flex:1"><span>End Date (expected completion)</span><input id="m_b_completion" type="date" onchange="onBatchScheduleFieldChanged()"/></label>
           </div>
-          <!-- Class Start Time — driven by the trainer's own recurring My Availability, minus
-               any batch already occupying that time during this batch's own date range
-               (single source of truth: trainer_availability + batches, the same engine the
-               Coach Availability tab uses — no second table). Recalculated whenever Trainer/
-               Days/Start/End Date change (onBatchScheduleFieldChanged → refreshAvailableClassTimes).
-               #m_b_time_start stays the real value every downstream function (saveBatch,
-               checkBatchTrainerConflict, formatBatchTimeRange) already reads — only the input
-               method around it changed, not what gets saved. -->
-          <div class="subhead" style="margin:10px 0 6px">Class Start Time</div>
-          <div id="m_b_time_slots" class="mhint">Select a trainer first to see their available class times.</div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button type="button" class="act-btn" onclick="openCustomBatchTime()">Choose Custom Time</button>
-            <span id="m_b_time_custom_label" style="font-size:11px;color:var(--tx3)"></span>
-          </div>
-          <input type="hidden" id="m_b_time_start">
-          <input type="hidden" id="m_b_time_custom_hidden">
+          <div class="subhead" style="margin:10px 0 6px">Available Trainers</div>
+          <select id="m_b_trainer" disabled onchange="checkBatchTrainerConflict();refreshMatchingStudents();"><option value="">Select batch time first</option></select>
+          <div id="m_b_avail_trainers_hint" class="mhint" style="margin-top:6px">Select batch time first.</div>
           <div id="m_b_avail" class="mhint" style="margin:10px 0 10px"></div>
           <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Notes</span><textarea id="m_b_notes" placeholder="Notes (optional)" style="min-height:50px"></textarea></label>
           <div class="mhint">Start below capacity if you like — you can add more students anytime via Edit.</div>
-          <div class="subhead" style="margin:10px 0 8px">Students — select from the existing Student database (no duplicate records are created)</div>
+          <div class="subhead" style="margin:10px 0 8px">Matching Students — select from the existing Student database (no duplicate records are created)</div>
+          <div id="m_b_seats" class="mhint" style="margin-bottom:6px"></div>
           <div id="m_b_students" class="pick-list"><div class="mhint" style="padding:8px">Pick a course above to see students registered for it.</div></div>
           <div class="modal-actions"><button class="btn-cancel" onclick="acadSwitchTab('live')">Cancel</button><button class="btn-save" onclick="saveBatch()">Create Batch</button></div>
         </div>
@@ -915,7 +922,7 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="k">Time</div><div class="v" id="assignSlotTime">—</div>
         </div>
         <select id="assignSlotBatch"><option value="">— Select batch —</option></select>
-        <div class="lv-note" style="margin-top:8px">Don't see the batch yet? <span style="color:var(--k2);cursor:pointer" onclick="document.getElementById('modalAssignSlot').classList.remove('on');acadSwitchTab('createbatch')">Create one</span> — Trainer and Class Start Time will be ready to pick there.</div>
+        <div class="lv-note" style="margin-top:8px">Don't see the batch yet? <span style="color:var(--k2);cursor:pointer" onclick="document.getElementById('modalAssignSlot').classList.remove('on');acadSwitchTab('createbatch')">Create one</span> — Trainer and Batch Time will be ready to pick there.</div>
         <div class="modal-actions">
           <button class="btn-cancel" onclick="document.getElementById('modalAssignSlot').classList.remove('on')">Cancel</button>
           <button class="btn-save" onclick="confirmAssignSlot()">Assign</button>
@@ -1223,6 +1230,14 @@ details[open] .rawsum::before{content:'▾ '}
     <select id="stu_status" style="max-width:240px"><option value="">Auto (New / In Progress / Completed)</option><option value="On Freeze">On Freeze</option><option value="Dropped">Dropped</option></select>
     <button class="act-btn" onclick="saveStuStatus()">Update</button></div>
   <div class="mhint" style="margin:0 0 10px">New / In Progress / Completed are derived automatically from batch assignment and progress — no manual choice needed for those. Use the override above only for On Freeze/Dropped, an explicit business decision.</div>
+  <!-- Scheduling workflow update: preferred time is editable here, not just at student
+       creation — Create Batch's "Find Matching Students" step (refreshes on m_b_time_start)
+       reads this same students.preferred_slot column, so keeping it current matters even
+       after the student was first added. -->
+  <div class="mrow" style="align-items:center"><span style="font-size:11px;opacity:.6">Preferred class time</span>
+    <input id="stu_pref_slot" placeholder="e.g. 7:00 PM – 8:30 PM" style="max-width:220px"/>
+    <button class="act-btn" onclick="saveStuPrefSlot()">Update</button></div>
+  <div class="mhint" style="margin:0 0 10px">Not a batch assignment — just when this student is available/prefers to attend. Used to suggest matching students when a batch's Batch Time is picked in Create Batch.</div>
   <div id="stu_att" style="font-size:12px;margin-bottom:12px;color:#7db6ff"></div>
   <div class="subhead" style="margin:4px 0 8px">Move / reassign</div>
   <div class="mrow" style="align-items:center;gap:8px;flex-wrap:wrap">
@@ -4778,8 +4793,9 @@ function typeChanged(){
   const def=(c.default_days||'').split(/[,\s]+/).filter(Boolean);
   document.querySelectorAll('#m_b_days .dchip').forEach(ch=>ch.classList.toggle('on',def.includes(ch.dataset.d)));
   if(c.mc_day!=null)mc.value=c.mc_day;
+  window._m_b_courseName = c.name;
   loadBatchPool(c.name);
-  refreshBatchTrainerOptionsForCourse(c.name, document.getElementById('m_b_trainer').value);
+  refreshAvailableTrainersForTime();
 }
 /* ── unassigned-student helpers (assign registered students to batches) ── */
 async function unassignedStudents(courseName){
@@ -4792,18 +4808,85 @@ async function unassignedStudents(courseName){
   if(courseName)rows=rows.filter(s=>(s.programme||'')===courseName);
   return rows.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 }
-function pickRow(s){
-  const slot=s.preferred_slot?'<span class="pm">'+esc(s.preferred_slot)+'</span>':(s.programme?'<span class="pm">'+esc(s.programme)+'</span>':'');
+function pickRow(s,matches){
+  const noPref = !s.preferred_slot;
+  const slot = s.preferred_slot
+    ? '<span class="pm'+(matches?' pm-match':'')+'">'+(matches?'✓ ':'')+esc(s.preferred_slot)+'</span>'
+    : '<span class="pm pm-nopref">Time preference not set</span>';
   // data-search: name + uin + contact (email/phone, whichever this row has) lowercased — the
   // one field Edit Batch's own search box (be_pool_search/_beFilterPool) filters rows against.
   const searchKey=[s.name,s.uin,s.contact].filter(Boolean).join(' ').toLowerCase();
-  return '<label class="pick-row" data-search="'+esc(searchKey)+'"><input type="checkbox" value="'+s.id+'"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+slot+'</label>';
+  return '<label class="pick-row'+(matches?' pick-row-match':'')+'" data-search="'+esc(searchKey)+'"><input type="checkbox" value="'+s.id+'" onchange="_m_b_updateSeats()"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+slot+'</label>';
 }
+// SCHEDULING WORKFLOW UPDATE (spec parts 5-10): loadBatchPool() fetches this course's
+// unassigned/New students once (on course change), renderBatchPool() re-renders that cached
+// list whenever the batch's Class Start Time/duration changes, without a re-fetch — split into
+// two groups, per spec: "Matching Students" (preferred_slot fully covers the requested batch
+// window — shown first) and "Other Eligible Students" (same course + unassigned, but either no
+// preferred time set, or a preferred time that doesn't cover this window) — never silently
+// hidden, per spec part 10, just deprioritized under its own heading.
+let _m_b_poolRows = [];
+// 'rpc' | 'fallback' | null(untried) — whether get_available_trainers() is deployed in this
+// Supabase project. Set once the first time it's called, same convention as _acadStudentsMode.
+let _m_b_trainersRpcMode = null;
 async function loadBatchPool(courseName){
   const el=document.getElementById('m_b_students');if(!el)return;
   el.innerHTML='<div class="mhint" style="padding:8px">Loading…</div>';
-  const rows=await unassignedStudents(courseName);
-  el.innerHTML=rows.length?rows.map(pickRow).join(''):'<div class="mhint" style="padding:8px">No unassigned students registered for this course. Add students first, or leave empty and add later.</div>';
+  _m_b_poolRows=await unassignedStudents(courseName);
+  renderBatchPool();
+}
+// A student's preferred_slot MATCHES a requested [startMin,endMin) window only when their
+// declared window fully COVERS it (spec's "fully covers" rule — same semantics as trainer
+// availability coverage below, not a partial overlap). Tolerates the same free-typed time
+// formats _parseTimeLabelToMinutes already handles ("7:00 PM – 8:30 PM", "7 p.m. - 8 p.m.").
+function _prefSlotCoversWindow(text, startMin, endMin){
+  if (!text || startMin==null || endMin==null) return false;
+  const parts = String(text).split(/[–—-]/).map(s=>s.trim()).filter(Boolean);
+  if (parts.length < 2) return false;
+  const a = _parseTimeLabelToMinutes(parts[0]), b = _parseTimeLabelToMinutes(parts[parts.length-1]);
+  if (a===null || b===null) return false;
+  return a <= startMin && b >= endMin;
+}
+function renderBatchPool(){
+  const el=document.getElementById('m_b_students');if(!el)return;
+  const rows=_m_b_poolRows;
+  if (!rows.length) { el.innerHTML='<div class="mhint" style="padding:8px">No unassigned students registered for this course. Add students first, or leave empty and add later.</div>'; _m_b_updateSeats(); return; }
+  const hour=document.getElementById('m_b_time_start')?.value||'';
+  if (!hour) {
+    // No batch time picked yet — nothing to match against, show the plain course-eligible list.
+    el.innerHTML = rows.map(s=>pickRow(s,false)).join('');
+    _m_b_updateSeats();
+    return;
+  }
+  const duration=parseInt(document.getElementById('m_b_duration')?.value,10)||60;
+  const startMin=_timeToMinutes(hour), endMin=startMin+duration;
+  const matching=[], other=[];
+  rows.forEach(s => (_prefSlotCoversWindow(s.preferred_slot, startMin, endMin) ? matching : other).push(s));
+  let html = '';
+  if (matching.length) {
+    html += '<div class="pick-group-label">Matching Students</div>' + matching.map(s=>pickRow(s,true)).join('');
+  }
+  if (other.length) {
+    html += '<div class="pick-group-label pick-group-label-secondary">Other Eligible Students</div>' + other.map(s=>pickRow(s,false)).join('');
+  }
+  if (!matching.length && !other.length) {
+    html = '<div class="mhint" style="padding:8px">No eligible students for this course.</div>';
+  }
+  el.innerHTML = html;
+  _m_b_updateSeats();
+}
+function refreshMatchingStudents(){ renderBatchPool(); }
+// Live "available seats" readout (spec part 9) — capacity minus students currently ticked,
+// recomputed on every checkbox change, never blocking (Head can still tick past capacity;
+// saveBatch doesn't hard-block either, same as before — this is guidance, not enforcement).
+function _m_b_updateSeats(){
+  const el=document.getElementById('m_b_seats'); if(!el) return;
+  const cap=parseInt(document.getElementById('m_b_cap')?.value,10);
+  const picked=document.querySelectorAll('#m_b_students input:checked').length;
+  if (!cap) { el.textContent=''; return; }
+  const remaining=cap-picked;
+  el.textContent = `${picked} selected · ${remaining>=0?remaining:0} seat${remaining===1?'':'s'} remaining of ${cap}`;
+  el.style.color = remaining<0 ? 'var(--yellow)' : 'var(--tx3)';
 }
 async function assignStudents(ids,batch){
   if(!ids||!ids.length)return;
@@ -5153,27 +5236,28 @@ async function checkBatchTrainerConflict(){
   out.style.color = 'var(--green)';
   return null;
 }
-// Fires on any schedule field change (Start Date, End Date, day chips, Trainer) — refreshes
-// the Trainer/Coach dropdown's course-qualification list, the Available Class Times section,
-// and re-runs the conflict check, so all three always agree with each other and with the
-// trainer's declared recurring availability at that moment (spec: recalculate immediately
-// whenever Trainer/Start Date/End Date/Schedule Days change).
+// Fires on any schedule field change (Start Date, End Date, day chips) — recomputes which
+// trainers are available at the already-picked Class Start Time for this date range, and
+// re-runs the conflict check, so both always agree with the trainer's declared recurring
+// availability at that moment.
 async function onBatchScheduleFieldChanged(){
-  const courseName = courseById[document.getElementById('m_b_type')?.value]?.name || null;
-  const trainerSel = document.getElementById('m_b_trainer');
-  await refreshBatchTrainerOptionsForCourse(courseName, trainerSel?.value||null);
-  await refreshAvailableClassTimes();
+  await refreshAvailableTrainersForTime();
   await checkBatchTrainerConflict();
+}
+function onBatchDurationChanged(){
+  _refreshBatchTimeLabel();
+  refreshAvailableTrainersForTime();
+  renderBatchPool();
 }
 
 // ============================================================================
-// Create Batch — Available Class Times (spec parts 6-13). Trainer-first: once a Trainer is
-// picked, this shows ONLY that trainer's declared recurring availability (My Availability),
-// with any window already occupied by one of their other active batches — for THIS batch's
-// own date range, not just "today" — marked Occupied instead of selectable. Single source of
-// truth: trainer_availability + batches, the exact same tables/engine the Coach Availability
-// tab already uses (window._allBatchesFull, already loaded by loadHeadView) — no second
-// availability table or independent calculation for Create Batch specifically.
+// SCHEDULING WORKFLOW UPDATE — Create Batch is now TIME-FIRST, not trainer-first: the Head
+// picks the Class Start Time on its own (pickBatchStartTime/onBatchTimeChosen, no trainer
+// required), and the Trainer/Coach dropdown is then filtered down to only trainers who are
+// genuinely available for that exact [start, start+duration) window (refreshAvailableTrainersForTime).
+// Single source of truth stays trainer_availability + batches, the exact same tables/engine
+// the Coach Availability tab and checkBatchTrainerConflict already use — this only changes the
+// ORDER data is requested in, not what "available" means.
 // ============================================================================
 
 // Date-range-aware variant of the Availability tab's own findOccupyingBatch() — that one
@@ -5244,31 +5328,102 @@ async function _allBatchesForAvailabilityCheck() {
   const { data } = await sb.from('batches').select('*');
   return (data || []).filter(b => !_isBatchDeleted(b));
 }
-async function refreshAvailableClassTimes(){
-  const wrap = document.getElementById('m_b_time_slots');
-  if (!wrap) return;
-  const trainerId = document.getElementById('m_b_trainer')?.value || '';
-  if (!trainerId) { wrap.innerHTML = 'Select a trainer first to see their available class times.'; return; }
-  wrap.textContent = 'Loading available times…';
-  const { data: avail } = await sb.from('trainer_availability').select('*').eq('trainer_id', trainerId).eq('is_active', true).order('start_time');
-  if (!avail || !avail.length) {
-    wrap.innerHTML = 'This trainer has not declared any recurring availability yet — use <b>Choose Custom Time</b> below, or ask them to set it up in My Availability.';
+// Range-aware conflict check for the time-first flow — same active/finished/deleted rules as
+// findOccupyingBatchInRange/findExactTimeConflict, but compares a real [start,end) window
+// (not just a matching start hour) against each existing batch's own [start, start+duration)
+// window, so two batches that merely overlap — not necessarily starting at the same minute —
+// still correctly conflict. Also checks day-of-week overlap (spec part 7): a trainer teaching
+// another active Monday 9-10 batch does NOT conflict with a new Tue/Wed 9-10 batch — only a
+// genuinely shared class day blocks them. reqDays=null/empty skips the day check (used by
+// checkBatchTrainerConflict's own Layer 1, which already does its own day filtering separately).
+function findExactRangeConflict(trainerId, startMin, endMin, batches, reqStart, reqEnd, reqDays) {
+  return (batches||[]).find(b => {
+    if (String(b.trainer_id) !== String(trainerId)) return false;
+    if (['inactive','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
+    if (reqDays && reqDays.length) {
+      const bDays = (b.day_pattern||'').split(/[,·]/).map(s=>s.trim());
+      if (!bDays.some(d => reqDays.includes(d))) return false; // no shared class day — can't conflict
+    }
+    const bStart = _batchStartMinutes(b);
+    if (bStart === null) return false;
+    const bEnd = bStart + (b.class_duration_minutes || 60);
+    if (!(startMin < bEnd && bStart < endMin)) return false; // no time overlap at all
+    return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
+  }) || null;
+}
+// STEP 2 of the workflow (spec): once Class Start Time is picked, find trainers who are
+// actually available then — active employee, qualified for the selected course, their
+// declared trainer_availability window fully COVERS the requested [start,start+duration)
+// window (not just its start hour), and no other active batch of theirs overlaps it across
+// this batch's own date range. The dropdown ends up showing ONLY these trainers.
+async function refreshAvailableTrainersForTime(){
+  const sel = document.getElementById('m_b_trainer');
+  const wrap = document.getElementById('m_b_avail_trainers_hint');
+  if (!sel) return;
+  const hour = document.getElementById('m_b_time_start')?.value || '';
+  if (!hour) {
+    sel.disabled = true;
+    sel.innerHTML = '<option value="">Select batch time first</option>';
+    if (wrap) { wrap.textContent = 'Select batch time first.'; wrap.style.color = ''; }
     return;
   }
+  sel.disabled = true;
+  sel.innerHTML = '<option value="">Finding available trainers…</option>';
+  if (wrap) { wrap.textContent = 'Finding available trainers…'; wrap.style.color = ''; }
+  const duration = parseInt(document.getElementById('m_b_duration')?.value, 10) || 60;
+  const startMin = _timeToMinutes(hour), endMin = startMin + duration;
   const startDate = document.getElementById('m_b_start')?.value || '';
   const endDate = document.getElementById('m_b_completion')?.value || '';
-  const batches = await _allBatchesForAvailabilityCheck();
-  wrap.innerHTML = avail.map(s => {
-    const occ = findOccupyingBatchInRange(trainerId, s.start_time, s.end_time, batches, startDate, endDate);
-    const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
-    if (occ) {
-      return `<div style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 10px;margin:3px 6px 3px 0;border-radius:8px;background:rgba(255,5,82,.08);border:1px solid rgba(255,5,82,.22);opacity:.75">
-        <span style="font-size:11.5px;color:var(--tx2)">${esc(label)}</span>
-        <span style="font-size:9.5px;color:var(--tx3)">Occupied — ${esc(occ.name)}${occ.expected_completion_date?' until '+esc(occ.expected_completion_date):''}</span>
-      </div>`;
-    }
-    return `<button type="button" class="act-btn m_b_time_pill" style="margin:3px 6px 3px 0" onclick="selectBatchTime('${s.start_time}','${label.replace(/'/g,"\\'")}',this)">${esc(label)} <span style="color:var(--green);font-size:9.5px">AVAILABLE</span></button>`;
-  }).join('');
+  const days = [...document.querySelectorAll('#m_b_days .dchip.on')].map(x=>x.dataset.d);
+  const courseName = window._m_b_courseName || courseById[document.getElementById('m_b_type')?.value]?.name || null;
+  const prevSelected = sel.value;
+  if (!_allActiveTrainers.length) await populateTrainerSelects();
+
+  // Backend-first (spec part 12: "do not filter thousands of trainers only in browser JS") —
+  // get_available_trainers() does the exact same query server-side. Falls back permanently for
+  // this session to the equivalent client-side computation below if the RPC isn't deployed yet
+  // (same degrade-gracefully convention get_students_page already uses) — the two are kept in
+  // sync deliberately (findExactRangeConflict's day-pattern check mirrors the RPC's).
+  let available = null;
+  if (_m_b_trainersRpcMode !== 'fallback') {
+    const { data, error } = await sb.rpc('get_available_trainers', {
+      p_start_time: hour, p_duration_minutes: duration,
+      p_days: days.length ? days : null, p_start_date: startDate || null, p_end_date: endDate || null,
+      p_course: courseName
+    });
+    if (!error) { _m_b_trainersRpcMode = 'rpc'; available = data || []; }
+    else { console.warn('get_available_trainers RPC unavailable, falling back to client-side trainer filtering:', error.message); _m_b_trainersRpcMode = 'fallback'; }
+  }
+  if (available === null) {
+    const [{ data: availRows }, batches] = await Promise.all([
+      sb.from('trainer_availability').select('*').eq('is_active', true),
+      _allBatchesForAvailabilityCheck()
+    ]);
+    // Every gate the spec requires, checked before a trainer is ever offered — never shown and
+    // then warned about afterward: (1) active HR-synced employee (trainersQualifiedFor draws
+    // from _allActiveTrainers, already status='active' only), (2) qualified for this course,
+    // (3) declared recurring availability fully COVERS [startMin,endMin), (4) no overlapping
+    // ACTIVE batch on a SHARED class day (findExactRangeConflict — excludes inactive/completed/
+    // finished/deleted batches, so a finished batch never blocks a trainer).
+    const qualified = trainersQualifiedFor(courseName, prevSelected);
+    available = qualified.filter(t => {
+      const windows = (availRows||[]).filter(a => String(a.trainer_id) === String(t.id));
+      const covers = windows.some(w => startMin >= _timeToMinutes(w.start_time) && endMin <= _timeToMinutes(w.end_time));
+      if (!covers) return false;
+      return !findExactRangeConflict(t.id, startMin, endMin, batches, startDate, endDate, days);
+    });
+  }
+  if (available.length) {
+    sel.disabled = false;
+    renderTrainerOptions(sel, available, prevSelected);
+    const label = formatBatchTimeRange(hour, duration);
+    if (wrap) { wrap.textContent = `${available.length} trainer${available.length===1?'':'s'} available for ${label}.`; wrap.style.color = 'var(--green)'; }
+  } else {
+    sel.disabled = true;
+    sel.innerHTML = '<option value="">No trainers available in this slot</option>';
+    if (wrap) { wrap.textContent = 'No trainers available in this slot. Pick a different batch time.'; wrap.style.color = 'var(--yellow)'; }
+  }
 }
 // Shows BOTH start and end time, always driven by the actual Class Duration field (never a
 // hardcoded 60 minutes) — reuses formatBatchTimeRange(), the exact same function saveBatch()
@@ -5285,57 +5440,25 @@ function _refreshBatchTimeLabel(){
   const isCustom = document.getElementById('m_b_time_start').dataset.custom === '1';
   label.innerHTML = (isCustom ? 'Selected (custom): ' : 'Selected: ') + '<b>' + esc(formatBatchTimeRange(time24, duration)) + '</b>';
 }
-function selectBatchTime(hhmm, label, btn){
-  document.getElementById('m_b_time_start').value = hhmm;
-  document.getElementById('m_b_time_start').dataset.custom = '';
-  document.querySelectorAll('.m_b_time_pill').forEach(b=>b.classList.remove('on'));
-  if (btn) btn.classList.add('on');
-  _refreshBatchTimeLabel();
-  onBatchScheduleFieldChanged();
-}
-// Custom Time — spec: must show BOTH Start Time and End Time (End Time driven by the real
-// Class Duration field, not a fixed 1-hour assumption); uses the existing themed clock picker
-// for picking the start, never a 24-hour dropdown.
-function openCustomBatchTime(){
-  const trainerId = document.getElementById('m_b_trainer')?.value || '';
-  if (!trainerId) { showToast('warning','Pick a Trainer / Coach first.'); return; }
-  window._clockPickerOnConfirm = onCustomBatchTimeChosen;
+// STEP 1 of the workflow (spec): pick the Class Start Time itself, with no trainer chosen
+// yet — reuses the existing themed clock picker component, just no longer gated on a trainer
+// being selected first. Confirming re-filters the Trainer dropdown (refreshAvailableTrainersForTime)
+// and re-highlights matching students (renderBatchPool) for the new time.
+function pickBatchStartTime(){
+  window._clockPickerOnConfirm = onBatchTimeChosen;
   openClockPicker('m_b_time_custom_hidden');
 }
-// Custom Time — spec parts 9-11: an actual scheduling conflict is NEVER overridable (blocked
-// outright); a time merely outside the trainer's declared availability CAN be used for this
-// one batch after explicit confirmation, but never silently, and never written back into the
-// trainer's own permanent recurring My Availability (nothing here touches trainer_availability
-// at all — it only ever sets this batch's own m_b_time_start).
-async function onCustomBatchTimeChosen(time24){
-  const trainerId = document.getElementById('m_b_trainer')?.value || '';
-  if (!trainerId) return;
-  const trainerName = (_allActiveTrainers.find(t=>String(t.id)===String(trainerId))||{}).name || 'This trainer';
-  const startLabel = _formatTime12(time24);
-  const startDate = document.getElementById('m_b_start')?.value || '';
-  const endDate = document.getElementById('m_b_completion')?.value || '';
-  const batches = await _allBatchesForAvailabilityCheck();
-  const conflict = findExactTimeConflict(trainerId, time24, batches, startDate, endDate);
-  if (conflict) {
-    showToast('warning', `Trainer already has another class during this time — "${conflict.name}" at ${startLabel}${conflict.expected_completion_date?' until '+conflict.expected_completion_date:''}. Pick a different time.`, 7500);
-    return;
-  }
-  const { data: avail } = await sb.from('trainer_availability').select('start_time,end_time').eq('trainer_id', trainerId).eq('is_active', true);
-  const min = _timeToMinutes(time24);
-  const withinDeclared = (avail||[]).some(s => min >= _timeToMinutes(s.start_time) && min < _timeToMinutes(s.end_time));
-  if (!withinDeclared) {
-    const duration = parseInt(document.getElementById('m_b_duration')?.value, 10) || 60;
-    const ok = await _showSimpleConfirm(
-      `${formatBatchTimeRange(time24, duration)} is outside ${trainerName}'s regular declared availability.\n\nUse this custom time for this batch? This only applies to this one batch — it will not change ${trainerName}'s permanent My Availability.`,
-      { title: 'Time Outside Declared Availability', confirmLabel: 'Use Custom Time' }
-    );
-    if (!ok) return;
-  }
+async function onBatchTimeChosen(time24){
   document.getElementById('m_b_time_start').value = time24;
-  document.getElementById('m_b_time_start').dataset.custom = '1';
-  document.querySelectorAll('.m_b_time_pill').forEach(b=>b.classList.remove('on'));
+  document.getElementById('m_b_time_start').dataset.custom = '';
   _refreshBatchTimeLabel();
-  onBatchScheduleFieldChanged();
+  // Picking a new time invalidates whichever trainer was selected for the OLD time — clear it
+  // so a stale, no-longer-available trainer can never silently remain chosen.
+  const trainerSel = document.getElementById('m_b_trainer');
+  if (trainerSel) trainerSel.value = '';
+  await refreshAvailableTrainersForTime();
+  renderBatchPool();
+  document.getElementById('m_b_avail').textContent = '';
 }
 
 // Formats a batch's Class Start Time (an AVAIL_HOURS value, e.g. "08:00") + its duration
@@ -5374,6 +5497,7 @@ async function saveBatch(){
   if(!course_id){alert('Pick a course. Define one in the Courses section first.');return;}
   if(!days.length){alert('Pick at least one class day.');return;}
   if(!startHour){alert('Pick a class start time.');return;}
+  if(!trainer_id){alert('Pick a Trainer / Coach — the dropdown only offers trainers who are actually available at the Batch Time you picked.');return;}
   // Every batch needs a unique name — it's how the batch gets identified everywhere else
   // (Coach profile, Sales visibility, reports), so a silent duplicate would be genuinely
   // ambiguous, not just untidy.
@@ -5407,9 +5531,13 @@ async function saveBatch(){
   // Availability tab is next rendered. Nothing to write, nothing that can drift out of sync.
   document.getElementById('m_b_name').value=''; document.getElementById('m_b_time_start').value=''; document.getElementById('m_b_start').value=''; document.getElementById('m_b_completion').value=''; document.getElementById('m_b_notes').value=''; document.getElementById('m_b_duration').value='60'; document.getElementById('m_b_buffer').value='0';
   document.getElementById('m_b_time_custom_label').textContent = '';
-  document.getElementById('m_b_time_slots').textContent = 'Select a trainer first to see their available class times.';
+  document.getElementById('m_b_trainer').disabled = true;
+  document.getElementById('m_b_trainer').innerHTML = '<option value="">Select batch time first</option>';
+  document.getElementById('m_b_avail_trainers_hint').textContent = 'Select batch time first.';
   document.querySelectorAll('#m_b_days .dchip.on').forEach(x=>x.classList.remove('on'));
+  _m_b_poolRows = [];
   document.getElementById('m_b_students').innerHTML='';
+  document.getElementById('m_b_seats').textContent='';
   document.getElementById('m_b_avail').textContent='';
   await loadHeadView(); await loadStats(); await loadLive();
   showToast('success','Batch created successfully');
@@ -5554,6 +5682,18 @@ async function saveStuStatus(){
   loadLive();
   if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
 }
+// Preferred time is editable here so a New/Unassigned student's window can be corrected or
+// filled in later, not just at creation — Create Batch's "Find Matching Students" step
+// (renderBatchPool/_prefSlotCoversWindow) reads this exact column, so keeping it current
+// directly affects which students get suggested for a new batch.
+async function saveStuPrefSlot(){
+  if(!requireHeadAccess())return;const s=_stu;if(!s||!s.id)return;
+  const v=document.getElementById('stu_pref_slot').value.trim()||null;
+  const {error}=await sb.from('students').update({preferred_slot:v}).eq('id',s.id);
+  if(error){showToast('error','Save failed: '+error.message);return;}
+  s.preferred_slot=v;showToast('success','Preferred time updated: '+s.name);
+  if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
+}
 async function saveStuMove(){
   if(!requireHeadAccess())return;const s=_stu;if(!s||!s.id)return;
   const bid=document.getElementById('stu_move_batch').value||null;
@@ -5605,6 +5745,7 @@ async function openStuCore(s){
     +assignmentHTML
     +'</div>';
   var _ss=document.getElementById('stu_status');if(_ss)_ss.value=(s.status==='On Freeze'||s.status==='Dropped')?s.status:'';
+  var _sp=document.getElementById('stu_pref_slot');if(_sp)_sp.value=s.preferred_slot||'';
   (async()=>{
     const {data:bs}=await sb.from('batches').select('id,name,trainer_name').order('name');
     window._moveBatches=bs||[];
