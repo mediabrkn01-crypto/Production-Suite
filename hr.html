@@ -4012,11 +4012,27 @@
             }).join('') : '<p class="text-[#4a5182] text-xs">No employees yet.</p>';
         }
 
-// ── populateHRJobDeptOptions (orig line 9919) ──
-        function populateHRJobDeptOptions() {
+// ── populateHRJobDeptOptions (orig line 9919) ── DROPDOWN AUDIT: this used to read a
+// hardcoded HR_DEPARTMENTS JS object — HR could never add/rename/retire a department without a
+// code deploy. Now backed by the real hr_departments table, filtered server-side by division +
+// active=true; falls back to the old static list (permanently for this session) only if that
+// table isn't reachable — same degrade-gracefully convention every other RPC-backed dropdown
+// in this codebase already uses.
+let _hrJobDeptMode = null; // 'db' | 'fallback'
+async function populateHRJobDeptOptions() {
             const div = document.getElementById('hr-job-division').value;
             const sel = document.getElementById('hr-job-department');
-            sel.innerHTML = HR_DEPARTMENTS[div].map(d => `<option value="${d}">${d}</option>`).join('');
+            if (_hrJobDeptMode !== 'fallback') {
+                const { data, error } = await dbInstance.from('hr_departments').select('name').eq('division', div).eq('active', true).order('sort_order').order('name');
+                if (!error) {
+                    _hrJobDeptMode = 'db';
+                    sel.innerHTML = (data || []).map(d => `<option value="${d.name}">${d.name}</option>`).join('') || '<option value="">No departments configured for this division</option>';
+                    return;
+                }
+                console.warn('hr_departments table unavailable, falling back to static department list:', error.message);
+                _hrJobDeptMode = 'fallback';
+            }
+            sel.innerHTML = (HR_DEPARTMENTS[div] || []).map(d => `<option value="${d}">${d}</option>`).join('');
         }
 
 // ── openHRJobModal (orig line 9924) ──
