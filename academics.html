@@ -6036,6 +6036,12 @@ async function savePlan(){
    note:document.getElementById('p_note').value.trim()||null,updated_at:new Date().toISOString()};
   const {error}=await sb.from('payments').upsert(rec,{onConflict:'student_id'});
   if(error){showToast('error','Save failed: '+error.message);return;}
+  // UX FIX: this used to give NO visible confirmation on success at all — unlike every other
+  // save action on this same modal (Status Update, Preferred Time Update, Move all show a
+  // toast), Save Plan silently re-rendered the numbers below with nothing telling the Head it
+  // actually worked. Reported as "I can't save" — the save was succeeding the whole time, there
+  // was just no feedback saying so, indistinguishable from a silent failure at a glance.
+  showToast('success','Payment plan saved for '+s.name+'.');
   renderStuPay();
   if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
 }
@@ -6045,6 +6051,9 @@ async function addPay(){
   if(!amt){showToast('warning','Amount required');return;}
   const {error}=await sb.from('payment_entries').insert({student_id:s.id,amount:amt,paid_at:document.getElementById('pe_date').value||null,method:document.getElementById('pe_method').value,entered_by:currentUser.name});
   if(error){showToast('error','Save failed: '+error.message);return;}
+  // Same UX fix as savePlan() just above — no success feedback before, indistinguishable from
+  // a silent failure.
+  showToast('success','Payment of ₹'+amt.toLocaleString('en-IN')+' recorded for '+s.name+'.');
   document.getElementById('pe_amt').value='';renderStuPay();
   if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
 }
