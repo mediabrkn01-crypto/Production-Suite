@@ -1150,10 +1150,31 @@ details[open] .rawsum::before{content:'▾ '}
 <div class="modal-bg" id="modalBatchEdit"><div class="modal" style="width:480px;max-height:88vh;overflow:auto">
   <h3 id="be_title">Edit Batch</h3>
   <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Batch Name</span><input id="be_name" type="text" placeholder="Batch name"/></label>
+  <!-- EDITABLE SCHEDULE (spec: "add editable weekday schedule for existing live batches") —
+       same time-first principle as Create Batch: Batch Time + Class Days + Start/End Date are
+       set BEFORE Trainer, and the Trainer dropdown is re-filtered against the edited schedule
+       via the same canonical get_available_trainers() RPC Create Batch uses (now with an
+       exclude-batch-id param so this batch's own current schedule never conflicts with
+       itself) — one shared backend rule for both flows, not two. -->
+  <div class="subhead" style="margin:6px 0 6px">Batch Time</div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <button type="button" class="act-btn" onclick="_bePickBatchTime()">Change Batch Time</button>
+    <span id="be_time_label" style="font-size:11px;color:var(--tx3)"></span>
+  </div>
+  <input type="hidden" id="be_time_start">
+  <input type="hidden" id="be_time_custom_hidden">
+  <div class="mrow" style="margin-top:8px">
+    <label class="lv-field" style="flex:1"><span>Class Duration (minutes)</span><input id="be_duration" type="number" placeholder="60" oninput="_beOnScheduleFieldChanged()"/></label>
+    <label class="lv-field" style="flex:1"><span>Start Date</span><input id="be_start_date" type="date" onchange="_beOnScheduleFieldChanged()"/></label>
+  </div>
+  <div class="subhead" style="margin:10px 0 6px">Class Days</div>
+  <div class="daychips" id="be_days" onclick="_beOnScheduleFieldChanged()"></div>
+  <div class="mhint" style="margin-bottom:10px">The currently saved days are preselected — tap to change. Trainer availability below is re-checked against whichever days are ticked.</div>
+  <div class="subhead" style="margin:10px 0 6px">Trainer / Coach</div>
   <select id="be_trainer" onchange="_beOnTrainerChange()"></select>
   <div id="be_conflict" class="mhint" style="display:none;margin-bottom:6px"></div>
   <input id="be_cap" type="number" placeholder="Max students (capacity)"/>
-  <label class="lv-field lv-grow" style="margin-bottom:6px;margin-top:6px"><span>Expected completion date</span><input id="be_completion" type="date"/></label>
+  <label class="lv-field lv-grow" style="margin-bottom:6px;margin-top:6px"><span>Expected completion date</span><input id="be_completion" type="date" onchange="_beOnScheduleFieldChanged()"/></label>
   <textarea id="be_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
   <div class="subhead" style="margin:12px 0 8px">Progress / session correction</div>
   <div class="mrow" style="align-items:center;gap:8px">
@@ -5276,6 +5297,76 @@ function _beOnTrainerChange(){
     el.style.display='none';
   }
 }
+// EDITABLE WEEKDAY SCHEDULE (Edit Batch): reuses the exact same clock picker and canonical
+// get_available_trainers() RPC Create Batch already uses — one shared backend rule for both
+// flows, per spec part 7, not two. The only thing genuinely new here is p_exclude_batch_id, so
+// this batch's own current schedule never conflicts with itself.
+function _bePickBatchTime(){
+  window._clockPickerOnConfirm = _beOnBatchTimeChosen;
+  openClockPicker('be_time_custom_hidden');
+}
+async function _beOnBatchTimeChosen(time24){
+  document.getElementById('be_time_start').value = time24;
+  const duration = parseInt(document.getElementById('be_duration').value,10) || 60;
+  document.getElementById('be_time_label').innerHTML = 'Selected: <b>'+esc(formatBatchTimeRange(time24, duration))+'</b>';
+  const prevTrainer = document.getElementById('be_trainer').value || null;
+  await _beRefreshAvailableTrainers(prevTrainer);
+}
+function _beOnScheduleFieldChanged(){
+  const time24 = document.getElementById('be_time_start').value;
+  if (time24) {
+    const duration = parseInt(document.getElementById('be_duration').value,10) || 60;
+    document.getElementById('be_time_label').innerHTML = 'Selected: <b>'+esc(formatBatchTimeRange(time24, duration))+'</b>';
+  }
+  const prevTrainer = document.getElementById('be_trainer').value || null;
+  _beRefreshAvailableTrainers(prevTrainer);
+}
+// Canonical, backend-driven trainer list for the schedule currently set in the form — same RPC
+// Create Batch's refreshAvailableTrainersForTime() calls, just with p_exclude_batch_id so this
+// batch's own active row is never counted as a conflict against itself. Keeps the previously
+// selected trainer if they're still valid for the edited schedule; clears and warns if not
+// (spec part 6: "Current trainer is unavailable for the updated schedule.").
+async function _beRefreshAvailableTrainers(preferTrainerId){
+  const sel = document.getElementById('be_trainer');
+  if (!sel || !_editBatch) return;
+  const hour = document.getElementById('be_time_start')?.value || '';
+  const days = [...document.querySelectorAll('#be_days .dchip.on')].map(x=>x.dataset.d);
+  if (!hour) {
+    sel.innerHTML = '<option value="">Select batch time first</option>';
+    sel.disabled = true;
+    return;
+  }
+  const duration = parseInt(document.getElementById('be_duration')?.value,10) || 60;
+  const startDate = document.getElementById('be_start_date')?.value || '';
+  const endDate = document.getElementById('be_completion')?.value || '';
+  const courseName = _editBatch.programme || null;
+  const { data, error } = await sb.rpc('get_available_trainers', {
+    p_start_time: hour, p_duration_minutes: duration,
+    p_days: days.length ? days : null, p_start_date: startDate || null, p_end_date: endDate || null,
+    p_course: courseName, p_trainer_id: null, p_exclude_batch_id: _editBatch.id
+  });
+  let available;
+  if (!error) {
+    available = data || [];
+  } else {
+    console.warn('get_available_trainers unavailable for Edit Batch, falling back to course-qualified list (no time/day filtering):', error.message);
+    available = trainersQualifiedFor(courseName, preferTrainerId);
+  }
+  const stillValid = preferTrainerId && available.some(t => String(t.id) === String(preferTrainerId));
+  renderTrainerOptions(sel, available, stillValid ? preferTrainerId : null);
+  sel.disabled = !available.length;
+  const conflictEl = document.getElementById('be_conflict');
+  if (preferTrainerId && !stillValid) {
+    sel.value = '';
+    conflictEl.style.display = ''; conflictEl.style.color = 'var(--yellow)';
+    conflictEl.textContent = 'Current trainer is unavailable for the updated schedule. Pick another trainer below.';
+  } else if (!available.length) {
+    conflictEl.style.display = ''; conflictEl.style.color = 'var(--yellow)';
+    conflictEl.textContent = 'No trainers available for this schedule.';
+  } else {
+    conflictEl.style.display = 'none';
+  }
+}
 async function openBatchEdit(id){
   if(!requireHeadAccess())return;
   const {data:b}=await sb.from('batches').select('*, courses(max_students)').eq('id',id).single();
@@ -5284,7 +5375,21 @@ async function openBatchEdit(id){
   document.getElementById('be_name').value=b.name||'';
   document.getElementById('be_conflict').style.display='none';
   if(!_allActiveTrainers.length) await populateTrainerSelects();
-  renderTrainerOptions(document.getElementById('be_trainer'), trainersQualifiedFor(b.programme, b.trainer_id), b.trainer_id);
+  // EDITABLE SCHEDULE: preselect the batch's own CURRENTLY SAVED days/time — the literal stored
+  // values, not the course-default fallback _acadEffectiveDayPattern() would show elsewhere, so
+  // the Head sees and edits exactly what's actually on this row (spec: "the currently saved days
+  // must appear preselected").
+  const beDaysBox = document.getElementById('be_days');
+  if (beDaysBox && !beDaysBox.children.length) beDaysBox.innerHTML = DAYS.map(d=>`<span class="dchip" data-d="${d}" onclick="this.classList.toggle('on')">${d}</span>`).join('');
+  const savedDays = (b.day_pattern||'').split(/[,·]/).map(s=>s.trim().replace(/\s*MC.*$/,'')).filter(d=>DAYS.includes(d));
+  beDaysBox?.querySelectorAll('.dchip').forEach(ch => ch.classList.toggle('on', savedDays.includes(ch.dataset.d)));
+  const startMinRaw = _batchStartMinutes(b);
+  const startHour = startMinRaw!==null ? (String(Math.floor(startMinRaw/60)).padStart(2,'0')+':'+String(startMinRaw%60).padStart(2,'0')) : '';
+  document.getElementById('be_time_start').value = startHour;
+  document.getElementById('be_duration').value = b.class_duration_minutes || 60;
+  document.getElementById('be_start_date').value = b.start_date || '';
+  document.getElementById('be_time_label').innerHTML = startHour ? ('Current: <b>'+esc(b.time_slot||formatBatchTimeRange(startHour, b.class_duration_minutes||60))+'</b>') : 'No class time saved yet — set one below.';
+  await _beRefreshAvailableTrainers(b.trainer_id);
   document.getElementById('be_cap').value=b.capacity||'';
   document.getElementById('be_completion').value=b.expected_completion_date||'';
   document.getElementById('be_notes').value=b.notes||'';
@@ -5321,14 +5426,42 @@ async function saveBatchEdit(){
   const trSel=document.getElementById('be_trainer');
   const trainer_id=trSel.value||null;
   const trainer_name=trSel.value?((trSel.options[trSel.selectedIndex]||{}).text||null):null;
-  // Trainer/time conflict validation (spec Part 11) — only when the trainer selection actually
-  // changed; blocks the save outright rather than silently double-booking.
-  const conflict = _beCheckTrainerConflict(trainer_id, b);
-  if (conflict) {
-    const el=document.getElementById('be_conflict');
-    el.style.display=''; el.style.color='var(--yellow)';
-    el.textContent = '⚠ '+trainer_name+' is already teaching "'+conflict.name+'" at this same day/time ('+(conflict.day_pattern||'')+' · '+(conflict.time_slot||'')+'). Choose a different trainer or change this batch’s schedule first.';
-    return;
+  const days=[...document.querySelectorAll('#be_days .dchip.on')].map(x=>x.dataset.d);
+  const startHour=document.getElementById('be_time_start').value||'';
+  const class_duration_minutes=parseInt(document.getElementById('be_duration').value)||60;
+  const start_date=document.getElementById('be_start_date').value||null;
+  const time_slot = startHour ? formatBatchTimeRange(startHour, class_duration_minutes) : (b.time_slot||'');
+  // FINAL BACKEND VALIDATION (spec parts 4/6/7) — re-runs the exact same canonical
+  // get_available_trainers() RPC Create Batch's own save-time gate uses (p_exclude_batch_id so
+  // this batch's own current row never counts as a conflict against itself), re-verified at the
+  // moment of Save rather than trusting whatever the dropdown showed when the modal opened —
+  // closes the same race condition class already closed for Create Batch.
+  if (trainer_id && startHour) {
+    const { data, error } = await sb.rpc('get_available_trainers', {
+      p_start_time: startHour, p_duration_minutes: class_duration_minutes,
+      p_days: days.length ? days : null, p_start_date: start_date, p_end_date: document.getElementById('be_completion').value||null,
+      p_course: b.programme || null, p_trainer_id: trainer_id, p_exclude_batch_id: b.id
+    });
+    const stillValid = !error && (data||[]).some(t => String(t.id) === String(trainer_id));
+    if (!error && !stillValid) {
+      const el=document.getElementById('be_conflict');
+      el.style.display=''; el.style.color='var(--yellow)';
+      el.textContent = 'This trainer is no longer available for the selected schedule. Please choose another trainer.';
+      await _beRefreshAvailableTrainers(null);
+      return;
+    }
+    if (error) {
+      // RPC unreachable — fall back to the older client-side check rather than blocking the
+      // save outright, same degrade-gracefully convention as everywhere else in this file.
+      console.warn('get_available_trainers unavailable at save time, falling back to client-side conflict check:', error.message);
+      const conflict = _beCheckTrainerConflict(trainer_id, b);
+      if (conflict) {
+        const el=document.getElementById('be_conflict');
+        el.style.display=''; el.style.color='var(--yellow)';
+        el.textContent = '⚠ '+trainer_name+' is already teaching "'+conflict.name+'" at this same day/time ('+(conflict.day_pattern||'')+' · '+(conflict.time_slot||'')+'). Choose a different trainer or change this batch’s schedule first.';
+        return;
+      }
+    }
   }
   const newName=(document.getElementById('be_name').value||'').trim();
   const capacity=parseInt(document.getElementById('be_cap').value)||null;
@@ -5348,7 +5481,12 @@ async function saveBatchEdit(){
       return;
     }
   }
-  await sb.from('batches').update({trainer_id,trainer_name,capacity,expected_completion_date,notes}).eq('id',b.id);
+  // Preserve any existing Masterclass Day suffix on day_pattern (e.g. "· MC Sat") — Edit Batch
+  // has no MC field of its own to re-derive it from, so editing Class Days here must not
+  // silently strip a masterclass marker that was already set at creation.
+  const mcSuffix = (b.day_pattern||'').match(/\s*·\s*MC\s+\w+/i);
+  const day_pattern = days.length ? (days.join(', ') + (mcSuffix ? mcSuffix[0] : '')) : (b.day_pattern||null);
+  await sb.from('batches').update({trainer_id,trainer_name,capacity,expected_completion_date,notes,day_pattern,time_slot,class_duration_minutes,start_date}).eq('id',b.id);
   // RENAME (spec Part 2/3 — root cause fix): batches.name itself now actually gets updated,
   // not just the students/attendance rows that reference it by string — every occupancy/
   // progress lookup in this file keys off batches.name (isBatchCurrentlyActive,
