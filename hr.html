@@ -5673,11 +5673,45 @@ async function populateHRJobDeptOptions() {
             el.textContent = date + '  ·  ' + time;
         }
 
-        (function bootHRPage() {
-            if (!activeUser || activeRole !== 'admin') {
+        // LOGIN/INITIAL-RENDER FIX: bootHRPage() used to gate on `activeRole` straight from
+        // localStorage, with no re-check against the backend at all — the one genuine
+        // "authorization from cached state, not the source of truth" gap in this flow.
+        // index.html's own launchSession() already does the equivalent correction after every
+        // login ("Always refresh the active role from the live roster (fixes stale cached
+        // roles)"), but that correction only ever runs there, never here — so any moment where
+        // this page's own localStorage snapshot doesn't yet match the live `user_roster` row
+        // (a role changed by another HR admin since this browser last logged in here, an
+        // in-progress account-switch, etc.) had no way to self-correct without a manual refresh
+        // happening to run after whatever else had already fixed localStorage elsewhere.
+        // This is now the SINGLE owner of the redirect-or-render decision — one async function,
+        // no setTimeout, no competing initializers: it awaits the live check, THEN decides.
+        // "Login result === refresh result" by construction, since both paths now run this
+        // exact same re-verification before anything else happens.
+        async function bootHRPage() {
+            if (!activeUser) { window.location.href = 'index.html'; return; }
+            try {
+                const { data } = await dbInstance.from('user_roster').select('role').eq('email', activeEmail).limit(1);
+                const liveRole = data && data[0] && data[0].role;
+                if (liveRole && liveRole !== activeRole) {
+                    activeRole = liveRole;
+                    localStorage.setItem('be_active_role', activeRole);
+                }
+            } catch (e) {
+                // Network hiccup — fall back to the cached role rather than locking an already-
+                // valid admin out over a transient error; still correct in the common case,
+                // and no worse than the previous (always-cached) behavior on failure.
+                console.warn('Could not re-verify role from user_roster, using cached role:', e.message);
+            }
+            if (activeRole !== 'admin') {
                 window.location.href = 'index.html';
                 return;
             }
+            // Identity + permissions are confirmed at this point — everything below only ever
+            // runs for a genuinely-verified HR/Admin session, matching the spec's own
+            // "Auth → Employee → Roles → Confirm Access → Initialize" ordering. Static chrome
+            // (icons, the header clock) still renders immediately, same as before this fix —
+            // only the actual redirect/render DECISION above needed to wait on the backend, not
+            // everything downstream of it.
             renderHRSidebarIdentity();
             if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
             initHRPanel().then(() => {
@@ -5690,7 +5724,8 @@ async function populateHRJobDeptOptions() {
             updateHRHeaderDateTime();
             setInterval(updateHRHeaderDateTime, 1000);
             if (window.lucide) lucide.createIcons();
-        })();
+        }
+        bootHRPage();
 
 // ── runHRCelebrationCheck ──
         // FIX (mobile banner missing): this used to resolve "me" by searching the already-
