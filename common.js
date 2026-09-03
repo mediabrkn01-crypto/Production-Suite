@@ -2237,11 +2237,28 @@ function hrOfficialEventFor(employee, dateStr) {
             const existing = findMyOpenAttendanceRecord();
             if (existing) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
 
+            // Backend-source-of-truth re-check, right before writing — the in-memory
+            // `attendanceLogs` guard above only catches an already-open record if this page's
+            // own load actually hydrated it; a second tab/page clocking in around the same
+            // moment (or attendanceLogs simply not being refreshed since an earlier successful
+            // clock-in elsewhere) could otherwise still slip a genuine duplicate row past it.
+            // attendance_logs has no unique(employee_email, log_date) constraint at the DB level
+            // today (confirmed — real duplicate rows already exist in production from exactly
+            // this gap), so this app-level re-check is the actual backstop until that's added.
+            const today = todayDateStr();
+            const { data: dbExisting } = await dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail).eq('log_date', today).limit(1);
+            if (dbExisting && dbExisting[0]) {
+                attendanceLogs = attendanceLogs.concat(dbExisting.filter(r => !attendanceLogs.some(a => a.id === r.id)));
+                refreshAttendanceClockCard();
+                if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
+                return;
+            }
+
             const nowIso = new Date().toISOString();
             const { data, error } = await dbInstance.from('attendance_logs').insert([{
                 employee_email: activeEmail,
                 employee_name: activeUser,
-                log_date: todayDateStr(),
+                log_date: today,
                 log_in_time: nowIso,
                 log_out_time: null
             }]).select();

@@ -2113,6 +2113,14 @@
             document.getElementById('hr-payroll-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
             document.getElementById('hr-leave-cal-month').value = document.getElementById('hr-leave-cal-month').value || new Date().toISOString().slice(0,7);
             renderHRNotifications();
+            // PERSONAL ATTENDANCE FIX: this was never called anywhere in hr.html — the card's
+            // buttons already called the correct shared handleClockIn()/handleClockOut(), and
+            // refreshAttendanceClockCard() itself already correctly targets this page's own
+            // hr-attendance-status-text/-clockin-btn/-clockout-btn ids (same function index.html
+            // and academics.html's cards read from too), it just never ran on load — the exact
+            // "an HR employee is still an employee" gap this fix closes. Same shared engine, same
+            // attendance_logs record, keyed by the logged-in employee's own email, not their role.
+            if (typeof refreshAttendanceClockCard === 'function') refreshAttendanceClockCard();
             switchHRSubtab(hrCurrentSubtab);
         }
 
@@ -2264,6 +2272,17 @@
                 // Existing portal check-in/out history (from the Attendance Log feature) —
                 // used to show real check-in times and infer "present" for HR employees linked by portal email.
                 window._hrAttendanceLogsCache = attLogs.data || [];
+                // PERSONAL ATTENDANCE FIX: this same query already pulls every attendance_logs
+                // row (loadHRData needs the full table for the admin-wide Workforce view) — reuse
+                // it to hydrate common.js's own `attendanceLogs`, the array refreshAttendanceClockCard()/
+                // findMyOpenAttendanceRecord()/handleClockIn()/handleClockOut() all read. Without
+                // this, that array started every hr.html load empty (never fetched here at all),
+                // so the logged-in HR employee's own Attendance card could never resolve past
+                // "Checking today's status..." and, worse, handleClockIn()'s own "already clocked
+                // in today" guard silently failed too (it checks this same empty array), risking
+                // a genuine duplicate attendance_logs row for the SAME employee/day — confirmed
+                // this has already happened for real accounts in production. No new query issued.
+                if (typeof attendanceLogs !== 'undefined') attendanceLogs = attLogs.data || [];
 
                 // Sync from Supervisor (user_roster is the single source of truth for accounts):
                 // any portal account without a matching HR employee record (by email) gets one
