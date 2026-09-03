@@ -618,6 +618,7 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="acad-dash-tiles" id="statgrid"></div>
         <div class="section" id="liveSection">
           <h2><span id="tab-acad-live-label">Live Batches &amp; Attendance</span> <span class="tag">Live · Database</span></h2>
+          <input id="live_batch_search" type="text" placeholder="Search batches… (name, course, trainer, student)" style="width:100%;margin-bottom:12px" oninput="renderLiveBatchCards()"/>
           <div id="liveBatches" class="loading">Loading…</div>
         </div>
         <div class="section role-head-only hidden">
@@ -1293,6 +1294,20 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('sessionHistory')">Close</button></div>
 </div></div>
 
+<!-- Safe "Complete & Close Batch" workflow — canonical completion is decided server-side by
+     complete_batch() (real session-progress re-check against attendance, not the frontend's own
+     cached percentage), never just written from here. Blocked state (incomplete) and the
+     confirmation summary (spec's exact field list: Batch Name/Trainer/Total/Completed/Students/
+     Completion Date) share this one modal — the RPC's own response decides which state shows. -->
+<div class="modal-bg" id="modalCompleteBatch"><div class="modal" style="width:440px">
+  <h3 id="cb_title">Complete Batch</h3>
+  <div id="cb_body"></div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('completeBatch')">Cancel</button>
+    <button class="btn-save" id="cb_confirm_btn" onclick="confirmCompleteBatch()" style="display:none">Complete &amp; Close Batch</button>
+  </div>
+</div></div>
+
 <script>
 // Academic's own tables (trainers, batches, students, courses, attendance, sessions,
 // assignments, payments, roles, timeclock, trainer_slots) now live in the SAME Supabase
@@ -1804,60 +1819,103 @@ async function loadLive(){
   // (marking the session that pushes a batch to 100%) and after deleteBatch(), so this needs
   // no separate cache-invalidation step of its own.
   window._acadFinishedBatchNames = new Set(previous.map(b => b.raw || b.name));
-  // Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance,
-  // same Head-only click-to-view-student behavior), cleaner presentation: a real header row
-  // with a course badge, the roster as individual chips instead of a run-on dot-separated
-  // string, and a taller progress bar with its own percentage label instead of just a
-  // tiny caption underneath. Uses existing tokens only (.badge, --gk gradient, --tx*) \u2014
-  // no new component, no new colors. isPrevious hides the live-editing actions (Mark
-  // Attendance/Rename/Set Progress don't mean anything for a finished batch) and shows a
-  // Completed badge instead \u2014 same card, not a second component to keep in sync.
-  const card=(b,i,isPrevious)=>{
-    const {total,dn,pct,base,marked}=progressOf(b);
-    const nameHtml = (isHead&&b.elite) ? `<span style="cursor:pointer" onclick="openStu(${i},0)">${esc(b.name)}</span>` : esc(b.name);
-    const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
-      b.students.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:var(--tx2);${isHead?'cursor:pointer':''}" ${isHead?`onclick="openStu(${i},${j})"`:''}><span class="acad-avatar-dot" style="width:18px;height:18px;font-size:8.5px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(s.name)}</span>`).join('')
-    }</div>`;
-    return `<div class="card" style="margin-bottom:12px;padding:16px;text-align:left">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:15px;font-weight:700;color:var(--tx)">${nameHtml}</span>
-            <span class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.28)">${esc(b.prog||'\u2014')}</span>
-            ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : ''}
-          </div>
-          <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
+  // BATCH SEARCH: separate active/previous arrays kept alongside the existing combined
+  // window._liveBatches (unchanged, still what every index-based onclick handler \u2014 openAtt,
+  // editBatchFromLive, openStu \u2014 reads from) so renderLiveBatchCards() can filter WHICH cards
+  // display without ever renumbering them; a card's index into window._liveBatches must stay
+  // stable regardless of what the search box is currently doing. Progress is precomputed onto
+  // each batch object here (._progress) so the card() renderer below can be a plain top-level
+  // function instead of a closure recreated on every loadLive() call \u2014 it no longer needs
+  // progressOf's own closure over doneMap/baseMap/totalMap to run from renderLiveBatchCards().
+  active.forEach(b => b._progress = progressOf(b));
+  previous.forEach(b => b._progress = progressOf(b));
+  window._liveActiveBatches = active;
+  window._livePreviousBatches = previous;
+  renderLiveBatchCards();
+}
+// A batch matches a search term against exactly the fields spec'd: Batch Name, Course, Trainer/
+// Coach, and Student Name (cheap here \u2014 the roster is already in memory, no extra query).
+function _acadBatchMatchesSearch(b, term){
+  if (!term) return true;
+  const t = term.toLowerCase();
+  return (b.name||'').toLowerCase().includes(t)
+    || (b.prog||'').toLowerCase().includes(t)
+    || (b.trainer||'').toLowerCase().includes(t)
+    || (b.students||[]).some(s => (s.name||'').toLowerCase().includes(t) || (s.uin||'').toLowerCase().includes(t));
+}
+// Re-renders the Live Batches / Previous Classes cards from the already-loaded
+// window._liveActiveBatches/_livePreviousBatches \u2014 filtering by the search box's current value
+// without a new query. This screen's own progress computation already requires the full
+// student+attendance dataset for every batch the Head can see (isBatchFinished/progressOf need
+// it regardless of whether search is used at all) \u2014 search doesn't add a second full-table
+// fetch on top of that, it filters what's already resident, which is why it can feel instant.
+function renderLiveBatchCards(){
+  const term = (document.getElementById('live_batch_search')?.value || '').trim();
+  const active = window._liveActiveBatches || [];
+  const previous = window._livePreviousBatches || [];
+  const el = document.getElementById('liveBatches');
+  if (el) {
+    el.className = '';
+    const shown = active.map((b,i) => ({b,i})).filter(x => _acadBatchMatchesSearch(x.b, term));
+    el.innerHTML = shown.length ? shown.map(x => card(x.b, x.i, false)).join('')
+      : `<div class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No active batches for you.'}</div>`;
+  }
+  const prevEl = document.getElementById('previousClasses');
+  if (prevEl) {
+    const shownPrev = previous.map((b,i) => ({b,i})).filter(x => _acadBatchMatchesSearch(x.b, term));
+    prevEl.innerHTML = shownPrev.length ? shownPrev.map(x => card(x.b, active.length + x.i, true)).join('')
+      : `<div class="empty">${term ? 'No completed batches match "'+esc(term)+'".' : 'No completed batches yet.'}</div>`;
+  }
+}
+// Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance, same
+// Head-only click-to-view-student behavior), cleaner presentation: a real header row with a
+// course badge, the roster as individual chips instead of a run-on dot-separated string, and a
+// taller progress bar with its own percentage label. isPrevious hides the live-editing actions
+// (Mark Attendance/Rename/Set Progress don't mean anything for a finished batch) and shows a
+// Completed badge instead \u2014 same card, not a second component to keep in sync. Moved to
+// top-level (was a closure inside loadLive()) so renderLiveBatchCards() \u2014 the search filter's
+// own re-render entry point \u2014 can call it without re-running the whole batch/attendance fetch
+// just to redraw cards; reads b._progress (precomputed once in loadLive(), see there) instead
+// of closing over progressOf/doneMap/baseMap/totalMap.
+function card(b,i,isPrevious){
+  const isHead = currentUser.role==='founder'||currentUser.role==='academic_head';
+  const {total,dn,pct,base,marked} = b._progress || {total:0,dn:0,pct:0,base:0,marked:0};
+  const nameHtml = (isHead&&b.elite) ? `<span style="cursor:pointer" onclick="openStu(${i},0)">${esc(b.name)}</span>` : esc(b.name);
+  const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
+    b.students.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:var(--tx2);${isHead?'cursor:pointer':''}" ${isHead?`onclick="openStu(${i},${j})"`:''}><span class="acad-avatar-dot" style="width:18px;height:18px;font-size:8.5px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(s.name)}</span>`).join('')
+  }</div>`;
+  return `<div class="card" style="margin-bottom:12px;padding:16px;text-align:left">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:15px;font-weight:700;color:var(--tx)">${nameHtml}</span>
+          <span class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.28)">${esc(b.prog||'\u2014')}</span>
+          ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : ''}
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          ${isPrevious ? `<span class="badge b-active">Completed</span>
-          <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
-          ` : `
-          ${isHead?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
-          <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
-          <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
-          `}
-        </div>
+        <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
       </div>
-      ${roster}
-      <div style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
-          <span style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em">Progress</span>
-          <span style="font-size:11px;color:var(--tx2);font-weight:600">${dn} / ${total} done${base?` (${base} pre-logged + ${marked} marked)`:''} \u00b7 ${pct}%</span>
-        </div>
-        <div style="height:8px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden">
-          <div style="height:100%;width:${pct}%;background:var(--gk);border-radius:99px"></div>
-        </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${isPrevious ? `<span class="badge b-active">Completed</span>
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
+        ` : `
+        ${isHead?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
+        <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
+        ${isHead?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
+        `}
       </div>
-    </div>`;
-  };
-  const el=document.getElementById('liveBatches'); el.className='';
-  el.innerHTML = active.length?active.map(function(b,i){return card(b,i,false);}).join(''):'<div class="empty">No active batches for you.</div>';
-  // Previous Classes \u2014 its own tab/nav item now (see acadSwitchTab('previous')), not an
-  // inline <details> at the bottom of the active list. Indices continue from active.length
-  // since window._liveBatches is still the one combined active+previous array every
-  // onclick handler above (openAtt/openStu/editBatchFromLive) already indexes into.
-  const prevEl=document.getElementById('previousClasses');
-  if (prevEl) prevEl.innerHTML = previous.length ? previous.map(function(b,i){return card(b,active.length+i,true);}).join('') : '<div class="empty">No completed batches yet.</div>';
+    </div>
+    ${roster}
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+        <span style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em">Progress</span>
+        <span style="font-size:11px;color:var(--tx2);font-weight:600">${dn} / ${total} done${base?` (${base} pre-logged + ${marked} marked)`:''} \u00b7 ${pct}%${!isPrevious?(dn<total?` \u00b7 ${total-dn} session${total-dn===1?'':'s'} remaining`:' \u00b7 ready to close'):''}</span>
+      </div>
+      <div style="height:8px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:var(--gk);border-radius:99px"></div>
+      </div>
+    </div>
+  </div>`;
 }
 // REPLACED (spec: "Instead of Rename / Set Progress / History / Mark Attendance, recommend
 // [ Edit Batch ] [ History ] [ Mark Attendance ]" — "Rename can also be available inside
@@ -1869,6 +1927,82 @@ async function loadLive(){
 // modal (its cards are keyed by batch NAME, loadLive() never carries the real batches.id, so
 // this resolves it once before opening — same resolution openAtt's class-log lookup already
 // does for the identical reason).
+// Safe "Complete & Close Batch" workflow (spec part 3). Progress shown here is the same
+// b._progress loadLive() already computed for the card itself — this modal is just a focused
+// view of the same numbers, not a third computation. The actual close decision is never made
+// from this cached number, though — confirmCompleteBatch() re-validates via complete_batch()
+// at the moment of closing, since another trainer could have unmarked a session or this data
+// could simply be stale by the time Confirm is clicked.
+window._cbBatchIndex = null;
+async function openCompleteBatch(i){
+  if(!requireHeadAccess())return;
+  const b=window._liveBatches[i]; if(!b||!b.raw)return;
+  window._cbBatchIndex = i;
+  const {total,dn} = b._progress || {total:0,dn:0};
+  const remaining = Math.max(0, total-dn);
+  document.getElementById('cb_title').textContent = 'Complete Batch · '+b.name;
+  const confirmBtn = document.getElementById('cb_confirm_btn');
+  if (remaining > 0 || total <= 0) {
+    confirmBtn.style.display = 'none';
+    document.getElementById('cb_body').innerHTML =
+      '<div class="stu-grid" style="margin-bottom:10px">'
+      +'<span class="k">Completed Sessions</span><span class="v">'+dn+' / '+(total||'—')+'</span>'
+      +'<span class="k">Remaining</span><span class="v" style="color:var(--yellow)">'+remaining+' session'+(remaining===1?'':'s')+'</span>'
+      +'</div>'
+      +'<div class="mhint" style="color:var(--yellow)">'+remaining+' session'+(remaining===1?' is':'s are')+' still incomplete. Complete the remaining attendance/session records before closing this batch.</div>'
+      +'<div class="mhint" style="margin-top:8px">Use <b>Mark Attendance</b> on this batch’s card — it already opens to the next missing session number, so you can pick the real historical date, mark attendance, and add the class log for each one. Each save counts once toward the total.</div>';
+  } else {
+    confirmBtn.style.display = '';
+    document.getElementById('cb_body').innerHTML =
+      '<div class="mhint" style="margin-bottom:10px">Complete this batch?</div>'
+      +'<div class="stu-grid">'
+      +'<span class="k">Batch Name</span><span class="v">'+esc(b.name)+'</span>'
+      +'<span class="k">Trainer</span><span class="v">'+esc(b.trainer||'—')+'</span>'
+      +'<span class="k">Total Sessions</span><span class="v">'+total+'</span>'
+      +'<span class="k">Completed Sessions</span><span class="v">'+dn+'</span>'
+      +'<span class="k">Students</span><span class="v">'+(b.students?b.students.length:0)+'</span>'
+      +'<span class="k">Completion Date</span><span class="v">'+new Date().toLocaleDateString()+'</span>'
+      +'</div>';
+  }
+  document.getElementById('modalCompleteBatch').classList.add('on');
+}
+async function confirmCompleteBatch(){
+  if(!requireHeadAccess())return;
+  const i = window._cbBatchIndex; const b = i!=null ? window._liveBatches[i] : null;
+  if (!b || !b.raw) { closeModal('completeBatch'); return; }
+  const {data:row} = await sb.from('batches').select('id').eq('name', b.raw).maybeSingle();
+  if (!row || !row.id) { showToast('error','Could not find this batch’s database record.'); return; }
+  const btn = document.getElementById('cb_confirm_btn');
+  btn.disabled = true;
+  try {
+    // Canonical, server-side re-check — never trusts the modal's own (possibly stale-by-now)
+    // numbers. The RPC recomputes done/total fresh from attendance at this exact moment.
+    const { data, error } = await sb.rpc('complete_batch', { p_batch_id: row.id });
+    const result = (data && data[0]) || null;
+    if (error || !result) { showToast('error','Could not complete batch: '+(error?error.message:'unknown error')); return; }
+    if (!result.ok) {
+      showToast('warning', result.message, 7000);
+      // Someone else's action changed progress between opening this modal and clicking
+      // Confirm — refresh the card data so the Head sees the real current state, not the
+      // stale numbers this modal was showing a moment ago.
+      loadLive();
+      return;
+    }
+    showToast('success', b.name+' completed and moved to Finished Batches.');
+    closeModal('completeBatch');
+    // Same realtime-driven cascade every other batch-status change already relies on (the
+    // 'batches' postgres_changes channel + this file's own debounced refresh) — release of the
+    // trainer's occupied slot (Coach Availability), removal from My Batches/Live Batches, and
+    // Academic Head dashboard counts all recompute from this one status write, nothing else to
+    // push separately. loadLive()/loadHeadView() called directly too so the Head sees it
+    // immediately without waiting on the realtime round-trip.
+    loadLive();
+    if (typeof loadHeadView === 'function') loadHeadView();
+    if (typeof loadStats === 'function') loadStats();
+  } finally {
+    btn.disabled = false;
+  }
+}
 async function editBatchFromLive(i){
   if(!requireHeadAccess())return;
   const b=window._liveBatches[i]; if(!b||!b.raw)return;
