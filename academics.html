@@ -624,6 +624,7 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="section role-head-only hidden">
           <h2>Batches <button onclick="acadSwitchTab('createbatch')">+ Create Batch</button></h2>
           <div class="mhint" style="margin-bottom:12px">Batch management and details only — to add or edit students, use the Students tab.</div>
+          <input id="batch_table_search" type="text" placeholder="Search batches by name, trainer, course, student…" style="width:100%;margin-bottom:12px" oninput="renderBatchTable()"/>
           <table><thead><tr><th>Batch Name</th><th>Trainer</th><th>Course</th><th>Schedule</th><th>Students</th><th>Status</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead>
             <tbody id="batchTable"></tbody></table>
         </div>
@@ -1691,8 +1692,16 @@ async function loadLive(){
     const elite=/elite/i.test(s.programme||'');
     const key=elite?((s.batch_name||'Elite')+' \u00b7 '+s.name):(s.batch_name||'Unassigned');
     if(!map[key])map[key]={name:key,raw:s.batch_name||'',trainer:s.trainer_name||'\u2014',prog:s.programme||'',elite:elite,end:null,students:[]};
-    map[key].students.push(s);
-    if(s.planned_end_date&&(!map[key].end||s.planned_end_date>map[key].end))map[key].end=s.planned_end_date;
+    // DROPPED WORKFLOW: a Dropped student keeps their batch_id/batch_name (preserves real
+    // enrollment/attendance history \u2014 never nulled out), but must not count toward this batch's
+    // active roster here \u2014 this is exactly the array Mark Attendance's checklist (openAtt) and
+    // every "N students"/capacity count on this screen read from, so excluding them here alone
+    // is what makes them stop appearing in future attendance forms and stop counting against
+    // active capacity, without touching a single row of their past attendance.
+    if (s.status !== 'Dropped') {
+      map[key].students.push(s);
+      if(s.planned_end_date&&(!map[key].end||s.planned_end_date>map[key].end))map[key].end=s.planned_end_date;
+    }
   });
   // Batch names this trainer's own students actually belong to \u2014 used to scope the
   // attendance/baseline queries below too, not just the students query above, so a
@@ -4490,8 +4499,14 @@ async function loadScheduleTab(){
     const byDayTime = {}; // "Mon|18:00" -> [batch, ...]
     const timesSeen = new Set();
     const unscheduled = [];
+    // SCHEDULE BUG FIX: this used to be a second, independent copy of day-token parsing (own
+    // (b.day_pattern||'') split/filter), not actually the "same generator" this file's header
+    // comment claimed — and it had the identical missing-course-default-fallback flaw
+    // generateBatchOccurrences had. Both now resolve a batch's effective days through the one
+    // shared _acadEffectiveDayPattern() (see its own comment), so Today's Classes/Upcoming and
+    // My Calendar can no longer disagree about which days a batch meets on.
     rows.forEach(b=>{
-      const tokens = (b.day_pattern||'').split(',').map(s=>s.trim()).filter(Boolean);
+      const tokens = _acadEffectiveDayPattern(b).split(',').map(s=>s.trim()).filter(Boolean);
       const dayTokens = tokens.map(t=>t.replace(/\s*·.*$/,'').trim()).filter(d=>DAYS.includes(d));
       const startMin = _batchStartMinutes(b);
       if (!dayTokens.length || startMin === null) { unscheduled.push(b); return; }
@@ -4503,7 +4518,7 @@ async function loadScheduleTab(){
     // Sunday defaults to Weekly Off (spec item 13) — UNLESS a batch is genuinely scheduled on
     // Sunday (day_pattern's Masterclass Day option includes Sun), in which case it shows those
     // real classes exactly like any other day rather than hiding them behind an "Off" label.
-    const sundayHasClasses = rows.some(b => (b.day_pattern||'').split(',').map(s=>s.trim().replace(/\s*·.*$/,'')).includes('Sun'));
+    const sundayHasClasses = rows.some(b => _acadEffectiveDayPattern(b).split(',').map(s=>s.trim().replace(/\s*·.*$/,'')).includes('Sun'));
 
     const classCard = (b) => `<div style="background:rgba(255,107,6,.1);border:1px solid rgba(255,107,6,.28);border-radius:8px;padding:6px 8px;margin-bottom:5px;font-size:11px;cursor:pointer" onclick="openBatchDetails('${b.id}')">
       <div style="font-weight:700;color:var(--tx)">${esc(b.name)}</div>
@@ -4599,18 +4614,30 @@ async function loadReportsTab(){
   }catch(e){ console.warn('Reports tab failed to load:', e.message); }
 }
 
-async function loadHeadView(){
-  await loadTrainersTable();
-
-  const { data: rawBatches } = await sb.from('batches').select('*, trainers(name), courses(name), students(id)').order('created_at');
-  // Soft-deleted batches (deleteBatch()) never appear here or in window._allBatchesFull —
-  // which the Availability engine, Create Batch's conflict checks, and checkBatchTrainerConflict
-  // all read from — so a deleted batch disappears from every one of those in one place.
-  const batches = (rawBatches||[]).filter(b => !_isBatchDeleted(b));
-  window._allBatchesFull = batches;
-  document.getElementById('batchTable').innerHTML = (batches||[]).map(b => {
+// Batches management table search — filters the already-loaded window._allBatchesFull (the
+// same fetch this table always needed for its own listing, search or not — no second query)
+// by Batch Name, Trainer, Course, or Student Name, per spec. At today's real scale (52 batches
+// in production) this is instant; a genuinely paginated/backend-search version of this specific
+// table would need the same kind of dedicated RPC get_students_page() already uses, which is a
+// larger restructure than this pass's scope — flagged, not silently promised.
+function _acadBatchRowMatches(b, term){
+  if (!term) return true;
+  const t = term.toLowerCase();
+  const cn = b.courses?.name || courseLabel(b.batch_type) || '';
+  return (b.name||'').toLowerCase().includes(t)
+    || (b.trainers?.name||'').toLowerCase().includes(t)
+    || cn.toLowerCase().includes(t)
+    || (b.students||[]).some(s => (s.name||'').toLowerCase().includes(t));
+}
+function renderBatchTable(){
+  const term = (document.getElementById('batch_table_search')?.value || '').trim();
+  const batches = (window._allBatchesFull || []).filter(b => _acadBatchRowMatches(b, term));
+  document.getElementById('batchTable').innerHTML = batches.map(b => {
     const cn=b.courses?.name||courseLabel(b.batch_type);
-    const n=(b.students?b.students.length:0), cap=b.capacity;
+    // DROPPED WORKFLOW: a Dropped student keeps their batch link (real history preserved) but
+    // must not count toward active enrollment/capacity here — this is the exact "Students"
+    // column (seats used) shown in the Batches management table.
+    const n=(b.students?b.students.filter(x=>x.status!=='Dropped').length:0), cap=b.capacity;
     const seats=cap?`${n}/${cap}`:`${n}`;
     const seatCol=(cap&&n>=cap)?'var(--yellow)':'var(--tx2)';
     return `<tr><td data-label="Batch Name">${esc(b.name)}</td><td data-label="Trainer">${b.trainers?.name||'—'}</td>
@@ -4621,7 +4648,22 @@ async function loadHeadView(){
     <td data-label="Start Date">${b.start_date||'—'}</td>
     <td data-label="End Date">${b.expected_completion_date||'—'}</td>
     <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${(b.status!=='inactive'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)))?` <button class="act-btn" onclick="openManageStudents('${b.id}')">Manage Students</button>`:''} <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
-  }).join('') || '<tr><td colspan="9" class="empty">No batches yet</td></tr>';
+  }).join('') || `<tr><td colspan="9" class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No batches yet'}</td></tr>`;
+}
+async function loadHeadView(){
+  await loadTrainersTable();
+
+  // student(id,name) — name added alongside the id this already selected, so the Batches
+  // table's own search box (renderBatchTable) can match by student name too, without a
+  // second query: the roster this table needs for its own "Students" seat-count column
+  // already has to be fetched regardless of whether search is used.
+  const { data: rawBatches } = await sb.from('batches').select('*, trainers(name), courses(name), students(id,name,status)').order('created_at');
+  // Soft-deleted batches (deleteBatch()) never appear here or in window._allBatchesFull —
+  // which the Availability engine, Create Batch's conflict checks, and checkBatchTrainerConflict
+  // all read from — so a deleted batch disappears from every one of those in one place.
+  const batches = (rawBatches||[]).filter(b => !_isBatchDeleted(b));
+  window._allBatchesFull = batches;
+  renderBatchTable();
 
   const { data: assigns } = await sb.from('assignments').select('*, trainers(name)').order('created_at',{ascending:false});
   document.getElementById('assignTable').innerHTML = (assigns||[]).map(a => `
@@ -5077,17 +5119,22 @@ async function openManageStudents(id){
   document.getElementById('ms_title').textContent = 'Manage Students · ' + b.name;
   const { data: cur } = await sb.from('students').select('*').eq('batch_id', id);
   const currentRows = cur || [];
+  // DROPPED WORKFLOW: still shown in the enrolled list below (badge) for transparency — this is
+  // the one place that lists this batch's students — but a Dropped student must not count
+  // toward active enrollment or occupy a capacity seat (spec: "Active student count should
+  // decrease... Available seat count should increase").
+  const activeRows = currentRows.filter(s => s.status !== 'Dropped');
   // Capacity: the batch's own explicit capacity if set (matches Create/Edit Batch's own
   // convention), else the course's configured max_students (Foundation/Bridge/etc — spec's
   // own "use current course configuration"), else uncapped (null = no limit enforced, same
   // as everywhere else in this file that already treats a missing capacity as unlimited).
   const capacity = b.capacity || (b.courses && b.courses.max_students) || null;
-  const available = capacity ? Math.max(0, capacity - currentRows.length) : null;
-  document.getElementById('ms_current_count').textContent = currentRows.length;
+  const available = capacity ? Math.max(0, capacity - activeRows.length) : null;
+  document.getElementById('ms_current_count').textContent = activeRows.length;
   document.getElementById('ms_capacity').textContent = capacity ? capacity : '∞';
   document.getElementById('ms_available').textContent = available === null ? '∞' : available;
   document.getElementById('ms_current').innerHTML = currentRows.length
-    ? currentRows.map(s => '<div class="pick-row" style="cursor:default"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span></div>').join('')
+    ? currentRows.map(s => '<div class="pick-row" style="cursor:default"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span>'+(s.status==='Dropped'?'<span class="badge b-inactive">Dropped</span>':'')+'</div>').join('')
     : '<div class="mhint" style="padding:8px">No students in this batch yet.</div>';
   let pool = await unassignedStudents(b.programme || null);
   if (!pool.length) pool = await unassignedStudents(null);
@@ -5109,9 +5156,10 @@ async function saveManageStudents(){
   if (!picked.length) { showToast('warning','Pick at least one student to add.'); return; }
   // Re-check capacity against the LIVE count right before writing — the modal's own snapshot
   // could be stale if another tab/Head added students in the meantime; never trust only the
-  // client-side disabled-checkbox state for something that must actually hold true.
-  const { data: cur } = await sb.from('students').select('id').eq('batch_id', b.id);
-  const currentCount = (cur || []).length;
+  // client-side disabled-checkbox state for something that must actually hold true. Dropped
+  // students excluded — they no longer occupy a seat (see openManageStudents' own comment).
+  const { data: cur } = await sb.from('students').select('id,status').eq('batch_id', b.id);
+  const currentCount = (cur || []).filter(s => s.status !== 'Dropped').length;
   const capacity = b.capacity || (b.courses && b.courses.max_students) || null;
   if (capacity && currentCount + picked.length > capacity) {
     const room = Math.max(0, capacity - currentCount);
@@ -5251,8 +5299,8 @@ async function saveBatchEdit(){
   // Capacity re-check against the LIVE count right before writing (spec Part 8 — same
   // discipline Manage Students already uses, never trust only the client-side disabled state).
   if (addIds.length) {
-    const { data: curNow } = await sb.from('students').select('id').eq('batch_id', b.id);
-    const currentCount = (curNow||[]).length - removeIds.length;
+    const { data: curNow } = await sb.from('students').select('id,status').eq('batch_id', b.id);
+    const currentCount = (curNow||[]).filter(s => s.status !== 'Dropped').length - removeIds.length;
     const capacityForCheck = capacity || (b.courses && b.courses.max_students) || null;
     if (capacityForCheck && currentCount + addIds.length > capacityForCheck) {
       const room = Math.max(0, capacityForCheck - currentCount);
@@ -5430,9 +5478,24 @@ function _dateRangesOverlap(aStart, aEnd, bStart, bEnd) {
 // the same fields My Calendar (loadScheduleTab) already reads. This is the single source both
 // My Calendar and the Classes tab (Today's Classes / Upcoming) generate from — neither one
 // requires a manually-created row per occurrence; a batch's own recurring schedule is enough.
+// SCHEDULE BUG FIX: the weekday mapping itself (Sun=0..Sat=6) already matched JS's own
+// Date.getDay() exactly — there was no weekday-index bug. The real cause of real batches (all 3
+// "Intermediate Talk Club" batches, confirmed live in production: Speak Up Squad 02 ITC, Talk
+// Titans 01 ITC, The Fluency Hub 03 ITC) never appearing in Today's Classes/Upcoming/My Calendar
+// despite being actively taught: their own batches.day_pattern column is null — never populated
+// at creation/import — while the COURSE they belong to (Intermediate Talk Club) DOES have real
+// default_days configured ("Tue, Thu, Sat"). Neither screen had a fallback to the course's own
+// default when a batch's own pattern was missing.
+// SEPARATE-LOGIC BUG: My Calendar (loadScheduleTab) was NOT actually calling this function
+// despite its own header comment claiming it did — it had a second, independent copy of the
+// same day-token parsing, with the identical missing-fallback flaw. _acadEffectiveDayPattern()
+// is now the one shared resolver both screens call, so they can no longer disagree.
+function _acadEffectiveDayPattern(b){
+  return b.day_pattern || (typeof courseById!=='undefined' && courseById[b.course_id] && courseById[b.course_id].default_days) || '';
+}
 function generateBatchOccurrences(b, rangeStart, rangeEnd) {
   const DAY_INDEX = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
-  const tokens = (b.day_pattern||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const tokens = _acadEffectiveDayPattern(b).split(',').map(s=>s.trim()).filter(Boolean);
   const dayTokens = tokens.map(t=>t.replace(/\s*·.*$/,'').trim()).filter(d=>DAY_INDEX.hasOwnProperty(d));
   const startMin = _batchStartMinutes(b);
   if (!dayTokens.length || startMin === null) return [];
@@ -5837,9 +5900,29 @@ async function saveStuStatus(){
   // itself decides New vs Unassigned vs In Progress vs Completed from batch_id/progress; this
   // column is only ever meant to carry an explicit override now (On Freeze/Dropped) or nothing.
   const v=document.getElementById('stu_status').value||null;
-  const {error}=await sb.from('students').update({status:v}).eq('id',s.id);
+  const upd = {status:v};
+  // DROPPED WORKFLOW (spec part 3): moving TO Dropped needs an explicit confirmation \u2014 the
+  // student, their batch/course, and an effective date, exactly as spec'd \u2014 never a silent
+  // dropdown-and-save like the other override values. dropped_at is what the backend attendance
+  // guard (_be_block_attendance_for_dropped_student, applied this session) actually keys off \u2014
+  // set here, not left null, or that trigger would never activate for this drop.
+  if (v === 'Dropped' && s.status !== 'Dropped') {
+    const today = new Date().toISOString().slice(0,10);
+    const ok = await _showSimpleConfirm(
+      `Student: ${s.name}\nBatch: ${s.batch_name||'\u2014 Unassigned \u2014'}\nCourse: ${s.programme||'\u2014'}\nEffective Date: ${today}`,
+      { title: 'Mark this student as Dropped from this batch?', confirmLabel: 'Mark Dropped' }
+    );
+    if (!ok) { document.getElementById('stu_status').value = s.status==='On Freeze'?'On Freeze':''; return; }
+    upd.dropped_at = today;
+  } else if (v !== 'Dropped') {
+    // Moving away from Dropped (or to any other override) clears the effective date \u2014 a
+    // student who rejoins isn't still carrying a stale drop date the guard could act on.
+    upd.dropped_at = null;
+  }
+  const {error}=await sb.from('students').update(upd).eq('id',s.id);
   if(error){showToast('error','Save failed: '+error.message);return;}
-  s.status=v;showToast('success','Status updated: '+s.name+' \u2192 '+(v||'Auto'));
+  s.status=v; s.dropped_at = upd.dropped_at!==undefined ? upd.dropped_at : s.dropped_at;
+  showToast('success','Status updated: '+s.name+' \u2192 '+(v||'Auto'));
   loadLive();
   if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
 }
