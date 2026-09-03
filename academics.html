@@ -2221,6 +2221,21 @@ async function refreshActiveDelegation(){
 function isCurrentlyAcademicHead(){
   return currentUser.role === 'founder' || currentUser.role === 'academic_head' || !!window._activeDelegation;
 }
+// SCHEDULE VISIBILITY BUG FIX: "what do I personally need to teach today" (Today's Classes,
+// Upcoming Next 7 Days, My Calendar) must stay scoped to the logged-in Trainer's OWN batches
+// even while they're holding an active Academic Head delegation — isCurrentlyAcademicHead()
+// returning true for a delegation is correct for edit/admin permissions (which is what it's
+// for everywhere else), but Live Batches/My Batches (loadLive()) never used it for scoping —
+// it always checks only the real role. loadClassesTab() and loadScheduleTab() (My Calendar)
+// used isCurrentlyAcademicHead() instead, so a delegated Trainer's own class list silently
+// widened to every active trainer's batches company-wide the moment a delegation was active —
+// confirmed live: Mariyam's Today's Classes showed her 3 real batches PLUS 3 batches actually
+// belonging to Eva Aju Mathew/Namratha/Treesa, while Live Batches correctly kept showing only
+// her own 3. This is the one shared "am I scoped to just my own teaching load" check both
+// screens now use — a genuine Head/Founder still sees everyone's schedule, unchanged.
+function _acadIsRealHeadForSchedule(){
+  return currentUser.role === 'founder' || currentUser.role === 'academic_head';
+}
 function applyAcadRoleGates(){
   const isHead = isCurrentlyAcademicHead();
   const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
@@ -4179,7 +4194,10 @@ function openOccupiedSlot(trainerId, startTime, endTime){
 // ============================================================================
 async function loadClassesTab(){
   try{
-    const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
+    // Scoping fix — see _acadIsRealHeadForSchedule's own comment: this must stay the
+    // Trainer's own teaching list even during an active Head delegation, unlike most other
+    // isHead checks in this file (which correctly DO want delegation-aware access).
+    const isHead = _acadIsRealHeadForSchedule();
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const soon = new Date(now); soon.setDate(soon.getDate()+7);
@@ -4189,7 +4207,28 @@ async function loadClassesTab(){
     let query = sb.from('batches').select('*').eq('status','active');
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const { data: batches } = await query;
-    const rows = (batches || []).filter(b => !_isBatchDeleted(b));
+    let rows = (batches || []).filter(b => !_isBatchDeleted(b));
+    // SESSION COMPLETION RULE: a batch that's reached its real session total (baseline +
+    // actually-marked attendance) has already released its slot everywhere else (My
+    // Batches/Live Batches, the recurring Availability engine) — this screen used to have no
+    // such check at all, only the raw status='active' flag above, so a batch that quietly hit
+    // 100% progress without anyone ever setting status='completed' kept generating "classes"
+    // here forever. Same rule as My Calendar's own equivalent block just below.
+    if (rows.length) {
+      const names = rows.map(b=>b.name).filter(Boolean);
+      const doneByBatch = {};
+      if (names.length) {
+        try {
+          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names);
+          (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
+        } catch(e) {}
+      }
+      rows = rows.filter(b => {
+        const total = b.sessions_total || 0;
+        const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
+        return !(total && done >= total);
+      });
+    }
     const todaysEl = document.getElementById('classesToday');
     const upcomingEl = document.getElementById('classesUpcoming');
     if (!rows.length) {
@@ -4457,7 +4496,8 @@ async function _acadResolveBatchId(name){
 // ============================================================================
 async function loadScheduleTab(){
   try{
-    const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
+    // Same scoping fix as loadClassesTab() — see _acadIsRealHeadForSchedule's own comment.
+    const isHead = _acadIsRealHeadForSchedule();
     let query = sb.from('batches').select('*, students(id)').eq('status','active');
     if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const {data:batches} = await query;
