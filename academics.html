@@ -631,7 +631,17 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="acad-dash-tiles" id="statgrid"></div>
         <div class="section" id="liveSection">
           <h2><span id="tab-acad-live-label">Live Batches &amp; Attendance</span> <span class="tag">Live · Database</span></h2>
-          <input id="live_batch_search" type="text" placeholder="Search batches… (name, course, trainer, student)" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;margin-bottom:12px" oninput="renderLiveBatchCards()"/>
+          <!-- Compact filter row: search + Trainer/Batch/Course, backend-sourced options (real
+               trainers/courses/active-batches, never hardcoded), wraps cleanly on narrow
+               screens (flex-wrap). All four combine (AND) in renderLiveBatchCards() below,
+               filtering by real id (trainer_id/batch id/course_id), never a display-name
+               string. -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <input id="live_batch_search" type="text" placeholder="Search batches… (name, course, trainer, student)" style="flex:2;min-width:200px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" oninput="renderLiveBatchCards()"/>
+            <select id="live_filter_trainer" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Trainers</option></select>
+            <select id="live_filter_batch" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Batches</option></select>
+            <select id="live_filter_course" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Courses</option></select>
+          </div>
           <div id="liveBatches" class="loading">Loading…</div>
         </div>
         <div class="section role-head-only hidden">
@@ -1808,8 +1818,8 @@ async function loadLive(){
   // genuinely drift from trainers.name (confirmed live: one real batch had "Laura" cached on its
   // students while the trainers row itself is "Laura and philip") — id is the only reliable key.
   const inactiveTrainerIds = new Set((trainerStatusResult.data||[]).filter(t=>t.status==='inactive').map(t=>String(t.id)));
-  const batchIdByName = {}, batchTrainerIdByName = {};
-  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; });
+  const batchIdByName = {}, batchTrainerIdByName = {}, batchCourseIdByName = {};
+  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; });
   window._acadBatchIdByName = batchIdByName;
   try{
     attRows.forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});
@@ -1930,11 +1940,51 @@ async function loadLive(){
   // split Student Attendance into "My Assigned Batches" / "Other Trainers' Batches" for an
   // Academic Head, who is also a working Trainer with their own teaching load (spec: keep
   // that split ID-based, never by trainer name text).
-  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); });
+  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); });
   previous.forEach(b => b._progress = progressOf(b));
   window._liveActiveBatches = active;
   window._livePreviousBatches = previous;
+  // Refreshes the Trainer/Batch/Course filter dropdowns from this same real fetch — so a
+  // batch created/reassigned/deleted (which already re-runs loadLive() via the realtime
+  // channel/direct calls elsewhere in this file) keeps the Batch dropdown's options current
+  // without a page refresh, per the spec's real-time requirement.
+  if (typeof _acadPopulateLiveFilters === 'function') _acadPopulateLiveFilters();
   renderLiveBatchCards();
+}
+// LIVE BATCH FILTERS (Trainer/Batch/Course) \u2014 options are always real backend data, never
+// hardcoded: Trainer from the trainers table (active only), Course from the courses table
+// (active only), Batch from the batches this exact fetch already scoped to "active, not
+// deleted, not yet finished" (loadLive()'s own active array \u2014 item 3's "show only relevant
+// live batches" applies to this dropdown for free, no separate query needed). Rebuilds on
+// every loadLive() (so a new/reassigned/deleted batch \u2014 already re-triggering loadLive() via
+// the realtime channel elsewhere in this file \u2014 keeps this list current) while preserving
+// whatever the user currently has selected, if that option still exists.
+async function _acadPopulateLiveFilters(){
+  const trainerSel = document.getElementById('live_filter_trainer');
+  const batchSel = document.getElementById('live_filter_batch');
+  const courseSel = document.getElementById('live_filter_course');
+  if (!trainerSel && !batchSel && !courseSel) return;
+  if (trainerSel) {
+    if (!_allActiveTrainers.length) { try { await populateTrainerSelects(); } catch(e){} }
+    const prev = trainerSel.value;
+    const opts = [...(_allActiveTrainers||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    trainerSel.innerHTML = '<option value="">All Trainers</option>' + opts.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    trainerSel.value = opts.some(t=>String(t.id)===prev) ? prev : '';
+  }
+  if (batchSel) {
+    const prev = batchSel.value;
+    const seen = new Map();
+    (window._liveActiveBatches||[]).forEach(b => { if (b._batchId && !seen.has(b._batchId)) seen.set(b._batchId, b.raw || b.name); });
+    const opts = [...seen.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+    batchSel.innerHTML = '<option value="">All Batches</option>' + opts.map(([id,name])=>`<option value="${id}">${esc(name)}</option>`).join('');
+    batchSel.value = seen.has(prev) ? prev : '';
+  }
+  if (courseSel) {
+    const prev = courseSel.value;
+    const opts = (typeof COURSE_ROWS !== 'undefined' ? COURSE_ROWS : []).filter(c=>c.active!==false).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    courseSel.innerHTML = '<option value="">All Courses</option>' + opts.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    courseSel.value = opts.some(c=>String(c.id)===prev) ? prev : '';
+  }
 }
 // A batch matches a search term against exactly the fields spec'd: Batch Name, Course, Trainer/
 // Coach, and Student Name (cheap here \u2014 the roster is already in memory, no extra query).
@@ -1954,12 +2004,24 @@ function _acadBatchMatchesSearch(b, term){
 // fetch on top of that, it filters what's already resident, which is why it can feel instant.
 function renderLiveBatchCards(){
   const term = (document.getElementById('live_batch_search')?.value || '').trim();
+  // Trainer/Batch/Course filters — real ids (trainer_id/batch id/course_id), combined with
+  // search and with each other by AND, exactly as spec'd. Reads straight off the <select>s
+  // populated by _acadPopulateLiveFilters(); missing elements (a role that never rendered
+  // this row, though currently all roles do) just mean "no filter", never an error.
+  const trainerFilter = document.getElementById('live_filter_trainer')?.value || '';
+  const batchFilter = document.getElementById('live_filter_batch')?.value || '';
+  const courseFilter = document.getElementById('live_filter_course')?.value || '';
+  const anyFilterActive = !!(term || trainerFilter || batchFilter || courseFilter);
+  const matchesFilters = b => _acadBatchMatchesSearch(b, term)
+    && (!trainerFilter || String(b._trainerId||'') === trainerFilter)
+    && (!batchFilter || String(b._batchId||'') === batchFilter)
+    && (!courseFilter || String(b._courseId||'') === courseFilter);
   const active = window._liveActiveBatches || [];
   const previous = window._livePreviousBatches || [];
   const el = document.getElementById('liveBatches');
   if (el) {
     el.className = '';
-    const shown = active.map((b,i) => ({b,i})).filter(x => _acadBatchMatchesSearch(x.b, term));
+    const shown = active.map((b,i) => ({b,i})).filter(x => matchesFilters(x.b));
     // ACADEMIC HEAD DUAL ROLE (correction — no separate My Batches tab/page/sidebar item;
     // this split stays entirely inside the existing Student Attendance list, same container,
     // same cards, same actions). An Academic Head is also a working Trainer with their own
@@ -1967,16 +2029,22 @@ function renderLiveBatchCards(){
     // window._myTrainerId (the Head's own real trainer row, resolved once at boot the same
     // way every other "my batches" scoping in this file already does — never by name text),
     // never a redesign of the card itself. A normal Trainer/Coach (or a Head not linked to
-    // any trainer row) sees the exact same flat, ungrouped list as before.
-    const isHeadSplit = currentUser.role === 'academic_head' && window._myTrainerId;
+    // any trainer row) sees the exact same flat, ungrouped list as before. Also true, per
+    // spec, for a Trainer holding an active Temporary Academic Head delegation —
+    // isCurrentlyAcademicHead() covers both the real role and a live delegation (the same
+    // check requireHeadAccess()/card()'s own isHead already use), while window._myTrainerId
+    // still always resolves to the ACTUAL logged-in delegate's own trainer row, never the
+    // delegating Head's — so "My Assigned Batches" is always the real, current user's own
+    // teaching load, not whoever they're temporarily standing in for.
+    const isHeadSplit = isCurrentlyAcademicHead() && window._myTrainerId;
     if (!shown.length) {
-      el.innerHTML = `<div class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No active batches for you.'}</div>`;
+      el.innerHTML = `<div class="empty">${anyFilterActive ? 'No batches match the current search/filters.' : 'No active batches for you.'}</div>`;
     } else if (isHeadSplit) {
       const mine = shown.filter(x => String(x.b._trainerId||'') === String(window._myTrainerId));
       const others = shown.filter(x => String(x.b._trainerId||'') !== String(window._myTrainerId));
       el.innerHTML =
         (mine.length ? '<div class="subhead">My Assigned Batches</div>' + mine.map(x => card(x.b, x.i, false)).join('')
-          : (term ? '' : '<div class="subhead">My Assigned Batches</div><div class="empty">No batches assigned to you as a trainer right now.</div>'))
+          : (anyFilterActive ? '' : '<div class="subhead">My Assigned Batches</div><div class="empty">No batches assigned to you as a trainer right now.</div>'))
         + (others.length ? '<div class="subhead">Other Trainers’ Batches</div>' + others.map(x => card(x.b, x.i, false)).join('') : '');
     } else {
       el.innerHTML = shown.map(x => card(x.b, x.i, false)).join('');
@@ -2001,7 +2069,15 @@ function renderLiveBatchCards(){
 // just to redraw cards; reads b._progress (precomputed once in loadLive(), see there) instead
 // of closing over progressOf/doneMap/baseMap/totalMap.
 function card(b,i,isPrevious){
-  const isHead = currentUser.role==='founder'||currentUser.role==='academic_head';
+  // BUG FIX (spec: delegated Academic Head access) — was role-literal only, so a Trainer
+  // holding an active Temporary Academic Head delegation never saw Edit Batch/Complete
+  // Batch/click-to-view-student on ANY card, even though requireHeadAccess() (the click-time
+  // gate those same buttons call into) already correctly approves them for the whole
+  // delegation window. isCurrentlyAcademicHead() is the one shared check for that — same
+  // function requireHeadAccess() itself already uses — so the buttons now actually render
+  // when the click would have worked anyway, instead of a delegated Trainer only being able
+  // to discover write access existed by clicking a button that was never there.
+  const isHead = isCurrentlyAcademicHead();
   const {total,dn,pct,base,marked} = b._progress || {total:0,dn:0,pct:0,base:0,marked:0};
   const nameHtml = (isHead&&b.elite) ? `<span style="cursor:pointer" onclick="openStu(${i},0)">${esc(b.name)}</span>` : esc(b.name);
   const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
@@ -2566,7 +2642,13 @@ async function boot(){
   if (!window._acadDelegationInterval) window._acadDelegationInterval = setInterval(async () => {
     const before = !!window._activeDelegation;
     await refreshActiveDelegation();
-    if (before !== !!window._activeDelegation) { applyAcadRoleGates(); renderDelegationBanner(); }
+    if (before !== !!window._activeDelegation) {
+      applyAcadRoleGates(); renderDelegationBanner();
+      // A delegation starting/expiring changes isCurrentlyAcademicHead() (card()'s isHead,
+      // and the My Assigned Batches / Other Trainers' Batches split), so Live Batches needs
+      // to redraw right away too — no manual browser refresh required (spec item 7).
+      if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
+    }
   }, 60000);
 
   const { isHead, isTrainerCapable, isRestricted } = applyAcadRoleGates();
