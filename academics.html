@@ -4387,7 +4387,14 @@ function renderTrainerAvailabilityView(){
       }
       const st = states[idx];
       if (st.state === 'occupied') {
-        return `<div style="${_availRowStyle(_AVAIL_RED)};cursor:pointer" onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span></div>`;
+        // Row still opens the detail modal on click; Head also gets inline Reassign / Remove
+        // Booking buttons right here so removing an occupied class doesn't require discovering
+        // the click-through modal first (spec: occupied slots need explicit actions).
+        const headActions = isCurrentlyAcademicHead()
+          ? `<button class="act-btn" onclick="event.stopPropagation();openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')">Details</button>`
+            + `<button class="act-btn" onclick="event.stopPropagation();removeBookingInline('${t.id}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
+          : '';
+        return `<div style="${_availRowStyle(_AVAIL_RED)};${isCurrentlyAcademicHead()?'':'cursor:pointer'}" ${isCurrentlyAcademicHead()?'':`onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"`}><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span>${headActions}</span></div>`;
       }
       if (st.state === 'conflict') {
         // Distinct from Occupied (spec #2): this declared slot is spoken-for only because it
@@ -4396,7 +4403,12 @@ function renderTrainerAvailabilityView(){
         // (it's not genuinely free) and not an Occupied booking of its own to open.
         const bStart = _batchStartMinutes(st.batch), bEnd = bStart + (st.batch.class_duration_minutes||60);
         const realTime = `${_formatTime12(_minutesToTime(bStart))} – ${_formatTime12(_minutesToTime(bEnd))}`;
-        return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)" title="Overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span></div>`;
+        // Head can remove the overlapping class's booking straight from a conflict row too —
+        // removeBookingInline resolves the real overlapping batch and unassigns it (batch kept).
+        const cHeadActions = isCurrentlyAcademicHead()
+          ? `<button class="act-btn" onclick="event.stopPropagation();removeBookingInline('${t.id}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
+          : '';
+        return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)" title="Overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${cHeadActions}</span></div>`;
       }
       // Free — assignable, plus Head-only Edit/Remove of the declared slot itself (spec #4/#6).
       return `<div style="${_availRowStyle(_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
@@ -4453,13 +4465,19 @@ function renderMyAvailabilityList(){
   el.innerHTML = mine.length ? mine.map((s, idx) => {
     const st = states[idx];
     const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
+    // Head-who-teaches can unbook their own occupied/conflict class right here too (spec #6:
+    // a plain Trainer cannot, so this is gated on isCurrentlyAcademicHead — removeBookingInline
+    // itself also re-checks requireHeadAccess).
+    const myHeadRemove = isCurrentlyAcademicHead()
+      ? `<button class="act-btn" onclick="removeBookingInline('${myId}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
+      : '';
     if (st.state === 'occupied') {
       const releaseLabel = availabilityReleaseLabel(st.batch);
       return `<div style="${_availRowStyle(_AVAIL_RED)}">
         <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
         <span style="display:flex;align-items:center;gap:8px">
           <span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span>
-          <span style="font-size:10.5px;color:var(--tx3)">${releaseLabel?'Available from '+esc(releaseLabel):''}</span>
+          <span style="font-size:10.5px;color:var(--tx3)">${releaseLabel?'Available from '+esc(releaseLabel):''}</span>${myHeadRemove}
         </span></div>`;
     }
     if (st.state === 'conflict') {
@@ -4467,7 +4485,7 @@ function renderMyAvailabilityList(){
       const realTime = `${_formatTime12(_minutesToTime(bStart))} – ${_formatTime12(_minutesToTime(bEnd))}`;
       return `<div style="${_availRowStyle(_AVAIL_AMBER)}">
         <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
-        <span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span></div>`;
+        <span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${myHeadRemove}</span></div>`;
     }
     return `<div style="${_availRowStyle(_AVAIL_GREEN)}">
       <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
@@ -4620,6 +4638,21 @@ async function removeBookingFromSlot(){
     if (typeof loadLive === 'function') loadLive();
     if (typeof loadHeadView === 'function') loadHeadView();
   } catch(e) { showToast('error','Could not remove assignment: '+e.message); }
+}
+// Inline "Remove Booking" straight from a grid row (occupied OR conflict) — resolves the real
+// active batch occupying/overlapping that slot, seeds the same _occSlotCtx the modal uses, and
+// runs the identical confirm + unassign flow (removeBookingFromSlot). The confirm/label use the
+// BATCH's real time, not the declared slot's, so a conflict row (whose batch runs at a
+// different time) reads correctly. Head-only, same as the modal action.
+function removeBookingInline(trainerId, startTime, endTime){
+  if (!requireHeadAccess()) return;
+  const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
+  const batch = findOccupyingBatch(trainerId, startTime, endTime, _availBatchesForOccupancy);
+  if (!batch || !batch.id) { showToast('warning','No active class booking found for this slot.'); return; }
+  const bStart = _batchStartMinutes(batch), bEnd = bStart + (batch.class_duration_minutes||60);
+  window._occSlotCtx = { trainerId, trainerName: t ? t.name : '', batch,
+    startTime: (bStart!=null?_minutesToTime(bStart):startTime), endTime: (bStart!=null?_minutesToTime(bEnd):endTime) };
+  removeBookingFromSlot();
 }
 
 // ── Analog clock time picker (unchanged — reused verbatim for My Availability's Start/End
