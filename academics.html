@@ -406,7 +406,11 @@ details[open] .rawsum::before{content:'▾ '}
              work, task queue, session log), not personal employee-HR items, so they stay in
              the ACADEMIC group rather than under My Workspace, which is reserved for the
              common employee items shared with every other department (see below). -->
-        <button class="acad-nav-link sidebar-link role-trainer-only" id="nav-acad-mybatches" onclick="acadSwitchTab('mybatches')"><i data-lucide="book-marked" style="width:14px;height:14px"></i> My Batches</button>
+        <!-- Standalone "My Batches" nav item/tab removed (spec: "Remove Duplicate My Batches
+             Section") — it duplicated the combined "Student Attendance + My Batches" tab
+             (tab-acad-live, already relabeled "My Batches & Attendance" for a Trainer just
+             below in acadSwitchTab/boot's own role-label logic) with a second, independent
+             batch list. That tab remains exactly as it was; only this second one is gone. -->
         <button class="acad-nav-link sidebar-link" id="nav-acad-tasks" onclick="acadSwitchTab('tasks')"><i data-lucide="list-check" style="width:14px;height:14px"></i> My Assigned Tasks</button>
         <!-- Standalone "Logs" removed — class logs are now recorded directly inside Mark
              Attendance (Student Attendance tab) and read back via each batch's own Session
@@ -704,15 +708,6 @@ details[open] .rawsum::before{content:'▾ '}
           <div id="m_b_students" class="pick-list"><div class="mhint" style="padding:8px">Pick a course above to see students registered for it.</div></div>
           <div class="modal-actions"><button class="btn-cancel" onclick="acadSwitchTab('live')">Cancel</button><button class="btn-save" onclick="saveBatch()">Create Batch</button></div>
         </div>
-      </div>
-
-      <div class="acad-tab" id="tab-acad-mybatches">
-        <div class="section role-trainer-only hidden">
-          <h2>My Batches</h2>
-          <table><thead><tr><th>Batch</th><th>Schedule</th><th>Course</th><th>Students</th><th>Status</th><th>Progress</th></tr></thead>
-            <tbody id="myBatches"></tbody></table>
-        </div>
-        <div class="empty role-nontrainer-only">Batches assigned to you as a trainer will appear here.</div>
       </div>
 
       <div class="acad-tab" id="tab-acad-courses">
@@ -1335,7 +1330,7 @@ details[open] .rawsum::before{content:'▾ '}
   <div id="cb_body"></div>
   <div class="modal-actions">
     <button class="btn-cancel" onclick="closeModal('completeBatch')">Cancel</button>
-    <button class="btn-save" id="cb_confirm_btn" onclick="confirmCompleteBatch()" style="display:none">Complete &amp; Close Batch</button>
+    <button class="btn-save" id="cb_confirm_btn" onclick="confirmCompleteBatch()">Yes, Complete Batch</button>
   </div>
 </div></div>
 
@@ -2044,6 +2039,7 @@ function card(b,i,isPrevious){
 // at the moment of closing, since another trainer could have unmarked a session or this data
 // could simply be stale by the time Confirm is clicked.
 window._cbBatchIndex = null;
+window._cbInFlight = false;
 async function openCompleteBatch(i){
   if(!requireHeadAccess())return;
   const b=window._liveBatches[i]; if(!b||!b.raw)return;
@@ -2052,53 +2048,61 @@ async function openCompleteBatch(i){
   const remaining = Math.max(0, total-dn);
   document.getElementById('cb_title').textContent = 'Complete Batch · '+b.name;
   const confirmBtn = document.getElementById('cb_confirm_btn');
-  if (remaining > 0 || total <= 0) {
-    confirmBtn.style.display = 'none';
-    document.getElementById('cb_body').innerHTML =
-      '<div class="stu-grid" style="margin-bottom:10px">'
-      +'<span class="k">Completed Sessions</span><span class="v">'+dn+' / '+(total||'—')+'</span>'
-      +'<span class="k">Remaining</span><span class="v" style="color:var(--yellow)">'+remaining+' session'+(remaining===1?'':'s')+'</span>'
-      +'</div>'
-      +'<div class="mhint" style="color:var(--yellow)">'+remaining+' session'+(remaining===1?' is':'s are')+' still incomplete. Complete the remaining attendance/session records before closing this batch.</div>'
-      +'<div class="mhint" style="margin-top:8px">Use <b>Mark Attendance</b> on this batch’s card — it already opens to the next missing session number, so you can pick the real historical date, mark attendance, and add the class log for each one. Each save counts once toward the total.</div>';
-  } else {
-    confirmBtn.style.display = '';
-    document.getElementById('cb_body').innerHTML =
-      '<div class="mhint" style="margin-bottom:10px">Complete this batch?</div>'
-      +'<div class="stu-grid">'
-      +'<span class="k">Batch Name</span><span class="v">'+esc(b.name)+'</span>'
-      +'<span class="k">Trainer</span><span class="v">'+esc(b.trainer||'—')+'</span>'
-      +'<span class="k">Total Sessions</span><span class="v">'+total+'</span>'
-      +'<span class="k">Completed Sessions</span><span class="v">'+dn+'</span>'
-      +'<span class="k">Students</span><span class="v">'+(b.students?b.students.length:0)+'</span>'
-      +'<span class="k">Completion Date</span><span class="v">'+new Date().toLocaleDateString()+'</span>'
-      +'</div>';
-  }
+  // complete_batch() no longer blocks on incomplete sessions — it auto-fills the shortfall
+  // (see the migration's own comment for why that's done via baseline_sessions, never by
+  // fabricating attendance rows), which is exactly what makes this button usable as "a manual
+  // administrative shortcut for old batches with missing attendance" per the spec. So the
+  // modal always shows the same confirm state now; the only thing that changes is whether the
+  // note below mentions an auto-fill.
+  confirmBtn.disabled = false;
+  document.getElementById('cb_body').innerHTML =
+    '<div class="mhint" style="margin-bottom:10px">Complete this batch? This will mark all remaining sessions as completed and finalize the attendance for this batch.</div>'
+    +'<div class="stu-grid">'
+    +'<span class="k">Batch Name</span><span class="v">'+esc(b.name)+'</span>'
+    +'<span class="k">Trainer</span><span class="v">'+esc(b.trainer||'—')+'</span>'
+    +'<span class="k">Total Sessions</span><span class="v">'+total+'</span>'
+    +'<span class="k">Completed Sessions</span><span class="v">'+dn+'</span>'
+    +'<span class="k">Students</span><span class="v">'+(b.students?b.students.length:0)+'</span>'
+    +'<span class="k">Completion Date</span><span class="v">'+new Date().toLocaleDateString()+'</span>'
+    +'</div>'
+    +(remaining>0 ? '<div class="mhint" style="margin-top:8px;color:var(--yellow)">'+remaining+' session'+(remaining===1?' is':'s are')+' not yet individually logged — completing now marks this batch\'s progress as fully done (legacy/administrative close). No attendance records are changed, duplicated, or removed.</div>' : '');
   document.getElementById('modalCompleteBatch').classList.add('on');
 }
 async function confirmCompleteBatch(){
   if(!requireHeadAccess())return;
+  if (window._cbInFlight) return; // guard against double-click/duplicate requests
   const i = window._cbBatchIndex; const b = i!=null ? window._liveBatches[i] : null;
   if (!b || !b.raw) { closeModal('completeBatch'); return; }
-  const {data:row} = await sb.from('batches').select('id').eq('name', b.raw).maybeSingle();
-  if (!row || !row.id) { showToast('error','Could not find this batch’s database record.'); return; }
+  // Prefer the id loadLive() already resolved for this exact card (b._batchId) — robust for
+  // every card shape, including an Elite (1:1) card or a batch with no real batch_name at all
+  // ("Unassigned"), neither of which a fresh name lookup here could reliably re-find. Only
+  // falls back to a fresh name lookup if that wasn't available for some reason.
+  let batchId = b._batchId;
+  if (!batchId) {
+    const {data:row} = await sb.from('batches').select('id').eq('name', b.raw).maybeSingle();
+    batchId = row && row.id;
+  }
+  if (!batchId) { showToast('error','Could not find this batch’s database record.'); return; }
+  window._cbInFlight = true;
   const btn = document.getElementById('cb_confirm_btn');
   btn.disabled = true;
   try {
     // Canonical, server-side re-check — never trusts the modal's own (possibly stale-by-now)
-    // numbers. The RPC recomputes done/total fresh from attendance at this exact moment.
-    const { data, error } = await sb.rpc('complete_batch', { p_batch_id: row.id });
+    // numbers. The RPC recomputes done/total fresh from attendance at this exact moment, and
+    // runs as one Postgres function call (one implicit transaction) — if anything inside it
+    // errors, nothing it touched is left partially written, and the batch stays exactly in
+    // its previous valid state.
+    const { data, error } = await sb.rpc('complete_batch', { p_batch_id: batchId });
     const result = (data && data[0]) || null;
     if (error || !result) { showToast('error','Could not complete batch: '+(error?error.message:'unknown error')); return; }
     if (!result.ok) {
+      // Only reachable now for a real edge case (batch not found / already completed / no
+      // sessions_total configured) — normal incomplete-progress no longer lands here at all.
       showToast('warning', result.message, 7000);
-      // Someone else's action changed progress between opening this modal and clicking
-      // Confirm — refresh the card data so the Head sees the real current state, not the
-      // stale numbers this modal was showing a moment ago.
       loadLive();
       return;
     }
-    showToast('success', b.name+' completed and moved to Finished Batches.');
+    showToast('success', 'Batch completed successfully');
     closeModal('completeBatch');
     // Same realtime-driven cascade every other batch-status change already relies on (the
     // 'batches' postgres_changes channel + this file's own debounced refresh) — release of the
@@ -2111,6 +2115,7 @@ async function confirmCompleteBatch(){
     if (typeof loadStats === 'function') loadStats();
   } finally {
     btn.disabled = false;
+    window._cbInFlight = false;
   }
 }
 // EMERGENCY TRAINER REASSIGNMENT (spec parts 3/4/5/6/7). Populates the New Trainer dropdown
@@ -2556,8 +2561,8 @@ async function boot(){
   // globals that were already set above — so running their queries concurrently produces the
   // exact same end state, just in roughly max(their times) instead of the sum of all four.
   // loadAcadDashboard() still runs afterward, unchanged — it genuinely does read what
-  // loadLive()/loadTrainerView() just wrote (window._liveBatches, the #myBatches/#myTasks
-  // DOM rows), so it can't join this same parallel batch.
+  // loadLive()/loadTrainerView() just wrote (window._liveBatches, the #myTasks DOM rows),
+  // so it can't join this same parallel batch.
   await Promise.all([
     isHead ? loadHeadView() // also loads Trainers table + Courses (see loadHeadView)
       // Coaches roster is Academic Head-only now (Strict Trainer/Coach Access Control) — a
@@ -3443,7 +3448,10 @@ async function loadAcadDashboard(){
       // this file — not a new palette, just applied here too.
       const tiles = [{ icon: 'layers', color: '#ff0552', label: 'Active Batches', value: activeBatches.length, status: 'in progress', onclick: "acadSwitchTab('live')" }];
       if (isTrainerCapable) {
-        tiles.push({ icon: 'book-marked', color: '#3b82f6', label: 'My Batches', value: countRows('#myBatches tr'), status: 'assigned to you', onclick: "acadSwitchTab('mybatches')" });
+        // The old separate "My Batches" tile (→ acadSwitchTab('mybatches')) was dropped along
+        // with the standalone My Batches tab it pointed to — it duplicated the "Active
+        // Batches" tile right above, which already covers the same count and the same
+        // destination (the combined Live/My Batches & Attendance tab).
         const pendingCount = Array.from(document.querySelectorAll('#myTasks tr')).filter(r => r.children[3] && /pending|in.progress/i.test(r.children[3].textContent)).length;
         tiles.push({ icon: 'list-check', color: '#f59e0b', label: 'Pending Tasks', value: pendingCount, status: 'needs attention', onclick: "acadSwitchTab('tasks')" });
       }
@@ -4962,48 +4970,11 @@ async function loadTrainerView(){
   const { data: myTrainer } = await sb.from('trainers').select('*').ilike('name', currentUser.name).single();
   if (!myTrainer) return;
 
-  const { data: rawBatches } = await sb.from('batches').select('*, students(id)').eq('trainer_id', myTrainer.id);
-  const batches = (rawBatches||[]).filter(b => !_isBatchDeleted(b));
-  // Real progress per batch — baseline_sessions (pre-tracking progress) + actual marked
-  // attendance rows for that batch name, same source loadLive()'s Head-facing cards already
-  // use, just scoped here to only this trainer's own (already-scoped) batch list.
-  const myBatchNames = (batches||[]).map(b=>b.name).filter(Boolean);
-  const doneByBatch = {};
-  if (myBatchNames.length) {
-    try {
-      const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', myBatchNames);
-      (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
-    } catch(e) {}
-  }
-  // My Batches shows only active/ongoing/upcoming batches — a batch whose sessions are 100%
-  // done belongs in Finished Batches instead (same progress formula loadLive() already uses
-  // to make that exact split there, applied here too so this table doesn't disagree with it).
-  const progressOf = b => {
-    const total = b.sessions_total || 0;
-    const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
-    return { total, done, pct: total ? Math.round((done/total)*100) : 0 };
-  };
-  // BUG FIX (real, confirmed live — a legacy batch marked done via status='closed' with its
-  // baseline_sessions never backfilled to match, e.g. the real "The Fluent Force" batch:
-  // status='closed', 6/42 sessions): this filter used to check session progress ONLY, never
-  // status — so a batch Finished Batches (and now the Availability engine, via
-  // window._acadFinishedBatchNames) already correctly treats as finished by its STATUS alone
-  // kept showing here as if still active. Same shared rule as everywhere else now
-  // (_acadIsFinishedByStatusOrProgress) — one normalized answer, not a third one computed
-  // here that could disagree with the other two.
-  const myActiveBatches = (batches||[]).filter(b => { const { total, done } = progressOf(b); return !_acadIsFinishedByStatusOrProgress(b.status, done, total); });
-  document.getElementById('myBatches').innerHTML = myActiveBatches.map(b => {
-    const { total, pct } = progressOf(b);
-    // BUG FIX: this row already only exists because myActiveBatches (above) determined the
-    // batch is genuinely NOT finished — 'closed' no longer means "not active" on its own (see
-    // _acadIsFinishedByStatusOrProgress), so a row here is always active regardless of its raw
-    // status string; only 'inactive' (a real, separate manual-deactivation signal) still dims it.
-    const statusOk = b.status !== 'inactive';
-    return `<tr><td data-label="Batch">${esc(b.name)}</td><td data-label="Schedule">${esc(b.day_pattern||'')} ${esc(b.time_slot||'')}</td><td data-label="Course">${esc(b.programme||'—')}</td><td data-label="Students">${b.students?.length||0}</td>
-      <td data-label="Status"><span class="badge ${statusOk?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
-      <td data-label="Progress" style="min-width:110px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gk)"></div></div><span style="font-size:10.5px;color:var(--tx3);min-width:30px">${total?pct+'%':'—'}</span></div></td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">No active batches assigned right now — completed batches move to Finished Batches.</td></tr>';
-
+  // The standalone "My Batches" table this used to build/render here is gone (spec: "Remove
+  // Duplicate My Batches Section") — that batch list duplicated the combined Live/My Batches &
+  // Attendance tab (loadLive()), which already scopes to a Trainer's own batches. This
+  // function's remaining job is My Assigned Tasks + window._myTrainerId, both still needed
+  // elsewhere (renderMyTasks, saveAtt/Mark Attendance's own trainer-id lookups, etc).
   const { data: tasks } = await sb.from('assignments').select('*').eq('trainer_id', myTrainer.id).order('due_date');
   window._myTasksAll = tasks||[];
   renderMyTasks('all');
