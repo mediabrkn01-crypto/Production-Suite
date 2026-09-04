@@ -4138,7 +4138,23 @@ function isBatchCurrentlyActive(b){
   // batch actually done," not a second, disagreeing one computed here.
   if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
   const todayStr = new Date().toISOString().slice(0,10);
-  if (b.start_date && todayStr < b.start_date) return false;   // hasn't started yet
+  // BUG FIX, CONFIRMED LIVE (Namratha 2–3 PM showing Free while "Elite- Sangita", an active
+  // batch assigned to her at that exact time, exists): this used to ALSO free the slot for a
+  // batch that simply hasn't STARTED yet (todayStr < start_date). That's wrong for the
+  // recurring Trainer Availability grid, which has no date dimension — it answers "does this
+  // trainer have a class committed to this recurring slot," and a batch that is active and
+  // assigned to that slot IS committed to it the moment it exists, whether it starts today or
+  // next week. Showing Free for a future-but-committed batch is exactly how a Head double-
+  // books a trainer (and it disagreed with the backend get_available_trainers() RPC, which
+  // has always treated a future-dated active batch as a real conflict via pure date-range
+  // overlap — this brings the grid in line with that one shared engine). Only a batch that
+  // has actually ENDED (past its expected_completion_date) frees the slot again — the one
+  // date gate the spec explicitly keeps ("passed its valid end date → no longer active").
+  // The exact per-day/per-date resolution (this batch only meets Tue/Thu, so only those days
+  // are occupied) is a calendar-level concern handled by the date-range-aware
+  // findOccupyingBatchInRange/get_available_trainers path; the recurring grid deliberately
+  // shows the slot as spoken-for whenever ANY committed active batch occupies that weekday-
+  // agnostic time window, which is the safe direction to err for a planning view.
   if (b.expected_completion_date && todayStr > b.expected_completion_date) return false; // ended -> auto free
   return true;
 }
