@@ -2104,10 +2104,12 @@
 
 // ── initHRPanel (orig line 7704) ──
         async function initHRPanel() {
+            console.log('[HR INIT] initHRPanel start, hrLoaded=', hrLoaded, 'hrEmployees.length=', hrEmployees.length);
             if (!hrLoaded) {
                 await loadHRData();
                 hrLoaded = true;
             }
+            console.log('[HR INIT] initHRPanel after loadHRData, hrEmployees.length=', hrEmployees.length);
             document.getElementById('hr-att-date').value = document.getElementById('hr-att-date').value || new Date().toISOString().slice(0,10);
             document.getElementById('hr-att-month').value = document.getElementById('hr-att-month').value || new Date().toISOString().slice(0,7);
             document.getElementById('hr-payroll-month').value = document.getElementById('hr-payroll-month').value || new Date().toISOString().slice(0,7);
@@ -2208,11 +2210,13 @@
                     ['hr_salary_history', salHist], ['hr_holidays', holidays], ['hr_employee_documents', empDocs],
                     ['hr_company_settings', settings]
                 ].filter(([, r]) => r && r.error);
+                if (retryTargets.length) console.log('[HR INIT] retrying failed queries:', retryTargets.map(([n])=>n).join(', '), '— hr_employees original error:', emp.error && emp.error.message);
                 for (const [tableName, result] of retryTargets) {
                     try {
                         await new Promise(r => setTimeout(r, 250)); // brief stagger, not a burst
                         const retried = await retryableQueries[tableName]();
-                        if (!retried.error) { result.data = retried.data; result.error = null; }
+                        if (!retried.error) { result.data = retried.data; result.error = null; console.log('[HR INIT] retry succeeded for', tableName, '— rows:', (retried.data||[]).length); }
+                        else console.log('[HR INIT] retry FAILED for', tableName, '—', retried.error.message);
                     } catch (_) { /* keep the original error — genuinely unreachable */ }
                 }
                 if (myLoadToken !== _hrLoadSeq) return; // re-check — the retry pass above awaited too
@@ -2250,7 +2254,9 @@
                     hrTablesMissing = true;
                     console.warn('HR tables missing/unreachable in Supabase:', missingTables.join(', '), emp.error, leaveReq.error, leaveBal.error, att.error, pay.error, jobs.error, applicants.error, salHist.error, holidays.error, empDocs.error, settings.error);
                 }
+                console.log('[HR INIT] emp query resolved, error=', emp.error && emp.error.message, 'rows=', (emp.data||[]).length, 'isHRPrivileged=', isHRPrivileged, 'activeRole=', activeRole);
                 hrEmployees = emp.data || [];
+                console.log('[HR INIT] hrEmployees set, count=', hrEmployees.length);
                 hrLeaveRequests = leaveReq.data || [];
                 hrLeaveBalances = leaveBal.data || [];
                 hrAttendance = att.data || [];
@@ -2364,6 +2370,7 @@
                 document.getElementById('hrtree-' + (t === 'accounts' ? 'settings' : t))?.classList.toggle('active', t === tab);
                 document.getElementById('hr-sub-' + t)?.classList.toggle('hidden', t !== tab);
             });
+            console.log('[HR INIT] switchHRSubtab(', tab, '), hrEmployees.length=', hrEmployees.length, 'hrLoaded=', hrLoaded);
             if (tab === 'dashboard') renderHRDashboard();
             else if (tab === 'employees') { populateHREmployeeFilterOptions(); renderHREmployees(); }
             else if (tab === 'departments') renderHRDepartments();
@@ -5688,6 +5695,7 @@ async function populateHRJobDeptOptions() {
         // "Login result === refresh result" by construction, since both paths now run this
         // exact same re-verification before anything else happens.
         async function bootHRPage() {
+            console.log('[HR INIT] bootHRPage start, activeUser=', activeUser, 'cached activeRole=', activeRole, 'activeEmail=', activeEmail);
             if (!activeUser) { window.location.href = 'index.html'; return; }
             try {
                 const { data } = await dbInstance.from('user_roster').select('role').eq('email', activeEmail).limit(1);
