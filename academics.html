@@ -1926,7 +1926,11 @@ async function loadLive(){
   // each batch object here (._progress) so the card() renderer below can be a plain top-level
   // function instead of a closure recreated on every loadLive() call \u2014 it no longer needs
   // progressOf's own closure over doneMap/baseMap/totalMap to run from renderLiveBatchCards().
-  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(batchTrainerIdByName[b.raw||b.name])); });
+  // b._trainerId (real batches.trainer_id, not a name) — used by renderLiveBatchCards() to
+  // split Student Attendance into "My Assigned Batches" / "Other Trainers' Batches" for an
+  // Academic Head, who is also a working Trainer with their own teaching load (spec: keep
+  // that split ID-based, never by trainer name text).
+  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); });
   previous.forEach(b => b._progress = progressOf(b));
   window._liveActiveBatches = active;
   window._livePreviousBatches = previous;
@@ -1956,8 +1960,27 @@ function renderLiveBatchCards(){
   if (el) {
     el.className = '';
     const shown = active.map((b,i) => ({b,i})).filter(x => _acadBatchMatchesSearch(x.b, term));
-    el.innerHTML = shown.length ? shown.map(x => card(x.b, x.i, false)).join('')
-      : `<div class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No active batches for you.'}</div>`;
+    // ACADEMIC HEAD DUAL ROLE (correction — no separate My Batches tab/page/sidebar item;
+    // this split stays entirely inside the existing Student Attendance list, same container,
+    // same cards, same actions). An Academic Head is also a working Trainer with their own
+    // teaching load — grouped by the real batches.trainer_id (b._trainerId) against
+    // window._myTrainerId (the Head's own real trainer row, resolved once at boot the same
+    // way every other "my batches" scoping in this file already does — never by name text),
+    // never a redesign of the card itself. A normal Trainer/Coach (or a Head not linked to
+    // any trainer row) sees the exact same flat, ungrouped list as before.
+    const isHeadSplit = currentUser.role === 'academic_head' && window._myTrainerId;
+    if (!shown.length) {
+      el.innerHTML = `<div class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No active batches for you.'}</div>`;
+    } else if (isHeadSplit) {
+      const mine = shown.filter(x => String(x.b._trainerId||'') === String(window._myTrainerId));
+      const others = shown.filter(x => String(x.b._trainerId||'') !== String(window._myTrainerId));
+      el.innerHTML =
+        (mine.length ? '<div class="subhead">My Assigned Batches</div>' + mine.map(x => card(x.b, x.i, false)).join('')
+          : (term ? '' : '<div class="subhead">My Assigned Batches</div><div class="empty">No batches assigned to you as a trainer right now.</div>'))
+        + (others.length ? '<div class="subhead">Other Trainers’ Batches</div>' + others.map(x => card(x.b, x.i, false)).join('') : '');
+    } else {
+      el.innerHTML = shown.map(x => card(x.b, x.i, false)).join('');
+    }
   }
   const prevEl = document.getElementById('previousClasses');
   if (prevEl) {
@@ -2582,6 +2605,17 @@ async function boot(){
     isRestricted ? Promise.resolve() : loadLive(),
     isHead ? loadStats() : Promise.resolve(),
   ]);
+  // BUG FIX, CONFIRMED LIVE — loadLive() and loadTrainerView() run concurrently above (real
+  // performance reasoning, see the comment on this Promise.all), and loadLive() renders its
+  // own cards (renderLiveBatchCards()) the moment ITS OWN work finishes, not once
+  // loadTrainerView() has too. renderLiveBatchCards()'s new My Assigned Batches / Other
+  // Trainers' Batches split for an Academic Head reads window._myTrainerId, which
+  // loadTrainerView() sets — so on a fresh load, whichever of the two finished first, the
+  // very first paint could race ahead of that value and render an ungrouped flat list for a
+  // real Academic Head until something else happened to re-render later. Re-running it here,
+  // once both are guaranteed done, makes the split correct on first paint every time,
+  // regardless of which loader actually won the race.
+  if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
   if (isHead) { buildDayChips(); typeChanged(); } // prime the Create Batch tab so it's ready on first visit
   initClock();
   // PERFORMANCE: every loadXTab() call that used to sit here (Availability, Classes,
@@ -3155,6 +3189,10 @@ async function _acadRealtimeRefresh(){
     isRestricted ? Promise.resolve() : loadLive(),
     isHead ? loadStats() : Promise.resolve(),
   ]);
+  // Same race/fix as boot()'s own identical Promise.all (see the comment there) — loadLive()
+  // can render its cards before loadTrainerView() has set window._myTrainerId, which the My
+  // Assigned Batches / Other Trainers' Batches split needs.
+  if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
   await loadAcadDashboard();
   // Availability/Classes/My Calendar are lazy-tab-loaded and cache themselves after first
   // visit (_acadLazyTabLoaded) — a realtime change never re-fetches them on its own unless
