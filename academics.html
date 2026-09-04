@@ -958,8 +958,35 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="k">Status</div><div class="v" id="occSlotStatus">—</div>
         </div>
         <div id="occSlotReleaseNote" class="lv-note"></div>
+        <div class="modal-actions" id="occSlotHeadActions" style="display:none">
+          <button class="act-btn" onclick="reassignFromOccupiedSlot()">Edit / Reassign</button>
+          <button class="act-btn" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552" onclick="removeBookingFromSlot()">Remove Booking</button>
+        </div>
         <div class="modal-actions">
           <button class="btn-cancel" onclick="document.getElementById('modalOccupiedSlot').classList.remove('on')">Close</button>
+        </div>
+      </div></div>
+
+      <!-- Edit a declared FREE availability slot (spec #4). Reuses the same analog clock picker
+           the Add-availability inputs use; save re-validates end>start + no exact duplicate. -->
+      <div class="modal-bg" id="modalEditAvail"><div class="modal">
+        <h3>Edit Availability Slot</h3>
+        <div class="stu-grid" style="margin-bottom:14px">
+          <div class="k">Trainer</div><div class="v" id="editAvailTrainerName">—</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:130px">
+            <label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:4px">Start Time</label>
+            <input id="editAvailStart" readonly onclick="openClockPicker('editAvailStart')" placeholder="Start" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;cursor:pointer"/>
+          </div>
+          <div style="flex:1;min-width:130px">
+            <label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:4px">End Time</label>
+            <input id="editAvailEnd" readonly onclick="openClockPicker('editAvailEnd')" placeholder="End" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;cursor:pointer"/>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="document.getElementById('modalEditAvail').classList.remove('on')">Cancel</button>
+          <button class="btn-save" id="editAvailSaveBtn" onclick="saveEditedAvailabilitySlot()">Save Slot</button>
         </div>
       </div></div>
 
@@ -4065,6 +4092,7 @@ function _formatTime12(hhmm){
   return h12+':'+String(m).padStart(2,'0')+(h<12?'AM':'PM');
 }
 function _timeToMinutes(hhmm){ const [h,m]=hhmm.split(':').map(Number); return h*60+m; }
+function _minutesToTime(min){ const h=Math.floor(min/60), m=min%60; return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
 // Parses a stored batch time_slot string's LEADING time back into minutes-since-midnight — no
 // new batch column needed to know a batch's own start time. Two real formats exist in this
 // data: batches created via the current Create Batch form always get formatBatchTimeRange()'s
@@ -4183,6 +4211,61 @@ function findOccupyingBatch(trainerId, startTime, endTime, batches){
     return bStart < endMin && bEnd > startMin;
   }) || null;
 }
+// HOST-vs-CONFLICT resolver (spec: "do not expand one booking into fake extra slots"). A
+// batch has exactly ONE home slot — the declared slot where its class actually STARTS — and
+// only that slot reads "Occupied: <batch>". Other declared slots that merely OVERLAP the
+// batch (a longer class bleeding into an adjacent declared hour) are shown as a Conflict
+// against the batch's real time, NOT as a second fake booking implying the class runs then.
+// Root cause of the reported "Elite—Kevin appears at 7:30, 8:00 AND 8:30": findOccupyingBatch
+// (correctly) treats all three overlapping declared slots as occupied, but every one of them
+// then rendered the same "Occupied: Kevin" badge — so one 8–9 PM class looked like three
+// separate Kevin bookings. This assigns each active batch a single host slot and lets the
+// renderers label the rest as conflicts. Returns, per input slot (same order), one of:
+//   { state:'occupied', batch }   — the batch's real home slot
+//   { state:'conflict', batch }   — overlaps a batch hosted in a different slot
+//   { state:'free' }
+// Matching is by trainer_id (never name), interval overlap, and isBatchCurrentlyActive (so a
+// finished/deleted/ended batch frees every slot automatically) — the same shared rules the
+// rest of this engine uses.
+function _availHostSlotKeyForBatch(b, slots){
+  const bStart = _batchStartMinutes(b);
+  if (bStart === null) return null;
+  const bEnd = bStart + (b.class_duration_minutes || 60);
+  const overlapping = (slots||[]).filter(s => {
+    const ss = _timeToMinutes(s.start_time), se = _timeToMinutes(s.end_time);
+    return ss < bEnd && se > bStart;
+  });
+  if (!overlapping.length) return null;
+  // 1) exact start match wins; 2) else the overlapping slot whose window CONTAINS the batch's
+  // start (latest such start); 3) else the earliest overlapping slot (class starts before all
+  // its declared slots — still needs one home).
+  let host = overlapping.find(s => _timeToMinutes(s.start_time) === bStart);
+  if (!host) {
+    host = overlapping
+      .filter(s => { const ss=_timeToMinutes(s.start_time), se=_timeToMinutes(s.end_time); return bStart >= ss && bStart < se; })
+      .sort((a,b) => _timeToMinutes(b.start_time) - _timeToMinutes(a.start_time))[0];
+  }
+  if (!host) host = overlapping.slice().sort((a,b) => _timeToMinutes(a.start_time) - _timeToMinutes(b.start_time))[0];
+  return host ? host.start_time + '|' + host.end_time : null;
+}
+function computeAvailSlotStates(trainerId, slots, batches){
+  const active = (batches||[]).filter(b =>
+    String(b.trainer_id) === String(trainerId) && isBatchCurrentlyActive(b) && _batchStartMinutes(b) !== null);
+  const hostByBatch = new Map();
+  active.forEach(b => hostByBatch.set(b, _availHostSlotKeyForBatch(b, slots)));
+  return (slots||[]).map(s => {
+    const ss = _timeToMinutes(s.start_time), se = _timeToMinutes(s.end_time);
+    const key = s.start_time + '|' + s.end_time;
+    const hosted = active.find(b => hostByBatch.get(b) === key);
+    if (hosted) return { state: 'occupied', batch: hosted };
+    const conflict = active.find(b => {
+      const bStart = _batchStartMinutes(b), bEnd = bStart + (b.class_duration_minutes || 60);
+      return bStart < se && bEnd > ss;
+    });
+    if (conflict) return { state: 'conflict', batch: conflict };
+    return { state: 'free' };
+  });
+}
 // "Available again from" — the day after the occupying batch's own expected_completion_date,
 // or null if that batch has no end date set (indefinite — nothing to silently guess at).
 // Built from the Date's own LOCAL fields, not toISOString() — that converts to UTC first, and
@@ -4292,23 +4375,37 @@ function renderTrainerAvailabilityView(){
   wrap.innerHTML = _availTrainers.map(t => {
     const onLeave = _availOnLeaveIds.has(t.id);
     const mySlots = _allAvailability.filter(a => String(a.trainer_id)===String(t.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
-    const occupiedCount = mySlots.filter(s => findOccupyingBatch(t.id, s.start_time, s.end_time, _availBatchesForOccupancy)).length;
-    const rows = mySlots.length ? mySlots.map(s => {
+    // One pass through the host/conflict resolver (see computeAvailSlotStates) instead of a
+    // per-slot findOccupyingBatch that couldn't tell a real booking from an overlap spillover.
+    const states = computeAvailSlotStates(t.id, mySlots, _availBatchesForOccupancy);
+    const freeCount = states.filter(x => x.state === 'free').length;
+    const tNameJs = esc(t.name).replace(/'/g,"\\'");
+    const rows = mySlots.length ? mySlots.map((s, idx) => {
       const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
       if (onLeave) {
         return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">On Leave</span></div>`;
       }
-      const occ = findOccupyingBatch(t.id, s.start_time, s.end_time, _availBatchesForOccupancy);
-      if (occ) {
-        return `<div style="${_availRowStyle(_AVAIL_RED)};cursor:pointer" onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${occ.name?': '+esc(occ.name):''}</span></div>`;
+      const st = states[idx];
+      if (st.state === 'occupied') {
+        return `<div style="${_availRowStyle(_AVAIL_RED)};cursor:pointer" onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span></div>`;
       }
-      return `<div style="${_availRowStyle(_AVAIL_GREEN)};cursor:pointer" onclick="openAssignSlot('${t.id}','${esc(t.name).replace(/'/g,"\\'")}','${s.start_time}','${s.end_time}')"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span></div>`;
+      if (st.state === 'conflict') {
+        // Distinct from Occupied (spec #2): this declared slot is spoken-for only because it
+        // OVERLAPS a class that really runs at a different time — shown with the batch's REAL
+        // time so it never implies the class runs during this slot. Not clickable to assign
+        // (it's not genuinely free) and not an Occupied booking of its own to open.
+        const bStart = _batchStartMinutes(st.batch), bEnd = bStart + (st.batch.class_duration_minutes||60);
+        const realTime = `${_formatTime12(_minutesToTime(bStart))} – ${_formatTime12(_minutesToTime(bEnd))}`;
+        return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)" title="Overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span></div>`;
+      }
+      // Free — assignable, plus Head-only Edit/Remove of the declared slot itself (spec #4/#6).
+      return `<div style="${_availRowStyle(_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
     }).join('') : '<div class="empty" style="padding:6px 0">No recurring availability declared yet.</div>';
     return `<div class="card" style="margin-bottom:12px;padding:14px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <span style="font-weight:700;color:var(--tx)">${esc(t.name)}</span>
         <span class="badge" style="background:rgba(255,255,255,.05);color:var(--tx3)">${t.type==='pt'?'Part-Time':'Full-Time'}</span>
-        ${mySlots.length ? `<span style="font-size:10.5px;color:var(--tx3)">${mySlots.length-occupiedCount} free / ${mySlots.length} slots</span>` : ''}
+        ${mySlots.length ? `<span style="font-size:10.5px;color:var(--tx3)">${freeCount} free / ${mySlots.length} slots</span>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">${rows}</div>
     </div>`;
@@ -4323,8 +4420,11 @@ function renderFreeSlotsView(){
   const buckets = new Map(); // "start|end" -> [trainerName, ...]
   _availTrainers.forEach(t => {
     if (_availOnLeaveIds.has(t.id)) return;
-    _allAvailability.filter(a=>String(a.trainer_id)===String(t.id)).forEach(s => {
-      if (findOccupyingBatch(t.id, s.start_time, s.end_time, _availBatchesForOccupancy)) return;
+    const slots = _allAvailability.filter(a=>String(a.trainer_id)===String(t.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+    const states = computeAvailSlotStates(t.id, slots, _availBatchesForOccupancy);
+    slots.forEach((s, idx) => {
+      // Only genuinely free (not occupied, and not a conflict-overlap) slots are offered here.
+      if (states[idx].state !== 'free') return;
       const key = s.start_time+'|'+s.end_time;
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(t.name);
@@ -4349,17 +4449,33 @@ function renderMyAvailabilityList(){
   const myId = window._myTrainerId;
   if (!myId) { el.innerHTML = '<div class="empty">No coach profile linked to your login yet — ask HR to link your portal email.</div>'; return; }
   const mine = [..._myAvailability].sort((a,b)=>a.start_time.localeCompare(b.start_time));
-  el.innerHTML = mine.length ? mine.map(s => {
-    const occ = findOccupyingBatch(myId, s.start_time, s.end_time, _availBatchesForOccupancy);
+  const states = computeAvailSlotStates(myId, mine, _availBatchesForOccupancy);
+  el.innerHTML = mine.length ? mine.map((s, idx) => {
+    const st = states[idx];
     const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
-    const releaseLabel = occ ? availabilityReleaseLabel(occ) : null;
-    return `<div style="${_availRowStyle(occ?_AVAIL_RED:_AVAIL_GREEN)}">
+    if (st.state === 'occupied') {
+      const releaseLabel = availabilityReleaseLabel(st.batch);
+      return `<div style="${_availRowStyle(_AVAIL_RED)}">
+        <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span>
+          <span style="font-size:10.5px;color:var(--tx3)">${releaseLabel?'Available from '+esc(releaseLabel):''}</span>
+        </span></div>`;
+    }
+    if (st.state === 'conflict') {
+      const bStart = _batchStartMinutes(st.batch), bEnd = bStart + (st.batch.class_duration_minutes||60);
+      const realTime = `${_formatTime12(_minutesToTime(bStart))} – ${_formatTime12(_minutesToTime(bEnd))}`;
+      return `<div style="${_availRowStyle(_AVAIL_AMBER)}">
+        <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
+        <span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span></div>`;
+    }
+    return `<div style="${_availRowStyle(_AVAIL_GREEN)}">
       <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
       <span style="display:flex;align-items:center;gap:8px">
-        <span class="badge" style="background:${occ?'rgba(255,5,82,.15)':'rgba(16,185,129,.15)'};color:${occ?'var(--brand-3)':'var(--green)'}">${occ?('Occupied'+(occ.name?': '+esc(occ.name):'')):'Free'}</span>
-        ${occ ? `<span style="font-size:10.5px;color:var(--tx3)">${releaseLabel?'Available from '+esc(releaseLabel):''}</span>` : `<button class="act-btn" onclick="removeMyAvailability('${s.id}')">Remove</button>`}
-      </span>
-    </div>`;
+        <span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span>
+        <button class="act-btn" onclick="editAvailabilitySlot('${s.id}')">Edit</button>
+        <button class="act-btn" onclick="removeAvailabilitySlot('${s.id}')">Remove</button>
+      </span></div>`;
   }).join('') : '<div class="empty" style="padding:8px 0">No recurring availability declared yet — add your working hours below.</div>';
 }
 
@@ -4374,11 +4490,16 @@ async function addMyAvailability(){
   const effFrom = document.getElementById('myAvailEffFrom').value || null;
   if (!start || !end) { showToast('warning','Set both a start and end time.'); return; }
   if (_timeToMinutes(end) <= _timeToMinutes(start)) { showToast('warning','End time must be after start time.'); return; }
+  // Friendly duplicate guard (the DB now enforces this with a unique index too, but catch it
+  // here first for a clean message instead of a raw constraint error) — the root cause of the
+  // duplicate rows this whole change fixes was that nothing stopped a second identical declare.
+  const dup = (_myAvailability||[]).find(o => o.start_time===start && o.end_time===end && o.is_active!==false);
+  if (dup) { showToast('warning','You already have a declared slot at exactly that time.'); return; }
   try {
     const payload = { trainer_id: myId, start_time: start, end_time: end, is_active: true };
     if (effFrom) payload.effective_from = effFrom;
     const { error } = await sb.from('trainer_availability').insert(payload);
-    if (error) { showToast('error','Could not save availability: '+error.message); return; }
+    if (error) { showToast('error', /duplicate|unique/i.test(error.message) ? 'A slot at exactly that time already exists.' : 'Could not save availability: '+error.message); return; }
     startEl.value = ''; delete startEl.dataset.time24;
     endEl.value = ''; delete endEl.dataset.time24;
     document.getElementById('myAvailEffFrom').value = '';
@@ -4386,21 +4507,35 @@ async function addMyAvailability(){
     await loadAvailabilityTab();
   } catch(e) { showToast('error','Could not save availability: '+e.message); }
 }
+// Unified slot lookup across whichever list the caller has loaded — _allAvailability for a
+// Head (every trainer's slots), _myAvailability for a plain Trainer (their own). PERMISSION
+// (spec #6): a Head may edit/remove any trainer's declared FREE slot; a plain Trainer only
+// their own — enforced here, the single place both Edit and Remove funnel through, not
+// re-derived per button.
+function _acadFindAvailSlot(id){
+  return (_allAvailability||[]).find(s=>String(s.id)===String(id))
+      || (_myAvailability||[]).find(s=>String(s.id)===String(id)) || null;
+}
+function _acadCanManageAvailSlot(slot){
+  if (!slot) return false;
+  if (isCurrentlyAcademicHead()) return true;                     // Head: any trainer's slot
+  return String(slot.trainer_id) === String(window._myTrainerId);  // Trainer: own only
+}
 // Protects an active class from being silently orphaned (spec: "Do NOT silently allow it") —
-// a slot currently occupied by an active batch never even offers a Remove button (see
-// renderMyAvailabilityList); this is the defensive backstop for that same rule.
-async function removeMyAvailability(id){
-  const myId = window._myTrainerId;
-  const slot = _myAvailability.find(s=>String(s.id)===String(id));
+// a slot occupied by (or conflicting with) an active batch never offers Remove in the UI; this
+// is the defensive backstop for that same rule, now permission-gated and Head-capable.
+async function removeAvailabilitySlot(id){
+  const slot = _acadFindAvailSlot(id);
   if (!slot) return;
-  const occ = findOccupyingBatch(myId, slot.start_time, slot.end_time, _availBatchesForOccupancy);
+  if (!_acadCanManageAvailSlot(slot)) { showToast('warning','You can only edit your own availability.'); return; }
+  const occ = findOccupyingBatch(slot.trainer_id, slot.start_time, slot.end_time, _availBatchesForOccupancy);
   if (occ) {
     const releaseLabel = availabilityReleaseLabel(occ);
-    showToast('warning', `This time slot is currently assigned to ${occ.name || 'an active batch'}${releaseLabel?' until '+releaseLabel:''}. Please contact the Academic Head or reassign the batch before removing this availability.`, 7000);
+    showToast('warning', `This time slot is currently assigned to ${occ.name || 'an active batch'}${releaseLabel?' until '+releaseLabel:''}. Reassign or remove that class booking first (open the occupied slot), then this availability can be removed.`, 8000);
     return;
   }
   const label = `${_formatTime12(slot.start_time)} – ${_formatTime12(slot.end_time)}`;
-  const ok = await _showSimpleConfirm(`Remove ${label} from your recurring availability?`, { title: 'Remove Availability', confirmLabel: 'Remove' });
+  const ok = await _showSimpleConfirm(`Remove ${label} from this recurring availability?`, { title: 'Remove Availability', confirmLabel: 'Remove' });
   if (!ok) return;
   try {
     const { error } = await sb.from('trainer_availability').delete().eq('id', id);
@@ -4408,6 +4543,83 @@ async function removeMyAvailability(id){
     showToast('success','Availability removed');
     await loadAvailabilityTab();
   } catch(e) { showToast('error','Could not remove availability: '+e.message); }
+}
+// Back-compat alias — anything still calling the old name gets the unified, permission-gated
+// path (kept so no stale caller silently breaks).
+async function removeMyAvailability(id){ return removeAvailabilitySlot(id); }
+
+// EDIT a declared FREE slot (spec #4). Opens the same clock-picker modal used to ADD one,
+// pre-filled, in edit mode; save re-validates (end>start, no exact-duplicate of another of
+// that trainer's slots — the same identity the DB unique index now enforces).
+let _editingAvailSlotId = null;
+function editAvailabilitySlot(id){
+  const slot = _acadFindAvailSlot(id);
+  if (!slot) return;
+  if (!_acadCanManageAvailSlot(slot)) { showToast('warning','You can only edit your own availability.'); return; }
+  const occ = findOccupyingBatch(slot.trainer_id, slot.start_time, slot.end_time, _availBatchesForOccupancy);
+  if (occ) { showToast('warning', `This slot is currently occupied by ${occ.name || 'an active batch'} — reassign or remove that booking before changing the slot’s hours.`, 7000); return; }
+  _editingAvailSlotId = id;
+  const startEl = document.getElementById('editAvailStart'), endEl = document.getElementById('editAvailEnd');
+  startEl.dataset.time24 = slot.start_time; startEl.value = _formatTime12(slot.start_time);
+  endEl.dataset.time24 = slot.end_time; endEl.value = _formatTime12(slot.end_time);
+  document.getElementById('editAvailTrainerName').textContent =
+    (_availTrainers.find(t=>String(t.id)===String(slot.trainer_id))||{}).name
+    || (String(slot.trainer_id)===String(window._myTrainerId) ? (currentUser.name||'You') : 'Trainer');
+  document.getElementById('modalEditAvail').classList.add('on');
+}
+async function saveEditedAvailabilitySlot(){
+  const id = _editingAvailSlotId;
+  const slot = _acadFindAvailSlot(id);
+  if (!slot) { document.getElementById('modalEditAvail').classList.remove('on'); return; }
+  if (!_acadCanManageAvailSlot(slot)) { showToast('warning','You can only edit your own availability.'); return; }
+  const startEl = document.getElementById('editAvailStart'), endEl = document.getElementById('editAvailEnd');
+  const start = startEl.dataset.time24 || '', end = endEl.dataset.time24 || '';
+  if (!start || !end) { showToast('warning','Set both a start and end time.'); return; }
+  if (_timeToMinutes(end) <= _timeToMinutes(start)) { showToast('warning','End time must be after start time.'); return; }
+  // Don't let an edit collide with ANOTHER of this trainer's declared slots — same exact
+  // (start,end) identity the DB unique index guards, checked here for a clean in-app message
+  // instead of a raw constraint error.
+  const dup = (_allAvailability||[]).concat(_myAvailability||[]).find(o =>
+    String(o.id)!==String(id) && String(o.trainer_id)===String(slot.trainer_id)
+    && o.start_time===start && o.end_time===end && o.is_active!==false);
+  if (dup) { showToast('warning','This trainer already has a declared slot at exactly that time.'); return; }
+  const btn = document.getElementById('editAvailSaveBtn'); if (btn) btn.disabled = true;
+  try {
+    const { error } = await sb.from('trainer_availability').update({ start_time: start, end_time: end }).eq('id', id);
+    if (error) { showToast('error','Could not save slot: '+error.message); return; }
+    document.getElementById('modalEditAvail').classList.remove('on');
+    _editingAvailSlotId = null;
+    showToast('success','Availability updated');
+    await loadAvailabilityTab();
+  } catch(e) { showToast('error','Could not save slot: '+e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+// REMOVE BOOKING from an occupied slot (spec #5) — unassigns the class from this trainer
+// (batches.trainer_id -> null, "Unassigned"), NEVER deletes the batch, its students, or its
+// attendance history. Confirmed first. Head-only (a plain Trainer can't unbook a class from
+// the Coach Availability grid — they don't even see this Head view).
+async function removeBookingFromSlot(){
+  if (!requireHeadAccess()) return;
+  const ctx = window._occSlotCtx;
+  if (!ctx || !ctx.batch) { document.getElementById('modalOccupiedSlot').classList.remove('on'); return; }
+  const b = ctx.batch;
+  const label = `${_formatTime12(ctx.startTime)} – ${_formatTime12(ctx.endTime)}`;
+  const ok = await _showSimpleConfirm(
+    `Remove this class assignment from ${ctx.trainerName || 'this trainer'}?\n\n${b.name}\n${label}\n\nThe batch, its students, and all attendance history are kept — only the trainer assignment is cleared (the batch becomes Unassigned until reassigned).`,
+    { title: 'Remove Assignment', confirmLabel: 'Remove Assignment' });
+  if (!ok) return;
+  try {
+    const { error } = await sb.from('batches').update({ trainer_id: null, trainer_name: null }).eq('id', b.id);
+    if (error) { showToast('error','Could not remove assignment: '+error.message); return; }
+    // Keep the denormalized student cache in step (same pattern assign/reassign already use).
+    await sb.from('students').update({ trainer_name: null }).eq('batch_id', b.id);
+    document.getElementById('modalOccupiedSlot').classList.remove('on');
+    window._occSlotCtx = null;
+    showToast('success','Class assignment removed — batch is now Unassigned.');
+    await loadAvailabilityTab();
+    if (typeof loadLive === 'function') loadLive();
+    if (typeof loadHeadView === 'function') loadHeadView();
+  } catch(e) { showToast('error','Could not remove assignment: '+e.message); }
 }
 
 // ── Analog clock time picker (unchanged — reused verbatim for My Availability's Start/End
@@ -4590,6 +4802,9 @@ async function confirmAssignSlot(){
 function openOccupiedSlot(trainerId, startTime, endTime){
   const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
   const batch = findOccupyingBatch(trainerId, startTime, endTime, _availBatchesForOccupancy);
+  // Stored for the modal's Reassign / Remove Booking actions (spec #5) — the batch's real row
+  // (with its real time), the trainer, and the slot window shown.
+  window._occSlotCtx = { trainerId, trainerName: t ? t.name : '', batch, startTime, endTime };
   document.getElementById('occSlotTrainer').textContent = t ? t.name : '—';
   document.getElementById('occSlotTime').textContent = `${_formatTime12(startTime)} – ${_formatTime12(endTime)}`;
   document.getElementById('occSlotBatch').textContent = batch ? batch.name : '—';
@@ -4599,7 +4814,23 @@ function openOccupiedSlot(trainerId, startTime, endTime){
   document.getElementById('occSlotStatus').textContent = batch ? (batch.status||'active') : '—';
   const releaseLabel = batch ? availabilityReleaseLabel(batch) : null;
   document.getElementById('occSlotReleaseNote').textContent = releaseLabel ? `Available again from: ${releaseLabel}` : '';
+  // Reassign / Remove Booking are Head-only actions (spec #6); shown only when there's a real
+  // batch behind the slot to act on.
+  const canManage = isCurrentlyAcademicHead() && !!(batch && batch.id);
+  const acts = document.getElementById('occSlotHeadActions');
+  if (acts) acts.style.display = canManage ? '' : 'none';
   document.getElementById('modalOccupiedSlot').classList.add('on');
+}
+// "Edit / Reassign" from the occupied-slot modal — routes into the batch's own Edit Batch
+// flow (openBatchEdit), which already handles changing the assigned trainer with the full
+// canonical get_available_trainers() validation. No second reassignment path to keep in sync.
+function reassignFromOccupiedSlot(){
+  if (!requireHeadAccess()) return;
+  const ctx = window._occSlotCtx;
+  if (!ctx || !ctx.batch || !ctx.batch.id) return;
+  document.getElementById('modalOccupiedSlot').classList.remove('on');
+  if (typeof openBatchEdit === 'function') openBatchEdit(ctx.batch.id);
+  else showToast('warning','Open this batch from Live Batches → Edit Batch to reassign its trainer.');
 }
 
 // ============================================================================
