@@ -3540,6 +3540,16 @@ async function acadSyncTrainersFromHRLocalNow(){
     // possible — comparing against the full real row, not just the 3 columns a write always
     // touched blindly before.
     const { data: existingTrainers } = await sb.from('trainers').select('*');
+    // Matched by hr_employee_id first — the stable identity — not by name. A prior version
+    // of this sync matched by name only, which meant an HR employee rename (e.g. a typo'd
+    // "Laura and philip" corrected to "Laura Ann Philip") found no existing match and
+    // inserted a brand-new trainers row instead of updating the real one, forking a
+    // permanent duplicate identity (root-caused and cleaned up in production directly —
+    // see the merge_duplicate_laura_trainer migration). existingByName stays as a fallback
+    // purely for trainers rows that predate the hr_employee_id column and haven't picked
+    // up a link yet — every write below sets hr_employee_id, so each row only needs the
+    // name fallback once.
+    const existingById = new Map((existingTrainers || []).filter(t => t.hr_employee_id).map(t => [t.hr_employee_id, t]));
     const existingByName = new Map((existingTrainers || []).map(t => [String(t.name).trim().toLowerCase(), t]));
     // PERFORMANCE ROOT CAUSE (biggest single contributor to slow Academic Head logins): this
     // used to `await` one update/insert PER Education employee, one at a time, inside a plain
@@ -3573,12 +3583,17 @@ async function acadSyncTrainersFromHRLocalNow(){
         pt_time_ranges: emp.pt_time_ranges || null,
         portal_email: emp.portal_email || null,
       };
-      const existing = existingByName.get(key);
+      const existing = existingById.get(emp.id) || existingByName.get(key);
       if (existing) {
-        const changed = existing.status !== status || Object.keys(coachFields).some(k => (existing[k] ?? null) !== (coachFields[k] ?? null));
-        if (changed) writes.push(sb.from('trainers').update({ status, ...coachFields }).eq('id', existing.id));
+        // Name is part of the diff (and part of every update payload) so a genuine HR
+        // rename still updates the trainer's display name in place — it just no longer
+        // forks a new row to do it, because the match above isn't keyed on name.
+        const changed = existing.status !== status || existing.name !== emp.full_name.trim()
+          || existing.hr_employee_id !== emp.id
+          || Object.keys(coachFields).some(k => (existing[k] ?? null) !== (coachFields[k] ?? null));
+        if (changed) writes.push(sb.from('trainers').update({ name: emp.full_name.trim(), status, hr_employee_id: emp.id, ...coachFields }).eq('id', existing.id));
       } else {
-        writes.push(sb.from('trainers').insert({ name: emp.full_name.trim(), status, ...coachFields }));
+        writes.push(sb.from('trainers').insert({ name: emp.full_name.trim(), status, hr_employee_id: emp.id, ...coachFields }));
       }
     }
     // Prune the other direction too: a trainers row that doesn't match ANY current
@@ -3590,7 +3605,13 @@ async function acadSyncTrainersFromHRLocalNow(){
     // "active" view (Overview tiles, Coach Availability grid, Coaches list) immediately,
     // same as any other inactive trainer already does.
     const eduNames = new Set(eduEmployees.filter(e => e.full_name).map(e => e.full_name.trim().toLowerCase()));
-    const orphaned = (existingTrainers || []).filter(t => t.status !== 'inactive' && !eduNames.has(String(t.name).trim().toLowerCase()));
+    const eduIds = new Set(eduEmployees.map(e => e.id));
+    // Same id-first, name-fallback rule as the match above: a linked trainer is judged by
+    // whether its hr_employee_id is still a real Education employee, not by whether its
+    // (possibly stale, pre-rename) name string still is — otherwise a trainer that HR just
+    // renamed would be wrongly pruned as "orphaned" in the same run that renames it.
+    const orphaned = (existingTrainers || []).filter(t => t.status !== 'inactive'
+      && (t.hr_employee_id ? !eduIds.has(t.hr_employee_id) : !eduNames.has(String(t.name).trim().toLowerCase())));
     for (const o of orphaned) {
       writes.push(sb.from('trainers').update({ status: 'inactive' }).eq('id', o.id));
     }
