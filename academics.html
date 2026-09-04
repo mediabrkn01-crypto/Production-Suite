@@ -1867,20 +1867,42 @@ async function loadLive(){
     const dn=Math.min(total,base+marked);
     return { total, dn, base, marked, pct: Math.min(100,Math.round(dn/total*100)) };
   };
+  // isBatchFinished (progress-inclusive) stays exactly as it was -- it's what feeds
+  // window._acadFinishedBatchNames just below, which the trainer-availability engine
+  // (isBatchCurrentlyActive) relies on to free a trainer's slot automatically the moment a
+  // batch's real sessions are done, with no separate action required. Correct and unchanged.
   const isBatchFinished = b => {
     const status = statusMap[b.raw||b.name];
     const { dn, total } = progressOf(b);
     return _acadIsFinishedByStatusOrProgress(status, dn, total);
   };
+  // BUG FIX, CONFIRMED LIVE -- "Complete Batch" button silently unreachable once a batch hit
+  // 100% session progress. isBatchFinished (above) was ALSO being reused to decide the Live
+  // vs Previous Classes CARD split -- so the instant a batch's last session got marked (which
+  // re-runs loadLive() immediately, via saveAtt()), the card jumped straight to Previous
+  // Classes (isPrevious card -- "Completed" badge, History only, no Complete Batch button at
+  // all -- see card()) BEFORE the Head ever got to click the explicit "Complete & Close Batch"
+  // confirm this file's own safe-completion workflow (complete_batch() RPC) exists for. The
+  // batch's real batches.status stayed 'active' and completed_at stayed null forever -- there
+  // was no longer any button left to fix that. Confirmed against real production data: 4 real
+  // batches (e.g. Elite - Arun J, Phrase Factory 04F) sitting at exactly 100% progress, status
+  // still 'active', completed_at still null -- genuinely stuck, not hypothetical. Card-list
+  // placement now needs an EXPLICIT status ('completed'/'finished') -- reaching 100% progress
+  // alone keeps a batch in Live, with its Complete Batch button reachable, showing "ready to
+  // close" (see the progress line in card()) until the Head actually confirms.
+  const isBatchCardFinished = b => {
+    const status = statusMap[b.raw||b.name];
+    return status === 'completed' || status === 'finished';
+  };
   // Soft-deleted batches (deleteBatch()) never appear in My Batches/Live Batches/Finished
   // Batches — deletedNames comes from the same batches fetch just above (keyed by real batch
   // name, matching b.raw the same way baseMap/statusMap already do).
   const all=Object.values(map).filter(b=>!deletedNames.has(b.raw||b.name)).sort((a,b)=>a.name.localeCompare(b.name));
-  const active=all.filter(b=>!isBatchFinished(b));
+  const active=all.filter(b=>!isBatchCardFinished(b));
   // Previous Classes, newest-completed first \u2014 no real "completion date" is tracked
   // anywhere in this data model, so planned_end_date (when set) is the closest real signal
   // available; batches without one (common for Elite) sort after ones that do, by name.
-  const previous=all.filter(isBatchFinished)
+  const previous=all.filter(isBatchCardFinished)
     .sort((a,b)=> (b.end||'').localeCompare(a.end||'') || a.name.localeCompare(b.name));
   window._liveBatches=active.concat(previous);
   // BUG FIX (root cause of a finished batch still blocking trainer availability): a batch can
@@ -1895,7 +1917,12 @@ async function loadLive(){
   // see there. Refreshed on every loadLive() call, which already re-runs after saveAtt()
   // (marking the session that pushes a batch to 100%) and after deleteBatch(), so this needs
   // no separate cache-invalidation step of its own.
-  window._acadFinishedBatchNames = new Set(previous.map(b => b.raw || b.name));
+  // Deliberately built from isBatchFinished (progress-inclusive), NOT the stricter
+  // isBatchCardFinished used for `previous` above -- a trainer's slot must still free the
+  // instant their sessions are actually done, even before the Head formally clicks Complete
+  // Batch (see isBatchCardFinished's own comment above for why those two are no longer the
+  // same rule).
+  window._acadFinishedBatchNames = new Set(all.filter(isBatchFinished).map(b => b.raw || b.name));
   // BATCH SEARCH: separate active/previous arrays kept alongside the existing combined
   // window._liveBatches (unchanged, still what every index-based onclick handler \u2014 openAtt,
   // editBatchFromLive, openStu \u2014 reads from) so renderLiveBatchCards() can filter WHICH cards
