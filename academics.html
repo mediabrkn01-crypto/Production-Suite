@@ -4487,12 +4487,12 @@ function renderMyAvailabilityList(){
   el.innerHTML = mine.length ? mine.map((s, idx) => {
     const st = states[idx];
     const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
-    // Head-who-teaches can unbook their own occupied/conflict class right here too (spec #6:
-    // a plain Trainer cannot, so this is gated on isCurrentlyAcademicHead — removeBookingInline
-    // itself also re-checks requireHeadAccess).
-    const myHeadRemove = isCurrentlyAcademicHead()
-      ? `<button class="act-btn" onclick="removeBookingInline('${myId}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
-      : '';
+    // A trainer can now unbook their OWN occupied/conflict class straight from My Availability
+    // (these rows are always the logged-in trainer's own batches — myId). removeBookingInline
+    // re-checks _canManageBooking(myId), which is always true for one's own bookings; a Head
+    // gets the same on any trainer via the Coach Availability grid.
+    const myHeadRemove =
+      `<button class="act-btn" onclick="removeBookingInline('${myId}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`;
     if (st.state === 'occupied') {
       const releaseLabel = availabilityReleaseLabel(st.batch);
       return `<div style="${_availRowStyle(_AVAIL_RED)}">
@@ -4636,11 +4636,16 @@ async function saveEditedAvailabilitySlot(){
 }
 // REMOVE BOOKING from an occupied slot (spec #5) — unassigns the class from this trainer
 // (batches.trainer_id -> null, "Unassigned"), NEVER deletes the batch, its students, or its
-// attendance history. Confirmed first. Head-only (a plain Trainer can't unbook a class from
-// the Coach Availability grid — they don't even see this Head view).
+// attendance history. Confirmed first.
+// PERMISSION: a Head may unbook any trainer's class; a plain Trainer may unbook a class that
+// is their OWN (batch.trainer_id === their own trainer id) — from their My Availability view.
+function _canManageBooking(trainerId){
+  return isCurrentlyAcademicHead() || String(trainerId) === String(window._myTrainerId);
+}
 async function removeBookingFromSlot(){
-  if (!requireHeadAccess()) return;
   const ctx = window._occSlotCtx;
+  if (ctx && !_canManageBooking(ctx.trainerId)) { showToast('warning','You can only remove your own class bookings.'); return; }
+  else if (!ctx) { document.getElementById('modalOccupiedSlot').classList.remove('on'); return; }
   if (!ctx || !ctx.batch) { document.getElementById('modalOccupiedSlot').classList.remove('on'); return; }
   const b = ctx.batch;
   const label = `${_formatTime12(ctx.startTime)} – ${_formatTime12(ctx.endTime)}`;
@@ -4665,14 +4670,15 @@ async function removeBookingFromSlot(){
 // active batch occupying/overlapping that slot, seeds the same _occSlotCtx the modal uses, and
 // runs the identical confirm + unassign flow (removeBookingFromSlot). The confirm/label use the
 // BATCH's real time, not the declared slot's, so a conflict row (whose batch runs at a
-// different time) reads correctly. Head-only, same as the modal action.
+// different time) reads correctly. Head → any trainer; plain Trainer → their own bookings.
 function removeBookingInline(trainerId, startTime, endTime){
-  if (!requireHeadAccess()) return;
+  if (!_canManageBooking(trainerId)) { showToast('warning','You can only remove your own class bookings.'); return; }
   const t = _availTrainers.find(x=>String(x.id)===String(trainerId));
+  const tName = t ? t.name : (String(trainerId)===String(window._myTrainerId) ? (currentUser.name||'you') : '');
   const batch = findOccupyingBatch(trainerId, startTime, endTime, _availBatchesForOccupancy);
   if (!batch || !batch.id) { showToast('warning','No active class booking found for this slot.'); return; }
   const bStart = _batchStartMinutes(batch), bEnd = bStart + (batch.class_duration_minutes||60);
-  window._occSlotCtx = { trainerId, trainerName: t ? t.name : '', batch,
+  window._occSlotCtx = { trainerId, trainerName: tName, batch,
     startTime: (bStart!=null?_minutesToTime(bStart):startTime), endTime: (bStart!=null?_minutesToTime(bEnd):endTime) };
   removeBookingFromSlot();
 }
