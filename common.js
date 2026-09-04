@@ -402,7 +402,12 @@ async function loadMyHRData() {
                         // unaware they'd been marked out; or a stale/replayed sync) would flip
                         // 'on_leave' straight back to 'present'/'late' with no visible HR action
                         // to explain it. Holiday got this protection before; On Leave needs it too.
-                        const HR_PROTECTED_FROM_AUTO_CLOCKIN = ['holiday', 'on_leave'];
+                        // 'wfh' added (spec: "Employee must still Clock In and Clock Out ...
+                        // Attendance status must become WFH, not Present") — clock-in/out times
+                        // are still recorded below regardless of this list (clock_in_time is set
+                        // unconditionally on the same update), only the STATUS itself is
+                        // protected from being flipped back to plain 'present'/'late'.
+                        const HR_PROTECTED_FROM_AUTO_CLOCKIN = ['holiday', 'on_leave', 'wfh'];
                         const nextStatus = HR_PROTECTED_FROM_AUTO_CLOCKIN.includes(existing.status) ? existing.status : computedStatus;
                         await dbInstance.from('hr_attendance').update({ status: nextStatus, clock_in_time: whenIso }).eq('id', existing.id);
                     } else {
@@ -1410,10 +1415,23 @@ function hrOfficialEventFor(employee, dateStr) {
                 }
                 if (rec.status === 'late') return 'L';
                 if (rec.status === 'afternoon') return 'AL'; // Present · Afternoon Login (still counts as Present — see HR_PRESENT_STATUSES)
+                // BUG FIX (real cause of "WFH shows as Present" on the calendar grid): 'wfh' IS a
+                // real hr_attendance.status value hrSyncLeaveToAttendance writes (see its own
+                // comment) and the Monthly Attendance report already counts (`r.status ===
+                // 'wfh'`) — but this function never had a branch for it at all, so any row that
+                // reached here with status='wfh' fell straight through to the generic "present,
+                // half_day, wfh" fallback below and always rendered 'P'. Dedicated branch now,
+                // matching every other real status.
+                if (rec.status === 'wfh') return 'WFH';
                 if (rec.status === 'on_leave') {
                     // Unpaid leave gets its own code (UL) — it used to render identically to
                     // Absent ('A'), making it impossible to tell "took approved unpaid leave"
-                    // apart from "didn't show up, nothing filed" on the grid.
+                    // apart from "didn't show up, nothing filed" on the grid. WFH no longer
+                    // reaches this branch at all now that it has its own real status above — the
+                    // leave_type lookup here is legacy/backfill safety only, for any pre-existing
+                    // row that still has status='on_leave' with leave_type='Work From Home' from
+                    // before this fix (never rewritten in bulk — see the disclosed migration
+                    // decision in the commit message).
                     const leave = hrApprovedLeaveFor(employee.id, dateStr);
                     if (leave && leave.leave_type === 'Work From Home') return 'WFH';
                     return (leave && leave.leave_type === 'Unpaid Leave') ? 'UL' : 'PL';
@@ -1925,16 +1943,27 @@ function hrOfficialEventFor(employee, dateStr) {
 // hr.html version — this fix is only about making decideHRLeave itself exist and work, not
 // about changing what happens once it runs.
         async function hrSyncLeaveToAttendance(req) {
+            // BUG FIX (confirmed live in production — Anal Chandran, 2026-09-02): this used to
+            // decide insert-vs-update by checking the CLIENT-SIDE hrAttendance array
+            // (hrAttendance.find(...)), not the database. If that array was even slightly stale
+            // (e.g. the employee's own clock-in created the day's row moments before this ran,
+            // and this session's copy of hrAttendance hadn't picked it up yet), it took the
+            // INSERT branch — which hit the real hr_attendance_employee_id_att_date_key unique
+            // constraint and failed, silently (only a console.warn from the caller), leaving the
+            // clock-in's 'present' row untouched. upsert() removes the race entirely — it
+            // doesn't matter what this session's local cache thinks already exists.
+            // WFH now gets its own real 'wfh' status (see hrAttDayCode's dedicated branch and
+            // the HR_PROTECTED_FROM_AUTO_CLOCKIN list below) instead of always writing
+            // 'on_leave' — 'on_leave' stays reserved for genuine leave (Paid/Unpaid/etc), never
+            // Work From Home, which is enrolled/working attendance, not absence.
+            const status = req.leave_type === 'Work From Home' ? 'wfh' : 'on_leave';
             const start = new Date(req.start_date), end = new Date(req.end_date);
             const dates = [];
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dates.push(new Date(d).toISOString().slice(0,10));
             for (const dateStr of dates) {
-                const existing = hrAttendance.find(a => a.employee_id === req.employee_id && a.att_date === dateStr);
-                if (existing) {
-                    await dbInstance.from('hr_attendance').update({ status: 'on_leave' }).eq('id', existing.id);
-                } else {
-                    await dbInstance.from('hr_attendance').insert([{ employee_id: req.employee_id, att_date: dateStr, status: 'on_leave' }]);
-                }
+                const { error } = await dbInstance.from('hr_attendance')
+                    .upsert({ employee_id: req.employee_id, att_date: dateStr, status }, { onConflict: 'employee_id,att_date' });
+                if (error) console.warn('hrSyncLeaveToAttendance: could not sync', dateStr, '—', error.message);
             }
         }
 

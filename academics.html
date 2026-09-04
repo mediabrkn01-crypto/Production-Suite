@@ -4891,13 +4891,33 @@ async function confirmDelete(what,name){
   if(p.trim().toLowerCase()!=='delete'){showToast('warning','Not deleted — you must type the word DELETE.');return false;}
   return true;
 }
+// BUG FIX (spec: "Delete button exists but does nothing" — critical): the exact same
+// showPrompt()-doesn't-exist bug already found and fixed for deleteBatch() (see that function's
+// own comment) — confirmDelete() here called showPrompt(), a function that only ever existed in
+// common.js, which this file deliberately doesn't load. Clicking Delete threw a silent
+// ReferenceError every time, so nothing ever happened. Uses _showSimpleConfirm — already used
+// for deleteBatch()'s identical fix — with the request's own exact wording, not the generic
+// type-DELETE-to-confirm box confirmDelete() used to show.
+//
+// PERMANENT delete (spec: "Soft delete is NOT required. Permanent delete.") — unlike
+// deleteBatch()'s soft delete, a student genuinely leaving the system removes the real row.
+// payments/payment_entries/sessions all cascade automatically via their own real foreign keys
+// (ON DELETE CASCADE, confirmed directly against the schema) — attendance does NOT (matched by
+// student_uin text, no FK relationship at all in this schema), so it's deleted explicitly here,
+// the one piece that wouldn't otherwise go with the rest of the history.
 async function deleteStudent(){
   if(!requireHeadAccess())return;const s=_stu;if(!s||!s.id)return;
-  if(!(await confirmDelete('student',s.name)))return;
+  const ok = await _showSimpleConfirm('This action permanently removes this student.', { title: 'Delete Student?', confirmLabel: 'Delete Permanently' });
+  if (!ok) return;
+  if (s.uin) { try { await sb.from('attendance').delete().eq('student_uin', s.uin); } catch(e) { console.warn('Could not delete attendance history for', s.uin, e.message); } }
   const {error}=await sb.from('students').delete().eq('id',s.id);
-  if(error){showToast('error','Unable to delete student — payment or attendance links may block it. '+error.message,6000);return;}
+  if(error){showToast('error','Unable to delete student. '+error.message,6000);return;}
   document.getElementById('modalStu').classList.remove('on');
+  // Refresh every view that could still be showing this student — Live Batches roster,
+  // dashboard tiles, and the Students tab's own table if it's the currently open tab — so the
+  // deletion is reflected everywhere immediately, no page refresh needed.
   loadLive();loadStats();
+  if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
   showToast('success','Student deleted successfully');
 }
 // REMOVED (spec item 10): Academic used to be able to hard-delete a trainers row directly
