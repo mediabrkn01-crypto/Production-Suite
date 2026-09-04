@@ -4142,15 +4142,29 @@ function isBatchCurrentlyActive(b){
   if (b.expected_completion_date && todayStr > b.expected_completion_date) return false; // ended -> auto free
   return true;
 }
-// Does trainerId have a currently-active batch whose start time falls inside
-// [startTime, endTime)? Returns that batch, or null (meaning the slot is free).
+// Does trainerId have a currently-active batch whose real [start, start+duration) window
+// genuinely OVERLAPS [startTime, endTime)? Returns that batch, or null (meaning the slot is
+// free).
+// BUG FIX, CONFIRMED LIVE — this used to only check whether the batch's OWN start time fell
+// inside the slot window (bStart >= startMin && bStart < endMin), never the batch's real end
+// time. A batch starting before the slot but running INTO it (e.g. a class at 1:30–2:30
+// against a declared 2:00–3:00 availability slot) was invisible to this check — the slot
+// still showed Free for the second half of a class that was genuinely already running. Now
+// uses real interval overlap (batchStart < slotEnd && batchEnd > slotStart), matching the
+// same math findExactRangeConflict() already uses for Create Batch's own conflict check — one
+// shared rule, not two that could disagree. batchEnd is the batch's own real
+// class_duration_minutes (defaulting to 60 only when genuinely unset, same fallback used
+// everywhere else in this file), not the slot's width — a longer real class now correctly
+// blocks slots beyond just the one it happens to start in.
 function findOccupyingBatch(trainerId, startTime, endTime, batches){
   const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
     if (!isBatchCurrentlyActive(b)) return false;
     const bStart = _batchStartMinutes(b);
-    return bStart !== null && bStart >= startMin && bStart < endMin;
+    if (bStart === null) return false;
+    const bEnd = bStart + (b.class_duration_minutes || 60);
+    return bStart < endMin && bEnd > startMin;
   }) || null;
 }
 // "Available again from" — the day after the occupying batch's own expected_completion_date,
@@ -4512,11 +4526,31 @@ async function confirmAssignSlot(){
   if (!batchId) { showToast('warning','Pick a batch first.'); return; }
   const { trainerId, trainerName, startTime, endTime } = _assignSlotCtx;
   try {
-    // Re-check right before writing — the view's cached copy could be stale if another Head/
-    // tab assigned a batch into this same slot in the meantime.
-    const { data: freshBatches } = await sb.from('batches').select('*').eq('trainer_id', trainerId);
-    if (findOccupyingBatch(trainerId, startTime, endTime, freshBatches||[])) {
-      showToast('warning','This slot is no longer free — someone else may have just assigned a class here. Refresh and try again.',6000);
+    // BUG FIX (spec: "even if the frontend is stale or bypassed, backend validation must
+    // prevent the conflict") — this write path used to trust only its own client-side
+    // findOccupyingBatch() re-check, comparing the batch being assigned against the fixed
+    // slot boundaries only (never the batch's own real duration/days/date-range). Now
+    // re-validates through the same canonical, backend get_available_trainers() RPC Create
+    // Batch/Edit Batch/Reassign Trainer already use — the actual "one shared availability/
+    // conflict calculation" the spec asks for, not a second frontend-only copy of the rule.
+    const { data: batchRow } = await sb.from('batches').select('*').eq('id', batchId).maybeSingle();
+    if (!batchRow) { showToast('error','Could not find this batch’s database record.'); return; }
+    const days = (batchRow.day_pattern||'').split(/[,·]/).map(s=>s.trim().replace(/\s*MC.*$/,'')).filter(d=>DAYS.includes(d));
+    const { data: avail, error: availErr } = await sb.rpc('get_available_trainers', {
+      p_start_time: startTime, p_duration_minutes: batchRow.class_duration_minutes || 60,
+      p_days: days.length ? days : null, p_start_date: batchRow.start_date || null, p_end_date: batchRow.expected_completion_date || null,
+      p_course: batchRow.programme || null, p_trainer_id: trainerId, p_exclude_batch_id: batchId,
+    });
+    if (availErr) { showToast('error','Could not verify availability: '+availErr.message); return; }
+    if (!(avail||[]).some(t => String(t.id) === String(trainerId))) {
+      // Real, specific conflict for the message when there is one (findOccupyingBatch, fixed
+      // to use true interval overlap — see its own header comment) — falls back to a generic
+      // message if the RPC declined for some other reason (e.g. course qualification).
+      const { data: freshBatches } = await sb.from('batches').select('*').eq('trainer_id', trainerId);
+      const conflict = findOccupyingBatch(trainerId, startTime, endTime, freshBatches||[]);
+      showToast('warning', conflict
+        ? `${trainerName} is already assigned to "${conflict.name}" at this time — ${_formatTime12(startTime)}–${_formatTime12(endTime)}. Choose a different trainer or slot.`
+        : `${trainerName} isn’t available for this batch at ${_formatTime12(startTime)}–${_formatTime12(endTime)}. Refresh and try again.`, 7000);
       document.getElementById('modalAssignSlot').classList.remove('on');
       loadAvailabilityTab();
       return;
