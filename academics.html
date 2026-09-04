@@ -596,6 +596,15 @@ details[open] .rawsum::before{content:'▾ '}
              delegation (see renderDelegationBanner()) — empty/hidden otherwise. -->
         <div id="delegationBanner" class="hidden" style="margin-bottom:16px"></div>
         <div class="acad-dash-tiles" id="dashSummary"><div class="acad-stat-card"><div class="acad-stat-icon">…</div><div><div class="val">…</div><div class="lbl">Loading</div></div></div></div>
+        <!-- ACTION REQUIRED (spec part 7) — Head-only, hidden entirely when nothing needs
+             attention (never an empty "0 items" card sitting there permanently). Populated by
+             loadAcadActionRequired(), called from loadAcadDashboard(). Clicking an item jumps
+             straight to Live Batches, where the same "Trainer Inactive" flag/Reassign Trainer
+             action already lives — one shared source, not a duplicated summary. -->
+        <div class="section dash-card role-head-only hidden" id="acadActionRequiredSection" style="display:none;margin-bottom:16px">
+          <h3>⚠ Action Required</h3>
+          <div id="dashActionRequired"></div>
+        </div>
         <div class="dash-grid" id="dashLeaveAvailRow" style="grid-template-columns:repeat(2,1fr)">
           <div class="section dash-card" id="acadOnLeaveSection"><h3>Coaches On Leave Today</h3><div id="dashOnLeave" class="loading">Loading…</div></div>
           <div class="section dash-card" id="acadUpcomingAvailSection"><h3>Becoming Available Soon</h3><div id="dashUpcomingAvail" class="loading">Loading…</div></div>
@@ -1330,6 +1339,31 @@ details[open] .rawsum::before{content:'▾ '}
   </div>
 </div></div>
 
+<!-- Emergency trainer reassignment (spec parts 3/4/5) — same canonical get_available_trainers()
+     RPC Create Batch/Edit Batch already use for backend-validated availability, keyed to this
+     batch's OWN saved schedule and excluding itself so it can never conflict with its own
+     current slot. "Only This Session" never touches batches.trainer_id at all — it opens Mark
+     Attendance for this batch so whoever completes it is recorded via the existing marked_by
+     field (see Session History's own "Trainer:" label, which already shows the real person who
+     marked each session, not the batch's assigned trainer) — no new schema needed for
+     per-session history, since that already exists. "This and Remaining Sessions" updates the
+     batch's own trainer going forward; every already-marked/completed session's attendance rows
+     are never touched by either option. -->
+<div class="modal-bg" id="modalReassignTrainer"><div class="modal" style="width:460px">
+  <h3 id="rt_title">Reassign Trainer</h3>
+  <div id="rt_body"></div>
+  <div class="subhead" style="margin:12px 0 6px">New Trainer</div>
+  <select id="rt_trainer" disabled><option value="">Loading…</option></select>
+  <div id="rt_hint" class="mhint" style="margin-top:6px"></div>
+  <div class="subhead" style="margin:12px 0 6px">Scope</div>
+  <label class="pick-row"><input type="radio" name="rt_scope" value="session" checked> Only This Session — mark/complete this one session, leave the batch's assigned trainer unchanged</label>
+  <label class="pick-row"><input type="radio" name="rt_scope" value="remaining"> This and Remaining Sessions — move the batch's future sessions to the new trainer</label>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('reassignTrainer')">Cancel</button>
+    <button class="btn-save" id="rt_confirm_btn" onclick="confirmReassignTrainer()">Confirm</button>
+  </div>
+</div></div>
+
 <script>
 // Academic's own tables (trainers, batches, students, courses, attendance, sessions,
 // assignments, payments, roles, timeclock, trainer_slots) now live in the SAME Supabase
@@ -1765,10 +1799,23 @@ async function loadLive(){
   // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
   let baseQuery=sb.from('batches').select('*');
   if(!isHead) baseQuery = myBatchNames.length ? baseQuery.in('name', myBatchNames) : null;
-  const [attRows, baseResult] = await Promise.all([
+  // Trainer status lookup (name -> status) — used by card() to flag a batch whose assigned
+  // trainer has since been deactivated ("Trainer Inactive — Academic Head Action Required",
+  // spec part 1/6/7). Small, dedicated query, same pattern as the rest of this file's
+  // lightweight lookups — not derived from a full HR fetch this file doesn't otherwise need.
+  const trainerStatusPromise = sb.from('trainers').select('id,status').then(r=>r).catch(()=>({data:[]}));
+  const [attRows, baseResult, trainerStatusResult] = await Promise.all([
     attPromise.catch(()=>[]),
     baseQuery ? baseQuery.then(r=>r).catch(()=>({data:null})) : Promise.resolve({data:null}),
+    trainerStatusPromise,
   ]);
+  // Matched by trainer_id, not name — students.trainer_name is a denormalized cache that can
+  // genuinely drift from trainers.name (confirmed live: one real batch had "Laura" cached on its
+  // students while the trainers row itself is "Laura and philip") — id is the only reliable key.
+  const inactiveTrainerIds = new Set((trainerStatusResult.data||[]).filter(t=>t.status==='inactive').map(t=>String(t.id)));
+  const batchIdByName = {}, batchTrainerIdByName = {};
+  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; });
+  window._acadBatchIdByName = batchIdByName;
   try{
     attRows.forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});
   }catch(e){}
@@ -1857,7 +1904,7 @@ async function loadLive(){
   // each batch object here (._progress) so the card() renderer below can be a plain top-level
   // function instead of a closure recreated on every loadLive() call \u2014 it no longer needs
   // progressOf's own closure over doneMap/baseMap/totalMap to run from renderLiveBatchCards().
-  active.forEach(b => b._progress = progressOf(b));
+  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(batchTrainerIdByName[b.raw||b.name])); });
   previous.forEach(b => b._progress = progressOf(b));
   window._liveActiveBatches = active;
   window._livePreviousBatches = previous;
@@ -1896,6 +1943,7 @@ function renderLiveBatchCards(){
     prevEl.innerHTML = shownPrev.length ? shownPrev.map(x => card(x.b, active.length + x.i, true)).join('')
       : `<div class="empty">${term ? 'No completed batches match "'+esc(term)+'".' : 'No completed batches yet.'}</div>`;
   }
+  if (typeof renderAcadActionRequired === 'function') renderAcadActionRequired();
 }
 // Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance, same
 // Head-only click-to-view-student behavior), cleaner presentation: a real header row with a
@@ -1932,9 +1980,14 @@ function card(b,i,isPrevious){
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
         ${isHead?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
+        ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
         `}
       </div>
     </div>
+    <!-- DEACTIVATED TRAINER FLAG (spec part 1/6/7) \u2014 the assigned trainer's status has since
+         gone inactive but this batch still has unfinished sessions; historical
+         attendance/progress is completely untouched by this, it's a visibility flag only. -->
+    ${(!isPrevious && b._trainerInactive) ? `<div class="mhint" style="margin-top:8px;color:var(--yellow);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:7px 10px">\u26a0 Trainer Inactive \u2014 Academic Head Action Required</div>` : ''}
     ${roster}
     <div style="margin-top:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
@@ -2029,6 +2082,99 @@ async function confirmCompleteBatch(){
     loadLive();
     if (typeof loadHeadView === 'function') loadHeadView();
     if (typeof loadStats === 'function') loadStats();
+  } finally {
+    btn.disabled = false;
+  }
+}
+// EMERGENCY TRAINER REASSIGNMENT (spec parts 3/4/5/6/7). Populates the New Trainer dropdown
+// from the SAME canonical get_available_trainers() RPC Create/Edit Batch already use — the
+// batch's own saved day_pattern/time_slot/duration/date-range define "available for this exact
+// slot", with p_exclude_batch_id so the batch's own current occupied slot never blocks a
+// candidate (including the inactive trainer's own now-irrelevant one). Only ACTIVE trainers are
+// ever returned (the RPC's own t.status='active' filter) — an inactive trainer can never appear
+// here as a reassignment target.
+window._rtBatchIndex = null;
+async function openReassignTrainer(i){
+  if(!requireHeadAccess())return;
+  const b=window._liveBatches[i]; if(!b||!b.raw)return;
+  window._rtBatchIndex = i;
+  document.getElementById('rt_title').textContent = 'Reassign Trainer · '+b.name;
+  document.getElementById('rt_body').innerHTML =
+    '<div class="stu-grid">'
+    +'<span class="k">Current Trainer</span><span class="v" style="color:var(--yellow)">'+esc(b.trainer||'—')+' (inactive)</span>'
+    +'<span class="k">Progress</span><span class="v">'+(b._progress?b._progress.dn+' / '+b._progress.total:'—')+'</span>'
+    +'</div>';
+  document.querySelector('input[name="rt_scope"][value="session"]').checked = true;
+  const sel = document.getElementById('rt_trainer');
+  sel.innerHTML = '<option value="">Finding available trainers…</option>';
+  sel.disabled = true;
+  const { data: batchRow } = await sb.from('batches').select('*').eq('name', b.raw).maybeSingle();
+  if (!batchRow) { sel.innerHTML = '<option value="">Could not load this batch’s record</option>'; return; }
+  window._rtBatchRow = batchRow;
+  const startHour = _batchStartMinutes(batchRow);
+  const hour = startHour!==null ? (String(Math.floor(startHour/60)).padStart(2,'0')+':'+String(startHour%60).padStart(2,'0')) : '';
+  const days = _acadEffectiveDayPattern(batchRow).split(',').map(s=>s.trim().replace(/\s*·.*$/,'')).filter(Boolean);
+  const hint = document.getElementById('rt_hint');
+  if (!hour) { sel.innerHTML = '<option value="">This batch has no saved class time — set one via Edit Batch first</option>'; hint.textContent=''; return; }
+  const { data, error } = await sb.rpc('get_available_trainers', {
+    p_start_time: hour, p_duration_minutes: batchRow.class_duration_minutes||60,
+    p_days: days.length ? days : null, p_start_date: batchRow.start_date||null, p_end_date: batchRow.expected_completion_date||null,
+    p_course: batchRow.programme||null, p_trainer_id: null, p_exclude_batch_id: batchRow.id
+  });
+  if (error) { sel.innerHTML = '<option value="">Could not check availability — '+esc(error.message)+'</option>'; hint.textContent=''; return; }
+  const available = data||[];
+  sel.disabled = !available.length;
+  sel.innerHTML = available.length
+    ? '<option value="">— select trainer —</option>' + available.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')
+    : '<option value="">No trainers available for this slot</option>';
+  hint.textContent = available.length ? available.length+' trainer'+(available.length===1?'':'s')+' available for this exact schedule.' : 'No active trainer is available for this batch’s current day/time — try Edit Batch to change the schedule first.';
+  hint.style.color = available.length ? 'var(--green)' : 'var(--yellow)';
+  document.getElementById('modalReassignTrainer').classList.add('on');
+}
+async function confirmReassignTrainer(){
+  if(!requireHeadAccess())return;
+  const i = window._rtBatchIndex; const b = i!=null ? window._liveBatches[i] : null;
+  const batchRow = window._rtBatchRow;
+  if (!b || !batchRow) { closeModal('reassignTrainer'); return; }
+  const scope = document.querySelector('input[name="rt_scope"]:checked')?.value || 'session';
+  if (scope === 'session') {
+    // Only This Session: the batch's own trainer_id is deliberately left untouched — go
+    // straight to Mark Attendance for this batch so the person completing it right now is
+    // recorded via the existing marked_by field (Session History already shows this per-date,
+    // not the batch's assigned trainer — no new schema needed for this).
+    closeModal('reassignTrainer');
+    showToast('success','Batch trainer unchanged — mark this session’s attendance now; who marks it is recorded automatically.', 6000);
+    openAtt(i);
+    return;
+  }
+  const trainerId = document.getElementById('rt_trainer').value;
+  if (!trainerId) { showToast('warning','Pick a trainer first.'); return; }
+  const btn = document.getElementById('rt_confirm_btn');
+  btn.disabled = true;
+  try {
+    // Final backend re-check, same discipline as every other trainer-eligibility gate in this
+    // file — never trusts the dropdown's own possibly-stale-by-now list.
+    const startHour = _batchStartMinutes(batchRow);
+    const hour = startHour!==null ? (String(Math.floor(startHour/60)).padStart(2,'0')+':'+String(startHour%60).padStart(2,'0')) : '';
+    const days = _acadEffectiveDayPattern(batchRow).split(',').map(s=>s.trim().replace(/\s*·.*$/,'')).filter(Boolean);
+    const { data, error } = await sb.rpc('get_available_trainers', {
+      p_start_time: hour, p_duration_minutes: batchRow.class_duration_minutes||60,
+      p_days: days.length ? days : null, p_start_date: batchRow.start_date||null, p_end_date: batchRow.expected_completion_date||null,
+      p_course: batchRow.programme||null, p_trainer_id: trainerId, p_exclude_batch_id: batchRow.id
+    });
+    const stillValid = !error && (data||[]).some(t=>String(t.id)===String(trainerId));
+    if (!stillValid) { showToast('warning', 'This trainer is no longer available for this batch’s schedule. Please choose another.', 7000); await openReassignTrainer(i); return; }
+    const trainerName = document.getElementById('rt_trainer').selectedOptions[0]?.textContent || '';
+    // Updates the batch's trainer going forward only — every already-marked attendance row
+    // (past sessions) has no trainer_id column at all (matched by student_uin/batch_name),
+    // so nothing about historical sessions changes. students.trainer_name kept in sync, same
+    // as Edit Batch's own saveBatchEdit() already does.
+    await sb.from('batches').update({ trainer_id: trainerId, trainer_name: trainerName }).eq('id', batchRow.id);
+    await sb.from('students').update({ trainer_name: trainerName }).eq('batch_id', batchRow.id);
+    showToast('success', 'Remaining sessions reassigned to '+trainerName+'. Completed sessions are unchanged.');
+    closeModal('reassignTrainer');
+    loadLive();
+    if (typeof loadHeadView === 'function') loadHeadView();
   } finally {
     btn.disabled = false;
   }
@@ -3146,6 +3292,22 @@ function acadStatTile(icon, color, val, lbl, onClick, trend) {
     <svg viewBox="0 0 96 30" preserveAspectRatio="none" style="width:100%;height:32px;display:block;margin-top:8px"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="${color}" stop-opacity="0.02"/><stop offset="100%" stop-color="${color}" stop-opacity="0.9"/></linearGradient></defs><path d="M0,${20+(_acadSparkSeq%3)*4} C16,${16+(_acadSparkSeq%5)*2} 32,${22-(_acadSparkSeq%4)*3} 48,${14+(_acadSparkSeq%3)*3} C64,${10+(_acadSparkSeq%4)*2} 80,${16-(_acadSparkSeq%3)*2} 96,${8+(_acadSparkSeq%3)}" fill="none" stroke="url(#${id})" stroke-width="2.5" stroke-linecap="round" class="spk-line" style="animation-delay:${delay}"/></svg>
   </div>`;
 }
+// ACTION REQUIRED (spec part 7) — reads window._liveActiveBatches, already loaded by loadLive()
+// (which always runs before the dashboard in this app's existing flow) — no new query. One item
+// today: batches whose assigned trainer has gone inactive but the batch itself isn't finished
+// yet (the same flag/data card() already shows). Hidden entirely when there's nothing to act on.
+function renderAcadActionRequired(){
+  const section = document.getElementById('acadActionRequiredSection');
+  const body = document.getElementById('dashActionRequired');
+  if (!section || !body) return;
+  const flagged = (window._liveActiveBatches||[]).filter(b => b._trainerInactive);
+  if (!flagged.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  body.innerHTML = `<div class="dash-row" style="cursor:pointer" onclick="acadSwitchTab('live')">
+    <span>${flagged.length} Batch${flagged.length===1?'':'es'}</span>
+    <span style="color:var(--yellow)">Trainer Inactive</span>
+  </div>` + flagged.slice(0,5).map(b => `<div class="dash-row" style="cursor:pointer;padding-left:8px" onclick="acadSwitchTab('live')"><span style="font-size:12px;color:var(--tx3)">${esc(b.name)}</span><span style="font-size:11px;color:var(--tx3)">was ${esc(b.trainer||'—')}</span></div>`).join('');
+}
 async function loadAcadDashboard(){
   const isHead = isCurrentlyAcademicHead(); // real Head, or an active Temporary Academic Head delegation
   const isTrainerCapable = currentUser.role === 'trainer' || currentUser.role === 'academic_head';
@@ -3296,6 +3458,7 @@ async function loadAcadDashboard(){
     } else {
       document.getElementById('dashPending').innerHTML = '<div class="empty">See the Assigned Tasks tab to manage the team\'s workload.</div>';
     }
+    if (isHead) renderAcadActionRequired();
   } catch (e) {
     console.warn('Dashboard summary failed to build:', e.message);
   }
