@@ -1998,10 +1998,10 @@ function card(b,i,isPrevious){
         ${isPrevious ? `<span class="badge b-active">Completed</span>
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
         ` : `
-        ${isHead?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
+        ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
-        ${isHead?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
+        ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
         ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
         `}
       </div>
@@ -2010,6 +2010,14 @@ function card(b,i,isPrevious){
          gone inactive but this batch still has unfinished sessions; historical
          attendance/progress is completely untouched by this, it's a visibility flag only. -->
     ${(!isPrevious && b._trainerInactive) ? `<div class="mhint" style="margin-top:8px;color:var(--yellow);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:7px 10px">\u26a0 Trainer Inactive \u2014 Academic Head Action Required</div>` : ''}
+    <!-- BUG FIX, CONFIRMED LIVE \u2014 "Complete Batch" (and Edit Batch) silently did nothing on
+         this "Unassigned" card, no error, no modal. Root cause: this card is a synthetic
+         grouping of students with no batch_id/batch_name at all (b.raw === '') \u2014 there is no
+         real batches row behind it to edit or complete, so editBatchFromLive/openCompleteBatch's
+         own "if(!b.raw)return;" guard was silently bailing out before ever opening anything.
+         Both buttons are now only rendered when b.raw is a real batch name (see just above);
+         this hint explains why they're missing here instead of leaving an unexplained gap. -->
+    ${(!isPrevious && !b.raw) ? `<div class="mhint" style="margin-top:8px">These students aren\u2019t assigned to a real batch yet, so there\u2019s nothing here to edit or complete. Add them to a batch from Create Batch or Edit Batch \u2192 Add Students first.</div>` : ''}
     ${roster}
     <div style="margin-top:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
