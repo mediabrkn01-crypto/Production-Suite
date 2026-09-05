@@ -4408,7 +4408,7 @@ function renderTrainerAvailabilityView(){
         const cHeadActions = isCurrentlyAcademicHead()
           ? `<button class="act-btn" onclick="event.stopPropagation();removeBookingInline('${t.id}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
           : '';
-        return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)" title="Overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${cHeadActions}</span></div>`;
+        return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)" title="Overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})">Unavailable — overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${cHeadActions}</span></div>`;
       }
       // Free — assignable, plus Head-only Edit/Remove of the declared slot itself (spec #4/#6).
       return `<div style="${_availRowStyle(_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
@@ -4507,7 +4507,7 @@ function renderMyAvailabilityList(){
       const realTime = `${_formatTime12(_minutesToTime(bStart))} – ${_formatTime12(_minutesToTime(bEnd))}`;
       return `<div style="${_availRowStyle(_AVAIL_AMBER)}">
         <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
-        <span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">Conflict: overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${myHeadRemove}</span></div>`;
+        <span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">Unavailable — overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${myHeadRemove}</span></div>`;
     }
     return `<div style="${_availRowStyle(_AVAIL_GREEN)}">
       <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
@@ -4804,10 +4804,36 @@ async function openAssignSlot(trainerId, trainerName, startTime, endTime){
   _assignSlotCtx = { trainerId, trainerName, startTime, endTime };
   document.getElementById('assignSlotCoach').textContent = trainerName;
   document.getElementById('assignSlotTime').textContent = `${_formatTime12(startTime)} – ${_formatTime12(endTime)}`;
-  const { data: batches } = await sb.from('batches').select('id,name,status').eq('status','active').order('name');
   const sel = document.getElementById('assignSlotBatch');
-  sel.innerHTML = '<option value="">— Select batch —</option>' + (batches||[]).map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  sel.innerHTML = '<option value="">Loading assignable batches…</option>';
   document.getElementById('modalAssignSlot').classList.add('on');
+  // BACKEND-DRIVEN, CONFLICT-FILTERED dropdown (spec #7): not every active batch. Each batch
+  // keeps its OWN canonical schedule (time_slot/day_pattern/dates) — assign only sets the
+  // trainer, never rewrites the batch's time (spec #1) — so a batch is offerable here only if
+  // ITS OWN schedule doesn't collide with a class this trainer already teaches. Reuses the one
+  // shared conflict rule (findExactRangeConflict — the same interval + day + date-range engine
+  // Create/Edit Batch use), never a separate calculation (spec #10). Batches already assigned
+  // to THIS trainer are dropped (no-op). Labels show each batch's real time so the Head sees
+  // the canonical schedule, not the clicked slot — nothing implies the batch runs at the slot.
+  const all = await _allBatchesForAvailabilityCheck();
+  const candidates = (all||[]).filter(b => {
+    if (!b.id || String(b.trainer_id)===String(trainerId)) return false;      // already this trainer
+    if (['completed','finished','inactive'].includes(b.status)) return false;
+    if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
+    if (_batchStartMinutes(b)===null) return false;                            // unparseable time — can't place
+    const bStart=_batchStartMinutes(b), bEnd=bStart+(b.class_duration_minutes||60);
+    const bDays=(b.day_pattern||'').split(/[,·]/).map(s=>s.trim().replace(/\s*MC.*$/,'')).filter(d=>DAYS.includes(d));
+    // Would assigning this batch (at its own time/days/dates) to this trainer conflict with a
+    // class the trainer already has? Exclude if so.
+    const conflict = findExactRangeConflict(trainerId, bStart, bEnd, all, b.start_date, b.expected_completion_date, bDays.length?bDays:null);
+    return !conflict;
+  }).sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  sel.innerHTML = '<option value="">— Select batch —</option>' + candidates.map(b => {
+    const bStart=_batchStartMinutes(b), bEnd=bStart+(b.class_duration_minutes||60);
+    const rt=`${_formatTime12(_minutesToTime(bStart))}–${_formatTime12(_minutesToTime(bEnd))}`;
+    const unassigned = !b.trainer_id ? ' · unassigned' : ` · from ${esc(b.trainer_name||'another trainer')}`;
+    return `<option value="${b.id}">${esc(b.name)} · ${esc(rt)}${unassigned}</option>`;
+  }).join('') || '<option value="" disabled>No batch can be assigned to this trainer without a time conflict.</option>';
 }
 async function confirmAssignSlot(){
   if (!_assignSlotCtx) return;
@@ -4824,22 +4850,29 @@ async function confirmAssignSlot(){
     // conflict calculation" the spec asks for, not a second frontend-only copy of the rule.
     const { data: batchRow } = await sb.from('batches').select('*').eq('id', batchId).maybeSingle();
     if (!batchRow) { showToast('error','Could not find this batch’s database record.'); return; }
+    // Validate against the BATCH's OWN canonical time (spec #1: batch time is the source of
+    // truth) — NOT the clicked availability slot. Assigning never rewrites the batch's schedule,
+    // so a batch that runs 7:30–8:30 must be conflict-checked at 7:30–8:30 even if the Head
+    // happened to click an 8:00–9:00 free row to open this modal. Using the slot time here would
+    // check the wrong window entirely.
+    const bStart = _batchStartMinutes(batchRow);
+    if (bStart === null) { showToast('error','This batch has no readable scheduled time — set its Batch Time in Edit Batch first.'); return; }
+    const bStart24 = _minutesToTime(bStart);
     const days = (batchRow.day_pattern||'').split(/[,·]/).map(s=>s.trim().replace(/\s*MC.*$/,'')).filter(d=>DAYS.includes(d));
     const { data: avail, error: availErr } = await sb.rpc('get_available_trainers', {
-      p_start_time: startTime, p_duration_minutes: batchRow.class_duration_minutes || 60,
+      p_start_time: bStart24, p_duration_minutes: batchRow.class_duration_minutes || 60,
       p_days: days.length ? days : null, p_start_date: batchRow.start_date || null, p_end_date: batchRow.expected_completion_date || null,
       p_course: batchRow.programme || null, p_trainer_id: trainerId, p_exclude_batch_id: batchId,
     });
     if (availErr) { showToast('error','Could not verify availability: '+availErr.message); return; }
     if (!(avail||[]).some(t => String(t.id) === String(trainerId))) {
-      // Real, specific conflict for the message when there is one (findOccupyingBatch, fixed
-      // to use true interval overlap — see its own header comment) — falls back to a generic
-      // message if the RPC declined for some other reason (e.g. course qualification).
+      const bEnd = bStart + (batchRow.class_duration_minutes||60);
+      const bWin = `${_formatTime12(bStart24)}–${_formatTime12(_minutesToTime(bEnd))}`;
       const { data: freshBatches } = await sb.from('batches').select('*').eq('trainer_id', trainerId);
-      const conflict = findOccupyingBatch(trainerId, startTime, endTime, freshBatches||[]);
+      const conflict = findOccupyingBatch(trainerId, bStart24, _minutesToTime(bEnd), freshBatches||[]);
       showToast('warning', conflict
-        ? `${trainerName} is already assigned to "${conflict.name}" at this time — ${_formatTime12(startTime)}–${_formatTime12(endTime)}. Choose a different trainer or slot.`
-        : `${trainerName} isn’t available for this batch at ${_formatTime12(startTime)}–${_formatTime12(endTime)}. Refresh and try again.`, 7000);
+        ? `${trainerName} is already teaching "${conflict.name}" that overlaps ${batchRow.name}'s time (${bWin}). Choose a different trainer.`
+        : `${trainerName} isn’t available for ${batchRow.name} at its scheduled time (${bWin}). Refresh and try again.`, 7000);
       document.getElementById('modalAssignSlot').classList.remove('on');
       loadAvailabilityTab();
       return;
