@@ -290,6 +290,9 @@
     refreshTrigger(select);
 
     trigger.addEventListener('mousedown', function (e) { e.preventDefault(); if (select.disabled) return; if (openSelect === select) close(); else open(select); });
+    // Stop a wrapping <label> from forwarding this click to the hidden native <select> (which
+    // would open the OS dropdown on top of the branded menu).
+    trigger.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); });
     trigger.addEventListener('keydown', onTriggerKey);
     // Keep the trigger label + an open menu in sync when the app rebuilds options or changes
     // value/disabled programmatically (backend-driven / realtime).
@@ -549,9 +552,16 @@
     input.parentNode.insertBefore(wrap, input);
     wrap.appendChild(input); wrap.appendChild(trig);
     input.classList.add('be-date-native'); input.setAttribute('tabindex', '-1'); input.setAttribute('aria-hidden', 'true');
+    // BUG FIX (two calendars at once): the date input sits inside a <label>, so clicking the
+    // branded trigger also forwarded a synthetic click to the native date input and opened the
+    // OS calendar on top of ours. readonly stops the native date input from ever showing its own
+    // picker (JS still sets its .value, and the value still submits) — belt-and-braces with the
+    // trigger's own click guard below.
+    input.readOnly = true;
     input.__beDateTrigger = trig; trig.__beDate = input;
     refreshTrigger(input);
     trig.addEventListener('mousedown', function (e) { e.preventDefault(); if (input.disabled) return; if (openInput === input) closeCal(); else openCal(input); });
+    trig.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); });
     trig.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); openCal(input); } });
     var mo = new MutationObserver(function () { refreshTrigger(input); if (openInput === input) renderCal(); });
     mo.observe(input, { attributes: true, attributeFilter: ['value', 'min', 'max', 'disabled'] });
