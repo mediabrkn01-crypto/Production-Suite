@@ -39,6 +39,29 @@
     '.be-msheet-item svg{width:20px;height:20px;flex:0 0 20px;}',
     /* comfortable tap targets for the page's own interactive bits on mobile */
     '.act-btn,.btn-ghost,.btn-sm{min-height:34px;}',
+    '}',
+    /* ---- PHONE EDITION skin (<=560px): reshape the desktop content into a native
+       mobile card feed — tighter gutters, elevated rounded cards, mobile type rhythm,
+       full-width primary actions. Visual only; no page logic/markup touched. ---- */
+    '@media (max-width:560px){',
+    'body{background:#05070d!important;}',
+    '.main,main,.acadx-shell,#app>main{padding:12px 12px calc(76px + env(safe-area-inset-bottom,0px))!important}',
+    'h1{font-size:21px!important;line-height:1.12!important;margin:2px 0 2px!important}',
+    'h2{font-size:14.5px!important}',
+    /* card skin — covers the section/card primitives across all four pages */
+    '.section,.card,.glass-card,.acadx-card,.acadx-section,.hr-card,.acadx-dash-card{',
+    'border-radius:16px!important;border:1px solid rgba(255,255,255,.07)!important;',
+    'background:linear-gradient(180deg,rgba(20,26,40,.55),rgba(13,17,28,.55))!important;',
+    'box-shadow:0 6px 18px rgba(0,0,0,.35)!important;margin-bottom:12px!important;}',
+    '.section{padding:15px!important}',
+    '.qrow{border-radius:14px!important;padding:13px 14px!important}',
+    '.tile{padding:13px!important;border-radius:14px!important}',
+    /* primary action buttons go full-width & thumb-sized in a card footer */
+    '.modal-actions .btn,.modal-actions .btn-ghost{flex:1;min-height:46px}',
+    '.filters>*{flex:1 1 46%!important;min-width:0!important}',
+    /* let horizontally-wide tables scroll inside their own card, page never scrolls sideways */
+    '.section table,.card table{min-width:520px}',
+    '.section>div[style*=overflow],.card>div[style*=overflow]{-webkit-overflow-scrolling:touch}',
     '}'
   ].join('');
   var st = document.createElement('style'); st.textContent = CSS; (document.head || document.documentElement).appendChild(st);
