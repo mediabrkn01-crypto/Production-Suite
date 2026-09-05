@@ -93,7 +93,13 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <button class="sidebar-link head-only hidden" data-tab="routing" onclick="switchTab('routing')"><i data-lucide="git-branch" style="width:15px;height:15px"></i> <span class="be-nav-label">Routing Rules</span></button>
     <button class="sidebar-link head-only hidden" data-tab="eod" onclick="switchTab('eod')"><i data-lucide="file-text" style="width:15px;height:15px"></i> <span class="be-nav-label">Reports / EOD</span></button>
     <div class="nav-section-title">My Workspace</div>
+    <button class="sidebar-link" data-tab="profile" onclick="switchTab('profile')"><i data-lucide="user-check" style="width:15px;height:15px"></i> <span class="be-nav-label">My Profile</span></button>
+    <button class="sidebar-link" data-tab="announcements" onclick="switchTab('announcements')"><i data-lucide="megaphone" style="width:15px;height:15px"></i> <span class="be-nav-label">Announcements</span></button>
     <button class="sidebar-link" data-tab="attendance" onclick="switchTab('attendance')"><i data-lucide="clock" style="width:15px;height:15px"></i> <span class="be-nav-label">My Attendance</span></button>
+    <button class="sidebar-link" data-tab="leave" onclick="switchTab('leave')"><i data-lucide="calendar-days" style="width:15px;height:15px"></i> <span class="be-nav-label">My Leave</span></button>
+    <button class="sidebar-link" data-tab="documents" onclick="switchTab('documents')"><i data-lucide="folder" style="width:15px;height:15px"></i> <span class="be-nav-label">My Documents</span></button>
+    <button class="sidebar-link" data-tab="payslips" onclick="switchTab('payslips')"><i data-lucide="receipt" style="width:15px;height:15px"></i> <span class="be-nav-label">My Payslips</span></button>
+    <button class="sidebar-link" data-tab="team-members" onclick="switchTab('team-members')"><i data-lucide="users-round" style="width:15px;height:15px"></i> <span class="be-nav-label">Team Members</span></button>
     <div style="flex:1"></div>
     <button class="sidebar-link" onclick="logout()"><i data-lucide="log-out" style="width:15px;height:15px"></i> <span class="be-nav-label">Log Out</span></button>
   </aside>
@@ -180,6 +186,44 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
       <div class="section"><h2>My Attendance · This Month</h2><div id="attStats" class="row" style="margin-bottom:12px"></div>
         <div id="attCal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px"></div>
       </div>
+    </div>
+
+    <!-- MY PROFILE -->
+    <div class="tab" id="tab-profile">
+      <div class="section"><h2>My Profile</h2><div id="profileBody"><div class="empty">Loading…</div></div></div>
+    </div>
+
+    <!-- ANNOUNCEMENTS -->
+    <div class="tab" id="tab-announcements">
+      <div class="section"><h2>Announcements</h2><div id="annList"><div class="empty">Loading…</div></div></div>
+    </div>
+
+    <!-- MY LEAVE -->
+    <div class="tab" id="tab-leave">
+      <div class="section"><h2>Request Leave</h2>
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:10px;max-width:520px">
+          <label class="fld">Leave type<select id="lv_type"><option>Casual Leave</option><option>Sick Leave</option><option>Paid Leave</option><option>Unpaid Leave</option><option>Work From Home</option></select></label>
+          <div class="row"><label class="fld">From<input id="lv_from" type="date"/></label><label class="fld">To<input id="lv_to" type="date"/></label></div>
+          <label class="fld">Reason<textarea id="lv_reason" rows="2"></textarea></label>
+          <div><button class="btn" onclick="submitLeave()">Submit request</button></div>
+        </div>
+      </div>
+      <div class="section"><h2>My Leave History</h2><div id="lvBalances" class="row" style="margin-bottom:10px"></div><div id="lvList"><div class="empty">Loading…</div></div></div>
+    </div>
+
+    <!-- MY DOCUMENTS -->
+    <div class="tab" id="tab-documents">
+      <div class="section"><h2>My Documents</h2><div class="sub">Documents HR has shared on your employee record.</div><div id="docList"><div class="empty">Loading…</div></div></div>
+    </div>
+
+    <!-- MY PAYSLIPS -->
+    <div class="tab" id="tab-payslips">
+      <div class="section"><h2>My Payslips</h2><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Net</th><th>Status</th><th>Paid</th></tr></thead><tbody id="payRows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody></table></div></div>
+    </div>
+
+    <!-- TEAM MEMBERS -->
+    <div class="tab" id="tab-team-members">
+      <div class="section"><h2>Team Members · Sales</h2><div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>Designation</th><th>Contact</th></tr></thead><tbody id="teamMemRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody></table></div></div>
     </div>
   </main>
 </div>
@@ -623,7 +667,76 @@ function switchTab(tab){
   document.querySelectorAll('.sidebar-link[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   if(tab==='routing')loadRules();
   if(tab==='eod')renderEod();
+  if(tab==='profile')loadProfile();
+  if(tab==='announcements')loadAnnouncements();
+  if(tab==='leave')loadLeave();
+  if(tab==='documents')loadDocuments();
+  if(tab==='payslips')loadPayslips();
+  if(tab==='team-members')loadTeamMembers();
   if(typeof lucide!=='undefined')lucide.createIcons();
+}
+
+/* ---------- MY WORKSPACE — shared HR features (same tables HR/Academics use) ---------- */
+function loadProfile(){
+  const r=ME.rec||{};
+  const rows=[['Name',ME.name],['Employee ID',r.employee_id],['Designation',r.designation],['Department',r.department],['Division',r.division],['Email',ME.email],['Phone',r.phone],['Joining date',r.joining_date],['Status',r.employment_status||'active']];
+  const photo=r.photo_base64||r.photo_url;
+  document.getElementById('profileBody').innerHTML=
+    `<div class="row" style="gap:14px;margin-bottom:14px">
+      <div style="width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--gk);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:#fff">${photo?`<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover">`:esc((ME.name||'?').charAt(0))}</div>
+      <div><div style="font-size:18px;font-weight:800">${esc(ME.name)}</div><div class="sub" style="margin:0">${esc(r.designation||'Sales')}${ME.isHead?' · Sales Head':''}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:0">${rows.map(([k,v])=>`<div class="qrow" style="margin-bottom:6px"><span class="sub" style="margin:0">${esc(k)}</span><b>${esc(v||'—')}</b></div>`).join('')}</div>`;
+}
+async function loadAnnouncements(){
+  const el=document.getElementById('annList');
+  try{
+    const {data}=await sb.from('hr_announcements').select('*').order('created_at',{ascending:false});
+    const now=new Date().toISOString();
+    const mine=(data||[]).filter(a=>{
+      if(a.start_at&&a.start_at>now)return false; if(a.end_at&&a.end_at<now)return false;
+      if(a.audience==='all'||!a.audience)return true;
+      if(a.audience==='division')return true; // shown to all divisions here; HR scopes precisely
+      if(a.audience==='selected')return (a.audience_employee_ids||[]).map(String).includes(String(ME.id));
+      return true;
+    });
+    el.innerHTML=mine.length?mine.map(a=>{
+      const pr=a.priority==='urgent'?'b-red':a.priority==='important'?'b-amber':'';
+      return `<div class="section" style="margin-bottom:10px;background:rgba(255,255,255,.02)"><div class="row" style="justify-content:space-between"><b>${esc(a.title||'Announcement')}</b>${pr?`<span class="badge ${pr}">${esc(a.priority)}</span>`:''}</div><div class="sub" style="margin:6px 0;color:var(--tx2);white-space:pre-wrap">${esc(a.message||'')}</div><div class="sub" style="margin:0;font-size:11px">${a.created_at?new Date(a.created_at).toLocaleString('en-IN'):''}${a.created_by?' · '+esc(a.created_by):''}</div></div>`;
+    }).join(''):'<div class="empty">No announcements.</div>';
+  }catch(e){el.innerHTML='<div class="empty">Could not load announcements.</div>';}
+}
+async function loadLeave(){
+  try{
+    const [{data:reqs},{data:bal}]=await Promise.all([
+      sb.from('hr_leave_requests').select('*').eq('employee_id',ME.id).order('requested_at',{ascending:false}),
+      sb.from('hr_leave_balances').select('*').eq('employee_id',ME.id)
+    ]);
+    document.getElementById('lvBalances').innerHTML=(bal||[]).map(b=>`<span class="badge b-blue">${esc(b.leave_type)}: ${(b.allotted||0)-(b.used||0)} left</span>`).join('')||'<span class="sub" style="margin:0">No balances set.</span>';
+    document.getElementById('lvList').innerHTML=(reqs&&reqs.length)?reqs.map(r=>`<div class="qrow"><div><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date} → ${r.end_date}${r.days?' · '+r.days+'d':''}</div></div><span class="badge ${r.status==='approved'?'b-green':r.status==='rejected'?'b-red':'b-amber'}">${esc(r.status||'pending')}</span></div>`).join(''):'<div class="empty">No leave requests yet.</div>';
+  }catch(e){document.getElementById('lvList').innerHTML='<div class="empty">Could not load leave.</div>';}
+}
+async function submitLeave(){
+  const type=document.getElementById('lv_type').value,from=document.getElementById('lv_from').value,to=document.getElementById('lv_to').value,reason=document.getElementById('lv_reason').value.trim();
+  if(!from||!to){showToast('warning','Pick both dates.');return;}
+  const days=Math.max(1,Math.round((new Date(to)-new Date(from))/86400000)+1);
+  const {error}=await sb.from('hr_leave_requests').insert({employee_id:ME.id,leave_type:type,start_date:from,end_date:to,days,reason:reason||null,status:'pending'});
+  if(error){showToast('error',error.message);return;}
+  document.getElementById('lv_reason').value='';showToast('success','Leave request submitted — HR will review.');loadLeave();
+}
+function loadDocuments(){
+  const links=(ME.rec&&ME.rec.document_links)||'';
+  const arr=String(links).split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
+  document.getElementById('docList').innerHTML=arr.length?arr.map((l,i)=>`<div class="qrow"><span>Document ${i+1}</span><a class="btn-ghost btn-sm" href="${esc(l)}" target="_blank" rel="noopener">Open</a></div>`).join(''):'<div class="empty">No documents shared by HR yet.</div>';
+}
+async function loadPayslips(){
+  try{
+    const {data}=await sb.from('hr_payroll').select('*').eq('employee_id',ME.id).eq('published',true).order('month',{ascending:false});
+    document.getElementById('payRows').innerHTML=(data&&data.length)?data.map(p=>`<tr><td>${esc(p.month)}</td><td>₹${p.net_salary!=null?Number(p.net_salary).toLocaleString('en-IN'):'—'}</td><td><span class="badge ${p.payment_status==='paid'?'b-green':'b-amber'}">${esc(p.payment_status||'pending')}</span></td><td>${p.payment_date||'—'}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">No published payslips yet.</td></tr>';
+  }catch(e){document.getElementById('payRows').innerHTML='<tr><td colspan="4" class="empty">Could not load payslips.</td></tr>';}
+}
+function loadTeamMembers(){
+  document.getElementById('teamMemRows').innerHTML=COUNSELLORS.length?COUNSELLORS.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(c.designation||'—')}</td><td>${esc(c.department||'—')}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No Sales team members synced from HR yet.</td></tr>';
 }
 function openModal(id){document.getElementById(id).classList.add('on');}
 function closeModal(id){document.getElementById(id).classList.remove('on');}
