@@ -723,21 +723,29 @@
     </div>
 
     <!-- Mobile top bar (hamburger + title + actions) -->
+    <!-- Sticky mobile app header — same shape as sales.html's (logo + module name left,
+         action icons right). The hamburger + off-canvas #mobile-sidebar are gone: be-mobile.js's
+         bottom-nav "Menu" sheet already lists every one of these same sidebar links, so a
+         second full-nav trigger here was pure duplication (never removed #mobile-sidebar/
+         openMobileSidebar() themselves — nothing else references them, harmless if unused). -->
     <div id="mobile-topbar" style="display:none;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(10,14,23,0.95);border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;z-index:30;gap:8px">
-        <div style="display:flex;align-items:center;gap:10px">
-            <button onclick="openMobileSidebar()" style="color:#808a9d;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer">
-                <i data-lucide="menu" style="width:16px;height:16px"></i>
-            </button>
-            <img src="Broken English Final Logo-03.png" style="height:24px;width:auto">
-            <span style="font-size:13px;font-weight:600;color:#f1f5f9">Media Suite</span>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden">
+            <img src="Broken English Final Logo-03.png" style="height:24px;width:auto;flex-shrink:0">
+            <span style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap">Media Suite</span>
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-            <button onclick="toggleGlobalSearch()" class="glass-button" style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;padding:0">
-                <i data-lucide="search" style="width:14px;height:14px"></i>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <button onclick="toggleGlobalSearch()" class="be-mtb-icon-btn" title="Search">
+                <i data-lucide="search" style="width:15px;height:15px"></i>
             </button>
-            <button onclick="toggleNotifPanel()" class="glass-button" style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;padding:0;position:relative">
-                <i data-lucide="bell" style="width:14px;height:14px"></i>
+            <button onclick="toggleNotifPanel()" class="be-mtb-icon-btn" title="Notifications">
+                <i data-lucide="bell" style="width:15px;height:15px"></i>
                 <span id="notif-badge-mobile" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#ff0552);color:#fff;font-size:8px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px"></span>
+            </button>
+            <!-- Tappable avatar — a second trigger on the SAME account-menu.js instance the
+                 desktop #topbar-account-btn already uses (see its initAccountMenu call below);
+                 not a second account system. -->
+            <button id="mtb-account-btn" class="be-mtb-icon-btn" style="padding:0" title="Account">
+                <span id="mtb-account-avatar" class="be-mtb-av">?</span>
             </button>
         </div>
     </div>
@@ -1445,16 +1453,24 @@
                             <span id="topbar-account-avatar" style="display:flex;width:30px;height:30px;border-radius:50%;overflow:hidden"><div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">?</div></span>
                         </button>
                         <script>
-                        if (typeof initAccountMenu === 'function') initAccountMenu({
-                          trigger: '#topbar-account-btn',
-                          getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
-                          getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
-                          onSwitchAccount: (email) => switchToAccount(email),
-                          onRemoveAccount: (email) => removeSavedAccount(email),
-                          onAddAccount: () => startAddAccountFlow(),
-                          onLogout: () => logoutPortal(),
-                          getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
-                        });
+                        // Wired to BOTH the desktop header avatar and the mobile sticky app-bar
+                        // avatar (#mtb-account-btn) — same data/handlers, one shared dropdown
+                        // component, not a second account menu.
+                        (function(){
+                          var _amOpts = {
+                            getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
+                            getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
+                            onSwitchAccount: (email) => switchToAccount(email),
+                            onRemoveAccount: (email) => removeSavedAccount(email),
+                            onAddAccount: () => startAddAccountFlow(),
+                            onLogout: () => logoutPortal(),
+                            getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
+                          };
+                          if (typeof initAccountMenu === 'function') {
+                            initAccountMenu(Object.assign({ trigger: '#topbar-account-btn' }, _amOpts));
+                            initAccountMenu(Object.assign({ trigger: '#mtb-account-btn' }, _amOpts));
+                          }
+                        })();
                         </script>
                     </div>
                 </div>
