@@ -12,6 +12,13 @@
 <script src="sidebar-collapse.js"></script>
 <script src="be-select.js"></script>
 <script src="be-mobile.js"></script>
+<!-- Shared platform UI system (same files HR / Academics / Media load) — metric strip,
+     top-right account menu, live greeting. Reused, not re-implemented. -->
+<link rel="stylesheet" href="dashboard-metrics.css">
+<script src="dashboard-metrics.js"></script>
+<link rel="stylesheet" href="account-menu.css">
+<script src="account-menu.js"></script>
+<script src="shared-greeting.js"></script>
 <style>
 :root{
   --bg:#030509;--panel-bg:rgba(13,17,28,0.65);--panel-border:rgba(255,255,255,0.08);
@@ -71,6 +78,11 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 .tab{display:none}.tab.on{display:block}
 .qrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--bd);border-radius:11px;margin-bottom:8px;background:rgba(255,255,255,.02)}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.hdr-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:10px;padding:9px 12px;font-size:12px;color:var(--tx2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hdr-icon-btn{width:40px;height:40px;border-radius:50%;background:rgba(22,28,45,.85);border:1px solid var(--bd);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;transition:all .18s}
+.hdr-icon-btn:hover{background:rgba(30,38,58,.9);border-color:rgba(255,255,255,.14)}
+.hdr-av{width:30px;height:30px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--gk);font-size:11px;font-weight:800;color:#fff}
+.hdr-av img{width:100%;height:100%;object-fit:cover}
 .att-card{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.02);border:1px solid var(--bd);border-radius:12px;padding:12px 14px}
 /* full-width attendance banner (matches HR / Academics / Media) */
 .att-banner{display:flex;align-items:center;gap:14px;background:var(--panel-bg);border:1px solid var(--bd);border-radius:14px;padding:15px 18px;margin-bottom:16px;backdrop-filter:blur(8px)}
@@ -110,7 +122,13 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 <div id="loading">Loading Sales…</div>
 <div id="app">
   <aside class="aside be-aside" id="aside">
-    <div class="brand"><img src="Broken English Final Logo-02 (1).png" alt="Broken English" style="width:26px;height:26px;border-radius:6px;object-fit:contain;flex:0 0 auto"/><span class="be-brand-text">BROKEN ENGLISH<br><span style="font-size:9px;color:var(--tx3);font-weight:600">SALES</span></span></div>
+    <div style="display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.05);margin-bottom:14px">
+      <img src="Broken English Final Logo-03.png" alt="Broken English Logo" style="height:32px;width:auto;object-fit:contain" onerror="this.style.display='none'"/>
+      <div class="be-brand-text">
+        <div style="font-size:13px;font-weight:700;letter-spacing:.5px;line-height:1;color:#f1f5f9">Sales</div>
+        <div style="font-size:9px;letter-spacing:.5px;font-weight:600;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" id="sales-role-badge">Command Center</div>
+      </div>
+    </div>
     <div class="nav-section-title">Sales</div>
     <button class="sidebar-link active" data-tab="dashboard" onclick="switchTab('dashboard')"><i data-lucide="layout-dashboard" style="width:15px;height:15px"></i> <span class="be-nav-label">Dashboard</span></button>
     <button class="sidebar-link" data-tab="queue" onclick="switchTab('queue')"><i data-lucide="list-checks" style="width:15px;height:15px"></i> <span class="be-nav-label">My Work Queue</span></button>
@@ -152,10 +170,19 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
   <main class="main">
     <div class="topbar">
       <div>
-        <div class="sub" id="greeting" style="margin:0">Good day</div>
+        <div class="sub" id="greeting" style="margin:0;font-weight:600;color:var(--tx3)"></div>
         <h1>Sales Command Center</h1>
-        <div class="sub">Pre-admission lead funnel — Broken English.</div>
+        <div class="sub" style="margin:0">Pre-admission lead funnel — Broken English.</div>
       </div>
+      <div class="row" style="gap:8px;flex-wrap:nowrap">
+        <div class="hdr-chip"><i data-lucide="calendar" style="width:13px;height:13px"></i> <span id="hdr-date"></span></div>
+        <button class="hdr-icon-btn" id="sales-bell-btn" onclick="salesToggleNotif()" title="Notifications"><i data-lucide="bell" style="width:16px;height:16px"></i></button>
+        <button class="hdr-icon-btn" id="sales-topbar-account-btn" title="Account"><span id="sales-topbar-avatar" class="hdr-av">?</span></button>
+      </div>
+    </div>
+    <div id="sales-notif-panel" class="hidden" style="position:fixed;top:66px;right:26px;width:320px;max-width:92vw;background:#0b0d19;border:1px solid var(--bd);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6);z-index:400;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--bd)"><b style="font-size:13px;display:flex;align-items:center;gap:6px"><i data-lucide="bell" style="width:14px;height:14px;color:var(--tx3)"></i> Notifications</b><button onclick="salesToggleNotif()" style="background:none;border:none;color:var(--tx3);cursor:pointer"><i data-lucide="x" style="width:14px;height:14px"></i></button></div>
+      <div class="empty" style="padding:26px">You're all caught up. No notifications.</div>
     </div>
     <div class="att-banner" id="attCard">
       <div class="ic"><i data-lucide="clock-4" style="width:20px;height:20px"></i></div>
@@ -165,7 +192,7 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 
     <!-- DASHBOARD -->
     <div class="tab on" id="tab-dashboard">
-      <div class="section"><h2>Sales Overview</h2><div class="stat-grid" id="dashTiles"><div class="empty">Loading…</div></div></div>
+      <div class="section"><h2>Sales Overview</h2><div id="dashTiles"><div class="empty">Loading…</div></div></div>
       <div class="section" id="waitingBanner" style="display:none"><h2>⏳ New leads waiting for first contact</h2><div id="waitingList"></div></div>
       <div class="dash-2col">
         <div class="section"><h2>🔥 Priority Calls</h2><div id="dashPriority"><div class="empty">Loading…</div></div></div>
@@ -364,8 +391,24 @@ const CADENCE=[0,1,3,7]; // days after fu #1..#4
     document.getElementById('loading').style.display='none';
     document.getElementById('app').style.display='flex';
     document.querySelectorAll('.head-only').forEach(el=>el.classList.toggle('hidden',!isHead));
-    document.getElementById('greeting').textContent='Signed in as '+ME.name+(isHead?' · Sales Head':' · Counsellor');
+    const roleLabel=(ME.rec&&ME.rec.designation)||(isHead?'Sales Head':'Counsellor');
+    document.getElementById('sales-role-badge').textContent=isHead?'Sales · Head':'Sales';
+    // live time-of-day greeting (shared-greeting.js) — same component the other portals use
+    if(typeof initLiveGreeting==='function')initLiveGreeting({mount:'#greeting',getName:()=>ME&&ME.name});
+    else document.getElementById('greeting').textContent='Signed in as '+ME.name;
+    startHdrClock();
     salesInitAcct();
+    // top-right account/profile menu (shared account-menu.js) — Switch Account / Add / Logout
+    if(typeof initAccountMenu==='function')initAccountMenu({
+      trigger:'#sales-topbar-account-btn',
+      getCurrentUser:()=>({name:ME.name,role:roleLabel,email:ME.email}),
+      getSavedAccounts:()=>_salesSaved(),
+      onSwitchAccount:(email)=>salesSwitchTo(email),
+      onRemoveAccount:(email)=>salesRemoveAcct(email),
+      onAddAccount:()=>{location.href='index.html';},
+      onLogout:()=>logout(),
+      getPhotos:async(emails)=>{try{const{data}=await sb.from('hr_employees').select('portal_email,full_name,photo_base64,photo_url').in('portal_email',emails);const o={};(data||[]).forEach(e=>{if(e.portal_email)o[e.portal_email.toLowerCase()]=e;});return o;}catch(_){return{};}},
+    });
     if(typeof lucide!=='undefined')lucide.createIcons();
     boot();
   }catch(e){location.href='index.html';}
@@ -380,12 +423,18 @@ function salesInitAcct(){
   let a=_salesSaved().filter(x=>(x.email||'').toLowerCase()!==ME.email);
   a.push({name:ME.name,role:(ME.rec&&ME.rec.designation)||(ME.isHead?'Sales Head':'Counsellor'),email:ME.email,pass:''});
   try{localStorage.setItem('be_saved_accounts',JSON.stringify(a));}catch(_){}
-  const av=document.getElementById('sales-acct-avatar');const photo=ME.rec&&(ME.rec.photo_base64||ME.rec.photo_url);
-  if(photo)av.innerHTML=`<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover">`;
-  else av.textContent=(ME.name||'?').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';
+  const photo=ME.rec&&(ME.rec.photo_base64||ME.rec.photo_url);
+  const initials=(ME.name||'?').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';
+  const av=document.getElementById('sales-acct-avatar');
+  if(photo)av.innerHTML=`<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover">`;else av.textContent=initials;
+  const tav=document.getElementById('sales-topbar-avatar');
+  if(tav){if(photo)tav.innerHTML=`<img src="${esc(photo)}">`;else tav.textContent=initials;}
   document.getElementById('sales-acct-name').textContent=ME.name||'—';
   document.getElementById('sales-acct-role').textContent=((ME.rec&&ME.rec.designation)||'Sales')+(ME.isHead?' · Head':'');
 }
+function startHdrClock(){const el=document.getElementById('hdr-date');if(!el)return;const upd=()=>{el.textContent=new Date().toLocaleString('en-IN',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});};upd();clearInterval(window._hdrClk);window._hdrClk=setInterval(upd,30000);}
+function salesToggleNotif(){const p=document.getElementById('sales-notif-panel');p.classList.toggle('hidden');if(typeof lucide!=='undefined')lucide.createIcons();}
+document.addEventListener('click',e=>{const p=document.getElementById('sales-notif-panel'),b=document.getElementById('sales-bell-btn');if(p&&!p.classList.contains('hidden')&&!p.contains(e.target)&&b&&!b.contains(e.target))p.classList.add('hidden');});
 function salesToggleAcct(){const p=document.getElementById('sales-acct-panel');const opening=p.classList.contains('hidden');p.classList.toggle('hidden');if(opening)salesRenderAcctList();}
 function salesRenderAcctList(){
   const list=document.getElementById('sales-acct-list');if(!list)return;
@@ -503,15 +552,17 @@ function renderDash(){
   const enrolled=mine.filter(l=>l.stage==='Enrolled').length;
   const breach=mine.filter(l=>{const[,c]=slaOf(l);return c==='b-red';}).length;
   const conv=mine.length?Math.round(enrolled/mine.length*100):0;
-  const cards=[
-    {n:mine.length,l:'Total Leads',ic:'users',c:'#3b82f6',bg:'rgba(59,130,246,.13)',d:nMonth+' this month'},
-    {n:need,l:'Need First Contact',ic:'phone-incoming',c:'#f97316',bg:'rgba(249,115,22,.13)',d:'awaiting call'},
-    {n:breach,l:'SLA Breach',ic:'alarm-clock',c:'#ff0552',bg:'rgba(255,5,82,.13)',d:'overdue'},
-    {n:hot,l:'Hot Leads',ic:'flame',c:'#ec4899',bg:'rgba(236,72,153,.13)',d:'high intent'},
-    {n:enrolled,l:'Enrolled',ic:'graduation-cap',c:'#10b981',bg:'rgba(16,185,129,.13)',d:'converted'},
-    {n:conv+'%',l:'Conversion',ic:'trending-up',c:'#7c3aed',bg:'rgba(124,58,237,.13)',d:'enrol / total'},
+  // Shared platform metric-strip (same dashboard-metrics.js component HR/Academics/Media use) — Sales data + colours
+  const items=[
+    {icon:'users',color:'#3b82f6',label:'Total Leads',value:mine.length,status:nMonth+' this month',onclick:"switchTab('leads')"},
+    {icon:'phone-incoming',color:'#f97316',label:'Need First Contact',value:need,status:'awaiting call',onclick:"switchTab('queue')"},
+    {icon:'calendar-plus',color:'#f59e0b',label:'New This Month',value:nMonth,status:'this month',onclick:"switchTab('leads')"},
+    {icon:'alarm-clock',color:'#ff0552',label:'SLA Breach',value:breach,status:'overdue',onclick:"switchTab('queue')"},
+    {icon:'flame',color:'#ec4899',label:'Hot Leads',value:hot,status:'high intent',onclick:"switchTab('leads')"},
+    {icon:'graduation-cap',color:'#10b981',label:'Enrolled',value:enrolled,status:'converted',onclick:"switchTab('enrol')"},
+    {icon:'trending-up',color:'#7c3aed',label:'Conversion',value:conv+'%',status:'enrol / total'},
   ];
-  document.getElementById('dashTiles').innerHTML=cards.map(c=>`<div class="stat-card"><div class="ic" style="background:${c.bg};color:${c.c}"><i data-lucide="${c.ic}" style="width:22px;height:22px"></i></div><div><div class="n">${c.n}</div><div class="l">${c.l}</div><div class="d" style="color:${c.c}">${c.d}</div></div></div>`).join('');
+  document.getElementById('dashTiles').innerHTML=(typeof metricStripHTML==='function')?metricStripHTML(items):items.map(c=>`<div class="stat-card"><div class="ic" style="color:${c.color}"><i data-lucide="${c.icon}" style="width:22px;height:22px"></i></div><div><div class="n">${c.value}</div><div class="l">${c.label}</div><div class="d" style="color:${c.color}">${c.status}</div></div></div>`).join('');
   // Priority Calls — actionable, worst SLA first, then hot
   const open=mine.filter(l=>!['Enrolled','Closed','Not Interested','Lost'].includes(l.stage));
   const sev=l=>{const[,c]=slaOf(l);return c==='b-red'?0:c==='b-amber'?1:2;};
