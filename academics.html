@@ -4850,6 +4850,15 @@ async function confirmAssignSlot(){
     // conflict calculation" the spec asks for, not a second frontend-only copy of the rule.
     const { data: batchRow } = await sb.from('batches').select('*').eq('id', batchId).maybeSingle();
     if (!batchRow) { showToast('error','Could not find this batch’s database record.'); return; }
+    // REASSIGN CONFIRMATION (spec #5): a batch already owned by ANOTHER trainer is a
+    // reassignment, not a fresh assign — never move it silently. The dropdown already labels
+    // these "· from <trainer>"; this is the required explicit confirm before the move.
+    if (batchRow.trainer_id && String(batchRow.trainer_id) !== String(trainerId)) {
+      const okReassign = await _showSimpleConfirm(
+        `"${batchRow.name}" is currently assigned to ${batchRow.trainer_name || 'another trainer'}. Reassign this batch to ${trainerName}?`,
+        { title: 'Reassign Batch', confirmLabel: 'Reassign Batch' });
+      if (!okReassign) return;
+    }
     // Validate against the BATCH's OWN canonical time (spec #1: batch time is the source of
     // truth) — NOT the clicked availability slot. Assigning never rewrites the batch's schedule,
     // so a batch that runs 7:30–8:30 must be conflict-checked at 7:30–8:30 even if the Head
@@ -6856,14 +6865,21 @@ async function openStuCore(s){
   // Part 14) — assignment fields collapse into one "Not assigned yet" line when there's no
   // batch_id, instead of two separate "Batch: —" / "Trainer: —" rows.
   const lifecycle=_acadStudentLifecycleStatus(s);
+  // Resolve the CURRENT academic assignment from the batch (source of truth), not from any
+  // cached field on the student (spec #1/#2/#10). Trainer + actual schedule both come from the
+  // batch row; the student's own preferred_slot is a SEPARATE preference, never the class time.
+  let assignedBatch = null;
+  if (s.batch_id) { try { const {data:ab}=await sb.from('batches').select('name,trainer_name,day_pattern,time_slot').eq('id',s.batch_id).maybeSingle(); assignedBatch=ab; } catch(e){} }
+  const _sched = assignedBatch ? [assignedBatch.day_pattern, assignedBatch.time_slot].filter(Boolean).join(' · ') : '';
   const assignmentHTML = s.batch_id
-    ? '<span class="k">Batch</span><span class="v">'+esc(s.batch_name||'—')+'</span>'
-      +'<span class="k">Trainer</span><span class="v">'+esc(s.trainer_name||'—')+'</span>'
+    ? '<span class="k">Batch</span><span class="v">'+esc((assignedBatch&&assignedBatch.name)||s.batch_name||'—')+'</span>'
+      +'<span class="k">Trainer</span><span class="v">'+esc((assignedBatch&&assignedBatch.trainer_name)||'— (unassigned)')+'</span>'
+      +'<span class="k">Actual Class Schedule</span><span class="v">'+esc(_sched||'—')+'</span>'
     : '<span class="k">Current Assignment</span><span class="v" style="color:var(--tx3);font-style:italic">Not assigned yet — add this student to a batch (Create Batch or Edit Batch → Add Students) to assign a trainer and start progress.</span>';
   document.getElementById('stu_info').innerHTML='<div class="subhead" style="margin:0 0 6px">Student Profile</div><div class="stu-grid">'
     +'<span class="k">Student ID</span><span class="v">'+esc(s.uin||'—')+'</span>'
     +'<span class="k">Contact</span><span class="v">'+esc(s.contact||'—')+'</span>'
-    +'<span class="k">Preferred slot</span><span class="v">'+esc(s.preferred_slot||'—')+'</span>'
+    +'<span class="k">Preferred Class Time</span><span class="v">'+esc(s.preferred_slot||'—')+' <span style="color:var(--tx3);font-size:10.5px">(student preference)</span></span>'
     +'<span class="k">Course interest</span><span class="v">'+esc(s.programme||'—')+'</span>'
     +'<span class="k">Counsellor</span><span class="v">'+esc(s.source_counsellor||'—')+'</span>'
     +'<span class="k">Enrolled</span><span class="v">'+esc(s.enrolled_date||'—')+'</span>'
