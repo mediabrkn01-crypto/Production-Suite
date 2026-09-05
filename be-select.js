@@ -1,29 +1,28 @@
 /* ============================================================================
-   BESelect — ONE shared branded dropdown, used by index.html, academics.html
-   and hr.html (included the same way as sidebar-collapse.js). It does NOT
-   restructure the DOM or touch any business logic: every native <select> stays
-   exactly where it is and remains the single source of truth (its value, its
-   options, its change/input events, its disabled state, its dynamic
-   backend-driven option updates). The closed control is still the same native
-   <select> the page already styles dark — the ONLY thing this replaces is the
-   OS-rendered OPEN popup (the part that turns white/low-contrast in system
-   light mode and differs across Chrome/Safari/Edge). On open we suppress the
-   native popup and show a portalled, fully self-styled menu; picking an option
-   writes select.value and dispatches a real 'change' (+ 'input') event, so
-   every existing handler, filter query and form submission fires unchanged.
+   BESelect — ONE shared branded dropdown for index.html, academics.html and
+   hr.html (loaded like sidebar-collapse.js). It never touches business logic:
+   every native <select> stays in the DOM as the single source of truth (its
+   value, options, change/input events, disabled state and dynamic/realtime
+   option updates are all unchanged). Picking a branded option writes
+   select.value and dispatches real 'input'+'change' events, so every existing
+   handler, filter query and form submission fires exactly as before.
 
-   Scope / safety:
-   - Skips <select multiple> (kept native so existing multi-select behaviour is
-     never altered) and any select tagged [data-native].
-   - Reads options live from the select each time it opens, so backend-driven /
-     realtime option changes are always reflected — nothing is hardcoded.
-   - Menu is appended to <body> and fixed-positioned, so it is never clipped by
-     overflow:hidden cards/tables/modals; flips upward when there's no room
-     below; z-index above every modal in these pages.
-   - Full keyboard support (Arrow/Enter/Space/Escape/Home/End/type-ahead), aria
-     roles/state, visible focus. A search box appears for long lists.
-   - Explicit dark colors (no reliance on color-scheme), so it stays branded in
-     OS light mode too. Tokens below reuse the Broken English palette.
+   Why a real trigger element (v2): simply preventing the native popup on
+   mousedown was NOT reliable across browsers (macOS Chrome still showed the
+   white OS list). So the native <select> is now visually hidden (kept for
+   value + events) and a branded trigger is rendered in its place, guaranteeing
+   the OS popup can never appear. The trigger copies the select's OWN computed
+   style (background, border, radius, padding, font, colour, flex/width/margin),
+   so it looks identical to however each page already styles that select and
+   keeps the same layout footprint — no page CSS duplicated, nothing hardcoded.
+
+   - Menu is portalled to <body>, fixed-positioned (z-index above every modal),
+     never clipped by overflow; flips up when there's no room below; repositions
+     on scroll/resize.
+   - Search box appears for long lists; max-height + internal scroll.
+   - Full keyboard + aria; explicit dark colours (independent of OS light mode).
+   - Skips <select multiple> and [data-native]; re-syncs on backend/realtime
+     option or value changes; auto-enhances selects added later.
    ============================================================================ */
 (function () {
   if (window.__beSelectInit) return;
@@ -35,12 +34,18 @@
     '--be-sel-text:#f2f3f7;--be-sel-muted:#8b93ad;--be-sel-hover:rgba(255,255,255,.06);',
     '--be-sel-selected:rgba(255,107,6,.16);--be-sel-accent:#ff6b06;',
     '--be-sel-radius:10px;--be-sel-shadow:0 18px 44px rgba(0,0,0,.6);}',
-    /* custom chevron on enhanced selects; hide native arrow so closed state matches everywhere */
-    'select[data-be]{-webkit-appearance:none!important;-moz-appearance:none!important;appearance:none!important;',
-    'background-image:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238b93ad\' stroke-width=\'2.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'/></svg>")!important;',
-    'background-repeat:no-repeat!important;background-position:right 11px center!important;padding-right:30px!important;color-scheme:dark;}',
-    'select[data-be][data-be-open]{border-color:var(--be-sel-accent)!important;}',
-    /* portalled menu */
+    '.be-sel-wrap{position:relative;box-sizing:border-box;}',
+    '.be-sel-native{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;',
+    'opacity:0!important;pointer-events:none!important;margin:0!important;}',
+    '.be-sel-trigger{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;cursor:pointer;',
+    'color:var(--be-sel-text);outline:none;overflow:hidden;}',
+    '.be-sel-trigger[aria-disabled="true"]{opacity:.5;cursor:not-allowed;}',
+    '.be-sel-trigger:focus-visible{border-color:var(--be-sel-accent)!important;box-shadow:0 0 0 2px rgba(255,107,6,.35)!important;}',
+    '.be-sel-trigger[data-be-open]{border-color:var(--be-sel-accent)!important;}',
+    '.be-sel-value{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;}',
+    '.be-sel-value[data-placeholder]{color:var(--be-sel-muted);}',
+    '.be-sel-chev{flex:0 0 auto;width:12px;height:12px;color:var(--be-sel-muted);transition:transform .15s;}',
+    '.be-sel-trigger[data-be-open] .be-sel-chev{transform:rotate(180deg);}',
     '.be-sel-menu{position:fixed;z-index:3000;background:var(--be-sel-bg-menu);border:1px solid var(--be-sel-border);',
     'border-radius:var(--be-sel-radius);box-shadow:var(--be-sel-shadow);padding:5px;box-sizing:border-box;',
     'display:none;flex-direction:column;max-height:min(320px,60vh);overflow:hidden;font-size:13px;color:var(--be-sel-text);}',
@@ -70,11 +75,11 @@
   style.textContent = CSS;
   (document.head || document.documentElement).appendChild(style);
 
-  // One reused menu element (portalled to body).
+  var CHEV = '<svg class="be-sel-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
   var menu = null, list = null, search = null;
-  var openSelect = null;   // the native <select> currently driving the menu
-  var activeIndex = -1;    // keyboard-highlighted option index (into rendered rows)
-  var rows = [];           // [{el, optionIndex}]
+  var openSelect = null, openTrigger = null;
+  var activeIndex = -1, rows = [];
 
   function buildMenu() {
     menu = document.createElement('div');
@@ -91,57 +96,55 @@
     menu.appendChild(list);
     document.body.appendChild(menu);
     search.addEventListener('input', function () { renderOptions(search.value); });
-    // Keep focus/keyboard on the search field while open.
     search.addEventListener('keydown', onMenuKey);
-    menu.addEventListener('mousedown', function (e) { e.preventDefault(); }); // don't blur the select/search
+    menu.addEventListener('mousedown', function (e) { if (e.target !== search) e.preventDefault(); });
   }
 
   function optionText(o) { return (o.textContent || '').trim(); }
+
+  function currentLabel(select) {
+    var o = select.options[select.selectedIndex];
+    return o ? optionText(o) : '';
+  }
+
+  function refreshTrigger(select) {
+    var t = select.__beTrigger;
+    if (!t) return;
+    var val = t.querySelector('.be-sel-value');
+    var o = select.options[select.selectedIndex];
+    var label = o ? optionText(o) : '';
+    val.textContent = label || (select.getAttribute('data-placeholder') || 'Select…');
+    if (label) val.removeAttribute('data-placeholder'); else val.setAttribute('data-placeholder', '');
+    if (select.disabled) t.setAttribute('aria-disabled', 'true'); else t.removeAttribute('aria-disabled');
+    t.setAttribute('tabindex', select.disabled ? '-1' : '0');
+  }
 
   function renderOptions(filter) {
     if (!openSelect) return;
     filter = (filter || '').trim().toLowerCase();
     list.innerHTML = '';
     rows = [];
-    var opts = openSelect.options;
-    var anyShown = false;
-    var curVal = openSelect.value;
-    var lastGroup = null;
+    var opts = openSelect.options, anyShown = false, curVal = openSelect.value, lastGroup = null;
     for (var i = 0; i < opts.length; i++) {
-      var o = opts[i];
-      var label = optionText(o);
+      var o = opts[i], label = optionText(o);
       if (filter && label.toLowerCase().indexOf(filter) === -1) continue;
-      // optgroup heading
       var grp = o.parentNode && o.parentNode.tagName === 'OPTGROUP' ? o.parentNode.getAttribute('label') : null;
       if (grp && grp !== lastGroup) {
-        var gh = document.createElement('div');
-        gh.className = 'be-sel-group';
-        gh.textContent = grp;
-        list.appendChild(gh);
-        lastGroup = grp;
+        var gh = document.createElement('div'); gh.className = 'be-sel-group'; gh.textContent = grp; list.appendChild(gh); lastGroup = grp;
       }
       var row = document.createElement('div');
       row.className = 'be-sel-opt';
       row.setAttribute('role', 'option');
-      var isSel = o.value === curVal;
-      if (isSel) { row.setAttribute('data-selected', ''); row.setAttribute('aria-selected', 'true'); }
+      if (o.value === curVal) { row.setAttribute('data-selected', ''); row.setAttribute('aria-selected', 'true'); }
       if (o.disabled) row.setAttribute('data-disabled', '');
       row.innerHTML = '<span class="be-sel-check">✓</span><span class="be-sel-optlabel"></span>';
-      row.querySelector('.be-sel-optlabel').textContent = label || ' ';
-      (function (optIndex, disabled) {
-        row.addEventListener('click', function () { if (!disabled) commit(optIndex); });
-      })(i, o.disabled);
+      row.querySelector('.be-sel-optlabel').textContent = label || ' ';
+      (function (optIndex, disabled) { row.addEventListener('click', function () { if (!disabled) commit(optIndex); }); })(i, o.disabled);
       list.appendChild(row);
       if (!o.disabled) rows.push({ el: row, optionIndex: i });
       anyShown = true;
     }
-    if (!anyShown) {
-      var em = document.createElement('div');
-      em.className = 'be-sel-empty';
-      em.textContent = 'No matches';
-      list.appendChild(em);
-    }
-    // highlight the selected (or first) row
+    if (!anyShown) { var em = document.createElement('div'); em.className = 'be-sel-empty'; em.textContent = 'No matches'; list.appendChild(em); }
     activeIndex = rows.findIndex(function (r) { return openSelect.options[r.optionIndex].value === curVal; });
     if (activeIndex < 0 && rows.length) activeIndex = 0;
     paintActive();
@@ -163,34 +166,32 @@
       openSelect.dispatchEvent(new Event('input', { bubbles: true }));
       openSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    refreshTrigger(openSelect);
     close();
   }
 
   function position() {
-    if (!openSelect || !menu) return;
-    var r = openSelect.getBoundingClientRect();
+    if (!openTrigger || !menu) return;
+    var r = openTrigger.getBoundingClientRect();
     var vw = window.innerWidth, vh = window.innerHeight;
     var width = Math.max(r.width, 180);
-    if (vw < 640) width = Math.min(width, vw - 16); // mobile: fit viewport
+    if (vw < 640) width = Math.min(width, vw - 16);
     menu.style.width = width + 'px';
     menu.style.left = Math.min(Math.max(8, r.left), vw - width - 8) + 'px';
-    // measure height by showing invisibly
     var mh = menu.offsetHeight || 260;
     var spaceBelow = vh - r.bottom, spaceAbove = r.top;
-    if (spaceBelow < mh + 8 && spaceAbove > spaceBelow) {
-      menu.style.top = Math.max(8, r.top - mh - 6) + 'px';   // flip up
-    } else {
-      menu.style.top = (r.bottom + 6) + 'px';
-    }
+    if (spaceBelow < mh + 8 && spaceAbove > spaceBelow) menu.style.top = Math.max(8, r.top - mh - 6) + 'px';
+    else menu.style.top = (r.bottom + 6) + 'px';
   }
 
   function open(select) {
     if (openSelect === select) return;
     if (openSelect) close();
+    if (select.disabled) return;
     if (!menu) buildMenu();
-    openSelect = select;
-    select.setAttribute('data-be-open', '');
-    select.setAttribute('aria-expanded', 'true');
+    openSelect = select; openTrigger = select.__beTrigger;
+    openTrigger.setAttribute('data-be-open', '');
+    openTrigger.setAttribute('aria-expanded', 'true');
     var many = select.options.length > 8;
     search.style.display = many ? '' : 'none';
     search.value = '';
@@ -205,20 +206,20 @@
 
   function close() {
     if (!openSelect) return;
-    openSelect.removeAttribute('data-be-open');
-    openSelect.setAttribute('aria-expanded', 'false');
-    var s = openSelect;
-    openSelect = null;
+    var t = openTrigger;
+    openTrigger.removeAttribute('data-be-open');
+    openTrigger.setAttribute('aria-expanded', 'false');
+    openSelect = null; openTrigger = null;
     if (menu) menu.removeAttribute('data-open');
     window.removeEventListener('scroll', position, true);
     window.removeEventListener('resize', position);
     document.removeEventListener('mousedown', onDocDown, true);
-    try { s.focus(); } catch (e) {}
+    try { t.focus(); } catch (e) {}
   }
 
   function onDocDown(e) {
     if (menu && menu.contains(e.target)) return;
-    if (openSelect && openSelect.contains(e.target)) return;
+    if (openTrigger && openTrigger.contains(e.target)) return;
     close();
   }
 
@@ -232,40 +233,71 @@
     if (e.key === 'End') { e.preventDefault(); if (rows.length) { activeIndex = rows.length - 1; paintActive(); } return; }
   }
 
-  // Key handling while focus is on the SELECT itself (search hidden / short list).
-  function onSelectKey(e) {
-    var select = e.currentTarget;
-    if (openSelect === select) {
-      onMenuKey(e);
-      return;
-    }
+  function onTriggerKey(e) {
+    var select = e.currentTarget.__beSelect;
+    if (openSelect === select) { onMenuKey(e); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-      e.preventDefault();
-      open(select);
+      e.preventDefault(); open(select);
     }
   }
 
+  // Copy the properties that make the trigger look and sit exactly like the native select the
+  // page already styled — read from getComputedStyle so it matches whatever CSS applied, per
+  // page, with nothing hardcoded.
+  var COPY = ['backgroundColor', 'backgroundImage', 'border', 'borderRadius', 'boxShadow', 'fontFamily',
+    'fontSize', 'fontWeight', 'letterSpacing', 'color', 'paddingTop', 'paddingRight', 'paddingBottom',
+    'paddingLeft', 'minHeight', 'height', 'lineHeight', 'textTransform'];
+
   function enhance(select) {
     if (!select || select.tagName !== 'SELECT') return;
-    if (select.multiple || select.size > 1) return;                 // leave native multi-selects alone
-    if (select.hasAttribute('data-native')) return;                 // explicit opt-out
-    if (select.hasAttribute('data-be')) return;                     // already enhanced
-    select.setAttribute('data-be', '');
-    select.setAttribute('role', 'combobox');
-    select.setAttribute('aria-haspopup', 'listbox');
-    select.setAttribute('aria-expanded', 'false');
-    // Suppress the native popup; show ours instead. mousedown preventDefault is what stops the
-    // OS dropdown from ever appearing, on desktop and mobile alike.
-    select.addEventListener('mousedown', function (e) {
-      if (select.disabled) return;
-      e.preventDefault();
-      if (openSelect === select) close(); else open(select);
-    });
-    select.addEventListener('keydown', onSelectKey);
-    // If the app rebuilds this select's options or programmatically changes value while the
-    // menu is open, re-render so the branded menu never shows stale data (backend/realtime).
-    var mo = new MutationObserver(function () { if (openSelect === select) renderOptions(search.value); });
+    if (select.multiple || select.size > 1) return;
+    if (select.hasAttribute('data-native')) return;
+    if (select.__beEnhanced) return;
+    select.__beEnhanced = true;
+
+    var cs = getComputedStyle(select);
+    var wrap = document.createElement('span');
+    wrap.className = 'be-sel-wrap';
+    // Preserve the select's own layout footprint (flex grow / width / margin / display).
+    wrap.style.display = (cs.display === 'block') ? 'block' : 'inline-block';
+    if (parseFloat(cs.flexGrow) > 0 || (select.style.flex && select.style.flex !== 'none')) wrap.style.flex = cs.flex;
+    if (select.style.width || cs.width) wrap.style.width = select.style.width || cs.width;
+    if (select.style.minWidth || cs.minWidth !== '0px') wrap.style.minWidth = select.style.minWidth || cs.minWidth;
+    wrap.style.margin = cs.margin;
+    wrap.style.verticalAlign = 'middle';
+
+    var trigger = document.createElement('div');
+    trigger.className = 'be-sel-trigger';
+    trigger.setAttribute('role', 'combobox');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('tabindex', select.disabled ? '-1' : '0');
+    COPY.forEach(function (p) { try { trigger.style[p] = cs[p]; } catch (e) {} });
+    trigger.style.boxSizing = 'border-box';
+    trigger.style.width = '100%';
+    trigger.innerHTML = '<span class="be-sel-value"></span>' + CHEV;
+
+    // Put the wrapper where the select is, move the select inside (hidden), add the trigger.
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select);
+    wrap.appendChild(trigger);
+    select.classList.add('be-sel-native');
+    select.setAttribute('tabindex', '-1');
+    select.setAttribute('aria-hidden', 'true');
+    select.__beTrigger = trigger;
+    trigger.__beSelect = select;
+
+    refreshTrigger(select);
+
+    trigger.addEventListener('mousedown', function (e) { e.preventDefault(); if (select.disabled) return; if (openSelect === select) close(); else open(select); });
+    trigger.addEventListener('keydown', onTriggerKey);
+    // Keep the trigger label + an open menu in sync when the app rebuilds options or changes
+    // value/disabled programmatically (backend-driven / realtime).
+    var mo = new MutationObserver(function () { refreshTrigger(select); if (openSelect === select) renderOptions(search.value); });
     mo.observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'value'] });
+    // Some code sets select.value without firing change; catch the common "rebuild options then
+    // set value" pattern by also refreshing on the next tick after any option mutation.
+    select.addEventListener('change', function () { refreshTrigger(select); });
   }
 
   function scan(root) {
@@ -275,7 +307,6 @@
 
   function boot() {
     scan(document);
-    // Enhance selects added later (modals built on demand, dynamic filter rows, etc.).
     var docMo = new MutationObserver(function (muts) {
       for (var i = 0; i < muts.length; i++) {
         var added = muts[i].addedNodes;
@@ -288,6 +319,18 @@
       }
     });
     docMo.observe(document.body, { childList: true, subtree: true });
+    // Programmatic value changes (select.value = x) don't emit events or attribute mutations;
+    // a light periodic sweep keeps trigger labels correct for those cases too.
+    setInterval(function () {
+      var sels = document.querySelectorAll('select.be-sel-native');
+      for (var i = 0; i < sels.length; i++) {
+        var s = sels[i], t = s.__beTrigger;
+        if (!t) continue;
+        var shown = t.querySelector('.be-sel-value').textContent;
+        var real = currentLabel(s) || (s.getAttribute('data-placeholder') || 'Select…');
+        if (shown !== real) refreshTrigger(s);
+      }
+    }, 700);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
