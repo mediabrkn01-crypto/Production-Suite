@@ -358,6 +358,13 @@ details[open] .rawsum::before{content:'▾ '}
       <div id="acad-user-role-mobile" style="font-size:9px;color:#808a9d;line-height:1.2">—</div>
     </div>
   </div>
+  <!-- Own bell so mobile still has one once the desktop corner-bell-btn is hidden here
+       (sidebar-collapse.css's shared mobile header de-dup) — same toggleNotifPanel()/
+       renderNotifBadges() this page already has, not a second notification system. -->
+  <button onclick="toggleNotifPanel()" style="width:32px;height:32px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0">
+    <i data-lucide="bell" style="width:14px;height:14px;color:#808a9d"></i>
+    <span id="notif-badge-corner-mobile" class="hidden" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:8px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px"></span>
+  </button>
 </div>
 
 <div id="app" class="w-full h-full flex flex-col md:flex-row overflow-hidden" style="height:100vh">
@@ -3114,8 +3121,12 @@ function notifMeta(n) {
 }
 function renderNotifBadges() {
   const total = notifications.length;
-  const badge = document.getElementById('notif-badge-corner');
-  if (badge) {
+  // Mirrors onto both the desktop corner bell AND the mobile top-bar bell (added so phones
+  // keep a working notification bell once the desktop one is hidden on mobile — see
+  // sidebar-collapse.css's mobile header de-dup) — same count, two badge elements.
+  ['notif-badge-corner', 'notif-badge-corner-mobile'].forEach(id => {
+    const badge = document.getElementById(id);
+    if (!badge) return;
     if (total > 0) {
       badge.textContent = total > 99 ? '99+' : total;
       badge.style.display = 'flex';
@@ -3124,7 +3135,7 @@ function renderNotifBadges() {
       badge.style.display = 'none';
       badge.classList.add('hidden');
     }
-  }
+  });
 }
 function renderNotifList() {
   const list = document.getElementById('notif-list');
