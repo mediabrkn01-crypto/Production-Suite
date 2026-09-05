@@ -1214,8 +1214,8 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="subhead" style="margin:10px 0 6px">Trainer / Coach</div>
   <select id="be_trainer" onchange="_beOnTrainerChange()"></select>
   <div id="be_conflict" class="mhint" style="display:none;margin-bottom:6px"></div>
-  <input id="be_cap" type="number" placeholder="Max students (capacity)"/>
-  <label class="lv-field lv-grow" style="margin-bottom:6px;margin-top:6px"><span>Expected completion date</span><input id="be_completion" type="date" onchange="_beOnScheduleFieldChanged()"/></label>
+  <label class="lv-field lv-grow" style="margin-bottom:6px;margin-top:6px"><span>Capacity (max students)</span><input id="be_cap" type="number" placeholder="e.g. 12"/></label>
+  <label class="lv-field lv-grow" style="margin-bottom:6px"><span>Expected completion date</span><input id="be_completion" type="date" onchange="_beOnScheduleFieldChanged()"/></label>
   <textarea id="be_notes" placeholder="Notes (optional)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>
   <div class="subhead" style="margin:12px 0 8px">Progress / session correction</div>
   <div class="mrow" style="align-items:center;gap:8px">
@@ -4103,7 +4103,11 @@ function _minutesToTime(min){ const h=Math.floor(min/60), m=min%60; return Strin
 // format, so legacy batches show up in the recurring-availability engine and My Calendar too,
 // not just ones created after this session's redesign.
 function _parseTimeLabelToMinutes(label){
-  const m = /^(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?/i.exec((label||'').trim());
+  // Minute separator may be ":" (new format "8:30 PM") OR "." (legacy free-typed "8.30 PM") —
+  // real production data has both. A colon-only regex silently failed on the dot form, which is
+  // exactly what made Edit Batch show "No class time saved yet" and disable the trainer picker
+  // for legacy batches like "Elite — Jabir" (8.30 PM-9.30 PM).
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*([ap])\.?\s*m\.?/i.exec((label||'').trim());
   if (!m) return null;
   let h = parseInt(m[1],10) % 12;
   if (/p/i.test(m[3])) h += 12;
