@@ -4263,17 +4263,30 @@ function computeAvailSlotStates(trainerId, slots, batches){
   const hostByBatch = new Map();
   active.forEach(b => hostByBatch.set(b, _availHostSlotKeyForBatch(b, slots)));
   return (slots||[]).map(s => {
-    const ss = _timeToMinutes(s.start_time), se = _timeToMinutes(s.end_time);
     const key = s.start_time + '|' + s.end_time;
     const hosted = active.find(b => hostByBatch.get(b) === key);
     if (hosted) return { state: 'occupied', batch: hosted };
-    const conflict = active.find(b => {
-      const bStart = _batchStartMinutes(b), bEnd = bStart + (b.class_duration_minutes || 60);
-      return bStart < se && bEnd > ss;
-    });
-    if (conflict) return { state: 'conflict', batch: conflict };
+    // BUG FIX (spec: overlap must consider DAY + time, not time alone): the old code marked a
+    // declared window "Unavailable — overlaps X" whenever ANY batch's time bled into it, even a
+    // batch that runs on completely different weekdays (Mon/Wed/Fri class vs a Tue/Thu/Sat
+    // window). A recurring declared window has no weekday of its own, so it CAN'T be validly
+    // day-compared here — the spillover "conflict" state was therefore removed. A window is now
+    // Occupied only by the batch that actually STARTS in it (shown with that batch's real days),
+    // and every other window is Free. The genuine day+time double-booking rule still runs where
+    // it belongs and is authoritative: get_available_trainers() (backend) and
+    // findExactRangeConflict() (Create/Edit/Assign) both already reject only a real shared-day,
+    // overlapping-time collision — so a free-looking window can never be mis-assigned into a
+    // same-day conflict.
     return { state: 'free' };
   });
+}
+// Human-readable weekday list for a batch's real schedule — the batch's own saved day_pattern,
+// else its course's default days (same _acadEffectiveDayPattern fallback the rest of Academic
+// uses), cleaned of the "· MC Sat" makeup-class suffix for a compact "Mon, Wed, Fri" label.
+function _availBatchDays(b){
+  const raw = (b && (b.day_pattern || (typeof _acadEffectiveDayPattern === 'function' ? _acadEffectiveDayPattern(b) : ''))) || '';
+  const days = raw.split(/[,·]/).map(s => s.trim().replace(/\s*MC.*$/i,'')).filter(d => DAYS.includes(d));
+  return days.length ? days.join(', ') : '';
 }
 // "Available again from" — the day after the occupying batch's own expected_completion_date,
 // or null if that batch has no end date set (indefinite — nothing to silently guess at).
@@ -4403,7 +4416,8 @@ function renderTrainerAvailabilityView(){
           ? `<button class="act-btn" onclick="event.stopPropagation();openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')">Details</button>`
             + `<button class="act-btn" onclick="event.stopPropagation();removeBookingInline('${t.id}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
           : '';
-        return `<div style="${_availRowStyle(_AVAIL_RED)};${isCurrentlyAcademicHead()?'':'cursor:pointer'}" ${isCurrentlyAcademicHead()?'':`onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"`}><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span>${headActions}</span></div>`;
+        const oDays = _availBatchDays(st.batch);
+        return `<div style="${_availRowStyle(_AVAIL_RED)};${isCurrentlyAcademicHead()?'':'cursor:pointer'}" ${isCurrentlyAcademicHead()?'':`onclick="openOccupiedSlot('${t.id}','${s.start_time}','${s.end_time}')"`}><span style="font-size:12.5px;color:var(--tx)">${oDays?`<span style="color:var(--tx3)">${esc(oDays)}</span> • `:''}${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span>${headActions}</span></div>`;
       }
       if (st.state === 'conflict') {
         // Distinct from Occupied (spec #2): this declared slot is spoken-for only because it
@@ -4441,7 +4455,8 @@ function renderTrainerAvailabilityView(){
         ? `<button class="act-btn" onclick="event.stopPropagation();openOccupiedSlot('${t.id}','${_minutesToTime(bStart)}','${_minutesToTime(bEnd)}')">Details</button>`
           + `<button class="act-btn" onclick="event.stopPropagation();removeBookingInline('${t.id}','${_minutesToTime(bStart)}','${_minutesToTime(bEnd)}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`
         : '';
-      return `<div style="${_availRowStyle(_AVAIL_RED)}"><span style="font-size:12.5px;color:var(--tx)">${esc(rt)} <span style="color:var(--tx3);font-size:10.5px">· not in a declared slot</span></span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${b.name?': '+esc(b.name):''}</span>${acts}</span></div>`;
+      const eDays = _availBatchDays(b);
+      return `<div style="${_availRowStyle(_AVAIL_RED)}"><span style="font-size:12.5px;color:var(--tx)">${eDays?`<span style="color:var(--tx3)">${esc(eDays)}</span> • `:''}${esc(rt)} <span style="color:var(--tx3);font-size:10.5px">· not in a declared slot</span></span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${b.name?': '+esc(b.name):''}</span>${acts}</span></div>`;
     }).join('');
     const allRows = (rows + extraRows) || '<div class="empty" style="padding:6px 0">No recurring availability declared yet.</div>';
     return `<div class="card" style="margin-bottom:12px;padding:14px">
@@ -4504,8 +4519,9 @@ function renderMyAvailabilityList(){
       `<button class="act-btn" onclick="removeBookingInline('${myId}','${s.start_time}','${s.end_time}')" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Remove Booking</button>`;
     if (st.state === 'occupied') {
       const releaseLabel = availabilityReleaseLabel(st.batch);
+      const mDays = _availBatchDays(st.batch);
       return `<div style="${_availRowStyle(_AVAIL_RED)}">
-        <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
+        <span style="font-size:12.5px;color:var(--tx)">${mDays?`<span style="color:var(--tx3)">${esc(mDays)}</span> • `:''}${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
         <span style="display:flex;align-items:center;gap:8px">
           <span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${st.batch.name?': '+esc(st.batch.name):''}</span>
           <span style="font-size:10.5px;color:var(--tx3)">${releaseLabel?'Available from '+esc(releaseLabel):''}</span>${myHeadRemove}
