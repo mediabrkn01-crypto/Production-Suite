@@ -993,7 +993,7 @@ details[open] .rawsum::before{content:'▾ '}
       <!-- Simple Yes/Cancel confirm — local port (see the Celebration Engine port earlier in
            this file for why: this page doesn't load common.js, so its showConfirm() isn't
            reachable here). Used only to protect an active-batch slot from being removed. -->
-      <div class="modal-bg" id="modalSimpleConfirm"><div class="modal">
+      <div class="modal-bg" id="modalSimpleConfirm" style="z-index:310"><div class="modal">
         <h3 id="simpleConfirmTitle">Are you sure?</h3>
         <div class="lv-note" id="simpleConfirmMessage" style="white-space:pre-wrap"></div>
         <div class="modal-actions">
@@ -1140,7 +1140,11 @@ details[open] .rawsum::before{content:'▾ '}
      used by My Availability's Start/End Time fields. Tap a number, or drag the hand, to pick
      the hour, then the minute; AM/PM toggles below. Large touch targets throughout for
      mobile/WebView use. -->
-<div class="modal-bg" id="modalClockPicker"><div class="modal" style="width:320px;text-align:center">
+<!-- z-index above the base .modal-bg (200): the clock picker is a SUB-picker opened from
+     inside other modals (Edit Batch, Create Batch, My Availability). Both shared z-index 200,
+     and Edit Batch sits later in the DOM, so the clock opened BEHIND it — the reported "clock
+     goes back on the current box". 300 keeps this sub-picker on top of whatever modal opened it. -->
+<div class="modal-bg" id="modalClockPicker" style="z-index:300"><div class="modal" style="width:320px;text-align:center">
   <h3 style="margin-bottom:10px">Select Time</h3>
   <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:18px">
     <span id="clockReadoutHour" onclick="switchClockMode('hour')" style="font-size:34px;font-weight:700;cursor:pointer;padding:2px 8px;border-radius:8px" ></span>
@@ -6021,6 +6025,12 @@ function _beOnTrainerChange(){
 // this batch's own current schedule never conflicts with itself.
 function _bePickBatchTime(){
   window._clockPickerOnConfirm = _beOnBatchTimeChosen;
+  // Open the clock AT the batch's current time (from be_time_start), not "now" — so editing a
+  // batch already at 8:30 PM starts the picker there. openClockPicker reads the target input's
+  // own dataset.time24, so seed it from the current start time first.
+  const cur = document.getElementById('be_time_start')?.value || '';
+  const hidden = document.getElementById('be_time_custom_hidden');
+  if (hidden) { if (cur) hidden.dataset.time24 = cur; else delete hidden.dataset.time24; }
   openClockPicker('be_time_custom_hidden');
 }
 async function _beOnBatchTimeChosen(time24){
