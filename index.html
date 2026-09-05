@@ -7088,6 +7088,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 // not just Education. applyCurrentUserProfileToDOM also re-applies the photo,
                 // which is harmless/idempotent here.
                 applyCurrentUserProfileToDOM(profile);
+                // SALES department → its own app (sales.html), same handoff pattern as the
+                // Academic redirect just below. sales.html's own SSO bridge re-verifies the
+                // division against this same hr_employees table, so this is a handoff, not a
+                // trust decision. Skipped for a deep-link tab (My Workspace links), identical
+                // to the Academic exception.
+                if (rec.division === 'sales') {
+                    if (!deepLinkTab) window.location.href = 'sales.html?e=' + encodeURIComponent(activeEmail) + '&n=' + encodeURIComponent(activeUser);
+                    return;
+                }
                 if (rec.division !== 'education') return; // not Education dept — no academic access
                 // Academic now lives in its own real app (academics.html) — same pattern as the
                 // HR redirect (switchTab's 'hr' branch → hr.html). The embedded Academic tabs

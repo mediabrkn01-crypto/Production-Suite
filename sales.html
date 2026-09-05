@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>Broken English · Sales Command Center</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="stylesheet" href="sidebar-collapse.css"/>
+<script src="sidebar-collapse.js"></script>
+<script src="be-select.js"></script>
+<style>
+:root{
+  --bg:#030509;--panel-bg:rgba(13,17,28,0.65);--panel-border:rgba(255,255,255,0.08);
+  --text-main:#f1f5f9;--text-muted:#808a9d;
+  --brand-1:#ff6b06;--brand-2:#f9182f;--brand-3:#ff0552;--purple:#7c3aed;--blue:#3b82f6;
+  --pink:#ec4899;--green:#10b981;--cyan:#06b6d4;--orange:#f97316;--amber:#f59e0b;
+  --tx:var(--text-main);--tx2:rgba(255,255,255,.55);--tx3:rgba(255,255,255,.28);--yellow:#f59e0b;
+  --gk:linear-gradient(135deg,var(--brand-1),var(--brand-2) 50%,var(--brand-3));--bd:var(--panel-border);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+#app{display:none;min-height:100vh}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+.aside{width:224px;background:rgba(8,11,20,.9);border-right:1px solid var(--bd);min-height:100vh;padding:16px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.5px;font-size:13px;margin-bottom:16px;padding:0 6px}
+.brand .be-brand-text{line-height:1.05}
+.nav-section-title{font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:14px 0 6px;padding-left:8px;font-weight:700}
+.sidebar-link{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--text-muted);border-radius:8px;font-size:12.5px;font-weight:500;margin-bottom:2px;transition:all .15s;border:1px solid transparent;position:relative;width:100%;text-align:left;background:none}
+.sidebar-link:hover{color:#fff;background:rgba(255,255,255,.03)}
+.sidebar-link.active{color:#fff;background:linear-gradient(90deg,rgba(255,6,82,.2),rgba(255,107,6,.06));border:1px solid rgba(255,6,82,.25)}
+.sidebar-link.hidden{display:none}
+.main{flex:1;min-width:0;padding:22px 26px 60px}
+h1{font-size:26px;font-weight:800;margin:4px 0 2px}
+.sub{color:var(--tx3);font-size:13px;margin-bottom:18px}
+.section{background:var(--panel-bg);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-bottom:16px;backdrop-filter:blur(8px)}
+.section h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.tile{background:rgba(255,255,255,.02);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.tile .n{font-size:26px;font-weight:800}
+.tile .l{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin-top:2px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+input,select,textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none}
+input::placeholder,textarea::placeholder{color:var(--tx3)}
+label.fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--tx3);flex:1;min-width:150px}
+label.fld>input,label.fld>select,label.fld>textarea{width:100%}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);padding:8px 10px;border-bottom:1px solid var(--bd)}
+td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;vertical-align:middle}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:99px;border:1px solid transparent}
+.b-green{background:rgba(16,185,129,.12);color:var(--green);border-color:rgba(16,185,129,.3)}
+.b-amber{background:rgba(245,158,11,.12);color:var(--yellow);border-color:rgba(245,158,11,.3)}
+.b-red{background:rgba(255,5,82,.12);color:var(--brand-3);border-color:rgba(255,5,82,.3)}
+.b-blue{background:rgba(59,130,246,.12);color:var(--blue);border-color:rgba(59,130,246,.3)}
+.b-mut{background:rgba(255,255,255,.05);color:var(--tx3);border-color:rgba(255,255,255,.12)}
+.btn{background:var(--gk);border:none;color:#fff;font-weight:700;padding:9px 16px;border-radius:10px;font-size:13px}
+.btn-ghost{background:rgba(255,255,255,.05);border:1px solid var(--bd);color:var(--tx);padding:7px 12px;border-radius:9px;font-size:12px}
+.btn-sm{padding:5px 10px;font-size:11.5px}
+.empty{color:var(--tx3);text-align:center;padding:22px;font-size:13px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(6px);padding:16px}
+.modal-bg.on{display:flex}
+.modal{background:#0d1119;border:1px solid var(--bd);border-radius:14px;width:440px;max-width:94vw;max-height:88vh;overflow:auto;padding:20px}
+.modal h3{margin:0 0 14px;font-size:16px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.tab{display:none}.tab.on{display:block}
+.qrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--bd);border-radius:11px;margin-bottom:8px;background:rgba(255,255,255,.02)}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.att-card{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.02);border:1px solid var(--bd);border-radius:12px;padding:12px 14px}
+.toast-host{position:fixed;top:16px;right:16px;z-index:500;display:flex;flex-direction:column;gap:8px;max-width:340px}
+.toast{background:#12151f;border:1px solid var(--bd);border-radius:10px;padding:11px 14px;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.toast.success{border-color:rgba(16,185,129,.4)}.toast.error{border-color:rgba(255,5,82,.4)}.toast.warning{border-color:rgba(245,158,11,.4)}
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--tx3);z-index:60}
+@media(max-width:820px){.aside{position:fixed;left:-260px;transition:left .2s;z-index:80}.aside.open{left:0}.main{padding:16px}}
+</style>
+</head>
+<body>
+<div id="loading">Loading Sales…</div>
+<div id="app">
+  <aside class="aside be-aside" id="aside">
+    <div class="brand"><span style="width:22px;height:22px;border-radius:6px;background:var(--gk);display:inline-block"></span><span class="be-brand-text">BROKEN ENGLISH<br><span style="font-size:9px;color:var(--tx3);font-weight:600">SALES</span></span></div>
+    <div class="nav-section-title">Sales</div>
+    <button class="sidebar-link active" data-tab="dashboard" onclick="switchTab('dashboard')"><i data-lucide="layout-dashboard" style="width:15px;height:15px"></i> <span class="be-nav-label">Dashboard</span></button>
+    <button class="sidebar-link" data-tab="queue" onclick="switchTab('queue')"><i data-lucide="list-checks" style="width:15px;height:15px"></i> <span class="be-nav-label">My Work Queue</span></button>
+    <button class="sidebar-link" data-tab="leads" onclick="switchTab('leads')"><i data-lucide="users" style="width:15px;height:15px"></i> <span class="be-nav-label">Leads</span></button>
+    <button class="sidebar-link" data-tab="tasks" onclick="switchTab('tasks')"><i data-lucide="check-square" style="width:15px;height:15px"></i> <span class="be-nav-label">Tasks</span></button>
+    <button class="sidebar-link" data-tab="enrol" onclick="switchTab('enrol')"><i data-lucide="graduation-cap" style="width:15px;height:15px"></i> <span class="be-nav-label">Enrolments</span></button>
+    <div class="nav-section-title head-only hidden">Management</div>
+    <button class="sidebar-link head-only hidden" data-tab="team" onclick="switchTab('team')"><i data-lucide="bar-chart-3" style="width:15px;height:15px"></i> <span class="be-nav-label">Team Overview</span></button>
+    <button class="sidebar-link head-only hidden" data-tab="routing" onclick="switchTab('routing')"><i data-lucide="git-branch" style="width:15px;height:15px"></i> <span class="be-nav-label">Routing Rules</span></button>
+    <button class="sidebar-link head-only hidden" data-tab="eod" onclick="switchTab('eod')"><i data-lucide="file-text" style="width:15px;height:15px"></i> <span class="be-nav-label">Reports / EOD</span></button>
+    <div class="nav-section-title">My Workspace</div>
+    <button class="sidebar-link" data-tab="attendance" onclick="switchTab('attendance')"><i data-lucide="clock" style="width:15px;height:15px"></i> <span class="be-nav-label">My Attendance</span></button>
+    <div style="flex:1"></div>
+    <button class="sidebar-link" onclick="logout()"><i data-lucide="log-out" style="width:15px;height:15px"></i> <span class="be-nav-label">Log Out</span></button>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="sub" id="greeting" style="margin:0">Good day</div>
+        <h1>Sales Command Center</h1>
+        <div class="sub">Pre-admission lead funnel — Broken English.</div>
+      </div>
+      <div class="att-card" id="attCard">
+        <i data-lucide="clock" style="width:18px;height:18px;color:var(--tx3)"></i>
+        <div style="flex:1"><div style="font-weight:700;font-size:12px">ATTENDANCE</div><div id="attState" style="font-size:11.5px;color:var(--tx3)">…</div></div>
+        <button class="btn-ghost" id="clockBtn" onclick="clockToggle()">Clock In</button>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="tab on" id="tab-dashboard">
+      <div class="section"><h2>Overview</h2><div class="tiles" id="dashTiles"><div class="empty">Loading…</div></div></div>
+      <div class="section" id="waitingBanner" style="display:none"><h2>⏳ New leads waiting for first contact</h2><div id="waitingList"></div></div>
+    </div>
+
+    <!-- WORK QUEUE -->
+    <div class="tab" id="tab-queue">
+      <div class="section"><h2>My Work Queue <span class="badge b-mut" id="queueCount">0</span></h2>
+        <div class="sub">Ranked so the top row is always your next best call. Enrolled / Closed / Not Interested drop off.</div>
+        <div id="queueList"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- LEADS -->
+    <div class="tab" id="tab-leads">
+      <div class="section">
+        <h2>Leads <button class="btn" onclick="openNewLead()">+ Lead</button></h2>
+        <div class="filters">
+          <input id="leadSearch" placeholder="Search name / phone…" oninput="renderLeads()" style="flex:2;min-width:200px"/>
+          <select id="fStage" onchange="renderLeads()"><option value="">All stages</option></select>
+          <select id="fSource" onchange="renderLeads()"><option value="">All sources</option><option>WhatsApp</option><option>Call</option><option>Instagram</option><option>Walk-in</option><option>Referral</option><option>Website</option></select>
+          <select id="fTemp" onchange="renderLeads()"><option value="">All temps</option><option>Hot</option><option>Warm</option><option>Cold</option></select>
+          <select id="fCounsellor" class="head-only hidden" onchange="renderLeads()"><option value="">All counsellors</option></select>
+        </div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Lead</th><th>Contact</th><th>Course</th><th>Stage</th><th>Temp</th><th>SLA</th><th>Counsellor</th><th>Next</th><th></th></tr></thead><tbody id="leadRows"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- TASKS -->
+    <div class="tab" id="tab-tasks">
+      <div class="section"><h2>Tasks & Callbacks</h2><div id="taskList"><div class="empty">Loading…</div></div></div>
+    </div>
+
+    <!-- ENROLMENTS -->
+    <div class="tab" id="tab-enrol">
+      <div class="section"><h2>Enrolments <button class="btn" onclick="openEnrol()">+ Enrol Student</button></h2>
+        <div class="sub">Real enrolment creates the student in the Academics database. Changing a stage to "Enrolled" is only a tag — use this action.</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Student UIN</th><th>Name</th><th>Course</th><th>Lead</th><th>Enrolled</th></tr></thead><tbody id="enrolRows"><tr><td colspan="5" class="empty">No enrolments yet.</td></tr></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- TEAM OVERVIEW (head) -->
+    <div class="tab" id="tab-team">
+      <div class="section"><h2>Team Overview</h2><div class="tiles" id="teamTiles"><div class="empty">Loading…</div></div></div>
+      <div class="section"><h2>Counsellors</h2><div style="overflow-x:auto"><table><thead><tr><th>Counsellor</th><th>Open leads</th><th>Enrolled</th><th>Conversion</th><th>Accepts leads</th></tr></thead><tbody id="counsellorRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody></table></div></div>
+    </div>
+
+    <!-- ROUTING RULES (head) -->
+    <div class="tab" id="tab-routing">
+      <div class="section"><h2>Lead Routing Rules <button class="btn" onclick="openRule()">+ Rule</button></h2>
+        <div class="sub">First matching rule (lowest priority number) wins. No match → round-robin across the active pool, least-loaded first.</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Match</th><th>Value</th><th>Requires</th><th>Pin</th><th>Active</th><th></th></tr></thead><tbody id="ruleRows"><tr><td colspan="7" class="empty">No rules yet.</td></tr></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- EOD (head + counsellor) -->
+    <div class="tab" id="tab-eod">
+      <div class="section"><h2>EOD Report <button class="btn-ghost" onclick="copyEod()">Copy for WhatsApp</button></h2>
+        <pre id="eodOut" style="white-space:pre-wrap;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:10px;padding:14px;font-size:12.5px;color:var(--tx2)">Loading…</pre>
+      </div>
+    </div>
+
+    <!-- ATTENDANCE -->
+    <div class="tab" id="tab-attendance">
+      <div class="section"><h2>My Attendance · This Month</h2><div id="attStats" class="row" style="margin-bottom:12px"></div>
+        <div id="attCal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="mNewLead"><div class="modal"><h3>New Lead</h3>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
+    <label class="fld">Name<input id="nl_name"/></label>
+    <label class="fld">Phone / Contact<input id="nl_contact" placeholder="e.g. 9876543210"/></label>
+    <label class="fld">Course interest<select id="nl_course"><option value="">— none —</option></select></label>
+    <label class="fld">Source<select id="nl_source"><option>WhatsApp</option><option>Call</option><option>Instagram</option><option>Walk-in</option><option>Referral</option><option>Website</option></select></label>
+    <label class="fld">Ad code (optional)<input id="nl_ad"/></label>
+  </div>
+  <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mNewLead')">Cancel</button><button class="btn" id="nl_save" onclick="saveNewLead()">Create & auto-assign</button></div>
+</div></div>
+
+<div class="modal-bg" id="mFollow"><div class="modal"><h3 id="fu_title">Log Follow-up</h3>
+  <div id="fu_meta" class="sub"></div>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
+    <label class="fld">Channel<select id="fu_channel"><option>Call</option><option>WhatsApp</option><option>SMS</option></select></label>
+    <label class="fld">Call outcome<select id="fu_outcome"><option>Connected</option><option>NPU</option><option>Busy</option><option>Call Back Requested</option><option>Switched Off</option><option>Wrong Number</option></select></label>
+    <label class="fld">New stage<select id="fu_stage"></select></label>
+    <label class="fld">Temperature<select id="fu_temp"><option value="">— keep —</option><option>Hot</option><option>Warm</option><option>Cold</option></select></label>
+    <label class="fld">Remark (required)<textarea id="fu_remark" rows="2"></textarea></label>
+    <label class="fld">Next action date (blank = auto cadence)<input id="fu_next" type="date"/></label>
+  </div>
+  <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mFollow')">Cancel</button><button class="btn" id="fu_save" onclick="saveFollow()">Save follow-up</button></div>
+</div></div>
+
+<div class="modal-bg" id="mEnrol"><div class="modal"><h3>Enrol Student</h3>
+  <div class="sub">Creates the real student in the Academics database (status New) and links the lead.</div>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
+    <label class="fld">Convert a lead<select id="en_lead" onchange="enrolPrefill()"><option value="">— pick one of your leads —</option></select></label>
+    <label class="fld">Student name<input id="en_name"/></label>
+    <label class="fld">Contact<input id="en_contact"/></label>
+    <label class="fld">Course<select id="en_course"></select></label>
+  </div>
+  <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mEnrol')">Cancel</button><button class="btn" id="en_save" onclick="saveEnrol()">Enrol & hand off to Academics</button></div>
+</div></div>
+
+<div class="modal-bg" id="mRule"><div class="modal"><h3>Routing Rule</h3>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
+    <label class="fld">Priority (lower = first)<input id="ru_priority" type="number" value="100"/></label>
+    <label class="fld">Match type<select id="ru_type"><option value="course">course_interest</option><option value="source">source</option><option value="ad_code">ad_code</option><option value="default">default (any)</option></select></label>
+    <label class="fld">Match value<input id="ru_value" placeholder="e.g. MTI Reduction & Accent Neutralisation"/></label>
+    <label class="fld">Require MTI-capable?<select id="ru_mti"><option value="">no</option><option value="1">yes</option></select></label>
+    <label class="fld">Min English level<select id="ru_eng"><option value="">any</option><option>Good</option><option>Excellent</option></select></label>
+    <label class="fld">Pin to counsellor (optional)<select id="ru_pin"><option value="">— none —</option></select></label>
+  </div>
+  <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mRule')">Cancel</button><button class="btn" onclick="saveRule()">Save rule</button></div>
+</div></div>
+
+<div class="toast-host" id="toastHost"></div>
+
+<script>
+const SUPABASE_URL='https://fevqnpllmarhoqdzpatq.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function showToast(type,msg,dur){const h=document.getElementById('toastHost');const t=document.createElement('div');t.className='toast '+(type||'');t.textContent=msg;h.appendChild(t);setTimeout(()=>t.remove(),dur||3500);}
+
+let ME=null;          // {id, name, email, isHead, isFounder}
+let COURSES=[], COUNSELLORS=[], LEADS=[];
+const STAGES=['New','Contacted','Details Shared','Assessment Booked','Assessment Completed','Ready to Pay','Payment Link Sent','Partially Paid','Enrolled'];
+const PARK=['Join Later','Not Interested','Closed'];
+const CADENCE=[0,1,3,7]; // days after fu #1..#4
+
+/* ---------- AUTH: shared portal SSO, gated to Sales (mirrors academics.html) ---------- */
+(async function trySSO(){
+  try{
+    const qp=new URLSearchParams(location.search);
+    if(qp.get('e')){try{localStorage.setItem('be_media_academic_session',JSON.stringify({email:qp.get('e'),name:qp.get('n')||'',t:Date.now()}));history.replaceState(null,'',location.pathname);}catch(_){}}
+    const raw=localStorage.getItem('be_media_academic_session');
+    if(!raw){location.href='index.html';return;}
+    const s=JSON.parse(raw);
+    if(!s.email||Date.now()-(s.t||0)>2592e6){location.href='index.html';return;}
+    let {data:rows}=await sb.from('hr_employees').select('*').eq('portal_email',String(s.email).trim().toLowerCase()).limit(1);
+    let rec=rows&&rows[0];
+    if(!rec&&s.name){const bn=await sb.from('hr_employees').select('*').eq('full_name',s.name).limit(1);rec=bn.data&&bn.data[0];}
+    // Access control: only Sales-division employees (or a founder) may enter. Everyone else is
+    // routed back to the portal, matching the ERP's existing per-department gating.
+    const div=(rec&&rec.division||'').toLowerCase();
+    const deptDesig=((rec&&rec.department||'')+' '+(rec&&rec.designation||'')).toLowerCase();
+    const isFounder=/founder|master admin/.test(deptDesig);
+    if(!rec||(div!=='sales'&&!isFounder)){location.href='index.html';return;}
+    if(rec.employment_status==='inactive'||rec.employment_status==='exited'){location.href='index.html';return;}
+    const isHead=isFounder||/head|manager/.test(deptDesig);
+    ME={id:rec.id,name:rec.full_name||s.name,email:String(s.email).trim().toLowerCase(),isHead,isFounder,rec};
+    document.getElementById('loading').style.display='none';
+    document.getElementById('app').style.display='flex';
+    document.querySelectorAll('.head-only').forEach(el=>el.classList.toggle('hidden',!isHead));
+    document.getElementById('greeting').textContent='Signed in as '+ME.name+(isHead?' · Sales Head':' · Counsellor');
+    if(typeof lucide!=='undefined')lucide.createIcons();
+    boot();
+  }catch(e){location.href='index.html';}
+})();
+function logout(){try{localStorage.removeItem('be_media_academic_session');}catch(_){}location.href='index.html';}
+
+async function boot(){
+  await loadCourses();
+  await loadCounsellors();
+  populateStaticSelects();
+  await loadLeads();
+  initClock();
+  loadAttendance();
+  subscribeRealtime();
+}
+
+async function loadCourses(){const {data}=await sb.from('courses').select('id,name,fee,active').order('name');COURSES=(data||[]).filter(c=>c.active!==false);}
+async function loadCounsellors(){
+  // Sales roster = HR employees in the Sales division who are active. HR is the source of truth;
+  // never created here. Matched/scoped by real id.
+  const {data}=await sb.from('hr_employees').select('id,full_name,division,department,designation,employment_status,sales_accept_leads,sales_mti_capable,sales_english_level').eq('division','sales');
+  COUNSELLORS=(data||[]).filter(e=>e.employment_status!=='inactive'&&e.employment_status!=='exited');
+}
+function populateStaticSelects(){
+  const stageOpts='<option value="">move stage…</option>'+STAGES.filter(s=>s!=='Enrolled').concat(PARK).map(s=>`<option>${s}</option>`).join('');
+  document.getElementById('fu_stage').innerHTML=stageOpts;
+  document.getElementById('fStage').innerHTML='<option value="">All stages</option>'+STAGES.concat(PARK).map(s=>`<option>${s}</option>`).join('');
+  const courseOpts=COURSES.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  document.getElementById('nl_course').innerHTML='<option value="">— none —</option>'+courseOpts;
+  document.getElementById('en_course').innerHTML='<option value="">— pick —</option>'+courseOpts;
+  const cOpts=COUNSELLORS.map(c=>`<option value="${c.id}">${esc(c.full_name)}</option>`).join('');
+  document.getElementById('fCounsellor').innerHTML='<option value="">All counsellors</option>'+cOpts;
+  document.getElementById('ru_pin').innerHTML='<option value="">— none —</option>'+cOpts;
+}
+
+/* ---------- LEADS (backend scoped by role) ---------- */
+async function loadLeads(){
+  let q=sb.from('leads').select('*').order('created_at',{ascending:false});
+  if(!ME.isHead) q=q.eq('assigned_to',ME.id);   // counsellor sees only own leads (backend filter)
+  const {data}=await q;
+  LEADS=data||[];
+  renderLeads(); renderQueue(); renderDash(); renderTasks(); renderEnrol();
+  if(ME.isHead){renderTeam(); renderCounsellors();}
+  renderEod();
+}
+function counsellorName(id){const c=COUNSELLORS.find(x=>String(x.id)===String(id));return c?c.full_name:'—';}
+function slaOf(l){
+  if(l.first_contact_at){const s=l.response_secs||Math.round((new Date(l.first_contact_at)-new Date(l.created_at))/1000);
+    if(s<=900)return['On time','b-green'];if(s<=3600)return['Slow','b-amber'];return['Breach','b-red'];}
+  const wait=Math.round((Date.now()-new Date(l.created_at))/60000);
+  if(wait<=15)return[`⏳ ${wait}m`,'b-green'];if(wait<=60)return[`⏳ ${wait}m`,'b-amber'];return[`⏳ ${wait}m`,'b-red'];
+}
+function tempBadge(t){return t?`<span class="badge ${t==='Hot'?'b-red':t==='Warm'?'b-amber':'b-blue'}">${t}</span>`:'—';}
+function stageBadge(s){const cls=s==='Enrolled'?'b-green':PARK.includes(s)?'b-mut':STAGES.indexOf(s)>=5?'b-amber':'b-blue';return `<span class="badge ${cls}">${esc(s)}</span>`;}
+function _leadMatch(l){
+  const t=(document.getElementById('leadSearch').value||'').toLowerCase();
+  const st=document.getElementById('fStage').value, sr=document.getElementById('fSource').value, tm=document.getElementById('fTemp').value, cn=document.getElementById('fCounsellor').value;
+  if(t&&!((l.name||'').toLowerCase().includes(t)||(l.contact||'').toLowerCase().includes(t)||(l.lead_id||'').toLowerCase().includes(t)))return false;
+  if(st&&l.stage!==st)return false; if(sr&&l.source!==sr)return false; if(tm&&l.temperature!==tm)return false;
+  if(cn&&String(l.assigned_to)!==cn)return false; return true;
+}
+function renderLeads(){
+  const rows=LEADS.filter(_leadMatch);
+  document.getElementById('leadRows').innerHTML=rows.length?rows.map(l=>{
+    const [sla,scls]=slaOf(l);
+    return `<tr><td><div style="font-weight:600">${esc(l.name||'—')}</div><div style="font-size:10.5px;color:var(--tx3)">${esc(l.lead_id)} · ${esc(l.source||'')}</div></td>
+    <td>${esc(l.contact||'—')}</td><td>${esc(l.course_interest||'—')}</td><td>${stageBadge(l.stage)}</td><td>${tempBadge(l.temperature)}</td>
+    <td><span class="badge ${scls}">${sla}</span></td><td>${esc(counsellorName(l.assigned_to))}</td><td>${l.next_action_date||'—'}</td>
+    <td class="row" style="gap:5px">${l.contact?`<a class="btn-ghost btn-sm" href="https://wa.me/91${String(l.contact).replace(/\\D/g,'')}" target="_blank">WA</a>`:''}
+      ${!PARK.includes(l.stage)&&l.stage!=='Enrolled'?`<button class="btn-ghost btn-sm" onclick="openFollow('${l.id}')">Log</button>`:''}
+      ${ME.isHead?`<button class="btn-ghost btn-sm" onclick="reassign('${l.id}')">Reassign</button>`:''}</td></tr>`;
+  }).join(''):'<tr><td colspan="9" class="empty">No leads match.</td></tr>';
+}
+
+/* ---------- WORK QUEUE (priority ranked) ---------- */
+function queuePriority(l){
+  if(l.stage==='Enrolled'||PARK.includes(l.stage))return null;
+  const today=new Date().toISOString().slice(0,10);
+  if(['Ready to Pay','Payment Link Sent','Assessment Completed'].includes(l.stage))return 1;
+  if(l.next_action_date&&l.next_action_date<today)return 2;
+  if(!l.first_contact_at)return 3;
+  if(l.next_action_date===today)return 4;
+  if(l.temperature==='Hot')return 5;
+  return 6;
+}
+function renderQueue(){
+  const items=LEADS.map(l=>({l,p:queuePriority(l)})).filter(x=>x.p!==null&&x.p<=5).sort((a,b)=>a.p-b.p||new Date(a.l.created_at)-new Date(b.l.created_at));
+  document.getElementById('queueCount').textContent=items.length;
+  const icon={1:'💰',2:'⏰',3:'🆕',4:'📞',5:'🔥'};
+  document.getElementById('queueList').innerHTML=items.length?items.map(({l,p})=>{
+    const [sla,scls]=slaOf(l);
+    return `<div class="qrow"><div><div style="font-weight:600">${icon[p]} ${esc(l.name||l.lead_id)} <span class="badge ${scls}" style="margin-left:6px">${sla}</span></div>
+      <div style="font-size:11.5px;color:var(--tx3)">${esc(l.contact||'')} · ${esc(l.course_interest||'')} · ${stageBadge(l.stage)}</div></div>
+      <div class="row" style="gap:6px">${l.contact?`<a class="btn-ghost btn-sm" href="https://wa.me/91${String(l.contact).replace(/\\D/g,'')}" target="_blank">WhatsApp</a>`:''}<button class="btn btn-sm" onclick="openFollow('${l.id}')">Log</button></div></div>`;
+  }).join(''):'<div class="empty">Queue clear — no actionable leads right now.</div>';
+  // waiting banner (dashboard)
+  const waiting=LEADS.filter(l=>!l.first_contact_at&&l.stage==='New').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const wb=document.getElementById('waitingBanner');
+  if(waiting.length){wb.style.display='';document.getElementById('waitingList').innerHTML=waiting.map(l=>{const[sla,scls]=slaOf(l);return `<div class="qrow"><div><b>${esc(l.name||l.lead_id)}</b> · ${esc(l.contact||'')} <span class="badge ${scls}">${sla}</span></div><button class="btn btn-sm" onclick="openFollow('${l.id}')">Contact</button></div>`;}).join('');}
+  else wb.style.display='none';
+}
+
+/* ---------- DASHBOARD ---------- */
+function renderDash(){
+  const mine=LEADS, mo=new Date().toISOString().slice(0,7);
+  const nMonth=mine.filter(l=>String(l.created_at).slice(0,7)===mo).length;
+  const need=mine.filter(l=>!l.first_contact_at&&l.stage==='New').length;
+  const hot=mine.filter(l=>l.temperature==='Hot').length;
+  const enrolled=mine.filter(l=>l.stage==='Enrolled').length;
+  const breach=mine.filter(l=>{const[,c]=slaOf(l);return c==='b-red';}).length;
+  const conv=mine.length?Math.round(enrolled/mine.length*100):0;
+  const t=[['Leads',mine.length],['New · need contact',need],['New this month',nMonth],['SLA breach',breach],['Hot',hot],['Enrolled',enrolled],['Conversion',conv+'%']];
+  document.getElementById('dashTiles').innerHTML=t.map(([l,n])=>`<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+}
+
+/* ---------- NEW LEAD + AUTO-DISTRIBUTION ---------- */
+function openNewLead(){['nl_name','nl_contact','nl_ad'].forEach(i=>document.getElementById(i).value='');openModal('mNewLead');}
+async function pickCounsellor(lead){
+  // 1) routing rules by priority; first match wins. 2) eligible pool gated by rule. 3) least-loaded.
+  const {data:rules}=await sb.from('lead_routing_rules').select('*').eq('active',true).order('priority');
+  let pool=COUNSELLORS.filter(c=>c.sales_accept_leads!==false);
+  let rule=(rules||[]).find(r=>{
+    if(r.match_type==='default')return true;
+    const v=(r.match_value||'').toLowerCase();
+    if(r.match_type==='course')return (lead.course_interest||'').toLowerCase()===v;
+    if(r.match_type==='source')return (lead.source||'').toLowerCase()===v;
+    if(r.match_type==='ad_code')return (lead.ad_code||'').toLowerCase()===v;
+    return false;
+  });
+  if(rule){
+    if(rule.pin_counsellor)return rule.pin_counsellor;
+    if(rule.require_mti_capable)pool=pool.filter(c=>c.sales_mti_capable===true);
+    if(rule.min_english_level==='Excellent')pool=pool.filter(c=>c.sales_english_level==='Excellent');
+  }
+  if(!pool.length)pool=COUNSELLORS;   // never drop a lead — fall back to whole roster
+  if(!pool.length)return null;
+  // least-loaded (fewest open leads); count from current data
+  const openCount={}; LEADS.forEach(l=>{if(l.stage!=='Enrolled'&&!PARK.includes(l.stage))openCount[l.assigned_to]=(openCount[l.assigned_to]||0)+1;});
+  pool.sort((a,b)=>(openCount[a.id]||0)-(openCount[b.id]||0));
+  return pool[0].id;
+}
+async function saveNewLead(){
+  const name=document.getElementById('nl_name').value.trim();
+  const contact=document.getElementById('nl_contact').value.trim();
+  if(!contact){showToast('warning','Phone/contact is the business key — required.');return;}
+  const key=contact.toLowerCase();
+  const {data:dupe}=await sb.from('leads').select('lead_id,name').ilike('contact',contact).limit(1);
+  if(dupe&&dupe[0]){showToast('warning',`A lead with this contact already exists (${dupe[0].lead_id}). Not creating a duplicate.`);return;}
+  const btn=document.getElementById('nl_save');btn.disabled=true;
+  try{
+    const lead={name,contact,source:document.getElementById('nl_source').value,course_interest:document.getElementById('nl_course').value||null,ad_code:document.getElementById('nl_ad').value.trim()||null,stage:'New'};
+    const assignee=await pickCounsellor(lead);
+    lead.assigned_to=assignee||ME.id; lead.assigned_at=new Date().toISOString();
+    const {error}=await sb.from('leads').insert(lead);
+    if(error){showToast('error','Could not create lead: '+error.message);return;}
+    closeModal('mNewLead');showToast('success',`Lead created & assigned to ${counsellorName(lead.assigned_to)}.`);
+    await loadLeads();
+  }finally{btn.disabled=false;}
+}
+
+/* ---------- FOLLOW-UP + cadence + SLA + 5-attempt rule ---------- */
+let _fuLead=null;
+function openFollow(id){const l=LEADS.find(x=>String(x.id)===String(id));if(!l)return;_fuLead=l;
+  document.getElementById('fu_title').textContent='Log Follow-up · '+(l.name||l.lead_id);
+  document.getElementById('fu_meta').textContent=`Attempt ${(l.fu_count||0)+1} of 5 · current stage ${l.stage}`;
+  document.getElementById('fu_remark').value='';document.getElementById('fu_next').value='';document.getElementById('fu_temp').value='';
+  openModal('mFollow');}
+async function saveFollow(){
+  const l=_fuLead;if(!l)return;
+  const remark=document.getElementById('fu_remark').value.trim();
+  if(!remark){showToast('warning','A remark is required on every follow-up.');return;}
+  const btn=document.getElementById('fu_save');btn.disabled=true;
+  try{
+    const channel=document.getElementById('fu_channel').value, outcome=document.getElementById('fu_outcome').value;
+    let stage=document.getElementById('fu_stage').value||l.stage;
+    const temp=document.getElementById('fu_temp').value;
+    const seq=(l.fu_count||0)+1;
+    let next=document.getElementById('fu_next').value||null;
+    // cadence engine — if no date set and outcome isn't a hard close, schedule the next touch
+    if(!next&&seq<=4&&outcome!=='Wrong Number'){const d=new Date();d.setDate(d.getDate()+CADENCE[Math.min(seq-1,3)]);next=d.toISOString().slice(0,10);}
+    // 5th attempt with no progress → Not Interested (unreachable)
+    let notInterested=null;
+    if(seq>=5&&['New','Contacted','Details Shared'].includes(stage)){stage='Not Interested';notInterested='Unreachable after 5 tries';}
+    if(outcome==='Wrong Number'){stage='Not Interested';notInterested='Wrong number';}
+    await sb.from('follow_ups').insert({lead_id:l.id,seq,channel,call_outcome:outcome,stage,remark,next_action_date:next,by_employee:ME.id});
+    const upd={stage,fu_count:seq,last_fu_at:new Date().toISOString(),next_action_date:next};
+    if(temp)upd.temperature=temp;
+    if(notInterested)upd.not_interested_reason=notInterested;
+    if(!l.first_contact_at){upd.first_contact_at=new Date().toISOString();upd.response_secs=Math.round((Date.now()-new Date(l.created_at))/1000);}
+    if(['Assessment Completed','Ready to Pay','Payment Link Sent'].includes(stage)&&!temp)upd.temperature='Hot';
+    await sb.from('leads').update(upd).eq('id',l.id);
+    // reschedule task on NPU/Busy/Switched Off/Call Back
+    if(['NPU','Busy','Switched Off','Call Back Requested'].includes(outcome)&&next)
+      await sb.from('tasks').insert({lead_id:l.id,task_type:'callback',title:`${outcome} — ${l.name||l.lead_id}`,due_date:next,assigned_to:l.assigned_to,status:'open'});
+    closeModal('mFollow');showToast('success','Follow-up saved.');await loadLeads();
+  }finally{btn.disabled=false;}
+}
+
+/* ---------- TASKS ---------- */
+async function renderTasks(){
+  let q=sb.from('tasks').select('*').eq('status','open').order('due_date');
+  if(!ME.isHead)q=q.eq('assigned_to',ME.id);
+  const {data}=await q;
+  const rows=data||[];
+  document.getElementById('taskList').innerHTML=rows.length?rows.map(t=>`<div class="qrow"><div><b>${esc(t.title||t.task_type)}</b><div style="font-size:11.5px;color:var(--tx3)">Due ${t.due_date||'—'}</div></div><button class="btn-ghost btn-sm" onclick="doneTask('${t.id}')">Done</button></div>`).join(''):'<div class="empty">No open tasks.</div>';
+}
+async function doneTask(id){await sb.from('tasks').update({status:'done'}).eq('id',id);renderTasks();}
+
+/* ---------- ENROLMENT → students handoff ---------- */
+function openEnrol(){
+  const mine=LEADS.filter(l=>l.stage!=='Enrolled'&&!PARK.includes(l.stage));
+  document.getElementById('en_lead').innerHTML='<option value="">— pick one of your leads —</option>'+mine.map(l=>`<option value="${l.id}">${esc(l.lead_id)} · ${esc(l.name||'')} · ${esc(l.course_interest||'')}</option>`).join('');
+  document.getElementById('en_name').value='';document.getElementById('en_contact').value='';document.getElementById('en_course').value='';
+  openModal('mEnrol');
+}
+function enrolPrefill(){const l=LEADS.find(x=>String(x.id)===document.getElementById('en_lead').value);if(!l)return;document.getElementById('en_name').value=l.name||'';document.getElementById('en_contact').value=l.contact||'';document.getElementById('en_course').value=l.course_interest||'';}
+async function saveEnrol(){
+  const name=document.getElementById('en_name').value.trim();const contact=document.getElementById('en_contact').value.trim();
+  const course=document.getElementById('en_course').value;const leadId=document.getElementById('en_lead').value;
+  if(!name){showToast('warning','Student name required.');return;}
+  const btn=document.getElementById('en_save');btn.disabled=true;
+  try{
+    const uin='BRK'+Date.now().toString().slice(-8);
+    const {error}=await sb.from('students').insert({uin,name,contact:contact||null,programme:course||null,status:'New',source_counsellor:ME.name,enrolled_date:new Date().toISOString().slice(0,10)});
+    if(error){showToast('error','Could not create student: '+error.message);return;}
+    if(leadId)await sb.from('leads').update({stage:'Enrolled',student_uin:uin}).eq('id',leadId);
+    closeModal('mEnrol');showToast('success',`Enrolled — student ${uin} created in Academics.`);await loadLeads();
+  }finally{btn.disabled=false;}
+}
+function renderEnrol(){
+  const rows=LEADS.filter(l=>l.stage==='Enrolled');
+  document.getElementById('enrolRows').innerHTML=rows.length?rows.map(l=>`<tr><td>${esc(l.student_uin||'—')}</td><td>${esc(l.name||'')}</td><td>${esc(l.course_interest||'')}</td><td>${esc(l.lead_id)}</td><td>${l.updated_at?String(l.updated_at).slice(0,10):'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No enrolments yet.</td></tr>';
+}
+
+/* ---------- HEAD: reassign, team, counsellors, routing ---------- */
+async function reassign(id){
+  const l=LEADS.find(x=>String(x.id)===String(id));if(!l)return;
+  const names=COUNSELLORS.map((c,i)=>`${i+1}. ${c.full_name}`).join('\n');
+  const pick=prompt(`Reassign "${l.name||l.lead_id}" to which counsellor?\n\n${names}\n\nEnter number:`);
+  const idx=parseInt(pick,10)-1;if(isNaN(idx)||!COUNSELLORS[idx])return;
+  await sb.from('leads').update({assigned_to:COUNSELLORS[idx].id,assigned_at:new Date().toISOString()}).eq('id',l.id);
+  showToast('success','Lead reassigned to '+COUNSELLORS[idx].full_name);await loadLeads();
+}
+function renderTeam(){
+  const total=LEADS.length,enrolled=LEADS.filter(l=>l.stage==='Enrolled').length,need=LEADS.filter(l=>!l.first_contact_at&&l.stage==='New').length,hot=LEADS.filter(l=>l.temperature==='Hot').length;
+  const conv=total?Math.round(enrolled/total*100):0;
+  const t=[['Total leads',total],['Need contact',need],['Hot',hot],['Enrolled',enrolled],['Conversion',conv+'%'],['Counsellors',COUNSELLORS.length]];
+  document.getElementById('teamTiles').innerHTML=t.map(([l,n])=>`<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+}
+function renderCounsellors(){
+  document.getElementById('counsellorRows').innerHTML=COUNSELLORS.length?COUNSELLORS.map(c=>{
+    const own=LEADS.filter(l=>String(l.assigned_to)===String(c.id));
+    const open=own.filter(l=>l.stage!=='Enrolled'&&!PARK.includes(l.stage)).length;
+    const enr=own.filter(l=>l.stage==='Enrolled').length;
+    const conv=own.length?Math.round(enr/own.length*100):0;
+    return `<tr><td>${esc(c.full_name)}</td><td>${open}</td><td>${enr}</td><td>${conv}%</td><td><span class="badge ${c.sales_accept_leads===false?'b-mut':'b-green'}">${c.sales_accept_leads===false?'Paused':'Yes'}</span></td></tr>`;
+  }).join(''):'<tr><td colspan="5" class="empty">No Sales employees synced from HR yet.</td></tr>';
+}
+async function loadRules(){const {data}=await sb.from('lead_routing_rules').select('*').order('priority');
+  document.getElementById('ruleRows').innerHTML=(data&&data.length)?data.map(r=>`<tr><td>${r.priority}</td><td>${esc(r.match_type)}</td><td>${esc(r.match_value||'—')}</td><td>${r.require_mti_capable?'MTI':''} ${r.min_english_level||''}</td><td>${r.pin_counsellor?esc(counsellorName(r.pin_counsellor)):'—'}</td><td><span class="badge ${r.active?'b-green':'b-mut'}">${r.active?'On':'Off'}</span></td><td><button class="btn-ghost btn-sm" onclick="delRule('${r.id}')">Delete</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">No rules yet — unmatched leads use round-robin.</td></tr>';}
+function openRule(){['ru_value'].forEach(i=>document.getElementById(i).value='');document.getElementById('ru_priority').value=100;openModal('mRule');}
+async function saveRule(){
+  const r={priority:parseInt(document.getElementById('ru_priority').value,10)||100,match_type:document.getElementById('ru_type').value,match_value:document.getElementById('ru_value').value.trim()||null,require_mti_capable:document.getElementById('ru_mti').value==='1',min_english_level:document.getElementById('ru_eng').value||null,pin_counsellor:document.getElementById('ru_pin').value||null,active:true};
+  const {error}=await sb.from('lead_routing_rules').insert(r);
+  if(error){showToast('error',error.message);return;}closeModal('mRule');showToast('success','Rule added.');loadRules();
+}
+async function delRule(id){await sb.from('lead_routing_rules').delete().eq('id',id);loadRules();}
+
+/* ---------- EOD ---------- */
+async function renderEod(){
+  const today=new Date().toISOString().slice(0,10);
+  const scope=ME.isHead?COUNSELLORS:[{id:ME.id,full_name:ME.name}];
+  let out='';
+  for(const c of scope){
+    const {data:fus}=await sb.from('follow_ups').select('*').eq('by_employee',c.id).gte('created_at',today+'T00:00:00');
+    const f=fus||[];
+    const dial=f.filter(x=>x.channel==='Call').length;
+    const connected=f.filter(x=>x.call_outcome==='Connected').length;
+    const wa=f.filter(x=>x.channel==='WhatsApp').length;
+    const toAssess=f.filter(x=>x.stage==='Assessment Booked').length;
+    const assessDone=f.filter(x=>x.stage==='Assessment Completed').length;
+    const ready=f.filter(x=>x.stage==='Ready to Pay').length;
+    const enr=LEADS.filter(l=>String(l.assigned_to)===String(c.id)&&l.stage==='Enrolled'&&String(l.updated_at).slice(0,10)===today).length;
+    out+=`BDE Name - ${c.full_name}\nTotal Dial - ${dial}\nTotal connected - ${connected}\nTotal connected whatsApp - ${wa}\nInstd to assessment - ${toAssess}\nAssessment completed - ${assessDone}\nReady to pay - ${ready}\nEnrolled - ${enr}\n\n`;
+  }
+  document.getElementById('eodOut').textContent=out.trim()||'No activity logged today.';
+}
+function copyEod(){navigator.clipboard.writeText(document.getElementById('eodOut').textContent).then(()=>showToast('success','Copied for WhatsApp.'));}
+
+/* ---------- ATTENDANCE (shared hr_attendance — same engine as HR/Academics) ---------- */
+let _openAtt=null;
+async function initClock(){
+  try{const today=new Date().toISOString().slice(0,10);
+    const {data}=await sb.from('hr_attendance').select('*').eq('employee_id',ME.id).eq('att_date',today).limit(1);
+    const rec=data&&data[0];const fmt=t=>t?new Date(t).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'';
+    _openAtt=(rec&&rec.clock_in_time&&!rec.clock_out_time)?rec:null;
+    const st=document.getElementById('attState'),btn=document.getElementById('clockBtn');
+    if(_openAtt){st.textContent='Clocked in at '+fmt(_openAtt.clock_in_time);btn.textContent='Clock Out';}
+    else if(rec&&rec.clock_out_time){st.textContent='Done · '+fmt(rec.clock_in_time)+' → '+fmt(rec.clock_out_time);btn.textContent='Clocked out';btn.disabled=true;}
+    else{st.textContent="You haven't clocked in today.";btn.textContent='Clock In';btn.disabled=false;}
+  }catch(e){}
+}
+async function clockToggle(){
+  try{const today=new Date().toISOString().slice(0,10);const now=new Date().toISOString();
+    const {data}=await sb.from('hr_attendance').select('*').eq('employee_id',ME.id).eq('att_date',today).limit(1);
+    const rec=data&&data[0];
+    if(rec&&rec.clock_in_time&&!rec.clock_out_time){await sb.from('hr_attendance').update({clock_out_time:now}).eq('id',rec.id);}
+    else if(rec&&rec.clock_out_time){/* already done today */}
+    else if(rec){await sb.from('hr_attendance').update({status:'present',clock_in_time:now}).eq('id',rec.id);}
+    else{await sb.from('hr_attendance').insert({employee_id:ME.id,att_date:today,status:'present',clock_in_time:now});}
+    initClock();loadAttendance();
+  }catch(e){showToast('error','Clock action failed.');}
+}
+async function loadAttendance(){
+  try{const now=new Date();const y=now.getFullYear(),m=now.getMonth()+1;const monthStr=`${y}-${String(m).padStart(2,'0')}`;const dim=new Date(y,m,0).getDate();
+    const [{data:att},{data:lv}]=await Promise.all([
+      sb.from('hr_attendance').select('*').eq('employee_id',ME.id).gte('att_date',monthStr+'-01').lte('att_date',monthStr+'-'+String(dim).padStart(2,'0')),
+      sb.from('hr_leave_requests').select('*').eq('employee_id',ME.id).eq('status','approved')
+    ]);
+    const byDate=new Map((att||[]).map(r=>[r.att_date,r.status||'present']));
+    const onLeave=d=>(lv||[]).some(l=>l.start_date<=d&&l.end_date>=d);
+    let present=0,leave=0,absent=0;const dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const cells=dow.map(d=>`<div style="text-align:center;font-size:10px;color:var(--tx3);font-weight:700">${d}</div>`);
+    const first=new Date(y,m-1,1).getDay();for(let i=0;i<first;i++)cells.push('<div></div>');
+    const today=now.toISOString().slice(0,10);
+    for(let d=1;d<=dim;d++){const ds=`${monthStr}-${String(d).padStart(2,'0')}`;let code='',col='var(--tx3)';
+      if(onLeave(ds)){code='L';col='var(--yellow)';leave++;}else if(byDate.has(ds)){code='P';col='var(--green)';present++;}else if(ds<today){code='A';col='var(--brand-3)';absent++;}
+      cells.push(`<div style="border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;min-height:42px;${ds===today?'border-color:var(--brand-1)':''}"><div style="font-size:10px;color:var(--tx3)">${d}</div><div style="font-weight:700;color:${col}">${code||'—'}</div></div>`);
+    }
+    document.getElementById('attCal').innerHTML=cells.join('');
+    document.getElementById('attStats').innerHTML=`<span class="badge b-green">Present ${present}</span><span class="badge b-amber">Leave ${leave}</span><span class="badge b-red">Absent ${absent}</span>`;
+  }catch(e){}
+}
+
+/* ---------- REALTIME ---------- */
+function subscribeRealtime(){
+  sb.channel('sales-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'leads'},()=>loadLeads())
+    .on('postgres_changes',{event:'*',schema:'public',table:'follow_ups'},()=>loadLeads())
+    .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>renderTasks())
+    .on('postgres_changes',{event:'*',schema:'public',table:'hr_employees'},()=>loadCounsellors().then(populateStaticSelects))
+    .subscribe();
+}
+
+/* ---------- NAV / MODAL ---------- */
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('tab-'+tab).classList.add('on');
+  document.querySelectorAll('.sidebar-link[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  if(tab==='routing')loadRules();
+  if(tab==='eod')renderEod();
+  if(typeof lucide!=='undefined')lucide.createIcons();
+}
+function openModal(id){document.getElementById(id).classList.add('on');}
+function closeModal(id){document.getElementById(id).classList.remove('on');}
+</script>
+</body>
+</html>
