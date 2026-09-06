@@ -68,12 +68,19 @@
   ].join('');
   var st = document.createElement('style'); st.textContent = CSS; (document.head || document.documentElement).appendChild(st);
 
-  var nav = null, sheetBg = null, sheet = null, primaries = [];
+  var nav = null, sheetBg = null, sheet = null, primaries = [], navSig = '', mo = null, menuBtn = null;
 
   function labelOf(el) {
-    var lab = el.querySelector('.be-nav-label') || el.querySelector('span');
-    var t = (lab ? lab.textContent : el.textContent) || '';
-    return t.replace(/\s+/g, ' ').trim();
+    // Prefer the wrapped label span (sidebar-collapse.js's .be-nav-label). Fall back to the
+    // link's own text with icon + any notification-badge spans stripped — the old
+    // `querySelector('span')` grabbed the first span, which for links like Announcements is the
+    // empty count badge, yielding '' and silently dropping that item from the menu.
+    var lab = el.querySelector('.be-nav-label');
+    if (lab) return (lab.textContent || '').replace(/\s+/g, ' ').trim();
+    var clone = el.cloneNode(true);
+    var junk = clone.querySelectorAll('[data-lucide], svg, [id*="badge"], [class*="badge"]');
+    for (var i = 0; i < junk.length; i++) junk[i].remove();
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
   }
   function iconOf(el) {
     var i = el.querySelector('[data-lucide]');
@@ -85,18 +92,59 @@
     return (words[0] || t).slice(0, 10);
   }
 
-  // Collect the page's real sidebar links, deduped by destination, visible ones only.
+  // The ONE canonical nav container to read links from — the page's real desktop sidebar.
+  // Reading from a single root is the whole fix for two bugs at once:
+  //   1. Duplicates. index.html/hr.html also carry an OLD off-canvas #mobile-sidebar drawer
+  //      (a second full copy of the nav). Reading globally scooped BOTH → every item appeared
+  //      twice (Pipeline Matrix ×2, History ×2, …). The drawer lives OUTSIDE #be-sidebar, so
+  //      scoping to the sidebar drops it entirely.
+  //   2. Cross-module leakage. index.html embeds the whole Academic module's nav inline, inside
+  //      #nav-group-academic which is display:none (.hidden) until checkAcademicAccess() confirms
+  //      this employee actually has Academic access. Those links have no .hidden of their own —
+  //      only their GROUP does — so the old per-link .hidden check missed them and a plain Media
+  //      employee saw Dashboard/Live Batches/Courses/Coaches/etc. isVisibleNav() below walks the
+  //      ancestors up to the sidebar root and skips a link inside any display:none/.hidden group,
+  //      so a hidden permission group is never harvested. Not a CSS patch — the DOM we build
+  //      simply never contains those links for a role that can't see them.
+  function navRoot() {
+    return document.getElementById('be-sidebar') || document.getElementById('aside') || document.querySelector('aside.aside, aside');
+  }
+  // Visible = not permission-gated. Walks parents up to (but not including) the sidebar root,
+  // so the root's OWN `display:none` on mobile (aside{display:none} at <=767px) is ignored,
+  // while an inner hidden group (e.g. #nav-group-academic.hidden) correctly excludes its links.
+  function isVisibleNav(el, root) {
+    if (el.classList.contains('hidden')) return false;
+    var node = el.parentElement;
+    while (node && node !== root) {
+      if (node.classList.contains('hidden')) return false;
+      if (getComputedStyle(node).display === 'none') return false;
+      node = node.parentElement;
+    }
+    return true;
+  }
+  // Stable dedup key = the switchTab/acadSwitchTab target, so "switchTab('dashboard')" and the
+  // drawer's "switchTab('dashboard');closeMobileSidebar()" collapse to one, and label case/spacing
+  // never splits a destination into two entries.
+  function destKey(el) {
+    var oc = el.getAttribute('onclick') || '';
+    var m = oc.match(/(?:switchTab|acadSwitchTab|switchHRSubtab)\(\s*['"]([^'"]+)['"]/);
+    if (m) return 'tab:' + m[1];
+    if (el.getAttribute('data-tab')) return 'tab:' + el.getAttribute('data-tab');
+    return 'lbl:' + (labelOf(el) || '').toLowerCase();
+  }
+  // Collect the page's real sidebar links — ONE source (the desktop sidebar), permission-aware,
+  // deduped by destination.
   function collectLinks() {
-    var all = document.querySelectorAll('.sidebar-link, .acad-nav-link');
+    var root = navRoot();
+    var all = (root || document).querySelectorAll('.sidebar-link, .acad-nav-link');
     var seen = {}, out = [];
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
-      if (el.classList.contains('hidden')) continue;
-      if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') { /* hidden/off-screen drawer copy — still usable, but prefer visible */ }
+      if (root && !isVisibleNav(el, root)) continue;
       var lab = labelOf(el);
       if (!lab) continue;
       if (/^log ?out$/i.test(lab)) continue;               // logout lives elsewhere
-      var key = el.getAttribute('data-tab') || (el.getAttribute('onclick') || '') || lab.toLowerCase();
+      var key = destKey(el);
       if (seen[key]) continue;
       seen[key] = 1;
       out.push({ el: el, label: lab, icon: iconOf(el) });
@@ -108,7 +156,13 @@
     if (nav) return;
     var links = collectLinks();
     if (!links.length) return;
-    var primaryLinks = links.slice(0, 4);
+    // Primary 4 = the fixed bottom-bar tabs. A page can name them explicitly by putting
+    // `data-mnav` on the 4 desktop sidebar links it wants pinned (e.g. index.html pins
+    // Pipeline/History/Profile/Attendance — its desktop order would otherwise surface
+    // Announcements 4th). data-mnav is an invisible attribute: zero effect on desktop. Pages
+    // that set none keep the previous behaviour (first 4 collected), so nothing else changes.
+    var flagged = links.filter(function (l) { return l.el.hasAttribute('data-mnav'); });
+    var primaryLinks = flagged.length ? flagged.slice(0, 4) : links.slice(0, 4);
     primaries = [];
 
     nav = document.createElement('nav');
@@ -128,6 +182,7 @@
     menu.innerHTML = '<i data-lucide="menu"></i><span>Menu</span>';
     menu.addEventListener('click', openSheet);
     nav.appendChild(menu);
+    menuBtn = menu;
     document.body.appendChild(nav);
 
     // Bottom sheet with EVERY nav item
@@ -148,14 +203,34 @@
     document.body.appendChild(sheetBg);
 
     if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch (e) {}
+    navSig = links.map(function (l) { return destKey(l.el); }).join('|');
     syncActive();
-    // Mirror the page's own active state onto the bottom bar.
-    var mo = new MutationObserver(syncActive);
-    links.forEach(function (lk) { mo.observe(lk.el, { attributes: true, attributeFilter: ['class'] }); });
+    // Watch the whole sidebar: a class change flips active state (syncActive), but auth
+    // revealing/hiding a permission group (e.g. checkAcademicAccess() un-hiding #nav-group-
+    // academic for an Academic employee, or hiding Pipeline for them) changes WHICH links are
+    // visible — the nav must then rebuild so it can never show a stale/wrong menu after login
+    // resolves (spec item 11). Cheap: only rebuilds when the visible-destination set actually
+    // changes, otherwise just re-syncs the active pill.
+    var root = navRoot();
+    if (mo) mo.disconnect();
+    mo = new MutationObserver(function () {
+      var sig = collectLinks().map(function (l) { return destKey(l.el); }).join('|');
+      if (sig !== navSig) rebuild(); else syncActive();
+    });
+    if (root) mo.observe(root, { attributes: true, attributeFilter: ['class', 'style'], subtree: true, childList: true });
   }
 
-  function openSheet() { if (sheetBg) { sheetBg.setAttribute('data-open', ''); syncActive(); } }
-  function closeSheet() { if (sheetBg) sheetBg.removeAttribute('data-open'); }
+  // Tear down the built bar/sheet and build afresh — used when the visible nav set changes
+  // after auth. Idempotent; safe to call any number of times.
+  function rebuild() {
+    if (nav && nav.parentNode) nav.parentNode.removeChild(nav);
+    if (sheetBg && sheetBg.parentNode) sheetBg.parentNode.removeChild(sheetBg);
+    nav = null; sheetBg = null; sheet = null; primaries = [];
+    build();
+  }
+
+  function openSheet() { if (sheetBg) { sheetBg.setAttribute('data-open', ''); if (menuBtn) menuBtn.setAttribute('data-active', ''); syncActive(); } }
+  function closeSheet() { if (sheetBg) sheetBg.removeAttribute('data-open'); if (menuBtn) menuBtn.removeAttribute('data-active'); }
 
   function syncActive() {
     primaries.forEach(function (p) {

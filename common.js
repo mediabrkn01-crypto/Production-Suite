@@ -1228,6 +1228,13 @@ function applyCurrentUserProfileToDOM(profile) {
         // every other avatar this function already applies, not a second image field.
         const topbarAvatar = document.getElementById('topbar-account-avatar');
         if (topbarAvatar) topbarAvatar.innerHTML = hrAvatarHTML(profile.raw, 30);
+        // Mobile app-bar avatar (index.html #mtb-account-avatar) — was left as its static "?"
+        // placeholder because this shared writer never targeted it, even though the account
+        // popup (account-menu.js) already knew the photo. Same profile source now, so the
+        // header avatar shows the real photo (→ initials → generic, never "?") on first paint,
+        // refresh, tab-switch and session restore, matching the popup.
+        const mtbAvatar = document.getElementById('mtb-account-avatar');
+        if (mtbAvatar) mtbAvatar.innerHTML = hrAvatarHTML(profile.raw, 34);
     }
     if (profile.designation) {
         // user-role-badge (index.html's top sidebar identity block, under "Media Suite") used
