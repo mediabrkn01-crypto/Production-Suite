@@ -476,6 +476,7 @@
         .hr-att-cell-PL { color:#60a5fa; font-weight:700; }
         .hr-att-cell-UL { color:#fb923c; font-weight:700; }
         .hr-att-cell-WFH { color:#2dd4bf; font-weight:700; }
+        .hr-att-cell-HD-M, .hr-att-cell-HD-A, .hr-att-cell-HD { color:#fde047; font-weight:700; }
         .hr-att-cell-OE { color:#f472b6; font-weight:700; }
         .hr-att-cell-WO { color:#5b6389; }
         .hr-att-cell-H { color:#c084fc; font-weight:700; }
@@ -1077,6 +1078,8 @@
                         <span><b class="text-green-400">P</b> = Present</span>
                         <span><b class="text-red-400">A</b> = Absent</span>
                         <span><b class="text-yellow-400">L</b> = Late</span><span><b class="text-orange-400">AL</b> = Afternoon Login</span>
+                        <span><b class="text-yellow-300">HD-M</b> = Half Day (Morning)</span>
+                        <span><b class="text-yellow-300">HD-A</b> = Half Day (Afternoon)</span>
                         <span><b class="text-blue-400">PL</b> = Paid Leave</span>
                         <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
                         <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
@@ -1144,7 +1147,15 @@
 
                 <!-- HR: LEAVE REQUESTS -->
                 <div id="hr-sub-leave" class="space-y-4 hidden">
-                    <h1 class="text-xl font-bold tracking-tight">Leave Requests</h1>
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <h1 class="text-xl font-bold tracking-tight">Leave Requests</h1>
+                        <select id="hr-leave-req-filter" class="hr-select" onchange="setHRLeaveReqFilter(this.value)" style="max-width:200px">
+                            <option value="all">All requests</option>
+                            <option value="leave">Leave</option>
+                            <option value="wfh">Work From Home</option>
+                            <option value="half_day">Half Day</option>
+                        </select>
+                    </div>
                     <div class="card glass-card p-4 md:p-6 rounded-2xl">
                         <div id="hr-leave-requests-rows" class="space-y-2"></div>
                     </div>
@@ -3470,15 +3481,24 @@
         }
 
 // ── setHRAttendanceStatus (orig line 9501) ──
-        async function setHRAttendanceStatus(employeeId, status) {
+        async function setHRAttendanceStatus(employeeId, statusValue) {
             const date = document.getElementById('hr-att-date').value;
             const existing = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === date);
+            // "half_day:morning" / "half_day:afternoon" from the expanded picker → status +
+            // half_day_type. Any other value is a plain status. Marking Half Day also stamps
+            // marked_by (audit, spec item 12) and clears any stale half_day_type when switching
+            // AWAY from half_day so an old morning/afternoon tag can't linger on a now-Present row.
+            let status = statusValue, halfType = null;
+            if (statusValue.startsWith('half_day:')) { status = 'half_day'; halfType = statusValue.split(':')[1]; }
+            const patch = { status };
+            if (status === 'half_day') { patch.half_day_type = halfType; patch.marked_by = (typeof activeUser !== 'undefined' && activeUser) ? activeUser : 'HR'; }
+            else { patch.half_day_type = null; }
             try {
                 let saved;
                 if (existing) {
-                    saved = await dbInstance.from('hr_attendance').update({ status }).eq('id', existing.id).select();
+                    saved = await dbInstance.from('hr_attendance').update(patch).eq('id', existing.id).select();
                 } else {
-                    saved = await dbInstance.from('hr_attendance').insert([{ employee_id: employeeId, att_date: date, status }]).select();
+                    saved = await dbInstance.from('hr_attendance').insert([{ employee_id: employeeId, att_date: date, ...patch }]).select();
                 }
                 // Never assume a write worked — this was the other half of "the status appears
                 // to reset": if the update matched zero rows or Supabase rejected it, the code
@@ -3520,13 +3540,28 @@
                 <tr class="hover:bg-white/[0.02]">
                     <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
                     <td data-label="Division" class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
-                    <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}">${status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
+                    <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}"${status==='half_day'&&rec?.reason?` title="Reason: ${(rec.reason||'').replace(/"/g,'&quot;')}${rec.marked_by?' · Marked by: '+rec.marked_by:''}"`:''}>${status==='half_day' ? ('Half Day · ' + (rec?.half_day_type==='morning'?'Morning':rec?.half_day_type==='afternoon'?'Afternoon':'—')) : status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
                     <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
                     <td data-label="Check-out" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
                     <td data-label="Set" class="py-2.5 px-4 text-center">
                         <select class="hr-select" onchange="setHRAttendanceStatus('${e.id}', this.value)">
                             <option value="">Set…</option>
-                            ${HR_ATT_STATUSES.map(s => `<option value="${s}" ${status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+                            ${HR_ATT_STATUSES.flatMap(s => {
+                                // Half Day is expanded into its two real halves right here in the
+                                // status picker (spec item 2: HR marks Half Day → Morning/Afternoon
+                                // directly, no request first). The value carries the half after a
+                                // colon; setHRAttendanceStatus() splits it back into status +
+                                // half_day_type. Every other status is unchanged.
+                                if (s === 'half_day') {
+                                    const isM = status === 'half_day' && rec?.half_day_type === 'morning';
+                                    const isA = status === 'half_day' && rec?.half_day_type === 'afternoon';
+                                    return [
+                                        `<option value="half_day:morning" ${isM?'selected':''}>Half Day · Morning</option>`,
+                                        `<option value="half_day:afternoon" ${isA?'selected':''}>Half Day · Afternoon</option>`,
+                                    ];
+                                }
+                                return [`<option value="${s}" ${status===s?'selected':''}>${s.replace('_',' ')}</option>`];
+                            }).join('')}
                         </select>
                     </td>
                 </tr>`;
@@ -3702,6 +3737,16 @@
                     const hol = hrHolidays.find(h => h.holiday_date === c.date);
                     return hol ? ` title="${(hol.name || 'Holiday').replace(/"/g,'&quot;')} · ${(hol.type || 'Holiday').replace(/"/g,'&quot;')}"` : '';
                 }
+                // Half Day cells — Type + Reason + who approved/marked it (spec item 6), read
+                // straight off the same hr_attendance row the code came from.
+                if (c.code === 'HD-M' || c.code === 'HD-A' || c.code === 'HD') {
+                    const rec = hrAttendance.find(a => a.employee_id === emp.id && a.att_date === c.date);
+                    const typeLabel = c.code === 'HD-M' ? 'Morning Half' : c.code === 'HD-A' ? 'Afternoon Half' : 'Half Day';
+                    const parts = ['Half Day', 'Type: ' + typeLabel];
+                    if (rec?.reason) parts.push('Reason: ' + rec.reason);
+                    if (rec?.marked_by) parts.push('By: ' + rec.marked_by);
+                    return ` title="${parts.join(' · ').replace(/"/g,'&quot;')}"`;
+                }
                 return '';
             };
             document.getElementById('hr-att-monthly-report').innerHTML = `
@@ -3837,7 +3882,7 @@
                 if (cursorY > doc.internal.pageSize.getHeight() - 60) { doc.addPage('a4', 'landscape'); cursorY = 40; }
                 doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.text('Legend', 40, cursorY);
                 doc.setFont(undefined, 'normal'); doc.setFontSize(8);
-                doc.text('P = Present   A = Absent   L = Late   AL = Afternoon Login   PL = Paid Leave   UL = Unpaid Leave   WO = Weekly Off   H = Holiday   OE = Official Event', 40, cursorY + 14, { maxWidth: pageWidth - 80 });
+                doc.text('P = Present   A = Absent   L = Late   AL = Afternoon Login   HD-M = Half Day (Morning)   HD-A = Half Day (Afternoon)   PL = Paid Leave   UL = Unpaid Leave   WO = Weekly Off   H = Holiday   OE = Official Event', 40, cursorY + 14, { maxWidth: pageWidth - 80 });
 
                 // Filename per spec item 11 — e.g. Broken-English-Attendance-August-2026.pdf
                 const monthName = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long' });
@@ -3875,17 +3920,28 @@
         }
 
 // ── renderHRLeaveRequests (orig line 9712) ──
+        // Request-type filter (spec item 10): All / Leave / Work From Home / Half Day. Purely a
+        // client-side view filter over the already-loaded hrLeaveRequests — changes no query.
+        let _hrLeaveReqFilter = 'all';
+        function setHRLeaveReqFilter(v) { _hrLeaveReqFilter = v; renderHRLeaveRequests(); }
         function renderHRLeaveRequests() {
-            const rows = hrLeaveRequests.slice(0, 30);
+            const f = _hrLeaveReqFilter;
+            const matchesFilter = r => f === 'all'
+                ? true
+                : f === 'half_day' ? r.leave_type === 'Half Day'
+                : f === 'wfh' ? r.leave_type === 'Work From Home'
+                : /* leave */ (r.leave_type !== 'Half Day' && r.leave_type !== 'Work From Home');
+            const rows = hrLeaveRequests.filter(matchesFilter).slice(0, 30);
             document.getElementById('hr-leave-requests-rows').innerHTML = rows.length ? rows.map(r => {
                 const submitted = hrLeaveSubmittedInfo(r);
+                const halfLabel = r.leave_type === 'Half Day' ? (r.half_day_type === 'morning' ? ' · Morning Half' : r.half_day_type === 'afternoon' ? ' · Afternoon Half' : '') : '';
                 return `
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
                     <div style="display:flex;align-items:center;gap:10px">
                         ${hrAvatarForEmployeeId(r.employee_id, 30)}
                         <div>
-                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}</div>
-                        <div class="text-[#6b74a0] text-xs">${r.start_date} → ${r.end_date} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
+                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}${halfLabel}</div>
+                        <div class="text-[#6b74a0] text-xs">${r.start_date}${r.end_date !== r.start_date ? ' → ' + r.end_date : ''} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
                         <div class="text-[#6b74a0] text-xs" style="margin-top:2px" title="${submitted.title}">${submitted.label}${submitted.kind === 'late' ? ' <span style="color:#fb923c;font-weight:600">⚠ Submitted after leave date</span>' : submitted.kind === 'same-day' ? ' · <span style="color:#8890b5">Same-day request</span>' : ''}</div>
                         </div>
                     </div>

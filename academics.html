@@ -818,10 +818,11 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="card" style="padding:16px 18px;margin:14px 0 18px">
             <div class="lv-row">
               <label class="lv-field"><span>Leave Type</span>
-                <select id="lv_type"><option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option><option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option></select>
+                <select id="lv_type" onchange="acadLeaveTypeChanged()"><option>Casual Leave</option><option>Sick Leave</option><option>Annual Leave</option><option>Emergency Leave</option><option>Unpaid Leave</option><option>Work From Home</option><option>Half Day</option></select>
               </label>
+              <label class="lv-field" id="lv_half_wrap" style="display:none"><span>Half Type</span><select id="lv_half_type"><option value="morning">Morning Half</option><option value="afternoon">Afternoon Half</option></select></label>
               <label class="lv-field"><span>Start Date</span><input id="lv_from" type="date"/></label>
-              <label class="lv-field"><span>End Date</span><input id="lv_to" type="date"/></label>
+              <label class="lv-field" id="lv_to_wrap"><span>End Date</span><input id="lv_to" type="date"/></label>
               <label class="lv-field lv-grow"><span>Reason</span><input id="lv_reason" placeholder="Optional"/></label>
               <button class="lv-apply" onclick="saveLeave()">Submit Request</button>
             </div>
@@ -7163,6 +7164,7 @@ async function loadAttendanceCalendar(){
       mediaHrDB.from('hr_leave_requests').select('*').eq('employee_id', me.id).eq('status','approved')
     ]);
     const attByDate = new Map((attRows||[]).map(r=>[r.att_date, r.status||'present']));
+    const attRecByDate = new Map((attRows||[]).map(r=>[r.att_date, r]));
     const onLeaveDate = (dateStr) => (leaveRows||[]).some(l => l.start_date <= dateStr && l.end_date >= dateStr);
     let present=0, leave=0, absent=0;
     const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -7173,7 +7175,9 @@ async function loadAttendanceCalendar(){
     for (let d=1; d<=daysInMonth; d++){
       const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
       let code = '', color = 'var(--tx3)';
+      const _rec = attRecByDate.get(dateStr);
       if (onLeaveDate(dateStr)) { code='L'; color='var(--yellow)'; leave++; }
+      else if (_rec && _rec.status==='half_day') { code=_rec.half_day_type==='morning'?'HD-M':_rec.half_day_type==='afternoon'?'HD-A':'HD'; color='#fde047'; present++; }
       else if (attByDate.has(dateStr)) { code='P'; color='var(--green)'; present++; }
       else if (dateStr < today) { code='A'; color='var(--brand-3)'; absent++; }
       cells.push(`<div style="border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;min-height:44px;${dateStr===today?'border-color:var(--brand-1)':''}">
@@ -7237,19 +7241,29 @@ async function loadMyLeaveHistory(){
     body.innerHTML = rows.length ? rows.map(r=>`<div class="dash-row"><span>${esc(r.leave_type||'Leave')} \u00b7 ${r.start_date} \u2192 ${r.end_date}</span><span class="badge ${r.status==='approved'?'b-active':(r.status==='rejected'?'b-inactive':'')}" style="${r.status==='pending'?'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)':''}">${esc(r.status)}</span></div>`).join('') : '<div class="empty">No leave requests yet.</div>';
   }catch(e){ body.innerHTML = '<div class="empty">Could not load your leave history: '+esc(e.message)+'</div>'; }
 }
+// Half Day is a single-day request \u2014 hide End Date, show the half-type picker.
+function acadLeaveTypeChanged(){
+  const isHalf=document.getElementById('lv_type').value==='Half Day';
+  document.getElementById('lv_half_wrap').style.display=isHalf?'':'none';
+  document.getElementById('lv_to_wrap').style.display=isHalf?'none':'';
+}
 async function saveLeave(){
   if(!currentUser)return;
   if(!window._mediaEmployeeId){ document.getElementById('lv_no_hr_link').style.display=''; return; }
   const leave_type=document.getElementById('lv_type').value;
-  const f=document.getElementById('lv_from').value,t=document.getElementById('lv_to').value;
-  if(!f||!t){alert('Both dates required');return;}
-  const days = Math.round((new Date(t)-new Date(f))/86400000)+1;
-  if(days<1){alert('End date must be on or after start date.');return;}
+  const isHalf=leave_type==='Half Day';
+  const f=document.getElementById('lv_from').value;
+  const t=isHalf?f:document.getElementById('lv_to').value;
+  if(!f||!t){alert(isHalf?'Date required':'Both dates required');return;}
+  const days = isHalf?0.5:Math.round((new Date(t)-new Date(f))/86400000)+1;
+  if(days<0.5){alert('End date must be on or after start date.');return;}
   const reason=document.getElementById('lv_reason').value.trim()||null;
-  const {error}=await mediaHrDB.from('hr_leave_requests').insert([{employee_id:window._mediaEmployeeId,leave_type,start_date:f,end_date:t,days,reason,status:'pending'}]);
+  const rec={employee_id:window._mediaEmployeeId,leave_type,start_date:f,end_date:t,days,reason,status:'pending',requested_at:new Date().toISOString()};
+  if(isHalf)rec.half_day_type=document.getElementById('lv_half_type').value;
+  const {error}=await mediaHrDB.from('hr_leave_requests').insert([rec]);
   if(error){alert('Save failed: '+error.message);return;}
   document.getElementById('lv_reason').value='';document.getElementById('lv_from').value='';document.getElementById('lv_to').value='';
-  alert('Leave request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
+  alert((isHalf?'Half-day':'Leave')+' request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
   loadLeave();
 }
 

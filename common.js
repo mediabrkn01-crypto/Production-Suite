@@ -1414,6 +1414,14 @@ function hrOfficialEventFor(employee, dateStr) {
                     return 'A';
                 }
                 if (rec.status === 'late') return 'L';
+                // Half Day is a first-class status (spec): morning half = off first half/works
+                // second (HD-M), afternoon half = works first half/off second (HD-A). Its own
+                // codes so the report never collapses it into a plain 'P'. Still counts as
+                // Present for the present/absent split (HR_PRESENT_STATUSES) — it is NOT absent —
+                // while payroll already treats it as 0.5 day (hrCalculatePayrollForMonth). A row
+                // with status='half_day' but no half_day_type (legacy/backfill) resolves to a
+                // generic 'HD' rather than guessing a half.
+                if (rec.status === 'half_day') return rec.half_day_type === 'morning' ? 'HD-M' : rec.half_day_type === 'afternoon' ? 'HD-A' : 'HD';
                 if (rec.status === 'afternoon') return 'AL'; // Present · Afternoon Login (still counts as Present — see HR_PRESENT_STATUSES)
                 // BUG FIX (real cause of "WFH shows as Present" on the calendar grid): 'wfh' IS a
                 // real hr_attendance.status value hrSyncLeaveToAttendance writes (see its own
@@ -1436,7 +1444,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     if (leave && leave.leave_type === 'Work From Home') return 'WFH';
                     return (leave && leave.leave_type === 'Unpaid Leave') ? 'UL' : 'PL';
                 }
-                return 'P'; // present, half_day, wfh
+                return 'P'; // present, wfh (half_day now has its own HD-M/HD-A branch above)
             }
             // No hr_attendance row AT ALL for this date (the actual "blank cell" bug this fixes)
             // — an approved Leave/WFH request still covering the date is real, existing data
@@ -1956,13 +1964,22 @@ function hrOfficialEventFor(employee, dateStr) {
             // the HR_PROTECTED_FROM_AUTO_CLOCKIN list below) instead of always writing
             // 'on_leave' — 'on_leave' stays reserved for genuine leave (Paid/Unpaid/etc), never
             // Work From Home, which is enrolled/working attendance, not absence.
-            const status = req.leave_type === 'Work From Home' ? 'wfh' : 'on_leave';
+            // Half Day rides the same request table (leave_type='Half Day'), but writes a
+            // real 'half_day' attendance row carrying its half_day_type — so the employee can
+            // still clock in/out for the half they DO work and those times attach to this same
+            // day/row (upsert only sets the columns below; clock_in_time/clock_out_time on an
+            // existing row are left untouched). Audit: reason + who approved it.
+            const isHalfDay = req.leave_type === 'Half Day';
+            const status = isHalfDay ? 'half_day' : (req.leave_type === 'Work From Home' ? 'wfh' : 'on_leave');
             const start = new Date(req.start_date), end = new Date(req.end_date);
             const dates = [];
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dates.push(new Date(d).toISOString().slice(0,10));
+            const approver = (typeof activeUser !== 'undefined' && activeUser) ? activeUser : 'HR';
             for (const dateStr of dates) {
+                const row = { employee_id: req.employee_id, att_date: dateStr, status };
+                if (isHalfDay) { row.half_day_type = req.half_day_type || null; row.reason = req.reason || null; row.marked_by = approver; }
                 const { error } = await dbInstance.from('hr_attendance')
-                    .upsert({ employee_id: req.employee_id, att_date: dateStr, status }, { onConflict: 'employee_id,att_date' });
+                    .upsert(row, { onConflict: 'employee_id,att_date' });
                 if (error) console.warn('hrSyncLeaveToAttendance: could not sync', dateStr, '—', error.message);
             }
         }
@@ -2131,18 +2148,30 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
 // ── submitMyLeave (orig line 11563) ──
+        // Half Day is a single-day request — hide End Date, reveal the half-type picker.
+        // Guarded: these elements only exist on index.html's My Leave form.
+        function myLeaveTypeChanged() {
+            const sel = document.getElementById('my-leave-type'); if (!sel) return;
+            const isHalf = sel.value === 'Half Day';
+            const hw = document.getElementById('my-leave-half-wrap'); if (hw) hw.style.display = isHalf ? '' : 'none';
+            const sp = document.getElementById('my-leave-half-spacer'); if (sp) sp.style.display = isHalf ? 'none' : '';
+            const ew = document.getElementById('my-leave-end-wrap'); if (ew) ew.style.display = isHalf ? 'none' : '';
+        }
         async function submitMyLeave() {
             const me = myHREmployeeRecord();
             if (!me) { alert('No HR employee record is linked to your login. Ask HR to link your portal email first.'); return; }
             const leave_type = document.getElementById('my-leave-type').value;
+            const isHalf = leave_type === 'Half Day';
             const start_date = document.getElementById('my-leave-start').value;
-            const end_date = document.getElementById('my-leave-end').value;
+            const end_date = isHalf ? start_date : document.getElementById('my-leave-end').value;
             const reason = document.getElementById('my-leave-reason').value.trim();
-            if (!start_date || !end_date) { alert('Pick start and end dates.'); return; }
-            const days = Math.round((new Date(end_date) - new Date(start_date)) / 86400000) + 1;
-            if (days < 1) { alert('End date must be on or after start date.'); return; }
+            if (!start_date || !end_date) { alert(isHalf ? 'Pick the date.' : 'Pick start and end dates.'); return; }
+            const days = isHalf ? 0.5 : Math.round((new Date(end_date) - new Date(start_date)) / 86400000) + 1;
+            if (days < 0.5) { alert('End date must be on or after start date.'); return; }
             try {
-                await dbInstance.from('hr_leave_requests').insert([{ employee_id: me.id, leave_type, start_date, end_date, days, reason, status: 'pending' }]);
+                const rec = { employee_id: me.id, leave_type, start_date, end_date, days, reason, status: 'pending', requested_at: new Date().toISOString() };
+                if (isHalf) { const ht = document.getElementById('my-leave-half-type'); rec.half_day_type = ht ? ht.value : 'morning'; }
+                await dbInstance.from('hr_leave_requests').insert([rec]);
                 document.getElementById('my-leave-start').value = '';
                 document.getElementById('my-leave-end').value = '';
                 document.getElementById('my-leave-reason').value = '';

@@ -306,8 +306,9 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <div class="tab" id="tab-leave">
       <div class="section"><h2>Request Leave</h2>
         <div class="row" style="flex-direction:column;align-items:stretch;gap:10px;max-width:520px">
-          <label class="fld">Leave type<select id="lv_type"><option>Casual Leave</option><option>Sick Leave</option><option>Paid Leave</option><option>Unpaid Leave</option><option>Work From Home</option></select></label>
-          <div class="row"><label class="fld">From<input id="lv_from" type="date"/></label><label class="fld">To<input id="lv_to" type="date"/></label></div>
+          <label class="fld">Leave type<select id="lv_type" onchange="salesLeaveTypeChanged()"><option>Casual Leave</option><option>Sick Leave</option><option>Paid Leave</option><option>Unpaid Leave</option><option>Work From Home</option><option>Half Day</option></select></label>
+          <label class="fld" id="lv_half_wrap" style="display:none">Half type<select id="lv_half_type"><option value="morning">Morning Half (off first half, work second)</option><option value="afternoon">Afternoon Half (work first half, off second)</option></select></label>
+          <div class="row" id="lv_dates_row"><label class="fld">From<input id="lv_from" type="date"/></label><label class="fld">To<input id="lv_to" type="date"/></label></div>
           <label class="fld">Reason<textarea id="lv_reason" rows="2"></textarea></label>
           <div><button class="btn" onclick="submitLeave()">Submit request</button></div>
         </div>
@@ -816,8 +817,14 @@ async function loadAttendance(){
     const cells=dow.map(d=>`<div style="text-align:center;font-size:10px;color:var(--tx3);font-weight:700">${d}</div>`);
     const first=new Date(y,m-1,1).getDay();for(let i=0;i<first;i++)cells.push('<div></div>');
     const today=now.toISOString().slice(0,10);
-    for(let d=1;d<=dim;d++){const ds=`${monthStr}-${String(d).padStart(2,'0')}`;let code='',col='var(--tx3)';
-      if(onLeave(ds)){code='L';col='var(--yellow)';leave++;}else if(byDate.has(ds)){code='P';col='var(--green)';present++;}else if(ds<today){code='A';col='var(--brand-3)';absent++;}
+    // Full attendance row per date (need status + half_day_type for the Half-Day code, not
+    // just "does a row exist"). Half Day shows its own HD-M/HD-A, still counted as present
+    // (worked part of the day) not absent.
+    const recByDate=new Map((att||[]).map(r=>[r.att_date,r]));
+    for(let d=1;d<=dim;d++){const ds=`${monthStr}-${String(d).padStart(2,'0')}`;let code='',col='var(--tx3)';const rec=recByDate.get(ds);
+      if(onLeave(ds)){code='L';col='var(--yellow)';leave++;}
+      else if(rec&&rec.status==='half_day'){code=rec.half_day_type==='morning'?'HD-M':rec.half_day_type==='afternoon'?'HD-A':'HD';col='#fde047';present++;}
+      else if(byDate.has(ds)){code='P';col='var(--green)';present++;}else if(ds<today){code='A';col='var(--brand-3)';absent++;}
       cells.push(`<div style="border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;min-height:42px;${ds===today?'border-color:var(--brand-1)':''}"><div style="font-size:10px;color:var(--tx3)">${d}</div><div style="font-weight:700;color:${col}">${code||'—'}</div></div>`);
     }
     document.getElementById('attCal').innerHTML=cells.join('');
@@ -891,13 +898,23 @@ async function loadLeave(){
     document.getElementById('lvList').innerHTML=(reqs&&reqs.length)?reqs.map(r=>`<div class="qrow"><div><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date} → ${r.end_date}${r.days?' · '+r.days+'d':''}</div></div><span class="badge ${r.status==='approved'?'b-green':r.status==='rejected'?'b-red':'b-amber'}">${esc(r.status||'pending')}</span></div>`).join(''):'<div class="empty">No leave requests yet.</div>';
   }catch(e){document.getElementById('lvList').innerHTML='<div class="empty">Could not load leave.</div>';}
 }
+// Half Day is a single-day request — hide the To date, show the half-type picker.
+function salesLeaveTypeChanged(){
+  const isHalf=document.getElementById('lv_type').value==='Half Day';
+  document.getElementById('lv_half_wrap').style.display=isHalf?'flex':'none';
+  const toWrap=document.getElementById('lv_to').closest('.fld'); if(toWrap)toWrap.style.display=isHalf?'none':'';
+}
 async function submitLeave(){
-  const type=document.getElementById('lv_type').value,from=document.getElementById('lv_from').value,to=document.getElementById('lv_to').value,reason=document.getElementById('lv_reason').value.trim();
-  if(!from||!to){showToast('warning','Pick both dates.');return;}
-  const days=Math.max(1,Math.round((new Date(to)-new Date(from))/86400000)+1);
-  const {error}=await sb.from('hr_leave_requests').insert({employee_id:ME.id,leave_type:type,start_date:from,end_date:to,days,reason:reason||null,status:'pending'});
+  const type=document.getElementById('lv_type').value,from=document.getElementById('lv_from').value,reason=document.getElementById('lv_reason').value.trim();
+  const isHalf=type==='Half Day';
+  const to=isHalf?from:document.getElementById('lv_to').value;
+  if(!from||!to){showToast('warning',isHalf?'Pick the date.':'Pick both dates.');return;}
+  const days=isHalf?0.5:Math.max(1,Math.round((new Date(to)-new Date(from))/86400000)+1);
+  const rec={employee_id:ME.id,leave_type:type,start_date:from,end_date:to,days,reason:reason||null,status:'pending',requested_at:new Date().toISOString()};
+  if(isHalf)rec.half_day_type=document.getElementById('lv_half_type').value;
+  const {error}=await sb.from('hr_leave_requests').insert(rec);
   if(error){showToast('error',error.message);return;}
-  document.getElementById('lv_reason').value='';showToast('success','Leave request submitted — HR will review.');loadLeave();
+  document.getElementById('lv_reason').value='';showToast('success',(isHalf?'Half-day':'Leave')+' request submitted — HR will review.');loadLeave();
 }
 function loadDocuments(){
   const links=(ME.rec&&ME.rec.document_links)||'';
