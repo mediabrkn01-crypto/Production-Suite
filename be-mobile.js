@@ -109,6 +109,24 @@
   function navRoot() {
     return document.getElementById('be-sidebar') || document.getElementById('aside') || document.querySelector('aside.aside, aside');
   }
+  // The app shell must be authenticated/shown before the bottom bar appears. Most pages gate
+  // login with display:none on #app (collectLinks then finds nothing → no bar, correct). BUT
+  // index.html gates its #main-application-frame with opacity:0 + pointer-events:none instead —
+  // display is not none, so the sidebar's links ARE "visible" and the bar was building right on
+  // top of the login screen. Walk from ABOVE the sidebar up to <body>: if any ancestor is
+  // display:none / visibility:hidden / opacity:0 / pointer-events:none, the shell isn't ready.
+  // (Starts above the sidebar so the aside's own mobile display:none doesn't trip it.)
+  function appReady() {
+    var root = navRoot();
+    if (!root) return false;
+    var node = root.parentElement;
+    while (node && node !== document.body && node.nodeType === 1) {
+      var cs = getComputedStyle(node);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0 || cs.pointerEvents === 'none') return false;
+      node = node.parentElement;
+    }
+    return true;
+  }
   // Visible = not permission-gated. Walks parents up to (but not including) the sidebar root,
   // so the root's OWN `display:none` on mobile (aside{display:none} at <=767px) is ignored,
   // while an inner hidden group (e.g. #nav-group-academic.hidden) correctly excludes its links.
@@ -154,6 +172,7 @@
 
   function build() {
     if (nav) return;
+    if (!appReady()) return;   // don't paint the bar over the login screen
     var links = collectLinks();
     if (!links.length) return;
     // Primary 4 = the fixed bottom-bar tabs. A page can name them explicitly by putting
@@ -246,7 +265,16 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
-  // Some pages render their sidebar after auth (login gate) — rebuild if it wasn't there yet.
+  // The sidebar/app shell appears only after the user logs in (login is user-paced — could be
+  // seconds or minutes), so keep trying build() until it succeeds. build() self-gates on
+  // appReady(), so this never paints over the login screen; it just retries cheaply until the
+  // authenticated shell is up. Generous cap (~10 min) purely as a safety stop.
   var tries = 0;
-  var iv = setInterval(function () { if (nav || tries++ > 20) { clearInterval(iv); return; } build(); }, 500);
+  var iv = setInterval(function () { if (nav || tries++ > 1200) { clearInterval(iv); return; } build(); }, 500);
+  // Instant trigger the moment the app frame is revealed (login success flips
+  // #main-application-frame's opacity/pointer-events, or a page toggles #app's display) — so the
+  // bar appears right after auth without waiting on the polling interval (which a backgrounded
+  // tab can throttle). Disconnects itself once the bar is built.
+  var preObs = new MutationObserver(function () { if (nav) { preObs.disconnect(); return; } build(); });
+  try { preObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'], subtree: true }); } catch (e) {}
 })();
