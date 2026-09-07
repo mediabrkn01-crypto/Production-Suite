@@ -1393,6 +1393,29 @@ function hrOfficialEventFor(employee, dateStr) {
 // ── hrAttDayCode (orig line 9555) ──
         function hrAttDayCode(employee, dateStr, dayOfWeek) {
             if (employee.joining_date && dateStr < employee.joining_date) return null; // before joining — blank
+            // Leave Policy v2: delegate to the ONE shared resolver so the calendar grid, the
+            // attendance report, the payslip and the dashboard all show the SAME code for a day
+            // (§18/§21). Display vocabulary preserved (HD-M/HD-A, A for plain absent). Today/
+            // future unmarked days stay blank (open attendance day), same as before.
+            if (typeof LeavePolicy !== 'undefined') {
+                const today = new Date().toISOString().slice(0,10);
+                const rec = hrAttendance.find(a => a.employee_id === employee.id && a.att_date === dateStr);
+                const ctx = {
+                    employee: employee,
+                    requests: hrLeaveRequests.filter(r => r.employee_id === employee.id),
+                    attendance: hrAttendance.filter(a => a.employee_id === employee.id),
+                    holidays: hrHolidays, settings: hrCompanySettings,
+                    officialEvents: hrOfficialEvents.filter(ev => ev.applies_to === 'all' || ev.applies_to === employee.division),
+                    portalLog: (d) => hrPortalLogFor(employee, d),
+                    now: new Date(), date: dateStr
+                };
+                const r = LeavePolicy.resolveAttendanceStatus(ctx, dateStr);
+                if (r.code === 'LOP' && (r.label || '').indexOf('Unmarked') === 0 && dateStr >= today) return null; // open day
+                if (r.code === 'HD') return rec && rec.half_day_type === 'morning' ? 'HD-M' : rec && rec.half_day_type === 'afternoon' ? 'HD-A' : 'HD';
+                if (r.code === 'LOP') return ((r.label || '').indexOf('Absent') >= 0 || (r.label || '').indexOf('Unmarked') >= 0) ? 'A' : 'LOP';
+                return r.code; // P L WFH SL CL WO H OE
+            }
+            // ---- Fallback (engine unavailable) — previous behavior, unchanged ----
             if (hrIsHoliday(dateStr)) return 'H';
             const rec = hrAttendance.find(a => a.employee_id === employee.id && a.att_date === dateStr);
             if (!rec) {

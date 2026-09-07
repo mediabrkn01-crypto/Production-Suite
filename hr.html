@@ -474,6 +474,9 @@
         .hr-att-cell-A { color:#f87171; font-weight:700; }
         .hr-att-cell-L { color:#facc15; font-weight:700; }
         .hr-att-cell-PL { color:#60a5fa; font-weight:700; }
+        .hr-att-cell-SL { color:#60a5fa; font-weight:700; }
+        .hr-att-cell-CL { color:#818cf8; font-weight:700; }
+        .hr-att-cell-LOP { color:#f87171; font-weight:700; }
         .hr-att-cell-UL { color:#fb923c; font-weight:700; }
         .hr-att-cell-WFH { color:#2dd4bf; font-weight:700; }
         .hr-att-cell-HD-M, .hr-att-cell-HD-A, .hr-att-cell-HD { color:#fde047; font-weight:700; }
@@ -4015,28 +4018,60 @@
             } catch (e) { alert('Could not save allocation: ' + e.message); }
         }
 
-// ── renderHRLeaveBalances (orig line 9796) ──
-        function renderHRLeaveBalances() {
+// ── renderHRLeaveBalances — Leave Policy v2 (§17): policy-resolved SL + CL ledger + LOP,
+// plus the employee's probation / notice / exceptional-WFH state. Balances are computed by
+// the ONE shared engine, never a manually-edited allotment, so this screen agrees with
+// payroll and the attendance report.
+        async function renderHRLeaveBalances() {
             populateHRLeaveBalanceEmployeeSelect();
             const employeeId = document.getElementById('hr-lb-employee-select')?.value;
-            if (!employeeId) {
-                document.getElementById('hr-leave-balance-rows').innerHTML = `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">Add an employee first.</td></tr>`;
-                return;
-            }
-            document.getElementById('hr-leave-balance-rows').innerHTML = HR_LEAVE_TYPES.map(type => {
-                const unlimited = HR_UNLIMITED_LEAVE_TYPES.includes(type);
-                const bal = hrLeaveBalances.find(b => b.employee_id === employeeId && b.leave_type === type);
-                const allocated = bal?.allotted ?? 0;
-                const used = hrComputeLeaveUsed(employeeId, type);
-                const remaining = unlimited ? '—' : Math.max(0, allocated - used);
-                return `<tr class="hover:bg-white/[0.02]">
-                    <td data-label="Leave Type" class="py-2.5 px-4 text-white font-semibold">${type}</td>
-                    <td data-label="Allocated" class="py-2.5 px-4 text-[#a5adcf]">${unlimited ? '—' : `<input type="number" min="0" value="${allocated}" class="hr-input" style="width:70px" id="hr-lb-input-${type.replace(/\s+/g,'_')}">`}</td>
-                    <td data-label="Used" class="py-2.5 px-4 text-[#a5adcf]">${used}</td>
-                    <td data-label="Remaining" class="py-2.5 px-4 text-[#a5adcf]">${remaining}</td>
-                    <td data-label="Save" class="py-2.5 px-4 text-center">${unlimited ? '—' : `<button onclick="saveHRLeaveAllocated('${employeeId}','${type}', document.getElementById('hr-lb-input-${type.replace(/\s+/g,'_')}').value)" class="hr-icon-btn">Save</button>`}</td>
+            const tbody = document.getElementById('hr-leave-balance-rows');
+            if (!tbody) return;
+            if (!employeeId) { tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">Add an employee first.</td></tr>`; return; }
+            const emp = hrEmployees.find(e => e.id === employeeId);
+            if (!emp || typeof LeavePolicy === 'undefined') { tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-[#4a5182] text-xs">Balances unavailable.</td></tr>`; return; }
+            if (!LeavePolicy.db) LeavePolicy.withClient(dbInstance);
+            tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-[#4a5182] text-xs">Loading policy balances…</td></tr>`;
+            const today = new Date().toISOString().slice(0,10), month = today.slice(0,7);
+            let ctx, bal, pay, state;
+            try {
+                ctx = await LeavePolicy.db.buildContext(emp, { now: new Date(), date: today });
+                bal = LeavePolicy.resolveLeaveBalance(ctx);
+                pay = LeavePolicy.resolvePayrollDeduction(ctx, month);
+                state = LeavePolicy.getEmployeePolicyState(emp, today);
+            } catch (e) { tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-[#f87171] text-xs">Could not load balances: ${e.message}</td></tr>`; return; }
+            const stateChips = [];
+            if (state.onProbation) stateChips.push(`<span style="background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.3);border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700">PROBATION until ${state.confirmationDate || '—'} — no paid leave / weekly-off</span>`);
+            if (state.onNotice) stateChips.push(`<span style="background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700">NOTICE PERIOD${state.noticeEnd ? ' until ' + state.noticeEnd : ''} — no CL/SL/weekly-off</span>`);
+            if (!state.onProbation && !state.onNotice) stateChips.push(`<span style="background:rgba(74,222,128,.1);color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700">Confirmed — eligible for SL/CL</span>`);
+            const clBucketRows = (bal.casual.buckets || []).length
+                ? bal.casual.buckets.map(b => `${b.cycle_label}: ${b.remaining}/${b.original} left (credited ${b.credit_date}, expires ${b.expiry})`).join(' · ')
+                : 'No active CL credit.';
+            const monthLabel = new Date(today+'T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+            tbody.innerHTML = `
+                <tr><td colspan="5" style="padding:10px 14px"><div style="display:flex;gap:8px;flex-wrap:wrap">${stateChips.join('')}</div></td></tr>
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">Sick Leave (SL)</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${bal.sick.entitlement}/month</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${bal.sick.used}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${state.onProbation||state.onNotice ? '0 (not eligible)' : bal.sick.remaining}</td>
+                    <td class="py-2.5 px-4 text-[#6b74a0] text-xs">Lapses ${bal.sick.expiry} (no carry-forward)</td>
+                </tr>
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">Casual Leave (CL)</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${bal.casual.currentCredit} this cycle${bal.casual.carriedForward ? ` + ${bal.casual.carriedForward} carried` : ''}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">—</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${state.onProbation||state.onNotice ? '0 (not eligible)' : bal.casual.remaining}</td>
+                    <td class="py-2.5 px-4 text-[#6b74a0] text-xs">Next expiry ${bal.casual.nextExpiry || '—'}</td>
+                </tr>
+                <tr><td colspan="5" style="padding:4px 16px 10px" class="text-[#6b74a0] text-xs">CL buckets (oldest used first): ${clBucketRows}</td></tr>
+                <tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold">LOP — ${monthLabel}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">—</td>
+                    <td class="py-2.5 px-4 text-[#f87171] font-semibold">${pay.totalDeductionDays} day(s)</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">—</td>
+                    <td class="py-2.5 px-4 text-[#6b74a0] text-xs">${pay.incidents && pay.incidents.count ? pay.incidents.count + ' late/early incident(s)' : ''}${pay.buckets.lopDouble ? ` · ${pay.buckets.lopDouble} double-deduction` : ''} — feeds payroll</td>
                 </tr>`;
-            }).join('');
         }
 
 // ── renderHRLeaveCalendar (orig line 9820) ──
@@ -5370,7 +5405,8 @@ async function populateHRJobDeptOptions() {
             document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays}${calc.excessLeaveDays ? ` (of ${calc.eligibleLeaveDays} taken — first ${HR_MONTHLY_PAID_LEAVE_DAYS}/month paid)` : ''} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays}${calc.officialEventDays ? ` · Official Event: ${calc.officialEventDays}` : ''} · LOP: ${calc.lopDays} (Unpaid Leave ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.excessLeaveDays ? ` + Excess Leave ${calc.excessLeaveDays}` : ''}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''})` +
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays}${(calc.slDays!=null||calc.clDays!=null) ? ` (SL ${calc.slDays||0} + CL ${calc.clDays||0})` : ''} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays}${calc.officialEventDays ? ` · Official Event: ${calc.officialEventDays}` : ''} · LOP: ${calc.lopDays} (Leave→LOP ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.doubleDeductionDays ? ` + Double ${calc.doubleDeductionDays}` : ''}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''}${calc.incidentDays ? ` + Late/Early incidents ${calc.incidentDays}` : ''})` +
+                `${calc.incidents && calc.incidents.count ? ` · ${calc.incidents.count} late-login/early-logout instance(s) this month` : ''}` +
                 `${calc.preJoiningDays ? ` · Before joining: ${calc.preJoiningDays} day(s) (also deducted — not yet employed, counted separately from LOP)` : ''}` +
                 ` — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
