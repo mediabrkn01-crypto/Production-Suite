@@ -940,7 +940,8 @@ details[open] .rawsum::before{content:'▾ '}
             <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--green);margin-right:5px"></span>Free — click to assign a class</span>
             <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--brand-3);margin-right:5px"></span>Occupied — click for details</span>
           </div>
-          <div id="availByTrainer" class="loading" style="margin-top:14px">Loading…</div>
+          <input id="availTrainerSearch" placeholder="Search trainers…" oninput="renderTrainerAvailabilityView()" style="width:100%;max-width:340px;margin-top:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:9px 12px;color:var(--tx);font-size:13px;outline:none"/>
+          <div id="availByTrainer" class="loading" style="margin-top:12px">Loading…</div>
         </div>
 
         <!-- Academic Head: compact cross-trainer "who's free when" view for quickly finding a
@@ -4197,6 +4198,18 @@ function isBatchCurrentlyActive(b){
   if (!b) return false;
   if (_isBatchDeleted(b)) return false;
   if (b.status === 'inactive') return false;
+  // BUG FIX (ghost occupied slots — Afzal Jaleel's completed Elite—Kiran/Ashmitha/Gibin still
+  // blocking his availability in the Head view while his own My Availability showed them freed):
+  // exclude finished batches by their OWN backend fields — status and completed_at — NOT only via
+  // window._acadFinishedBatchNames (which is populated by loadLive() and is empty until that tab
+  // has run, so opening Trainer Availability first left completed batches looking active). This is
+  // the load-order-independent source of truth every occupancy path already funnels through
+  // (computeAvailSlotStates + the "not in a declared slot" extraBookings loop both call this), so
+  // one change frees the slot consistently in My Availability, Head Trainer Availability and the
+  // Free-Slot views. History is untouched — the batch row still exists in Finished Batches.
+  const _st = String(b.status || '').toLowerCase();
+  if (_st === 'completed' || _st === 'finished' || _st === 'closed' || _st === 'cancelled' || _st === 'archived') return false;
+  if (b.completed_at) return false;
   // BUG FIX: a batch finished purely by session-progress (loadLive()'s own isBatchFinished —
   // baseline + marked attendance reaching sessions_total, with no explicit status field ever
   // set) used to keep blocking its trainer's slot forever, since this function only ever
@@ -4424,7 +4437,17 @@ function renderTrainerAvailabilityView(){
   const wrap = document.getElementById('availByTrainer');
   if (!wrap) return;
   if (!_availTrainers.length) { wrap.innerHTML = '<div class="empty">No coaches yet.</div>'; return; }
-  wrap.innerHTML = _availTrainers.map(t => {
+  // Trainer search (spec #8) — filters the already-loaded active-trainer list by name / type /
+  // employee id. Small in-memory list (active coaches only), so a client filter is instant; no
+  // backend round-trip needed and the input never blocks. Matches name, "full/part"-time, or a
+  // linked hr_employee_id if present.
+  const _q = (document.getElementById('availTrainerSearch')?.value || '').trim().toLowerCase();
+  const _shown = _q ? _availTrainers.filter(t => {
+    const typeLabel = t.type === 'pt' ? 'part-time part time' : 'full-time full time';
+    return (t.name||'').toLowerCase().includes(_q) || typeLabel.includes(_q) || String(t.hr_employee_id||'').toLowerCase().includes(_q);
+  }) : _availTrainers;
+  if (!_shown.length) { wrap.innerHTML = '<div class="empty">No trainers match “'+esc(_q)+'”.</div>'; return; }
+  wrap.innerHTML = _shown.map(t => {
     const onLeave = _availOnLeaveIds.has(t.id);
     const mySlots = _allAvailability.filter(a => String(a.trainer_id)===String(t.id)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
     // One pass through the host/conflict resolver (see computeAvailSlotStates) instead of a

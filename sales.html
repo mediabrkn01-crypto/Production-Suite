@@ -1048,11 +1048,15 @@ async function loadAvailability(){
     const [{data:tr},{data:av},{data:ba}]=await Promise.all([
       sb.from('trainers').select('id,name,status,type,pt_available_days,pt_time_ranges,pt_time_start,pt_time_end').eq('status','active').order('name'),
       sb.from('trainer_availability').select('trainer_id,start_time,end_time,is_active').eq('is_active',true),
-      sb.from('batches').select('trainer_id,name,programme,day_pattern,time_slot,status,deleted_at').is('deleted_at',null),
+      sb.from('batches').select('trainer_id,name,programme,day_pattern,time_slot,status,deleted_at,completed_at').is('deleted_at',null),
     ]);
     const avByTr={};(av||[]).forEach(a=>{(avByTr[a.trainer_id]=avByTr[a.trainer_id]||[]).push(a);});
     _avTrainers=(tr||[]).map(t=>({...t,_avail:avByTr[t.id]||[]}));
-    _avBatches=(ba||[]).filter(b=>String(b.status||'').toLowerCase()!=='completed');
+    // Only LIVE batches count as occupancy — same non-live set academics.isBatchCurrentlyActive()
+    // and the get_available_trainers RPC use (completed/finished/closed/cancelled/archived, or a
+    // completed_at stamp, never occupy). Finished batches stay as history, just not as bookings.
+    const _NONLIVE=['completed','finished','closed','cancelled','archived'];
+    _avBatches=(ba||[]).filter(b=>!b.completed_at&&!_NONLIVE.includes(String(b.status||'').toLowerCase()));
   }catch(e){document.getElementById('avOccupancy').innerHTML='<div class="empty">Could not load availability.</div>';return;}
   salesRenderOccupancy();
 }
