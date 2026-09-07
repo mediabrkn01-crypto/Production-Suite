@@ -157,6 +157,23 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
   .topbar>.row{display:none}
   #sales-notif-panel{top:calc(60px + env(safe-area-inset-top,0px));right:12px;left:12px;width:auto;max-width:none}
 }
+/* Shared celebration/announcement banner — same visual contract as common.js's engine
+   (index/HR/Academics), ported here because Sales doesn't load common.js. Same classes,
+   same object-fit rules (popup contain, banner cover), same close button. */
+.be-celeb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:95;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+.be-celeb-overlay.hidden{display:none}
+.be-celeb-imgwrap{position:relative;max-width:90vw;max-height:85vh;line-height:0}
+.be-celeb-imgwrap img{display:block;max-width:90vw;max-height:85vh;width:auto;height:auto;object-fit:contain;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.be-celeb-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;backdrop-filter:blur(3px)}
+.be-celeb-close:hover{background:rgba(10,12,20,.85)}
+.be-celeb-caption{text-align:center;color:#fff;font-weight:700;font-size:14px;margin-top:10px;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.be-celeb-banner-slot{width:100%;position:relative}
+.be-celeb-banner-item{position:relative;width:100%;height:130px;margin-bottom:12px;border-radius:12px;overflow:hidden;background:#12162a}
+.be-celeb-banner-item:last-child{margin-bottom:0}
+.be-celeb-banner-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none}
+.be-celeb-banner-close{position:absolute;top:8px;right:8px;z-index:5;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;pointer-events:auto}
+.be-celeb-banner-close:hover{background:rgba(10,12,20,.9)}
+@media (max-width:480px){.be-celeb-banner-item{height:90px}}
 </style>
 </head>
 <body>
@@ -217,6 +234,11 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
         <button class="hdr-icon-btn" id="sales-topbar-account-btn" title="Account"><span id="sales-topbar-avatar" class="hdr-av">?</span></button>
       </div>
     </div>
+    <!-- Shared celebration/announcement banner slot (festival/company/birthday/anniversary
+         artwork from hr_celebration_events — same source Media/HR/Academics use). Populated by
+         salesLoadCelebrations() once the Sales employee profile is loaded. -->
+    <div id="celebration-banner-slot" class="be-celeb-banner-slot" style="margin-bottom:14px"></div>
+    <div id="celebration-popup-overlay" class="be-celeb-overlay hidden"></div>
     <div id="sales-notif-panel" class="hidden" style="position:fixed;top:66px;right:26px;width:320px;max-width:92vw;background:#0b0d19;border:1px solid var(--bd);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6);z-index:400;overflow:hidden">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--bd)"><b style="font-size:13px;display:flex;align-items:center;gap:6px"><i data-lucide="bell" style="width:14px;height:14px;color:var(--tx3)"></i> Notifications</b><button onclick="salesToggleNotif()" style="background:none;border:none;color:var(--tx3);cursor:pointer"><i data-lucide="x" style="width:14px;height:14px"></i></button></div>
       <div class="empty" style="padding:26px">You're all caught up. No notifications.</div>
@@ -454,6 +476,7 @@ const CADENCE=[0,1,3,7]; // days after fu #1..#4
       initAccountMenu(Object.assign({trigger:'#sales-mtb-avatar-btn'},_acctMenuOpts));
     }
     if(typeof lucide!=='undefined')lucide.createIcons();
+    salesLoadCelebrations();   // shared festival/celebration banner, now the profile is loaded
     boot();
   }catch(e){location.href='index.html';}
 })();
@@ -477,6 +500,48 @@ function salesInitAcct(){
 function startHdrClock(){const el=document.getElementById('hdr-date');if(!el)return;const upd=()=>{el.textContent=new Date().toLocaleString('en-IN',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});};upd();clearInterval(window._hdrClk);window._hdrClk=setInterval(upd,30000);}
 function salesToggleNotif(){const p=document.getElementById('sales-notif-panel');p.classList.toggle('hidden');if(typeof lucide!=='undefined')lucide.createIcons();}
 document.addEventListener('click',e=>{const p=document.getElementById('sales-notif-panel'),b=document.getElementById('sales-bell-btn');if(p&&!p.classList.contains('hidden')&&!p.contains(e.target)&&b&&!b.contains(e.target))p.classList.add('hidden');});
+
+/* ---------- SHARED CELEBRATION / ANNOUNCEMENT BANNER ----------
+   Self-contained port of common.js's celebration engine (Sales doesn't load common.js).
+   Reads the SAME hr_celebration_events table and applies the SAME audience + date rules and
+   the SAME per-user/per-event localStorage dismissal key format, so a banner HR targets to
+   All / a division that includes Sales (division='sales', or applies_to 'all') shows here too,
+   auto-expires by date, and dismissal is per employee. No Sales-only table, no hardcoded art. */
+function _celebKey(prefix,key){return `be_celeb_${prefix}_${(ME&&ME.email||'').toLowerCase()}_${key}`;}
+function _celebBannerDismissed(key){try{return !!localStorage.getItem(_celebKey('banner',key));}catch(_){return false;}}
+function salesDismissCeleb(key){try{localStorage.setItem(_celebKey('banner',key),'1');}catch(_){}const el=document.getElementById('celeb-banner-'+key);if(el)el.remove();}
+function _celebPopupSeen(key){try{return !!localStorage.getItem(_celebKey('popup',key));}catch(_){return false;}}
+function salesCloseCelebPopup(){const o=document.getElementById('celebration-popup-overlay');if(o){o.classList.add('hidden');o.innerHTML='';}if(window._celebPopupKey){try{localStorage.setItem(_celebKey('popup',window._celebPopupKey),'1');}catch(_){}}}
+function _celebStatusToday(ev){const t=new Date().toISOString().slice(0,10);if(!ev.event_date)return null;const end=ev.event_end_date||ev.event_date;if(t>=ev.event_date&&t<=end)return 'actual';if(ev.advance_start_date&&t>=ev.advance_start_date&&t<ev.event_date)return 'advance';return null;}
+function _celebApplies(ev){const div=(ME&&ME.rec&&ME.rec.division||'').toLowerCase();return !ev.applies_to||ev.applies_to==='all'||String(ev.applies_to).toLowerCase()===div;}
+function _isSameMonthDay(dateStr){if(!dateStr)return false;const d=new Date(dateStr),n=new Date();return d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+function _annivYears(joining){if(!joining)return 0;const d=new Date(joining),n=new Date();if(d.getMonth()!==n.getMonth()||d.getDate()!==n.getDate())return 0;const y=n.getFullYear()-d.getFullYear();return y>0?y:0;}
+async function salesLoadCelebrations(){
+  if(!ME)return;
+  let events=[];
+  try{const{data}=await sb.from('hr_celebration_events').select('*').order('event_date',{ascending:true});events=data||[];}
+  catch(e){console.warn('Sales celebration engine: fetch failed —',e.message);return;}
+  const rec=ME.rec||{};const today=new Date().toISOString().slice(0,10);
+  const first=(ME.name||'there').trim().split(' ')[0];
+  const findTpl=t=>events.find(ev=>ev.event_type===t)||null;
+  const items=[];
+  if(_isSameMonthDay(rec.dob)){const tpl=findTpl('birthday');items.push({key:`birthday_${today}`,type:'birthday',title:`Happy Birthday, ${first}!`,captionName:first,popupImage:tpl?tpl.popup_image_base64:null,bannerImage:tpl?tpl.banner_image_base64:null,artworkMode:tpl?tpl.artwork_mode||'complete':'complete',popupEnabled:tpl?tpl.popup_enabled!==false:false,bannerEnabled:tpl?tpl.banner_enabled!==false:false});}
+  const yrs=_annivYears(rec.joining_date);
+  if(yrs){const tpl=findTpl('work_anniversary');items.push({key:`anniversary_${today}`,type:'work_anniversary',title:`Happy Work Anniversary, ${first}!`,captionName:`${first} · ${yrs} Year${yrs===1?'':'s'}`,popupImage:tpl?tpl.popup_image_base64:null,bannerImage:tpl?tpl.banner_image_base64:null,artworkMode:tpl?tpl.artwork_mode||'complete':'complete',popupEnabled:tpl?tpl.popup_enabled!==false:false,bannerEnabled:tpl?tpl.banner_enabled!==false:false});}
+  events.forEach(ev=>{
+    if(ev.event_type==='birthday'||ev.event_type==='work_anniversary')return; // templates, handled above
+    if(!_celebStatusToday(ev)||!_celebApplies(ev))return;
+    items.push({key:`event_${ev.id}_${today}`,type:ev.event_type||'custom',title:`${ev.icon?ev.icon+' ':''}${ev.title}`,captionName:null,popupImage:ev.popup_image_base64||null,bannerImage:ev.banner_image_base64||null,artworkMode:'complete',popupEnabled:ev.popup_enabled!==false,bannerEnabled:ev.banner_enabled!==false});
+  });
+  // Banners — every active, not-dismissed-today item with banner art (object-fit:cover strip).
+  const banners=items.filter(it=>it.bannerEnabled&&it.bannerImage&&!_celebBannerDismissed(it.key));
+  const host=document.getElementById('celebration-banner-slot');
+  if(host)host.innerHTML=banners.map(it=>`<div id="celeb-banner-${it.key}" class="be-celeb-banner-item"><img src="${it.bannerImage}" alt="${esc(it.title)}" loading="lazy" onerror="this.closest('.be-celeb-banner-item')?.remove()"><button onclick="salesDismissCeleb('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button></div>`).join('');
+  // Popup — first active item that has popup art and hasn't been seen today (one, contain).
+  const pop=items.find(it=>it.popupEnabled&&it.popupImage&&!_celebPopupSeen(it.key));
+  const overlay=document.getElementById('celebration-popup-overlay');
+  if(pop&&overlay){window._celebPopupKey=pop.key;const cap=pop.artworkMode==='template'&&pop.captionName?`<div class="be-celeb-caption">${esc(pop.captionName)}</div>`:'';overlay.innerHTML=`<div><div class="be-celeb-imgwrap"><img src="${pop.popupImage}" alt="${esc(pop.title)}"><button onclick="salesCloseCelebPopup()" class="be-celeb-close" aria-label="Close">✕</button></div>${cap}</div>`;overlay.classList.remove('hidden');}
+}
 function salesToggleAcct(){const p=document.getElementById('sales-acct-panel');const opening=p.classList.contains('hidden');p.classList.toggle('hidden');if(opening)salesRenderAcctList();}
 function salesRenderAcctList(){
   const list=document.getElementById('sales-acct-list');if(!list)return;
