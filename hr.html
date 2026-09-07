@@ -3936,21 +3936,38 @@
             document.getElementById('hr-leave-requests-rows').innerHTML = rows.length ? rows.map(r => {
                 const submitted = hrLeaveSubmittedInfo(r);
                 const halfLabel = r.leave_type === 'Half Day' ? (r.half_day_type === 'morning' ? ' · Morning Half' : r.half_day_type === 'afternoon' ? ' · Afternoon Half' : '') : '';
+                // Leave Policy v2 — two-stage approval chips + policy warning + emergency/proof.
+                const stageChip = (label, st) => {
+                    const c = st === 'approved' ? '#4ade80' : st === 'rejected' ? '#f87171' : '#8890b5';
+                    const mark = st === 'approved' ? '✓' : st === 'rejected' ? '✕' : '•';
+                    return `<span style="font-size:10.5px;color:${c};border:1px solid ${c}33;border-radius:99px;padding:2px 8px">${label} ${mark} ${st || 'pending'}</span>`;
+                };
+                const statusLabel = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(r) : r.status;
+                const badgeKind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : 'pending';
+                const authName = r.reporting_authority_email ? (hrEmpNameByEmail ? hrEmpNameByEmail(r.reporting_authority_email) : r.reporting_authority_email) : 'HR only';
+                const needsException = r.status !== 'approved' && r.status !== 'rejected' && (r.adjacency_flag || (r.consecutive_days && r.consecutive_days > 2));
                 return `
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
-                    <div style="display:flex;align-items:center;gap:10px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
+                    <div style="display:flex;align-items:flex-start;gap:10px">
                         ${hrAvatarForEmployeeId(r.employee_id, 30)}
                         <div>
-                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}${halfLabel}</div>
+                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}${halfLabel}${r.emergency ? ' <span style="color:#fb923c;font-size:10.5px;font-weight:700">⚡ EMERGENCY</span>' : ''}</div>
                         <div class="text-[#6b74a0] text-xs">${r.start_date}${r.end_date !== r.start_date ? ' → ' + r.end_date : ''} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
                         <div class="text-[#6b74a0] text-xs" style="margin-top:2px" title="${submitted.title}">${submitted.label}${submitted.kind === 'late' ? ' <span style="color:#fb923c;font-weight:600">⚠ Submitted after leave date</span>' : submitted.kind === 'same-day' ? ' · <span style="color:#8890b5">Same-day request</span>' : ''}</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${stageChip('Mgr', r.manager_status || 'pending')}${stageChip('HR', r.hr_status || 'pending')}<span style="font-size:10.5px;color:#6b74a0">Approver: ${authName}</span></div>
+                        ${r.policy_warning ? `<div style="margin-top:6px;font-size:11px;color:#fb923c;background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);border-radius:8px;padding:5px 8px">⚠ ${r.policy_warning}</div>` : ''}
+                        ${r.proof_url ? `<div style="margin-top:4px;font-size:11px"><a href="${r.proof_url}" target="_blank" style="color:#60a5fa">📎 Supporting document</a></div>` : ''}
+                        ${r.exception_by ? `<div style="margin-top:4px;font-size:11px;color:#4ade80">Exception by ${r.exception_by}${r.exception_reason ? ' — ' + r.exception_reason : ''}</div>` : ''}
                         </div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:8px">
-                        <span class="hr-badge hr-badge-${r.status}">${r.status}</span>
-                        ${r.status === 'pending' ? `
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                        <span class="hr-badge hr-badge-${badgeKind}">${statusLabel}</span>
+                        ${r.status !== 'approved' && r.status !== 'rejected' ? `
+                            <div style="display:flex;gap:6px">
                             <button onclick="decideHRLeave('${r.id}','approved').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#4ade80">Approve</button>
                             <button onclick="decideHRLeave('${r.id}','rejected').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#f87171">Reject</button>
+                            </div>
+                            ${needsException ? `<button onclick="hrGrantException('${r.id}')" class="hr-icon-btn" style="color:#fb923c;border:1px solid rgba(251,146,60,.4);border-radius:8px;padding:3px 8px">Management Exception</button>` : ''}
                         ` : ''}
                     </div>
                 </div>
@@ -3960,6 +3977,19 @@
 // hrSyncLeaveToAttendance and decideHRLeave moved to common.js — decideHRLeave (the
 // Approve/Reject button handler) needs to be callable from index.html's own My Team leave
 // list too, not just this page.
+        function hrEmpNameByEmail(email) {
+            if (!email) return '—';
+            const e = hrEmployees.find(x => (x.portal_email || '').toLowerCase() === email.toLowerCase());
+            return e ? e.full_name : email;
+        }
+        // Management Exception (§5/§8/§12): overrides the consecutive-days / week-off-holiday
+        // adjacency policy block. Records approver + reason + timestamp (audited in decideHRLeave).
+        async function hrGrantException(id) {
+            const reason = prompt('Management Exception — reason / justification:');
+            if (reason === null) return; // cancelled
+            await decideHRLeave(id, 'approved', { exception: true, reason: reason.trim() || 'Management exception' });
+            renderHRLeaveRequests();
+        }
 
 // ── populateHRLeaveBalanceEmployeeSelect (orig line 9767) ──
         function populateHRLeaveBalanceEmployeeSelect() {

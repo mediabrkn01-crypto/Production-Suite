@@ -1977,7 +1977,8 @@ function hrOfficialEventFor(employee, dateStr) {
             // day/row (upsert only sets the columns below; clock_in_time/clock_out_time on an
             // existing row are left untouched). Audit: reason + who approved it.
             const isHalfDay = req.leave_type === 'Half Day';
-            const status = isHalfDay ? 'half_day' : (req.leave_type === 'Work From Home' ? 'wfh' : 'on_leave');
+            const isWFH = /home|wfh/i.test(req.leave_type || '');
+            const status = isHalfDay ? 'half_day' : (isWFH ? 'wfh' : 'on_leave');
             const start = new Date(req.start_date), end = new Date(req.end_date);
             const dates = [];
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dates.push(new Date(d).toISOString().slice(0,10));
@@ -2004,22 +2005,128 @@ function hrOfficialEventFor(employee, dateStr) {
 // live-approved-leave fallback. Each caller is responsible for its own re-render afterward
 // (index.html already chains .then(initMyTeam); hr.html's buttons now chain
 // .then(renderHRLeaveRequests) the same way) — this function only ever does the write.
-        async function decideHRLeave(id, status) {
+// ── Leave Policy v2: dynamic reporting authority + two-stage approval ────────
+// resolveReportingAuthority(emp): the manager-stage approver for THIS employee, resolved
+// dynamically (never a hardcoded Sales Head for everyone) — explicit manager_email first,
+// else the head of the employee's own division (designation/department contains head/lead/
+// manager). Returns {email,name} or null. §4/§6 of the policy.
+        function hrResolveReportingAuthority(emp) {
+            if (!emp) return null;
+            const me = (emp.manager_email || '').trim().toLowerCase();
+            if (me) {
+                const m = hrEmployees.find(x => (x.portal_email || '').toLowerCase() === me);
+                return { email: me, name: m ? m.full_name : emp.manager_email };
+            }
+            const div = (emp.division || '').toLowerCase();
+            const headRe = /head|lead|manager|roh|chief|director/i;
+            const head = hrEmployees.find(x => x.id !== emp.id && (x.division || '').toLowerCase() === div
+                && (headRe.test(x.designation || '') || headRe.test(x.department || '')));
+            if (head && head.portal_email) return { email: head.portal_email.toLowerCase(), name: head.full_name };
+            return null; // no manager stage resolvable → HR-only approval
+        }
+        // Which approval stage the CURRENT actor fills for a given request.
+        function hrActorStageFor(req) {
+            const emp = hrEmployees.find(e => e.id === req.employee_id);
+            const auth = req.reporting_authority_email || (hrResolveReportingAuthority(emp) || {}).email || null;
+            const meEmail = (activeEmail || '').toLowerCase();
+            const isAuthority = auth && meEmail && meEmail === auth;
+            const isHRAdmin = (typeof activeRole !== 'undefined' && activeRole === 'admin');
+            const isManagerRole = (typeof activeRole !== 'undefined' && activeRole === 'manager');
+            // Manager stage: the resolved authority (or a manager-role actor) fills it first.
+            if (req.manager_status !== 'approved' && req.manager_status !== 'rejected' && (isAuthority || isManagerRole)) return 'manager';
+            // HR stage: HR admin fills it (after or independent of manager).
+            if (isHRAdmin) return 'hr';
+            // Authority acting again / fallback: whichever stage is still pending.
+            if (isAuthority && req.manager_status === 'pending') return 'manager';
+            if (isHRAdmin || isManagerRole) return req.manager_status !== 'approved' ? 'manager' : 'hr';
+            return null;
+        }
+        // Human label for a request's current overall state (§6 suggested statuses).
+        function hrLeaveStatusLabel(r) {
+            if (r.status === 'rejected') return 'Rejected';
+            if (r.status === 'cancelled') return 'Cancelled';
+            if (r.final_treatment === 'exception') return 'Exception Approved';
+            if (r.status === 'approved') return (r.final_treatment === 'lop' || r.final_treatment === 'lop_double') ? 'Approved (LOP)' : 'Approved';
+            if (r.manager_status !== 'approved') return 'Pending Manager Approval';
+            if (r.hr_status !== 'approved') return 'Pending HR Approval';
+            return 'Pending';
+        }
+
+// decideHRLeave — now STAGE-AWARE (Leave Policy v2 §6). The same Approve/Reject buttons on
+// hr.html (HR stage) and index.html My Team (manager stage) call this; the actor's applicable
+// stage is resolved from their role + the request's reporting authority. Final status becomes
+// 'approved' ONLY when BOTH manager_status and hr_status are 'approved'. A rejection at either
+// stage rejects the request. Every action is written to hr_audit_log. Attendance sync fires
+// only on final approval. Signature kept backward-compatible: decideHRLeave(id,'approved'|
+// 'rejected'[, {exception:true, reason}]).
+        async function decideHRLeave(id, decision, opts) {
+            opts = opts || {};
             const req = hrLeaveRequests.find(r => r.id === id);
             if (!req) { if (typeof showToast === 'function') showToast('error', 'Could not find that leave request — try reloading.'); return; }
-            const { error } = await dbInstance.from('hr_leave_requests').update({ status }).eq('id', id);
+            const actorEmail = (typeof activeEmail !== 'undefined' && activeEmail) || null;
+            const actorName = (typeof activeUser !== 'undefined' && activeUser) || 'HR';
+            const nowIso = new Date().toISOString();
+            const prevLabel = hrLeaveStatusLabel(req);
+
+            // Management exception (§5/§8/§12) — overrides consecutive/adjacency policy blocks.
+            if (opts.exception) {
+                const upd = { status: 'approved', manager_status: 'approved', hr_status: 'approved',
+                    final_treatment: 'exception', exception_by: actorName, exception_reason: opts.reason || 'Management exception',
+                    exception_at: nowIso, decided_at: nowIso };
+                const { error } = await dbInstance.from('hr_leave_requests').update(upd).eq('id', id);
+                if (error) { (typeof showToast==='function'?showToast('error','Could not grant exception: '+error.message):alert(error.message)); return; }
+                Object.assign(req, upd);
+                try { await hrSyncLeaveToAttendance(req); } catch (e) {}
+                await hrAuditLeave(req, actorEmail, actorName, 'exception_grant', prevLabel, 'Exception Approved', opts.reason);
+                await hrReloadAfterLeave();
+                if (typeof showToast === 'function') showToast('success', 'Management exception approved.');
+                return;
+            }
+
+            const stage = hrActorStageFor(req) || 'hr';
+            const upd = {};
+            if (decision === 'rejected') {
+                upd.status = 'rejected';
+                upd[stage + '_status'] = 'rejected';
+                upd[stage + '_by'] = actorName; upd[stage + '_at'] = nowIso; upd.decided_at = nowIso;
+            } else {
+                upd[stage + '_status'] = 'approved';
+                upd[stage + '_by'] = actorName; upd[stage + '_at'] = nowIso;
+                const mgrOK = (stage === 'manager' ? true : req.manager_status === 'approved');
+                const hrOK = (stage === 'hr' ? true : req.hr_status === 'approved');
+                if (mgrOK && hrOK) { upd.status = 'approved'; upd.decided_at = nowIso; }
+                else { upd.status = 'pending'; }
+            }
+            const { error } = await dbInstance.from('hr_leave_requests').update(upd).eq('id', id);
             if (error) {
                 console.warn('Could not update leave request:', error.message);
                 if (typeof showToast === 'function') showToast('error', 'Could not update the leave request: ' + error.message); else alert('Could not update the leave request: ' + error.message);
                 return;
             }
-            req.status = status; // optimistic — reflects immediately even before the reload below finishes
-            if (status === 'approved') {
+            Object.assign(req, upd);
+            if (req.status === 'approved') {
                 try { await hrSyncLeaveToAttendance(req); } catch (e) { console.warn('Could not sync approved leave to attendance:', e.message); }
             }
+            await hrAuditLeave(req, actorEmail, actorName, decision === 'rejected' ? 'leave_reject' : 'leave_approve', prevLabel, hrLeaveStatusLabel(req), opts.reason);
+            await hrReloadAfterLeave();
+            if (typeof showToast === 'function') showToast('success',
+                decision === 'rejected' ? 'Leave rejected (' + stage + ' stage).'
+                : req.status === 'approved' ? 'Leave fully approved.' : 'Approved at ' + stage + ' stage — ' + hrLeaveStatusLabel(req) + '.');
+        }
+        async function hrReloadAfterLeave() {
             if (typeof loadHRData === 'function') await loadHRData();
             else if (typeof loadMyHRData === 'function') await loadMyHRData();
-            if (typeof showToast === 'function') showToast('success', status === 'approved' ? 'Leave request approved.' : 'Leave request rejected.');
+        }
+        async function hrAuditLeave(req, actorEmail, actorName, action, prev, next, reason) {
+            try {
+                await dbInstance.from('hr_audit_log').insert([{
+                    employee_id: req.employee_id, actor_email: actorEmail, actor_name: actorName,
+                    action: action, entity: 'leave_request', entity_id: req.id,
+                    prev_status: prev, new_status: next, reason: reason || req.reason || null,
+                    exception_reason: req.exception_reason || null,
+                    meta: { leave_type: req.leave_type, start_date: req.start_date, end_date: req.end_date, days: req.days, final_treatment: req.final_treatment || null }
+                }]);
+            } catch (e) { console.warn('audit log failed', e); }
         }
 
 // ── myHREmployeeRecord (orig line 11445) ──
@@ -2146,12 +2253,15 @@ function hrOfficialEventFor(employee, dateStr) {
                 return `<div class="hr-stat-card"><div class="num">${remaining}</div><div class="label">${b.leave_type}</div></div>`;
             }).join('') : '<p class="text-[#4a5182] text-xs col-span-3">No balances set yet.</p>';
             const mine = hrLeaveRequests.filter(r => r.employee_id === me.id);
-            document.getElementById('my-leave-history').innerHTML = mine.length ? mine.map(r => `
+            document.getElementById('my-leave-history').innerHTML = mine.length ? mine.map(r => {
+                const label = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(r) : r.status;
+                const kind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : 'pending';
+                return `
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
-                    <span class="text-sm text-[#a5adcf]">${r.leave_type} — ${r.start_date} → ${r.end_date}</span>
-                    <span class="hr-badge hr-badge-${r.status}">${r.status}</span>
-                </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">No requests yet.</p>';
+                    <span class="text-sm text-[#a5adcf]">${r.leave_type} — ${r.start_date} → ${r.end_date}${r.emergency ? ' ⚡' : ''}</span>
+                    <span class="hr-badge hr-badge-${kind}">${label}</span>
+                </div>`;
+            }).join('') : '<p class="text-[#4a5182] text-xs">No requests yet.</p>';
         }
 
 // ── submitMyLeave (orig line 11563) ──
@@ -2175,13 +2285,44 @@ function hrOfficialEventFor(employee, dateStr) {
             if (!start_date || !end_date) { alert(isHalf ? 'Pick the date.' : 'Pick start and end dates.'); return; }
             const days = isHalf ? 0.5 : Math.round((new Date(end_date) - new Date(start_date)) / 86400000) + 1;
             if (days < 0.5) { alert('End date must be on or after start date.'); return; }
+            const emergencyEl = document.getElementById('my-leave-emergency');
+            const proofEl = document.getElementById('my-leave-proof');
+            const emergency = !!(emergencyEl && emergencyEl.checked);
+            const proof_url = proofEl ? (proofEl.value || '').trim() : '';
             try {
-                const rec = { employee_id: me.id, leave_type, start_date, end_date, days, reason, status: 'pending', requested_at: new Date().toISOString() };
+                // Resolve the manager-stage approver dynamically + run the shared policy engine so
+                // the request carries its policy verdict (warnings, treatment) from creation.
+                const auth = hrResolveReportingAuthority(me);
+                let policy_warning = null, final_treatment = 'pending', adjacency_flag = false;
+                if (typeof LeavePolicy !== 'undefined' && !LeavePolicy.db && typeof dbInstance !== 'undefined') LeavePolicy.withClient(dbInstance);
+                if (typeof LeavePolicy !== 'undefined' && LeavePolicy.db) {
+                    try {
+                        const ctx = await LeavePolicy.db.buildContext(me, { now: new Date(), date: start_date });
+                        const el = LeavePolicy.resolveLeaveEligibility(ctx, { leave_type, start_date, end_date, days, emergency });
+                        if (el.warnings && el.warnings.length) policy_warning = el.warnings.join(' ');
+                        final_treatment = el.treatment || 'pending';
+                        adjacency_flag = !!(el.adjacency && el.adjacency.adjacent);
+                        if (el.warnings && el.warnings.length && typeof showToast === 'function')
+                            showToast('info', 'Policy note: ' + el.warnings[0]);
+                    } catch (e) { console.warn('policy eligibility failed (non-fatal)', e); }
+                }
+                const rec = {
+                    employee_id: me.id, leave_type, start_date, end_date, days, reason,
+                    status: 'pending', requested_at: new Date().toISOString(),
+                    manager_status: auth ? 'pending' : 'approved', // no resolvable manager → HR-only
+                    hr_status: 'pending',
+                    reporting_authority_email: auth ? auth.email : null,
+                    emergency, proof_url: proof_url || null,
+                    policy_warning, final_treatment, adjacency_flag, consecutive_days: days
+                };
                 if (isHalf) { const ht = document.getElementById('my-leave-half-type'); rec.half_day_type = ht ? ht.value : 'morning'; }
                 await dbInstance.from('hr_leave_requests').insert([rec]);
+                try { await dbInstance.from('hr_audit_log').insert([{ employee_id: me.id, actor_email: (activeEmail||null), actor_name: (activeUser||me.full_name), action: 'leave_request', entity: 'leave_request', new_status: 'Pending Manager Approval', reason, meta: { leave_type, start_date, end_date, days, emergency } }]); } catch(e){}
                 document.getElementById('my-leave-start').value = '';
                 document.getElementById('my-leave-end').value = '';
                 document.getElementById('my-leave-reason').value = '';
+                if (emergencyEl) emergencyEl.checked = false;
+                if (proofEl) proofEl.value = '';
                 await loadMyHRData();
                 initMyLeave();
             } catch (e) { alert('Could not submit request: ' + e.message); }
