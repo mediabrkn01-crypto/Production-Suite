@@ -669,11 +669,12 @@ details[open] .rawsum::before{content:'▾ '}
           <div id="liveBatches" class="loading">Loading…</div>
         </div>
         <div class="section role-head-only hidden">
-          <h2>Batches <button onclick="acadSwitchTab('createbatch')">+ Create Batch</button></h2>
+          <h2>Batches <span class="tag" id="batchesCount">0</span> <button onclick="acadSwitchTab('createbatch')">+ Create Batch</button></h2>
           <div class="mhint" style="margin-bottom:12px">Batch management and details only — to add or edit students, use the Students tab.</div>
-          <input id="batch_table_search" type="text" placeholder="Search batches by name, trainer, course, student…" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;margin-bottom:12px" oninput="renderBatchTable()"/>
+          <input id="batch_table_search" type="text" placeholder="Search batches by name, trainer, course, student…" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;margin-bottom:12px" oninput="_acadBatchSearchChanged()"/>
           <table><thead><tr><th>Batch Name</th><th>Trainer</th><th>Course</th><th>Schedule</th><th>Students</th><th>Status</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead>
             <tbody id="batchTable"></tbody></table>
+          <div id="batch_pager" class="be-pager" style="margin-top:10px"></div>
         </div>
       </div>
 
@@ -5109,7 +5110,7 @@ let _acadPaymentByStudent = {}; // student_id -> { fee, discount, paid, status }
 // the real scalability win once the migration is applied.
 let _acadStudentsMode = null; // 'rpc' | 'fallback' — decided on first load, cached for the session
 let _acadStudentsPage = 1;
-const _ACAD_STUDENTS_PAGE_SIZE = 50;
+let _ACAD_STUDENTS_PAGE_SIZE = 10;
 let _acadStudentsTotal = 0;
 let _acadStudentsPageRows = [];
 async function loadStudentsTab(){
@@ -5194,17 +5195,48 @@ function _acadStuRow(s, lifecycle, payStatus){
   <td data-label="Enrolled">${s.enrolled_date||'—'}</td>
   <td data-label="Actions"><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>`;
 }
-function _acadStuPager(page, pageSize, total){
-  const pagerEl = document.getElementById('stu_pager');
-  if (!pagerEl) return;
+// Shared pager component (Students + Batches) — numbered buttons with ellipsis on desktop,
+// compact "Page X of Y" on mobile, plus a "from–to of total" summary. goFn is the name of the
+// page-change handler to call with the target page number.
+function _acadEnsurePagerCSS(){
+  if (document.getElementById('be-pager-css')) return;
+  const st=document.createElement('style');st.id='be-pager-css';
+  st.textContent=`.be-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+  .be-pager-info{color:var(--tx3);font-size:12px;margin-right:auto}
+  .be-pager-numbers{display:flex;gap:4px}
+  .be-pager-num{min-width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--bd);color:var(--tx2);font-size:12px;cursor:pointer;padding:0 8px}
+  .be-pager-num.on{background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;border-color:transparent}
+  .be-pager-gap{color:var(--tx3);padding:0 2px;align-self:center}
+  .be-pager-mobile{display:none;font-size:12px;color:var(--tx3)}
+  .be-pager-size{background:rgba(255,255,255,.05);border:1px solid var(--bd);border-radius:8px;color:var(--tx2);font-size:12px;padding:5px 8px;color-scheme:dark;margin-right:6px}
+  @media(max-width:767px){.be-pager-numbers{display:none}.be-pager-mobile{display:inline}.be-pager-info{display:none}}`;
+  document.head.appendChild(st);
+}
+function _acadPagerHTML(page, pageSize, total, goFn, sizeSelHTML){
+  _acadEnsurePagerCSS();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const from = total ? (page-1)*pageSize + 1 : 0;
   const to = Math.min(total, page*pageSize);
-  pagerEl.innerHTML = `<span style="color:var(--tx3);font-size:12px">${from}–${to} of ${total}</span>
-    <button class="act-btn" ${page<=1?'disabled':''} onclick="_acadStuGoPage(${page-1})">‹ Prev</button>
-    <span style="font-size:12px;color:var(--tx3)">Page ${page} of ${totalPages}</span>
-    <button class="act-btn" ${page>=totalPages?'disabled':''} onclick="_acadStuGoPage(${page+1})">Next ›</button>`;
+  const win = [1];
+  for (let n=page-1; n<=page+1; n++) if (n>1 && n<totalPages) win.push(n);
+  if (totalPages>1) win.push(totalPages);
+  const uniq=[...new Set(win)].sort((a,b)=>a-b);
+  let prev=0, nums='';
+  uniq.forEach(n=>{ if (n-prev>1) nums+='<span class="be-pager-gap">…</span>'; nums+=`<button class="be-pager-num${n===page?' on':''}" onclick="${goFn}(${n})">${n}</button>`; prev=n; });
+  return `<span class="be-pager-info">${from}–${to} of ${total}</span>${sizeSelHTML||''}
+    <button class="act-btn" ${page<=1?'disabled':''} onclick="${goFn}(${page-1})">‹ Prev</button>
+    <span class="be-pager-numbers">${nums}</span>
+    <span class="be-pager-mobile">Page ${page} of ${totalPages}</span>
+    <button class="act-btn" ${page>=totalPages?'disabled':''} onclick="${goFn}(${page+1})">Next ›</button>`;
 }
+function _acadStuPager(page, pageSize, total){
+  const pagerEl = document.getElementById('stu_pager');
+  if (!pagerEl) return;
+  pagerEl.className='be-pager';
+  const sizeSel=`<select class="be-pager-size" onchange="_acadStuSetPageSize(this.value)">${[10,20,50,100].map(n=>`<option value="${n}" ${n===pageSize?'selected':''}>${n} / page</option>`).join('')}</select>`;
+  pagerEl.innerHTML = _acadPagerHTML(page, pageSize, total, '_acadStuGoPage', sizeSel);
+}
+function _acadStuSetPageSize(v){ _ACAD_STUDENTS_PAGE_SIZE=parseInt(v,10)||10; _acadStudentsPage=1; renderStudentsTable(); }
 function _acadStuGoPage(p){
   if (p < 1) return;
   _acadStudentsPage = p;
@@ -5302,10 +5334,17 @@ async function renderStudentsTable(){
   rows.sort(cmp);
   const countEl = document.getElementById('studentsCount');
   if (countEl) countEl.textContent = rows.length + (rows.length!==_allStudents.length ? ` / ${_allStudents.length}` : '');
-  document.getElementById('studentsList').innerHTML = rows.length ? rows.map(s => _acadStuRow(s, _acadStudentLifecycleStatus(s), _acadStudentPaymentStatus(s))).join('')
+  // Fallback mode now paginates the client-filtered list too (was rendering every matching row):
+  // clamp the page into range, slice, and show the same pager. The full set is already in memory
+  // for the rest of Academic, so this is a render-layer slice, not a second fetch.
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / _ACAD_STUDENTS_PAGE_SIZE));
+  if (_acadStudentsPage > totalPages) _acadStudentsPage = totalPages;
+  const start = (_acadStudentsPage-1)*_ACAD_STUDENTS_PAGE_SIZE;
+  const pageRows = rows.slice(start, start + _ACAD_STUDENTS_PAGE_SIZE);
+  document.getElementById('studentsList').innerHTML = pageRows.length ? pageRows.map(s => _acadStuRow(s, _acadStudentLifecycleStatus(s), _acadStudentPaymentStatus(s))).join('')
     : `<tr><td colspan="8" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
-  const pagerEl = document.getElementById('stu_pager');
-  if (pagerEl) pagerEl.innerHTML = ''; // no pagination controls in fallback mode — same as before this refactor
+  _acadStuPager(_acadStudentsPage, _ACAD_STUDENTS_PAGE_SIZE, total);
 }
 let _acadFallbackLoaded = false;
 // The RPC takes a batch UUID, but the <select> stores the batch NAME (matches every other
@@ -5499,9 +5538,30 @@ function _acadBatchRowMatches(b, term){
     || cn.toLowerCase().includes(t)
     || (b.students||[]).some(s => (s.name||'').toLowerCase().includes(t));
 }
+let _acadBatchPage = 1;
+let _ACAD_BATCH_PAGE_SIZE = 20;
+function _acadBatchSearchChanged(){ _acadBatchPage = 1; renderBatchTable(); }
+function _acadBatchGoPage(p){ if (p<1) return; _acadBatchPage = p; renderBatchTable(); }
+function _acadBatchSetPageSize(v){ _ACAD_BATCH_PAGE_SIZE = parseInt(v,10)||20; _acadBatchPage = 1; renderBatchTable(); }
 function renderBatchTable(){
   const term = (document.getElementById('batch_table_search')?.value || '').trim();
-  const batches = (window._allBatchesFull || []).filter(b => _acadBatchRowMatches(b, term));
+  const all = (window._allBatchesFull || []).filter(b => _acadBatchRowMatches(b, term));
+  // Client-side pagination: the full batch set stays loaded (the Availability engine, Create
+  // Batch conflict checks and checkBatchTrainerConflict all read window._allBatchesFull), so this
+  // slices the already-filtered list for display rather than a separate fetch — the count and
+  // page stay correct after create/delete/complete/search because it re-derives from that set.
+  const countEl = document.getElementById('batchesCount'); if (countEl) countEl.textContent = all.length;
+  const total = all.length;
+  const totalPages = Math.max(1, Math.ceil(total / _ACAD_BATCH_PAGE_SIZE));
+  if (_acadBatchPage > totalPages) _acadBatchPage = totalPages;
+  const start = (_acadBatchPage-1)*_ACAD_BATCH_PAGE_SIZE;
+  const batches = all.slice(start, start + _ACAD_BATCH_PAGE_SIZE);
+  const pagerEl = document.getElementById('batch_pager');
+  if (pagerEl) {
+    pagerEl.className='be-pager';
+    const sizeSel=`<select class="be-pager-size" onchange="_acadBatchSetPageSize(this.value)">${[10,20,50,100].map(n=>`<option value="${n}" ${n===_ACAD_BATCH_PAGE_SIZE?'selected':''}>${n} / page</option>`).join('')}</select>`;
+    pagerEl.innerHTML = total ? _acadPagerHTML(_acadBatchPage, _ACAD_BATCH_PAGE_SIZE, total, '_acadBatchGoPage', sizeSel) : '';
+  }
   document.getElementById('batchTable').innerHTML = batches.map(b => {
     const cn=b.courses?.name||courseLabel(b.batch_type);
     // DROPPED WORKFLOW: a Dropped student keeps their batch link (real history preserved) but
