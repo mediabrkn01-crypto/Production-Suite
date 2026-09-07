@@ -1062,52 +1062,75 @@ function switchTab(tab){
    `batches` (trainer_id + day_pattern + time_slot + name/programme); free-slot capacity from the shared
    `get_available_trainers` RPC academics' Create Batch already uses (backend-first, scales, no duplicated
    client-side availability engine). Head-only (nav gated by .head-only). */
-let _avTrainers=[], _avBatches=[];
+let _avOverview=[]; // rows from get_trainer_slot_overview() — one per (trainer, declared slot) + occupied-not-declared
+function _fmt12(hhmm){ // "20:30" -> "8:30 PM"; passes through anything not HH:MM (raw batch text)
+  const m=String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/); if(!m)return hhmm||'';
+  let h=+m[1];const ap=h<12?'AM':'PM';h=h%12;if(h===0)h=12;return `${h}:${m[2]} ${ap}`;
+}
 async function loadAvailability(){
   if(!ME||!ME.isHead)return;
-  // active courses into the finder's course filter (same shared courses list)
   const cs=document.getElementById('av_course');
   if(cs&&cs.options.length<=1)cs.innerHTML='<option value="">Any course</option>'+COURSES.map(c=>`<option>${esc(c.name)}</option>`).join('');
   try{
-    const [{data:tr},{data:av},{data:ba}]=await Promise.all([
-      sb.from('trainers').select('id,name,status,type,pt_available_days,pt_time_ranges,pt_time_start,pt_time_end').eq('status','active').order('name'),
-      sb.from('trainer_availability').select('trainer_id,start_time,end_time,is_active').eq('is_active',true),
-      sb.from('batches').select('trainer_id,name,programme,day_pattern,time_slot,status,deleted_at,completed_at').is('deleted_at',null),
-    ]);
-    const avByTr={};(av||[]).forEach(a=>{(avByTr[a.trainer_id]=avByTr[a.trainer_id]||[]).push(a);});
-    _avTrainers=(tr||[]).map(t=>({...t,_avail:avByTr[t.id]||[]}));
-    // Only LIVE batches count as occupancy — same non-live set academics.isBatchCurrentlyActive()
-    // and the get_available_trainers RPC use (completed/finished/closed/cancelled/archived, or a
-    // completed_at stamp, never occupy). Finished batches stay as history, just not as bookings.
-    const _NONLIVE=['completed','finished','closed','cancelled','archived'];
-    _avBatches=(ba||[]).filter(b=>!b.completed_at&&!_NONLIVE.includes(String(b.status||'').toLowerCase()));
+    // One shared backend source (get_trainer_slot_overview) — every declared slot with FREE/
+    // OCCUPIED computed server-side from LIVE batches only (finished/closed/cancelled/deleted
+    // excluded), day+time aware, same rules academics uses. No client availability engine.
+    const {data,error}=await sb.rpc('get_trainer_slot_overview');
+    if(error)throw error;
+    _avOverview=data||[];
   }catch(e){document.getElementById('avOccupancy').innerHTML='<div class="empty">Could not load availability.</div>';return;}
   salesRenderOccupancy();
 }
 function salesRenderOccupancy(){
   const q=(document.getElementById('av_search').value||'').toLowerCase();
   const typeF=document.getElementById('av_type').value;
-  const rows=_avTrainers.filter(t=>{
-    if(q&&!(t.name||'').toLowerCase().includes(q))return false;
-    if(typeF==='full'&&/part/i.test(t.type||''))return false;
-    if(typeF==='part'&&!/part/i.test(t.type||''))return false;
-    return true;
+  // group overview rows by trainer
+  const byTr=new Map();
+  _avOverview.forEach(r=>{
+    if(!byTr.has(r.trainer_id))byTr.set(r.trainer_id,{id:r.trainer_id,name:r.trainer_name,type:r.trainer_type,slots:[]});
+    byTr.get(r.trainer_id).slots.push(r);
   });
+  let trainers=[...byTr.values()].filter(t=>{
+    if(q&&!(t.name||'').toLowerCase().includes(q))return false;
+    if(typeF==='full'&&/part|pt/i.test(t.type||''))return false;
+    if(typeF==='part'&&!/part|pt/i.test(t.type||''))return false;
+    return true;
+  }).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const host=document.getElementById('avOccupancy');
-  if(!rows.length){host.innerHTML='<div class="empty">No trainers match.</div>';return;}
-  host.innerHTML=rows.map(t=>{
-    const isPart=/part/i.test(t.type||'');
-    const declared=isPart
-      ? [t.pt_time_ranges||([t.pt_time_start,t.pt_time_end].filter(Boolean).join('–')), (t.pt_available_days||'')].filter(Boolean).join(' · ')
-      : (t._avail.length?t._avail.map(a=>`${a.start_time}–${a.end_time}`).join(', '):'Standard hours');
-    const booked=_avBatches.filter(b=>String(b.trainer_id)===String(t.id));
-    const occ=booked.length?booked.map(b=>`<div class="qrow" style="padding:8px 12px"><div><b>${esc(b.day_pattern||'—')} · ${esc(b.time_slot||'—')}</b><div style="font-size:11px;color:var(--tx3)">${esc(b.name||'')}${b.programme?' — '+esc(b.programme):''}</div></div><span class="badge b-red">OCCUPIED</span></div>`).join(''):'<div class="empty" style="padding:12px">No booked slots — declared window is free.</div>';
+  if(!trainers.length){host.innerHTML='<div class="empty">No trainers match.</div>';return;}
+  host.innerHTML=trainers.map(t=>{
+    const isPart=/part|pt/i.test(t.type||'');
+    const declaredSlots=t.slots.filter(s=>s.is_declared);
+    const freeSlots=declaredSlots.filter(s=>s.is_free);
+    const occSlots=t.slots.filter(s=>!s.is_free); // declared-occupied + not-in-declared bookings
+    // FREE rows first (green, selectable — Sales picks one to enrol into), then OCCUPIED (red, info).
+    const freeRows=freeSlots.map(s=>{
+      const label=`${_fmt12(s.slot_start)} – ${_fmt12(s.slot_end)}`;
+      const arg=`${encodeURIComponent(t.name)}|${encodeURIComponent(label)}`;
+      return `<div class="qrow" style="padding:8px 12px;cursor:pointer" onclick="salesPickFreeSlot('${arg}')" title="Use this slot when enrolling a student"><div><b>${esc(label)}</b><div style="font-size:11px;color:var(--tx3)">Tap to use for enrolment</div></div><span class="badge b-green">FREE</span></div>`;
+    }).join('');
+    const occRows=occSlots.map(s=>{
+      const label=s.is_declared?`${_fmt12(s.slot_start)} – ${_fmt12(s.slot_end)}`:esc(s.slot_start||'—');
+      return `<div class="qrow" style="padding:8px 12px"><div><b>${label}</b><div style="font-size:11px;color:var(--tx3)">${esc(s.batch_name||'')}${s.programme?' — '+esc(s.programme):''}${s.is_declared?'':' · not in a declared slot'}</div></div><span class="badge b-red">OCCUPIED</span></div>`;
+    }).join('');
+    const noFree=declaredSlots.length>0&&freeSlots.length===0;
+    const warn=noFree?`<div style="display:flex;align-items:center;gap:8px;margin:6px 0;padding:8px 12px;border-radius:9px;background:rgba(255,5,82,.1);border:1px solid rgba(255,5,82,.28)"><span style="color:var(--brand-3);font-weight:700;font-size:12.5px">⚠ No available slots</span></div>`:'';
+    const body=(freeRows+occRows)||'<div class="empty" style="padding:12px">No declared availability yet.</div>';
     return `<div class="section" style="background:rgba(255,255,255,.02);margin-bottom:12px">
-      <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span class="badge ${isPart?'b-amber':'b-blue'}">${isPart?'Part-time':'Full-time'}</span></div>
-      <div class="sub" style="margin:4px 0 8px">Declared: ${esc(declared||'—')}</div>
-      ${occ}
+      <div class="row" style="justify-content:space-between"><span><b>${esc(t.name)}</b> <span style="font-size:10.5px;color:${noFree?'var(--brand-3)':'var(--tx3)'}">${freeSlots.length} free / ${declaredSlots.length} slots</span></span><span class="badge ${isPart?'b-amber':'b-blue'}">${isPart?'Part-time':'Full-time'}</span></div>
+      ${warn}
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">${body}</div>
     </div>`;
   }).join('');
+}
+// Sales picks a FREE slot → open Enrol and prefill the preferred class time with it (and note
+// the trainer). Occupied slots are not clickable, so a conflicting slot can't be chosen here.
+function salesPickFreeSlot(arg){
+  const [tn,label]=arg.split('|').map(decodeURIComponent);
+  openEnrol();
+  document.getElementById('en_pref').value=label;
+  document.getElementById('en_pref_btn').textContent=label;
+  showToast('success',`Slot selected — ${tn}, ${label}. Complete the enrolment.`);
 }
 // The get_available_trainers RPC wants a 24h HH:MM start time (it rejects "AM/PM"). Convert
 // whatever the Sales user types ("9:30 PM", "9 pm", "21:30", "9.30pm") into HH:MM for it.
