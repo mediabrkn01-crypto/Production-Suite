@@ -417,7 +417,10 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <label class="fld">Student name<input id="en_name"/></label>
     <label class="fld">Contact<input id="en_contact"/></label>
     <label class="fld">Course<select id="en_course"></select></label>
-    <label class="fld">Preferred class time <span style="color:var(--tx3)">(optional — Academic Head sees this when creating the batch)</span><input id="en_pref" placeholder="e.g. 9:30 PM – 10:30 PM"/></label>
+    <label class="fld">Preferred class time <span style="color:var(--tx3)">(optional — Academic Head sees this when creating the batch)</span>
+      <button type="button" id="en_pref_btn" class="btn-ghost" style="text-align:left;justify-content:flex-start" onclick="openTimeSlotPicker(document.getElementById('en_pref').value, function(v){document.getElementById('en_pref').value=v; document.getElementById('en_pref_btn').textContent=v||'Select time slot';})">Select time slot</button>
+      <input id="en_pref" type="hidden"/>
+    </label>
   </div>
   <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mEnrol')">Cancel</button><button class="btn" id="en_save" onclick="saveEnrol()">Enrol & hand off to Academics</button></div>
 </div></div>
@@ -432,6 +435,29 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <label class="fld">Pin to counsellor (optional)<select id="ru_pin"><option value="">— none —</option></select></label>
   </div>
   <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mRule')">Cancel</button><button class="btn" onclick="saveRule()">Save rule</button></div>
+</div></div>
+
+<!-- Reassign Lead — custom modal (replaces the old window.prompt "enter number") -->
+<div class="modal-bg" id="mReassign"><div class="modal"><h3>Reassign Lead</h3>
+  <div class="sub" id="ra_leadname" style="margin:-6px 0 12px">—</div>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
+    <label class="fld">Select counsellor<select id="ra_counsellor"></select></label>
+  </div>
+  <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mReassign')">Cancel</button><button class="btn" id="ra_save" onclick="saveReassign()">Reassign</button></div>
+</div></div>
+
+<!-- Time-Slot Picker — custom, reusable (Preferred class time, and any other slot field). -->
+<div class="modal-bg" id="mTimeSlot"><div class="modal"><h3>Select Time Slot</h3>
+  <div class="sub" style="margin:-6px 0 10px">Pick a common slot, or set a custom start/end.</div>
+  <div id="ts_presets" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
+  <div class="sub" style="margin:0 0 6px;font-weight:600">Custom</div>
+  <div class="row" style="gap:8px;align-items:flex-end">
+    <label class="fld" style="flex:1">Start<select id="ts_start"></select></label>
+    <span style="padding-bottom:10px;color:var(--tx3)">–</span>
+    <label class="fld" style="flex:1">End<select id="ts_end"></select></label>
+    <button class="btn-ghost btn-sm" onclick="tsUseCustom()" style="margin-bottom:2px">Use custom</button>
+  </div>
+  <div class="modal-actions"><button class="btn-ghost" onclick="tsClear()">Clear</button><button class="btn-ghost" onclick="closeModal('mTimeSlot')">Cancel</button></div>
 </div></div>
 
 <div class="toast-host" id="toastHost"></div>
@@ -800,7 +826,7 @@ async function doneTask(id){await sb.from('tasks').update({status:'done'}).eq('i
 function openEnrol(){
   const mine=LEADS.filter(l=>l.stage!=='Enrolled'&&!PARK.includes(l.stage));
   document.getElementById('en_lead').innerHTML='<option value="">— pick one of your leads —</option>'+mine.map(l=>`<option value="${l.id}">${esc(l.lead_id)} · ${esc(l.name||'')} · ${esc(l.course_interest||'')}</option>`).join('');
-  document.getElementById('en_name').value='';document.getElementById('en_contact').value='';document.getElementById('en_course').value='';document.getElementById('en_pref').value='';
+  document.getElementById('en_name').value='';document.getElementById('en_contact').value='';document.getElementById('en_course').value='';document.getElementById('en_pref').value='';document.getElementById('en_pref_btn').textContent='Select time slot';
   openModal('mEnrol');
 }
 function enrolPrefill(){const l=LEADS.find(x=>String(x.id)===document.getElementById('en_lead').value);if(!l)return;document.getElementById('en_name').value=l.name||'';document.getElementById('en_contact').value=l.contact||'';document.getElementById('en_course').value=l.course_interest||'';}
@@ -842,14 +868,47 @@ function renderEnrol(){
 }
 
 /* ---------- HEAD: reassign, team, counsellors, routing ---------- */
-async function reassign(id){
+// Custom reassign — no more window.prompt("enter number"). Opens the branded modal with a
+// real counsellor dropdown (same COUNSELLORS backend list) + Cancel/Reassign.
+let _reassignLeadId=null;
+function reassign(id){
   const l=LEADS.find(x=>String(x.id)===String(id));if(!l)return;
-  const names=COUNSELLORS.map((c,i)=>`${i+1}. ${c.full_name}`).join('\n');
-  const pick=prompt(`Reassign "${l.name||l.lead_id}" to which counsellor?\n\n${names}\n\nEnter number:`);
-  const idx=parseInt(pick,10)-1;if(isNaN(idx)||!COUNSELLORS[idx])return;
-  await sb.from('leads').update({assigned_to:COUNSELLORS[idx].id,assigned_at:new Date().toISOString()}).eq('id',l.id);
-  showToast('success','Lead reassigned to '+COUNSELLORS[idx].full_name);await loadLeads();
+  _reassignLeadId=l.id;
+  document.getElementById('ra_leadname').textContent=(l.name||l.lead_id)+(l.assigned_to?' · currently '+counsellorName(l.assigned_to):'');
+  document.getElementById('ra_counsellor').innerHTML=COUNSELLORS.map(c=>`<option value="${c.id}">${esc(c.full_name)}</option>`).join('');
+  openModal('mReassign');
 }
+async function saveReassign(){
+  const cid=document.getElementById('ra_counsellor').value;const c=COUNSELLORS.find(x=>String(x.id)===String(cid));
+  if(!c||!_reassignLeadId){closeModal('mReassign');return;}
+  const btn=document.getElementById('ra_save');btn.disabled=true;
+  try{
+    await sb.from('leads').update({assigned_to:c.id,assigned_at:new Date().toISOString()}).eq('id',_reassignLeadId);
+    closeModal('mReassign');showToast('success','Lead reassigned to '+c.full_name);await loadLeads();
+  }finally{btn.disabled=false;}
+}
+
+// Reusable time-slot picker — preset chips + custom start/end selects, dark branded, no native
+// time control. Returns a display string like "9:30 PM – 10:30 PM" to the caller's callback.
+const TS_PRESETS=['8:00 AM – 9:00 AM','9:00 AM – 10:00 AM','10:00 AM – 11:00 AM','2:00 PM – 3:00 PM','7:30 PM – 8:30 PM','8:00 PM – 9:00 PM','8:30 PM – 9:30 PM','9:30 PM – 10:30 PM'];
+let _tsCb=null;
+function _tsTimeOptions(){
+  const out=[];for(let h=0;h<24;h++){for(const m of [0,30]){const ap=h<12?'AM':'PM';let hh=h%12;if(hh===0)hh=12;out.push(`${hh}:${String(m).padStart(2,'0')} ${ap}`);}}return out;
+}
+function openTimeSlotPicker(current,cb){
+  _tsCb=cb;
+  document.getElementById('ts_presets').innerHTML=TS_PRESETS.map(s=>`<button type="button" class="btn-ghost btn-sm" onclick="tsPick('${s}')" style="${s===current?'border-color:var(--brand-3);color:#fff':''}">${s}</button>`).join('');
+  const opts=_tsTimeOptions().map(t=>`<option>${t}</option>`).join('');
+  const ss=document.getElementById('ts_start'),es=document.getElementById('ts_end');
+  ss.innerHTML=opts;es.innerHTML=opts;
+  // seed custom from current if it looks like "A – B"
+  const m=(current||'').split(/\s*[–-]\s*/);
+  if(m[0])ss.value=m[0].trim(); if(m[1])es.value=m[1].trim();
+  openModal('mTimeSlot');
+}
+function tsPick(v){if(_tsCb)_tsCb(v);closeModal('mTimeSlot');}
+function tsUseCustom(){const v=document.getElementById('ts_start').value+' – '+document.getElementById('ts_end').value;if(_tsCb)_tsCb(v);closeModal('mTimeSlot');}
+function tsClear(){if(_tsCb)_tsCb('');closeModal('mTimeSlot');}
 function renderTeam(){
   const total=LEADS.length,enrolled=LEADS.filter(l=>l.stage==='Enrolled').length,need=LEADS.filter(l=>!l.first_contact_at&&l.stage==='New').length,hot=LEADS.filter(l=>l.temperature==='Hot').length;
   const conv=total?Math.round(enrolled/total*100):0;
