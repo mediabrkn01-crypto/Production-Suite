@@ -5170,12 +5170,22 @@ const _ACAD_PAYMENT_LABEL = { Paid: 'PAID', Partial: 'PARTIAL', Pending: 'PENDIN
 // stored status is still literally 'New', without needing a new joined_at/removed_at column);
 // a current batch_id whose batch has already reached the SAME real finished-set every other
 // Academic screen uses (window._acadFinishedBatchNames) → Completed; otherwise → In Progress.
+// ONE final student-status resolver used everywhere (table, modal, filters, batch lists, pickers).
+// A manual business status (Dropped / On Freeze / Frozen / Cancelled / Discontinued) ALWAYS wins
+// over the auto-derived lifecycle — a Dropped student with a still-set batch_id must read Dropped,
+// never "In Progress". Only when there's no such override do we derive New/In Progress/Completed
+// from batch assignment + finished-set progress.
+const _ACAD_MANUAL_STATUSES = new Set(['Dropped','On Freeze','Frozen','Cancelled','Discontinued']);
 function _acadStudentLifecycleStatus(s){
-  if (s.status === 'Dropped' || s.status === 'On Freeze') return s.status;
+  if (s && _ACAD_MANUAL_STATUSES.has(s.status)) return s.status;   // manual override wins
   if (!s.batch_id) return s.status === 'New' ? 'New' : 'Unassigned';
   if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(s.batch_name)) return 'Completed';
   return 'In Progress';
 }
+// A student who is Dropped/Cancelled/Discontinued is inactive for FUTURE academic activity
+// (attendance marking, active seat counts). Freeze is a pause, not an exit — kept out of this set
+// so a frozen student still counts as an active enrollment.
+function _acadStudentIsInactive(s){ return !!(s && ['Dropped','Cancelled','Discontinued'].includes(s.status)); }
 // Group priority for the default sort (spec Part 1/9) — used only by the FALLBACK path now
 // (the RPC path computes this same grouping in SQL, see get_students_page's ORDER BY).
 const _ACAD_STUDENT_SORT_GROUP = { New: 0, Unassigned: 0, 'In Progress': 1, Completed: 2, 'On Freeze': 2, Dropped: 2 };
@@ -6968,9 +6978,23 @@ async function saveStuStatus(){
   const {error}=await sb.from('students').update(upd).eq('id',s.id);
   if(error){showToast('error','Save failed: '+error.message);return;}
   s.status=v; s.dropped_at = upd.dropped_at!==undefined ? upd.dropped_at : s.dropped_at;
+  // BUG FIX (table showed "In Progress" while the modal showed "Dropped"): _stu is a separate
+  // copy fetched when the modal opened, so mutating it alone left the CACHED _allStudents row
+  // (what the table re-renders from in fallback mode) stale. Sync that cached row here so the
+  // Students table + counters reflect the new status immediately, with no browser refresh.
+  if (Array.isArray(window._allStudents)) {
+    const cached = window._allStudents.find(x => x.id === s.id) || (typeof _allStudents!=='undefined' && _allStudents.find && _allStudents.find(x=>x.id===s.id));
+    if (cached) { cached.status = v; cached.dropped_at = s.dropped_at; }
+  }
+  if (typeof _allStudents!=='undefined' && Array.isArray(_allStudents)) {
+    const c2 = _allStudents.find(x=>x.id===s.id); if (c2) { c2.status=v; c2.dropped_at=s.dropped_at; }
+  }
+  // Update the modal's own visible Status line immediately too (it read s.status).
+  const modalStatusEl = document.getElementById('stu_prof_status_v');
+  if (modalStatusEl) modalStatusEl.textContent = _acadStudentLifecycleStatus(s);
   showToast('success','Status updated: '+s.name+' \u2192 '+(v||'Auto'));
   loadLive();
-  if (document.getElementById('tab-acad-students')?.classList.contains('on')) loadStudentsTab();
+  if (document.getElementById('tab-acad-students')?.classList.contains('on')) renderStudentsTable();
 }
 // Preferred time is editable here so a New/Unassigned student's window can be corrected or
 // filled in later, not just at creation — Create Batch's "Find Matching Students" step
@@ -7037,7 +7061,7 @@ async function openStuCore(s){
     +'<span class="k">Course interest</span><span class="v">'+esc(s.programme||'—')+'</span>'
     +'<span class="k">Counsellor</span><span class="v">'+esc(s.source_counsellor||'—')+'</span>'
     +'<span class="k">Enrolled</span><span class="v">'+esc(s.enrolled_date||'—')+'</span>'
-    +'<span class="k">Status</span><span class="v">'+esc(lifecycle)+'</span>'
+    +'<span class="k">Status</span><span class="v" id="stu_prof_status_v">'+esc(lifecycle)+'</span>'
     +'</div><div class="subhead" style="margin:12px 0 6px">Current Academic Assignment</div><div class="stu-grid">'
     +assignmentHTML
     +'</div>';
