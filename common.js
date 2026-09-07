@@ -394,7 +394,7 @@ async function loadMyHRData() {
                     // Late/Afternoon-login is auto-detected from the actual clock-in time —
                     // never manually guessed — and still means Present (see HR_PRESENT_STATUSES
                     // and hrAttStatusLabel: it always reads "Present · ...", never bare "Late").
-                    const computedStatus = hrComputeClockInStatus(whenIso);
+                    const computedStatus = hrComputeClockInStatus(whenIso, emp);
                     if (existing) {
                         // Don't let an automatic clock-in silently overwrite a status HR set on
                         // purpose. This was the actual cause of "HR marks someone On Leave and it
@@ -1086,7 +1086,20 @@ function hrFormatWorkingHours(emp) {
         }
 
 // ── hrComputeClockInStatus (orig line 7657) ──
-        function hrComputeClockInStatus(whenIso) {
+        function hrComputeClockInStatus(whenIso, employee) {
+            // Leave Policy v2 override: Late is decided against THIS employee's own configured
+            // schedule (expected start + grace), never a global office start. Flexible /
+            // unconfigured employees are never auto-Late here — always 'present'.
+            if (employee && typeof LeavePolicy !== 'undefined') {
+                const sched = LeavePolicy.getEmployeeWorkSchedule(employee, (whenIso || '').slice(0, 10));
+                if (!sched.hasExpected) return 'present';
+                const d = new Date(whenIso);
+                const ci = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+                const startP = sched.start.split(':').map(Number), t = startP[0] * 60 + startP[1] + (sched.graceMin || 0);
+                const ciP = ci.split(':').map(Number);
+                return (ciP[0] * 60 + ciP[1]) > t ? 'late' : 'present';
+            }
+            // Fallback (no employee / engine): previous single-cutoff behavior.
             const d = new Date(whenIso);
             const hour = d.getHours() + d.getMinutes() / 60;
             return hour > HR_LATE_AFTER_HOUR ? 'late' : 'present';
@@ -1424,7 +1437,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 // Today" already trust). Covers a sync that failed or hasn't caught up yet, so
                 // the Report can't disagree with what the employee's own clock-in screen shows.
                 const portalLog = hrPortalLogFor(employee, dateStr);
-                if (portalLog && portalLog.log_in_time) return hrComputeClockInStatus(portalLog.log_in_time) === 'late' ? 'L' : 'P';
+                if (portalLog && portalLog.log_in_time) return hrComputeClockInStatus(portalLog.log_in_time, employee) === 'late' ? 'L' : 'P';
             }
             if (rec) {
                 if (rec.status === 'holiday') return 'H';

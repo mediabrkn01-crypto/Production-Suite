@@ -77,6 +77,26 @@
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
   function timeGt(a, b) { return a > b; } // 'HH:MM' lexicographic works
+  function addMin(hhmmStr, mins) {
+    if (!hhmmStr) return hhmmStr; mins = mins || 0;
+    var p = hhmmStr.split(':').map(Number), t = p[0] * 60 + p[1] + mins;
+    if (t < 0) t = 0; if (t > 1439) t = 1439;
+    return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+  }
+
+  // getEmployeeWorkSchedule(employee, date): the ONE resolver for a person's expected hours.
+  // Overrides the global 9:00-5:30. Flexible / unconfigured employees have hasExpected=false →
+  // they are NEVER auto-marked Late/Early. Only Fixed/Custom/Class with an explicit start time
+  // get late/early evaluation. (date reserved for future per-day shift overrides.)
+  function getEmployeeWorkSchedule(emp, dateStr) {
+    var type = (emp && emp.work_schedule_type) || 'flexible';
+    var start = emp && emp.expected_start_time ? String(emp.expected_start_time).slice(0, 5) : null;
+    var end = emp && emp.expected_end_time ? String(emp.expected_end_time).slice(0, 5) : null;
+    var grace = emp && emp.grace_minutes != null ? Number(emp.grace_minutes) : 0;
+    var days = (emp && emp.work_days) ? String(emp.work_days).split(',').map(function (s) { return Number(s.trim()); }).filter(function (n) { return !isNaN(n); }) : null;
+    var configured = (type === 'fixed' || type === 'custom' || type === 'class');
+    return { type: type, start: start, end: end, graceMin: grace || 0, workDays: days, hasExpected: !!(configured && start) };
+  }
 
   // =========================================================================
   // 1. getEmployeePolicyState(employee, date)
@@ -316,9 +336,15 @@
         if (isWeeklyOff(ctx, dow) && state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
         return code(CODES.LOP, 'Absent', { payable: false, lop: true });
       }
-      // present / late — decide late by clock-in vs 09:00.
+      // present / late — decided against THIS employee's own schedule, never a global 9:00.
+      var sched = getEmployeeWorkSchedule(emp, dateStr);
       var ci = hhmm(rec.clock_in_time);
-      if (rec.status === 'late' || (ci && timeGt(ci, P.WORK_START))) return code(CODES.L, 'Late', { payable: true, worked: true, clockIn: rec.clock_in_time, clockOut: rec.clock_out_time });
+      var late = false;
+      if (sched.hasExpected) {
+        if (ci) late = timeGt(ci, addMin(sched.start, sched.graceMin));
+        else if (rec.status === 'late') late = true; // no clock time but HR marked late
+      } // flexible / unconfigured → never auto-late
+      if (late) return code(CODES.L, 'Late', { payable: true, worked: true, clockIn: rec.clock_in_time, clockOut: rec.clock_out_time });
       return code(CODES.P, 'Present', { payable: true, worked: true, clockIn: rec.clock_in_time, clockOut: rec.clock_out_time });
     }
 
@@ -366,14 +392,20 @@
   // =========================================================================
   function resolveIncidents(ctx, monthStr) {
     var incidents = [];
-    (ctx.attendance || []).forEach(function (a) {
-      var d = a.att_date && a.att_date.slice(0, 10); if (!d || d.slice(0, 7) !== monthStr) return;
-      // only worked days can be late/early
-      if (['absent', 'on_leave', 'holiday'].indexOf(a.status) >= 0) return;
-      var ci = hhmm(a.clock_in_time), co = hhmm(a.clock_out_time);
-      if (ci && timeGt(ci, P.WORK_START)) incidents.push({ date: d, type: 'late_login', at: ci });
-      if (co && timeGt(P.WORK_END, co)) incidents.push({ date: d, type: 'early_logout', at: co });
-    });
+    var sched = getEmployeeWorkSchedule(ctx.employee, monthStr + '-01');
+    // §2/§4/§5 override: NO incidents for flexible/unconfigured employees — an incident is only
+    // valid against the employee's own configured expected start/end (+ grace), never a global.
+    if (sched.hasExpected) {
+      var startThresh = addMin(sched.start, sched.graceMin);
+      var endThresh = sched.end ? addMin(sched.end, -sched.graceMin) : null;
+      (ctx.attendance || []).forEach(function (a) {
+        var d = a.att_date && a.att_date.slice(0, 10); if (!d || d.slice(0, 7) !== monthStr) return;
+        if (['absent', 'on_leave', 'holiday'].indexOf(a.status) >= 0) return; // only worked days
+        var ci = hhmm(a.clock_in_time), co = hhmm(a.clock_out_time);
+        if (ci && timeGt(ci, startThresh)) incidents.push({ date: d, type: 'late_login', at: ci });
+        if (endThresh && co && timeGt(endThresh, co)) incidents.push({ date: d, type: 'early_logout', at: co });
+      });
+    }
     var count = incidents.length;
     // §11 NOT cumulative: 4+ → 1 full day; else 2..3 → 0.5 day; else 0. Never both.
     var deductionDays = count >= P.INCIDENT_FULLDAY_AT ? 1 : count >= P.INCIDENT_HALFDAY_AT ? 0.5 : 0;
@@ -474,6 +506,7 @@
     P: P, CODES: CODES,
     normType: normType,
     clCycleFor: clCycleFor,
+    getEmployeeWorkSchedule: getEmployeeWorkSchedule,
     getEmployeePolicyState: getEmployeePolicyState,
     resolveLeaveBalance: resolveLeaveBalance,
     resolveLeaveEligibility: resolveLeaveEligibility,

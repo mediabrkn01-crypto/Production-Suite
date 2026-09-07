@@ -1545,6 +1545,24 @@
                 <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Manager (login email)</label><input id="hr-emp-manager-email" placeholder="manager's login email" class="hr-input w-full"></div>
                 <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
+                    <p class="hr-field-label" style="margin-bottom:8px">Work Schedule <span style="color:#6b74a0;font-weight:400">— drives Late / Early Logout for THIS employee. Leave Flexible if they have no fixed hours (never auto-marked Late).</span></p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="hr-field-label">Schedule Type</label>
+                            <select id="hr-emp-sched-type" class="hr-select w-full" onchange="renderHREmpScheduleFields()">
+                                <option value="flexible">Flexible / Not Configured</option>
+                                <option value="fixed">Fixed</option>
+                                <option value="custom">Part-time / Custom</option>
+                                <option value="class">Class / Shift Based</option>
+                            </select>
+                        </div>
+                        <div id="hr-emp-sched-grace-wrap"><label class="hr-field-label">Grace Period (minutes)</label><input id="hr-emp-sched-grace" type="number" min="0" class="hr-input w-full" placeholder="0"></div>
+                        <div id="hr-emp-sched-start-wrap"><label class="hr-field-label">Expected Start Time</label><select id="hr-emp-sched-start" class="hr-select w-full"></select></div>
+                        <div id="hr-emp-sched-end-wrap"><label class="hr-field-label">Expected End Time</label><select id="hr-emp-sched-end" class="hr-select w-full"></select></div>
+                        <div class="sm:col-span-2" id="hr-emp-sched-days-wrap"><label class="hr-field-label">Working Days</label><div id="hr-emp-sched-days-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div></div>
+                    </div>
+                    <p id="hr-emp-sched-note" class="text-[11px] text-[#6b74a0]" style="margin-top:6px"></p>
+                </div>
+                <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
                     <p class="hr-field-label" style="margin-bottom:8px">Login & System Access</p>
                 </div>
                 <div id="hr-emp-academic-hint" class="sm:col-span-2 hidden" style="background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#5eead4;margin-bottom:2px">
@@ -2953,6 +2971,14 @@
             document.getElementById('hr-emp-salary').value = e?.monthly_salary || '';
             document.getElementById('hr-emp-payment-cycle').value = e?.payment_cycle || 'monthly';
             document.getElementById('hr-emp-probation-months').value = e?.probation_months || '';
+            // Work Schedule — default new/unconfigured employees to Flexible (never auto-Late).
+            document.getElementById('hr-emp-sched-type').value = e?.work_schedule_type || 'flexible';
+            document.getElementById('hr-emp-sched-grace').value = (e?.grace_minutes != null ? e.grace_minutes : '');
+            hrBuildTimeSelect('hr-emp-sched-start', e?.expected_start_time ? String(e.expected_start_time).slice(0,5) : '');
+            hrBuildTimeSelect('hr-emp-sched-end', e?.expected_end_time ? String(e.expected_end_time).slice(0,5) : '');
+            hrEmpSchedDays = new Set((e?.work_days ? String(e.work_days).split(',') : []).map(s => Number(s.trim())).filter(n => !isNaN(n)));
+            hrRenderSchedDayChips();
+            renderHREmpScheduleFields();
             updateHREmpProbationPreview();
             updateHREmpAcademicHint(); // re-check now that hr-emp-email above actually has its final value
             document.getElementById('hr-employee-modal').classList.remove('hidden');
@@ -3077,6 +3103,40 @@
         }
 
 // ── saveHREmployee (orig line 9205) ──
+// ── Work Schedule form helpers (Leave Policy v2 per-employee-hours override) ──
+        let hrEmpSchedDays = new Set(); // dow numbers 0..6
+        const HR_SCHED_DAY_LABELS = [['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6],['Sun',0]];
+        function hrBuildTimeSelect(id, selected) {
+            const sel = document.getElementById(id); if (!sel) return;
+            let html = '<option value="">—</option>';
+            for (let mins = 0; mins < 24 * 60; mins += 30) {
+                const h = Math.floor(mins / 60), m = mins % 60;
+                const v = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+                const h12 = h % 12 === 0 ? 12 : h % 12, ap = h < 12 ? 'AM' : 'PM';
+                html += `<option value="${v}"${v === selected ? ' selected' : ''}>${h12}:${String(m).padStart(2,'0')} ${ap}</option>`;
+            }
+            sel.innerHTML = html;
+        }
+        function hrRenderSchedDayChips() {
+            const wrap = document.getElementById('hr-emp-sched-days-chips'); if (!wrap) return;
+            wrap.innerHTML = HR_SCHED_DAY_LABELS.map(([lbl, dow]) => {
+                const on = hrEmpSchedDays.has(dow);
+                return `<button type="button" onclick="hrToggleSchedDay(${dow})" class="hr-day-chip" style="padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${on?'transparent':'rgba(255,255,255,.15)'};background:${on?'linear-gradient(135deg,#ff6b06,#f9182f)':'rgba(255,255,255,.04)'};color:${on?'#fff':'#a5adcf'}">${lbl}</button>`;
+            }).join('');
+        }
+        function hrToggleSchedDay(dow) { if (hrEmpSchedDays.has(dow)) hrEmpSchedDays.delete(dow); else hrEmpSchedDays.add(dow); hrRenderSchedDayChips(); }
+        function renderHREmpScheduleFields() {
+            const type = document.getElementById('hr-emp-sched-type').value;
+            const flexible = type === 'flexible';
+            ['hr-emp-sched-start-wrap','hr-emp-sched-end-wrap','hr-emp-sched-grace-wrap','hr-emp-sched-days-wrap'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.style.display = flexible ? 'none' : '';
+            });
+            const note = document.getElementById('hr-emp-sched-note');
+            if (note) note.textContent = flexible
+                ? 'Flexible: this employee is never auto-marked Late or Early Logout — no expected start/end is used.'
+                : 'Late = clock-in after Expected Start + grace. Early Logout = clock-out before Expected End − grace. Only these count toward the monthly incident deduction.';
+        }
+
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
             if (!name) { alert('Full name is required.'); return; }
@@ -3121,6 +3181,13 @@
                 payment_cycle: document.getElementById('hr-emp-payment-cycle').value,
                 salary_type: 'monthly',
                 probation_months: parseFloat(document.getElementById('hr-emp-probation-months').value) || 0,
+                // Work Schedule (per-employee hours override). Flexible → no expected times, so
+                // never auto-Late; existing employees left untouched stay flexible.
+                work_schedule_type: document.getElementById('hr-emp-sched-type').value || 'flexible',
+                expected_start_time: (document.getElementById('hr-emp-sched-type').value === 'flexible') ? null : (document.getElementById('hr-emp-sched-start').value || null),
+                expected_end_time: (document.getElementById('hr-emp-sched-type').value === 'flexible') ? null : (document.getElementById('hr-emp-sched-end').value || null),
+                work_days: (document.getElementById('hr-emp-sched-type').value === 'flexible' || hrEmpSchedDays.size === 0) ? null : Array.from(hrEmpSchedDays).sort().join(','),
+                grace_minutes: (document.getElementById('hr-emp-sched-type').value === 'flexible') ? null : (parseInt(document.getElementById('hr-emp-sched-grace').value) || 0),
                 access_pipeline: document.getElementById('hr-emp-access-pipeline').checked,
                 access_attendance: document.getElementById('hr-emp-access-attendance').checked,
                 access_leave: document.getElementById('hr-emp-access-leave').checked,
