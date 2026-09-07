@@ -4513,12 +4513,22 @@ function renderTrainerAvailabilityView(){
       return `<div style="${_availRowStyle(_AVAIL_RED)}"><span style="font-size:12.5px;color:var(--tx)">${eDays?`<span style="color:var(--tx3)">${esc(eDays)}</span> • `:''}${esc(rt)} <span style="color:var(--tx3);font-size:10.5px">· not in a declared slot</span></span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,5,82,.15);color:var(--brand-3)">Occupied${b.name?': '+esc(b.name):''}</span>${acts}</span></div>`;
     }).join('');
     const allRows = (rows + extraRows) || '<div class="empty" style="padding:6px 0">No recurring availability declared yet.</div>';
+    // "No available slots" empty-state: the trainer has declared hours but none are currently
+    // free (every declared slot occupied by a LIVE batch — isBatchCurrentlyActive already
+    // excludes completed/finished/closed/cancelled/deleted, so a finished class never triggers
+    // this). Not shown On Leave (that has its own amber state), nor when there are no declared
+    // slots at all (nothing to be "0 free of"), nor when at least one slot is free.
+    const noFree = !onLeave && mySlots.length > 0 && freeCount === 0;
+    const warn = noFree
+      ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 12px;border-radius:9px;background:rgba(255,5,82,.1);border:1px solid rgba(255,5,82,.28)"><span style="color:var(--brand-3);font-weight:700;font-size:12.5px">⚠ No available slots</span><span style="color:var(--tx3);font-size:11px">— every declared slot is occupied by a live class.</span></div>`
+      : '';
     return `<div class="card" style="margin-bottom:12px;padding:14px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <span style="font-weight:700;color:var(--tx)">${esc(t.name)}</span>
         <span class="badge" style="background:rgba(255,255,255,.05);color:var(--tx3)">${t.type==='pt'?'Part-Time':'Full-Time'}</span>
-        ${mySlots.length ? `<span style="font-size:10.5px;color:var(--tx3)">${freeCount} free / ${mySlots.length} slots</span>` : ''}
+        ${mySlots.length ? `<span style="font-size:10.5px;color:${noFree?'var(--brand-3)':'var(--tx3)'}">${freeCount} free / ${mySlots.length} slots</span>` : ''}
       </div>
+      ${warn}
       <div style="display:flex;flex-direction:column;gap:6px">${allRows}</div>
     </div>`;
   }).join('');
