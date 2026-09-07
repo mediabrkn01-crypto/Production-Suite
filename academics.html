@@ -222,17 +222,15 @@ tr.clickable{cursor:pointer}
 .att-lbl{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.09em;padding-left:2px}
 #modalAtt .att-fld input{margin-bottom:0}
 #att_list{display:flex;flex-direction:column;gap:7px}
-.att-row{display:flex;align-items:center;gap:11px;padding:9px 11px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(255,255,255,.03);cursor:pointer;transition:border-color .12s,background .12s}
-.att-row:hover{border-color:rgba(255,107,6,.35);background:rgba(255,255,255,.05)}
+.att-row{display:flex;align-items:center;gap:11px;padding:9px 11px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(255,255,255,.03)}
 .att-ava{width:30px;height:30px;border-radius:50%;background:var(--gk);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
-.att-name{flex:1;font-size:13.5px;font-weight:600;color:var(--tx)}
+.att-name{flex:1;font-size:13.5px;font-weight:600;color:var(--tx);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .att-row input{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
-.att-pill{font-size:11px;font-weight:700;letter-spacing:.03em;padding:5px 13px;border-radius:99px;text-transform:uppercase;flex-shrink:0}
-.att-row input:checked~.att-pill{background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;box-shadow:0 3px 12px rgba(34,197,94,.28)}
-.att-row input:not(:checked)~.att-pill{background:rgba(255,90,90,.12);color:#ff7a7a;border:1px solid rgba(255,90,90,.3)}
-.att-pill .off{display:none}
-.att-row input:not(:checked)~.att-pill .on{display:none}
-.att-row input:not(:checked)~.att-pill .off{display:inline}
+.att-seg{display:flex;flex-shrink:0;border:1px solid rgba(255,255,255,.12);border-radius:8px;overflow:hidden}
+.att-seg button{border:none;padding:6px 13px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;cursor:pointer;background:transparent;color:var(--tx3);transition:background .1s,color .1s}
+.att-seg .seg-p{border-right:1px solid rgba(255,255,255,.12)}
+.att-row input:checked~.att-seg .seg-p{background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff}
+.att-row input:not(:checked)~.att-seg .seg-a{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff}
 .att-empty{color:var(--tx3);font-size:12.5px;text-align:center;padding:22px 0}
 .warn-box{background:rgba(255,196,0,.06);border:1px solid rgba(255,196,0,.2);border-radius:12px;padding:14px 16px;font-size:12px;color:var(--tx2);margin-bottom:14px;line-height:1.6;}
 .warn-box b{color:var(--yellow);}
@@ -2402,6 +2400,7 @@ async function editBatchFromLive(i){
   if(!row||!row.id){showToast('error','Could not find this batch\u2019s database record.');return;}
   await openBatchEdit(row.id);
 }
+function setAtt(j,present){var el=document.getElementById('att_'+j);if(el)el.checked=present;}
 async function openAtt(i){
   const b=window._liveBatches[i]; if(!b)return; window._attBatch=b;
   // Same real sessions_total resolver as everywhere else (window._acadTotalMap) — this modal's
@@ -2423,7 +2422,7 @@ async function openAtt(i){
   document.getElementById('att_date').value=new Date().toISOString().slice(0,10);
   document.getElementById('att_list').innerHTML=b.students.length?b.students.map(function(s,j){
     var ini=(s.name||'?').trim().split(/\s+/).map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
-    return '<label class="att-row"><span class="att-ava">'+esc(ini)+'</span><span class="att-name">'+esc(s.name)+'</span><input type="checkbox" id="att_'+j+'" checked/><span class="att-pill"><span class="on">Present</span><span class="off">Absent</span></span></label>';
+    return '<div class="att-row"><span class="att-ava">'+esc(ini)+'</span><span class="att-name">'+esc(s.name)+'</span><input type="checkbox" id="att_'+j+'" checked/><div class="att-seg"><button type="button" class="seg-p" onclick="setAtt('+j+',true)">Present</button><button type="button" class="seg-a" onclick="setAtt('+j+',false)">Absent</button></div></div>';
   }).join(''):'<div class="att-empty">No active students in this batch.</div>';
   // Resolve the real batch_id (b.raw/b.name here is just the batch_name string \u2014 loadLive()
   // groups by name, not by batches.id) \u2014 needed for the class log's sessions.batch_id FK.
