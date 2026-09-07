@@ -2458,8 +2458,8 @@
             // status"); WFH wins a same-day overlap with a non-WFH leave row, an edge case that
             // shouldn't normally occur but must still resolve to exactly one category if it does.
             const approvedTodayLeaveReqs = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr);
-            const wfhEmployeeIdsToday = new Set(approvedTodayLeaveReqs.filter(r => r.leave_type === 'Work From Home').map(r => r.employee_id));
-            const onLeaveEmployeeIdsToday = new Set(approvedTodayLeaveReqs.filter(r => r.leave_type !== 'Work From Home' && !wfhEmployeeIdsToday.has(r.employee_id)).map(r => r.employee_id));
+            const wfhEmployeeIdsToday = new Set(approvedTodayLeaveReqs.filter(r => /home|wfh/i.test(r.leave_type||'')).map(r => r.employee_id));
+            const onLeaveEmployeeIdsToday = new Set(approvedTodayLeaveReqs.filter(r => !/home|wfh/i.test(r.leave_type||'') && !wfhEmployeeIdsToday.has(r.employee_id)).map(r => r.employee_id));
             const onLeaveToday = onLeaveEmployeeIdsToday.size;
             const wfhToday = wfhEmployeeIdsToday.size;
             const pendingLeave = hrLeaveRequests.filter(r => r.status === 'pending').length;
@@ -2605,8 +2605,8 @@
                 const portalLog = hrPortalLogFor(e, todayStr);
                 // WFH is its own resolved status, never folded into "On Leave" (same
                 // leave_type==='Work From Home' distinction as the dashboard tiles above).
-                const isWFH = hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.leave_type === 'Work From Home' && r.start_date <= todayStr && r.end_date >= todayStr);
-                const onLeave = !isWFH && hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && r.leave_type !== 'Work From Home' && r.start_date <= todayStr && r.end_date >= todayStr);
+                const isWFH = hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && /home|wfh/i.test(r.leave_type||'') && r.start_date <= todayStr && r.end_date >= todayStr);
+                const onLeave = !isWFH && hrLeaveRequests.some(r => r.employee_id === e.id && r.status === 'approved' && !/home|wfh/i.test(r.leave_type||'') && r.start_date <= todayStr && r.end_date >= todayStr);
                 const effectiveStatus = rec ? rec.status : (portalLog ? 'present' : null);
                 const status = isWFH ? 'WFH' : onLeave ? 'On Leave' : effectiveStatus ? effectiveStatus.replace('_',' ') : 'Not marked';
                 const badgeClass = isWFH ? 'hr-badge-wfh' : onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
@@ -2664,10 +2664,10 @@
                 });
             } else if (key === 'leave' || key === 'wfh') {
                 const isWfhKey = key === 'wfh';
-                const reqs = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr && (isWfhKey ? r.leave_type === 'Work From Home' : r.leave_type !== 'Work From Home'));
+                const reqs = hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr && (isWfhKey ? /home|wfh/i.test(r.leave_type||'') : !/home|wfh/i.test(r.leave_type||'')));
                 // Same WFH-priority dedupe as the card count — an employee only ever appears in
                 // exactly one of these two lists.
-                const wfhIds = new Set(hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr && r.leave_type === 'Work From Home').map(r => r.employee_id));
+                const wfhIds = new Set(hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date <= todayStr && r.end_date >= todayStr && /home|wfh/i.test(r.leave_type||'')).map(r => r.employee_id));
                 const filteredReqs = isWfhKey ? reqs : reqs.filter(r => !wfhIds.has(r.employee_id));
                 rows = filteredReqs.map(r => {
                     const e = hrEmployees.find(x => x.id === r.employee_id);
@@ -3933,8 +3933,8 @@
             const matchesFilter = r => f === 'all'
                 ? true
                 : f === 'half_day' ? r.leave_type === 'Half Day'
-                : f === 'wfh' ? r.leave_type === 'Work From Home'
-                : /* leave */ (r.leave_type !== 'Half Day' && r.leave_type !== 'Work From Home');
+                : f === 'wfh' ? /home|wfh/i.test(r.leave_type||'')
+                : /* leave */ (r.leave_type !== 'Half Day' && !/home|wfh/i.test(r.leave_type||''));
             const rows = hrLeaveRequests.filter(matchesFilter).slice(0, 30);
             document.getElementById('hr-leave-requests-rows').innerHTML = rows.length ? rows.map(r => {
                 const submitted = hrLeaveSubmittedInfo(r);
