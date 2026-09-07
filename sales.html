@@ -110,6 +110,14 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 .stat-card .d{font-size:10.5px;margin-top:3px;display:flex;align-items:center;gap:5px}
 .stat-card .d::before{content:'';width:6px;height:6px;border-radius:99px;background:currentColor;flex:0 0 auto}
 .dash-2col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+/* EOD report chips */
+.eod-chips,.stat-strip-eod{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.stat-strip-eod{background:rgba(255,255,255,.02);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.eod-chip{background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:10px;padding:10px 8px;text-align:center}
+.eod-chip .v{font-size:20px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.eod-chip .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--tx3);margin-top:4px;line-height:1.2}
+@media(max-width:820px){.eod-chips,.stat-strip-eod{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:420px){.eod-chips,.stat-strip-eod{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.dash-2col{grid-template-columns:1fr}}
 .toast-host{position:fixed;top:16px;right:16px;z-index:500;display:flex;flex-direction:column;gap:8px;max-width:340px}
 .toast{background:#12151f;border:1px solid var(--bd);border-radius:10px;padding:11px 14px;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.5)}
@@ -307,8 +315,10 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 
     <!-- EOD (head + counsellor) -->
     <div class="tab" id="tab-eod">
-      <div class="section"><h2>EOD Report <button class="btn-ghost" onclick="copyEod()">Copy for WhatsApp</button></h2>
-        <pre id="eodOut" style="white-space:pre-wrap;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:10px;padding:14px;font-size:12.5px;color:var(--tx2)">Loading…</pre>
+      <div class="section"><h2>EOD Report <span class="sub" id="eodDate" style="margin:0;font-weight:400"></span><button class="btn-ghost" onclick="copyEod()">Copy for WhatsApp</button></h2>
+        <div id="eodTeam" style="margin-bottom:14px"></div>
+        <div id="eodCards"><div class="empty">Loading…</div></div>
+        <pre id="eodPlain" style="display:none"></pre>
       </div>
     </div>
 
@@ -938,7 +948,8 @@ async function delRule(id){await sb.from('lead_routing_rules').delete().eq('id',
 async function renderEod(){
   const today=new Date().toISOString().slice(0,10);
   const scope=ME.isHead?COUNSELLORS:[{id:ME.id,full_name:ME.name}];
-  let out='';
+  document.getElementById('eodDate').textContent='· '+new Date().toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+  let out='';const cards=[];const tot={dial:0,connected:0,wa:0,toAssess:0,assessDone:0,ready:0,enr:0};
   for(const c of scope){
     const {data:fus}=await sb.from('follow_ups').select('*').eq('by_employee',c.id).gte('created_at',today+'T00:00:00');
     const f=fus||[];
@@ -949,11 +960,24 @@ async function renderEod(){
     const assessDone=f.filter(x=>x.stage==='Assessment Completed').length;
     const ready=f.filter(x=>x.stage==='Ready to Pay').length;
     const enr=LEADS.filter(l=>String(l.assigned_to)===String(c.id)&&l.stage==='Enrolled'&&String(l.updated_at).slice(0,10)===today).length;
+    tot.dial+=dial;tot.connected+=connected;tot.wa+=wa;tot.toAssess+=toAssess;tot.assessDone+=assessDone;tot.ready+=ready;tot.enr+=enr;
+    // Plain text — unchanged wording, this is what Copy-for-WhatsApp sends.
     out+=`BDE Name - ${c.full_name}\nTotal Dial - ${dial}\nTotal connected - ${connected}\nTotal connected whatsApp - ${wa}\nInstd to assessment - ${toAssess}\nAssessment completed - ${assessDone}\nReady to pay - ${ready}\nEnrolled - ${enr}\n\n`;
+    const active=dial+connected+wa+toAssess+assessDone+ready+enr>0;
+    cards.push(`<div class="section" style="background:rgba(255,255,255,.02);margin-bottom:12px;${active?'':'opacity:.6'}">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px"><b>${esc(c.full_name)}</b>${active?'':'<span class="badge b-mut">No activity</span>'}</div>
+      <div class="eod-chips">${_eodChip('Dials',dial)}${_eodChip('Connected',connected)}${_eodChip('WhatsApp',wa)}${_eodChip('→ Assessment',toAssess)}${_eodChip('Assessment done',assessDone)}${_eodChip('Ready to pay',ready,'amber')}${_eodChip('Enrolled',enr,'green')}</div>
+    </div>`);
   }
-  document.getElementById('eodOut').textContent=out.trim()||'No activity logged today.';
+  document.getElementById('eodPlain').textContent=out.trim()||'No activity logged today.';
+  document.getElementById('eodTeam').innerHTML=ME.isHead?`<div class="stat-strip-eod">${_eodChip('Team Dials',tot.dial)}${_eodChip('Connected',tot.connected)}${_eodChip('WhatsApp',tot.wa)}${_eodChip('→ Assessment',tot.toAssess)}${_eodChip('Assessment done',tot.assessDone)}${_eodChip('Ready to pay',tot.ready,'amber')}${_eodChip('Enrolled',tot.enr,'green')}</div>`:'';
+  document.getElementById('eodCards').innerHTML=cards.length?cards.join(''):'<div class="empty">No activity logged today.</div>';
 }
-function copyEod(){navigator.clipboard.writeText(document.getElementById('eodOut').textContent).then(()=>showToast('success','Copied for WhatsApp.'));}
+function _eodChip(label,val,tone){
+  const col=tone==='green'?'var(--green)':tone==='amber'?'var(--yellow)':'var(--tx)';
+  return `<div class="eod-chip"><div class="v" style="color:${val?col:'var(--tx3)'}">${val}</div><div class="l">${label}</div></div>`;
+}
+function copyEod(){navigator.clipboard.writeText(document.getElementById('eodPlain').textContent).then(()=>showToast('success','Copied for WhatsApp.'));}
 
 /* ---------- ATTENDANCE (shared hr_attendance — same engine as HR/Academics) ---------- */
 let _openAtt=null;
