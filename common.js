@@ -2334,14 +2334,31 @@ function hrOfficialEventFor(employee, dateStr) {
                 document.getElementById('my-leave-history').innerHTML = '';
                 return;
             }
-            const balances = hrLeaveBalances.filter(b => b.employee_id === me.id);
-            document.getElementById('my-leave-balances').innerHTML = balances.length ? balances.map(b => {
-                // Same live-computed "used" as the HR admin view (renderHRLeaveBalances) —
-                // never trust the stored counter, it can drift from approved requests.
-                const used = hrComputeLeaveUsed(me.id, b.leave_type);
-                const remaining = HR_UNLIMITED_LEAVE_TYPES.includes(b.leave_type) ? '—' : Math.max(0, (b.allotted||0) - used);
-                return `<div class="hr-stat-card"><div class="num">${remaining}</div><div class="label">${b.leave_type}</div></div>`;
-            }).join('') : '<p class="text-[#4a5182] text-xs col-span-3">No balances set yet.</p>';
+            // Leave Policy v2 (§17/§21): the employee sees the SAME engine-resolved balances HR
+            // sees — SL (this month) + CL (buckets) + this month's LOP — never the old manual
+            // allotment. Falls back to a friendly note if the engine can't load.
+            const balEl = document.getElementById('my-leave-balances');
+            if (balEl && typeof LeavePolicy !== 'undefined') {
+                if (!LeavePolicy.db && typeof dbInstance !== 'undefined') LeavePolicy.withClient(dbInstance);
+                balEl.innerHTML = '<p class="text-[#4a5182] text-xs col-span-3">Loading…</p>';
+                (async () => {
+                    try {
+                        const today = new Date().toISOString().slice(0,10);
+                        const ctx = await LeavePolicy.db.buildContext(me, { now: new Date(), date: today });
+                        const bal = LeavePolicy.resolveLeaveBalance(ctx);
+                        const st = LeavePolicy.getEmployeePolicyState(me, today);
+                        const pay = LeavePolicy.resolvePayrollDeduction(ctx, today.slice(0,7));
+                        const slR = (st.onProbation||st.onNotice) ? 0 : bal.sick.remaining;
+                        const clR = (st.onProbation||st.onNotice) ? 0 : bal.casual.remaining;
+                        balEl.innerHTML =
+                            `<div class="hr-stat-card"><div class="num">${slR}</div><div class="label">Sick Leave (this month)</div></div>` +
+                            `<div class="hr-stat-card"><div class="num">${clR}</div><div class="label">Casual Leave${bal.casual.carriedForward ? ' (incl. '+bal.casual.carriedForward+' carried)' : ''}</div></div>` +
+                            `<div class="hr-stat-card"><div class="num" style="color:#f87171">${pay.totalDeductionDays}</div><div class="label">LOP days (this month)</div></div>` +
+                            (st.onProbation ? `<div class="col-span-3 text-[#fb923c] text-xs">Probation until ${st.confirmationDate||'—'} — leave is LOP, no weekly-off.</div>` : '') +
+                            (st.onNotice ? `<div class="col-span-3 text-[#f87171] text-xs">Notice period — CL/SL/weekly-off not applicable; absence is LOP.</div>` : '');
+                    } catch (e) { balEl.innerHTML = '<p class="text-[#4a5182] text-xs col-span-3">Balances unavailable right now.</p>'; }
+                })();
+            }
             const mine = hrLeaveRequests.filter(r => r.employee_id === me.id);
             document.getElementById('my-leave-history').innerHTML = mine.length ? mine.map(r => {
                 const label = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(r) : r.status;
