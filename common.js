@@ -81,6 +81,8 @@ let hrHolidays = [];
 let hrOfficialEvents = []; // hr_official_events — paid company-wide event days (see hrOfficialEventFor)
 let hrCelebrationEvents = []; // hr_celebration_events — HR-configured festival/company-event wishes (see computeTodaysCelebrations)
 let hrCompanySettings = { weekly_off_sunday: true, weekly_off_saturday: false };
+let hrClBuckets = []; // hr_cl_buckets — Casual Leave credit ledger (Leave Policy v2, see leave-policy.js)
+let hrSlLedger = [];  // hr_sl_ledger — Sick Leave monthly ledger
 let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLoaded guards loadHRData()
 
 // ---------- HR constants (used by calculation helpers shared across modules) ----------
@@ -346,6 +348,14 @@ async function loadMyHRData() {
             // My Attendance can show a gap the same sync failure already fixed elsewhere.
             dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail.trim().toLowerCase())
         ]);
+        // Leave Policy v2 ledgers (self + team scope) — payroll/balance resolvers read these.
+        try {
+            const [clb, sll] = await Promise.all([
+                scopeAttLeave(dbInstance.from('hr_cl_buckets').select('*')),
+                scopeAttLeave(dbInstance.from('hr_sl_ledger').select('*'))
+            ]);
+            hrClBuckets = clb.data || []; hrSlLedger = sll.data || [];
+        } catch (e) { hrClBuckets = []; hrSlLedger = []; }
         hrEmployees = [me, ...teamMembers]; // self-service views only ever need myHREmployeeRecord()'s own row + (for managers) their team
         hrAttendance = att.data || [];
         hrLeaveRequests = leaveReq.data || [];
@@ -1601,35 +1611,65 @@ function hrOfficialEventFor(employee, dateStr) {
                     portalLog: (d) => hrPortalLogFor(employeeRow, d),
                     now: new Date(), date: todayStr
                 };
+                // Ledgers for THIS employee → balance-aware paid-leave consumption (§2/§4).
+                ctx.clBuckets = (hrClBuckets || []).filter(b => b.employee_id === employeeId);
+                ctx.slLedger = (hrSlLedger || []).filter(s => s.employee_id === employeeId);
                 const monthPrefix = monthStr, todayMonthPrefix = todayStr.slice(0, 7);
                 const elapsedDays = monthPrefix < todayMonthPrefix ? daysInMonth : monthPrefix > todayMonthPrefix ? 0 : Number(todayStr.slice(8, 10));
                 const joiningDate = employeeRow.joining_date || null;
+                // Paid-leave budget for the month. SL = this month's entitlement (default 1). CL =
+                // remaining across non-expired buckets as of this month; if no bucket data is
+                // loaded, fall back to the full cycle credit (6) rather than wrongly starving it
+                // to 0 (that "CL treated as zero every month" bug is exactly what §4 forbids).
+                const slRow = ctx.slLedger.find(s => s.period === monthStr);
+                let slLeft = slRow ? Math.max(0, Number(slRow.entitlement) - Number(slRow.used||0)) : (LeavePolicy.P ? LeavePolicy.P.SL_PER_MONTH : 1);
+                let clLeft;
+                if (ctx.clBuckets.length) {
+                    const monthEndStr = `${monthStr}-${String(daysInMonth).padStart(2,'0')}`;
+                    clLeft = ctx.clBuckets.filter(b => (b.expiry_date||'').slice(0,10) >= monthEndStr)
+                        .reduce((s,b)=> s + Number(b.remaining_amount||0), 0);
+                } else { clLeft = LeavePolicy.P ? LeavePolicy.P.CL_PER_CYCLE : 6; }
                 let present=0, sl=0, cl=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
                 let leaveLop=0, absentLop=0, doubleExtra=0;
+                const lopReasons = []; // §6 — HR must see WHY each day became LOP
+                const addLop = (dateStr, reason, factor) => { lopReasons.push({ date: dateStr, reason, factor: factor||1 }); };
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
                     if (dateStr > todayStr) continue;
                     if (joiningDate && dateStr < joiningDate) { preJoining++; continue; }
                     const r = LeavePolicy.resolveAttendanceStatus(ctx, dateStr);
                     if (r.preJoining) { preJoining++; continue; }
+                    // Today / future unmarked day is still an OPEN attendance day — the calendar
+                    // grid (hrAttDayCode) leaves it blank, so payroll must NOT count it as Absent,
+                    // or the report shows Absent 0 while payroll invents Absent 1 (§1/§5).
+                    if (r.code === 'LOP' && (r.label||'').indexOf('Unmarked') === 0 && dateStr >= todayStr) continue;
                     switch (r.code) {
                         case 'P': case 'L': case 'WFH': present++; break;
-                        case 'SL': sl++; break;
-                        case 'CL': cl++; break;
+                        case 'SL':
+                            if (slLeft >= 1) { sl++; slLeft -= 1; }
+                            else { leaveLop++; addLop(dateStr, 'Sick Leave balance exhausted'); }
+                            break;
+                        case 'CL':
+                            if (clLeft >= 1) { cl++; clLeft -= 1; }
+                            else { leaveLop++; addLop(dateStr, 'Casual Leave balance exhausted'); }
+                            break;
                         case 'WO': wo++; break;
                         case 'H': holiday++; break;
                         case 'OE': oe++; break;
                         case 'HD': half++; break;
-                        default: { // LOP
+                        default: { // LOP — reason comes straight from the resolver (adjacency,
+                                   // probation, notice, unmarked/absent) so HR sees the cause.
                             const factor = r.lopFactor === 2 ? 2 : 1;
-                            if (factor === 2) doubleExtra += 1; // the extra (2nd) unit of a double deduction
+                            if (factor === 2) doubleExtra += 1; // extra (2nd) unit of a double deduction
                             const hasLeave = hrApprovedLeaveFor(employeeId, dateStr);
                             if (hasLeave) leaveLop += 1; else absentLop += 1;
+                            addLop(dateStr, r.label || (hasLeave ? 'Leave → LOP' : 'Absent'), factor);
                         }
                     }
                 }
                 const incidents = LeavePolicy.resolveIncidents(ctx, monthStr);
                 const incidentDays = incidents.deductionDays;
+                if (incidentDays > 0) addLop(monthStr, incidents.reason || 'Late-login/early-logout incidents', 1);
                 const paidLeaveDays = sl + cl;
                 const lopDays = leaveLop + absentLop + doubleExtra + half * 0.5 + incidentDays;
                 const payableDays = present + paidLeaveDays + oe + wo + holiday + half * 0.5;
@@ -1644,7 +1684,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     preJoiningDays: preJoining, officialEventDays: oe,
                     elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
                     incidentDays, incidents, doubleDeductionDays: doubleExtra,
-                    slDays: sl, clDays: cl
+                    slDays: sl, clDays: cl, lopReasons
                 };
             }
             // Fallback: engine unavailable → previous behavior (kept intact below).

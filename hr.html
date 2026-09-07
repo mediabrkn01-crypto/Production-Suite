@@ -2305,6 +2305,15 @@
                 console.log('[HR INIT] emp query resolved, error=', emp.error && emp.error.message, 'rows=', (emp.data||[]).length, 'isHRPrivileged=', isHRPrivileged, 'activeRole=', activeRole);
                 hrEmployees = emp.data || [];
                 console.log('[HR INIT] hrEmployees set, count=', hrEmployees.length);
+                // Leave Policy v2 ledgers (all employees, HR admin scope) — payroll + balance
+                // resolvers read these so paid/LOP is computed from the real SL/CL entitlement.
+                try {
+                    const [clb, sll] = await Promise.all([
+                        dbInstance.from('hr_cl_buckets').select('*'),
+                        dbInstance.from('hr_sl_ledger').select('*')
+                    ]);
+                    hrClBuckets = clb.data || []; hrSlLedger = sll.data || [];
+                } catch (e) { hrClBuckets = []; hrSlLedger = []; }
                 hrLeaveRequests = leaveReq.data || [];
                 hrLeaveBalances = leaveBal.data || [];
                 hrAttendance = att.data || [];
@@ -5475,7 +5484,10 @@ async function populateHRJobDeptOptions() {
                 `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays}${(calc.slDays!=null||calc.clDays!=null) ? ` (SL ${calc.slDays||0} + CL ${calc.clDays||0})` : ''} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays}${calc.officialEventDays ? ` · Official Event: ${calc.officialEventDays}` : ''} · LOP: ${calc.lopDays} (Leave→LOP ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.doubleDeductionDays ? ` + Double ${calc.doubleDeductionDays}` : ''}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''}${calc.incidentDays ? ` + Late/Early incidents ${calc.incidentDays}` : ''})` +
                 `${calc.incidents && calc.incidents.count ? ` · ${calc.incidents.count} late-login/early-logout instance(s) this month` : ''}` +
                 `${calc.preJoiningDays ? ` · Before joining: ${calc.preJoiningDays} day(s) (also deducted — not yet employed, counted separately from LOP)` : ''}` +
-                ` — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}`;
+                ` — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}` +
+                // §6 — spell out WHY each LOP day happened (grouped by reason), so HR never sees
+                // a bare "Leave → LOP" without the cause (adjacency, probation, notice, exhausted).
+                `${(calc.lopReasons && calc.lopReasons.length) ? '  ||  LOP reasons: ' + Object.entries(calc.lopReasons.reduce((m,x)=>{const k=x.reason;m[k]=(m[k]||0)+(x.factor||1);return m;},{})).map(([reason,n])=>`${reason} (${n} day${n===1?'':'s'})`).join('; ') : ''}`;
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
             document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
