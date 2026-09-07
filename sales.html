@@ -204,6 +204,7 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <button class="sidebar-link head-only hidden" data-tab="team" onclick="switchTab('team')"><i data-lucide="bar-chart-3" style="width:15px;height:15px"></i> <span class="be-nav-label">Team Overview</span></button>
     <button class="sidebar-link head-only hidden" data-tab="routing" onclick="switchTab('routing')"><i data-lucide="git-branch" style="width:15px;height:15px"></i> <span class="be-nav-label">Routing Rules</span></button>
     <button class="sidebar-link head-only hidden" data-tab="eod" onclick="switchTab('eod')"><i data-lucide="file-text" style="width:15px;height:15px"></i> <span class="be-nav-label">Reports / EOD</span></button>
+    <button class="sidebar-link head-only hidden" data-tab="availability" onclick="switchTab('availability')"><i data-lucide="calendar-clock" style="width:15px;height:15px"></i> <span class="be-nav-label">Trainer Availability</span></button>
     <div class="nav-section-title">My Workspace</div>
     <button class="sidebar-link" data-tab="profile" onclick="switchTab('profile')"><i data-lucide="user-check" style="width:15px;height:15px"></i> <span class="be-nav-label">My Profile</span></button>
     <button class="sidebar-link" data-tab="announcements" onclick="switchTab('announcements')"><i data-lucide="megaphone" style="width:15px;height:15px"></i> <span class="be-nav-label">Announcements</span></button>
@@ -311,6 +312,31 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
       </div>
     </div>
 
+    <!-- TRAINER AVAILABILITY (head — READ ONLY view of Academic data) -->
+    <div class="tab" id="tab-availability">
+      <div class="section">
+        <h2>Free-Slot Finder</h2>
+        <div class="sub">Read-only view of Academic trainer capacity — for admission planning. Pick a day + time to see which active trainers are free (queried live from the same Academic schedule; Sales can't edit availability or assign trainers).</div>
+        <div class="filters">
+          <select id="av_day"><option value="">Any day</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select>
+          <input id="av_time" placeholder="Start time e.g. 9:30 PM" style="flex:1;min-width:150px"/>
+          <select id="av_dur"><option value="60">60 min</option><option value="45">45 min</option><option value="90">90 min</option><option value="30">30 min</option></select>
+          <select id="av_course"><option value="">Any course</option></select>
+          <button class="btn" onclick="salesFindFreeTrainers()">Find free trainers</button>
+        </div>
+        <div id="avFreeResult"><div class="empty">Pick a time and search.</div></div>
+      </div>
+      <div class="section">
+        <h2>Trainer Occupancy</h2>
+        <div class="sub">Active trainers and the class slots already booked against them (from live Academic batches). FREE windows are whatever their declared availability leaves open.</div>
+        <div class="filters">
+          <input id="av_search" placeholder="Search trainer…" oninput="salesRenderOccupancy()" style="flex:2;min-width:180px"/>
+          <select id="av_type" onchange="salesRenderOccupancy()"><option value="">All types</option><option value="full">Full-time</option><option value="part">Part-time</option></select>
+        </div>
+        <div id="avOccupancy"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- ATTENDANCE -->
     <div class="tab" id="tab-attendance">
       <div class="section"><h2>My Attendance · This Month</h2><div id="attStats" class="row" style="margin-bottom:12px"></div>
@@ -391,6 +417,7 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <label class="fld">Student name<input id="en_name"/></label>
     <label class="fld">Contact<input id="en_contact"/></label>
     <label class="fld">Course<select id="en_course"></select></label>
+    <label class="fld">Preferred class time <span style="color:var(--tx3)">(optional — Academic Head sees this when creating the batch)</span><input id="en_pref" placeholder="e.g. 9:30 PM – 10:30 PM"/></label>
   </div>
   <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mEnrol')">Cancel</button><button class="btn" id="en_save" onclick="saveEnrol()">Enrol & hand off to Academics</button></div>
 </div></div>
@@ -773,21 +800,40 @@ async function doneTask(id){await sb.from('tasks').update({status:'done'}).eq('i
 function openEnrol(){
   const mine=LEADS.filter(l=>l.stage!=='Enrolled'&&!PARK.includes(l.stage));
   document.getElementById('en_lead').innerHTML='<option value="">— pick one of your leads —</option>'+mine.map(l=>`<option value="${l.id}">${esc(l.lead_id)} · ${esc(l.name||'')} · ${esc(l.course_interest||'')}</option>`).join('');
-  document.getElementById('en_name').value='';document.getElementById('en_contact').value='';document.getElementById('en_course').value='';
+  document.getElementById('en_name').value='';document.getElementById('en_contact').value='';document.getElementById('en_course').value='';document.getElementById('en_pref').value='';
   openModal('mEnrol');
 }
 function enrolPrefill(){const l=LEADS.find(x=>String(x.id)===document.getElementById('en_lead').value);if(!l)return;document.getElementById('en_name').value=l.name||'';document.getElementById('en_contact').value=l.contact||'';document.getElementById('en_course').value=l.course_interest||'';}
 async function saveEnrol(){
   const name=document.getElementById('en_name').value.trim();const contact=document.getElementById('en_contact').value.trim();
   const course=document.getElementById('en_course').value;const leadId=document.getElementById('en_lead').value;
+  const pref=document.getElementById('en_pref').value.trim()||null;
   if(!name){showToast('warning','Student name required.');return;}
   const btn=document.getElementById('en_save');btn.disabled=true;
   try{
-    const uin='BRK'+Date.now().toString().slice(-8);
-    const {error}=await sb.from('students').insert({uin,name,contact:contact||null,programme:course||null,status:'New',source_counsellor:ME.name,enrolled_date:new Date().toISOString().slice(0,10)});
-    if(error){showToast('error','Could not create student: '+error.message);return;}
+    const lead=leadId?LEADS.find(x=>String(x.id)===leadId):null;
+    // Duplicate prevention (spec item 10/11): the shared students table is source of truth.
+    // Look for an existing student by, in order: this lead's already-linked student_uin, then
+    // the same contact number. If found, UPDATE/link that record — never blind-insert a second
+    // Academic student for the same person. Only genuinely-new people get a fresh UIN.
+    let existing=null;
+    if(lead&&lead.student_uin){const{data}=await sb.from('students').select('*').eq('uin',lead.student_uin).limit(1);existing=data&&data[0];}
+    if(!existing&&contact){const{data}=await sb.from('students').select('*').ilike('contact',contact).limit(1);existing=data&&data[0];}
+    let uin;
+    if(existing){
+      uin=existing.uin;
+      // Only fill blanks / set the sales-owned admission fields — never stomp an assigned
+      // batch/trainer or flip an In-Progress student back to New (Academic owns those).
+      const upd={programme:existing.programme||course||null,preferred_slot:pref||existing.preferred_slot||null,source_counsellor:existing.source_counsellor||ME.name};
+      if(!existing.contact&&contact)upd.contact=contact;
+      await sb.from('students').update(upd).eq('id',existing.id);
+    }else{
+      uin='BRK'+Date.now().toString().slice(-8);
+      const{error}=await sb.from('students').insert({uin,name,contact:contact||null,programme:course||null,status:'New',source_counsellor:ME.name,enrolled_date:new Date().toISOString().slice(0,10),preferred_slot:pref});
+      if(error){showToast('error','Could not create student: '+error.message);return;}
+    }
     if(leadId)await sb.from('leads').update({stage:'Enrolled',student_uin:uin}).eq('id',leadId);
-    closeModal('mEnrol');showToast('success',`Enrolled — student ${uin} created in Academics.`);await loadLeads();
+    closeModal('mEnrol');showToast('success',existing?`Linked to existing student ${uin} in Academics.`:`Enrolled — student ${uin} created in Academics.`);await loadLeads();
   }finally{btn.disabled=false;}
 }
 function renderEnrol(){
@@ -924,7 +970,87 @@ function switchTab(tab){
   if(tab==='documents')loadDocuments();
   if(tab==='payslips')loadPayslips();
   if(tab==='team-members')loadTeamMembers();
+  if(tab==='availability')loadAvailability();
   if(typeof lucide!=='undefined')lucide.createIcons();
+}
+
+/* ---------- TRAINER AVAILABILITY (read-only; same Academic tables + get_available_trainers RPC) ----------
+   Sales never writes trainer availability/slots/batches — this only READS. Occupancy comes from live
+   `batches` (trainer_id + day_pattern + time_slot + name/programme); free-slot capacity from the shared
+   `get_available_trainers` RPC academics' Create Batch already uses (backend-first, scales, no duplicated
+   client-side availability engine). Head-only (nav gated by .head-only). */
+let _avTrainers=[], _avBatches=[];
+async function loadAvailability(){
+  if(!ME||!ME.isHead)return;
+  // active courses into the finder's course filter (same shared courses list)
+  const cs=document.getElementById('av_course');
+  if(cs&&cs.options.length<=1)cs.innerHTML='<option value="">Any course</option>'+COURSES.map(c=>`<option>${esc(c.name)}</option>`).join('');
+  try{
+    const [{data:tr},{data:av},{data:ba}]=await Promise.all([
+      sb.from('trainers').select('id,name,status,type,pt_available_days,pt_time_ranges,pt_time_start,pt_time_end').eq('status','active').order('name'),
+      sb.from('trainer_availability').select('trainer_id,start_time,end_time,is_active').eq('is_active',true),
+      sb.from('batches').select('trainer_id,name,programme,day_pattern,time_slot,status,deleted_at').is('deleted_at',null),
+    ]);
+    const avByTr={};(av||[]).forEach(a=>{(avByTr[a.trainer_id]=avByTr[a.trainer_id]||[]).push(a);});
+    _avTrainers=(tr||[]).map(t=>({...t,_avail:avByTr[t.id]||[]}));
+    _avBatches=(ba||[]).filter(b=>String(b.status||'').toLowerCase()!=='completed');
+  }catch(e){document.getElementById('avOccupancy').innerHTML='<div class="empty">Could not load availability.</div>';return;}
+  salesRenderOccupancy();
+}
+function salesRenderOccupancy(){
+  const q=(document.getElementById('av_search').value||'').toLowerCase();
+  const typeF=document.getElementById('av_type').value;
+  const rows=_avTrainers.filter(t=>{
+    if(q&&!(t.name||'').toLowerCase().includes(q))return false;
+    if(typeF==='full'&&/part/i.test(t.type||''))return false;
+    if(typeF==='part'&&!/part/i.test(t.type||''))return false;
+    return true;
+  });
+  const host=document.getElementById('avOccupancy');
+  if(!rows.length){host.innerHTML='<div class="empty">No trainers match.</div>';return;}
+  host.innerHTML=rows.map(t=>{
+    const isPart=/part/i.test(t.type||'');
+    const declared=isPart
+      ? [t.pt_time_ranges||([t.pt_time_start,t.pt_time_end].filter(Boolean).join('–')), (t.pt_available_days||'')].filter(Boolean).join(' · ')
+      : (t._avail.length?t._avail.map(a=>`${a.start_time}–${a.end_time}`).join(', '):'Standard hours');
+    const booked=_avBatches.filter(b=>String(b.trainer_id)===String(t.id));
+    const occ=booked.length?booked.map(b=>`<div class="qrow" style="padding:8px 12px"><div><b>${esc(b.day_pattern||'—')} · ${esc(b.time_slot||'—')}</b><div style="font-size:11px;color:var(--tx3)">${esc(b.name||'')}${b.programme?' — '+esc(b.programme):''}</div></div><span class="badge b-red">OCCUPIED</span></div>`).join(''):'<div class="empty" style="padding:12px">No booked slots — declared window is free.</div>';
+    return `<div class="section" style="background:rgba(255,255,255,.02);margin-bottom:12px">
+      <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span class="badge ${isPart?'b-amber':'b-blue'}">${isPart?'Part-time':'Full-time'}</span></div>
+      <div class="sub" style="margin:4px 0 8px">Declared: ${esc(declared||'—')}</div>
+      ${occ}
+    </div>`;
+  }).join('');
+}
+// The get_available_trainers RPC wants a 24h HH:MM start time (it rejects "AM/PM"). Convert
+// whatever the Sales user types ("9:30 PM", "9 pm", "21:30", "9.30pm") into HH:MM for it.
+function _to24h(str){
+  const m=String(str).trim().match(/^(\d{1,2})(?:[:.](\d{1,2}))?\s*(am|pm|a\.m\.|p\.m\.)?/i);
+  if(!m)return null;
+  let h=parseInt(m[1],10);const min=m[2]?parseInt(m[2],10):0;const ap=(m[3]||'').toLowerCase().replace(/\./g,'');
+  if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0;
+  if(h>23||min>59)return null;
+  return String(h).padStart(2,'0')+':'+String(min).padStart(2,'0');
+}
+async function salesFindFreeTrainers(){
+  const day=document.getElementById('av_day').value;
+  const raw=document.getElementById('av_time').value.trim();
+  const time=_to24h(raw);
+  const dur=parseInt(document.getElementById('av_dur').value,10)||60;
+  const course=document.getElementById('av_course').value||null;
+  const out=document.getElementById('avFreeResult');
+  if(!raw){showToast('warning','Enter a start time.');return;}
+  if(!time){showToast('warning','Couldn\'t read that time — try like "9:30 PM".');return;}
+  out.innerHTML='<div class="empty">Checking…</div>';
+  try{
+    const {data,error}=await sb.rpc('get_available_trainers',{p_start_time:time,p_duration_minutes:dur,p_days:day?[day]:null,p_course:course});
+    if(error){out.innerHTML='<div class="empty">Lookup failed: '+esc(error.message)+'</div>';return;}
+    const free=data||[];
+    const typeById={};_avTrainers.forEach(t=>typeById[t.id]=/part/i.test(t.type||'')?'Part-time':'Full-time');
+    out.innerHTML=free.length
+      ? `<div class="sub" style="margin-bottom:8px"><b style="color:var(--green)">${free.length}</b> trainer${free.length===1?'':'s'} free ${day?'on '+day+' ':''}at ${esc(raw)} (${dur} min)</div>`+free.map(f=>`<div class="qrow" style="padding:9px 12px"><b>${esc(f.name)}</b><span class="badge b-green">${typeById[f.id]||'Available'}</span></div>`).join('')
+      : `<div class="empty">No trainers free ${day?'on '+day+' ':''}at ${esc(raw)} for ${dur} min.${course?' (course: '+esc(course)+')':''}</div>`;
+  }catch(e){out.innerHTML='<div class="empty">Lookup failed.</div>';}
 }
 
 /* ---------- MY WORKSPACE — shared HR features (same tables HR/Academics use) ---------- */
