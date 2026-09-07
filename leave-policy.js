@@ -117,6 +117,12 @@
   function isHoliday(ctx, dateStr) {
     return (ctx.holidays || []).some(function (h) { return (h.holiday_date || '').slice(0, 10) === dateStr; });
   }
+  function officialEventFor(ctx, dateStr) {
+    return (ctx.officialEvents || []).find(function (e) {
+      var d = (e.event_date || e.date || '').slice(0, 10);
+      return d === dateStr;
+    }) || null;
+  }
   function isWeeklyOff(ctx, dow) {
     var s = ctx.settings || {};
     if (dow === 0 && s.weekly_off_sunday !== false) return true;  // Sunday default on
@@ -296,6 +302,8 @@
     // Holiday / weekly-off (weekly-off only if eligible — §6/§10 remove it in probation/notice).
     if (isHoliday(ctx, dateStr)) return code(CODES.H, 'Holiday', { payable: true });
 
+    var oe = officialEventFor(ctx, dateStr);
+
     // Attendance row present → worked / half-day / explicit.
     if (rec) {
       if (rec.status === 'holiday') return code(CODES.H, 'Holiday', { payable: true });
@@ -303,6 +311,8 @@
       if (rec.status === 'half_day') return code('HD', 'Half Day', { payable: true, half: true });
       if (rec.status === 'on_leave') return resolveLeaveDay(ctx, dateStr, req, state);
       if (rec.status === 'absent') {
+        // A paid Official Event created/edited after an Absent row was filed outranks it.
+        if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
         if (isWeeklyOff(ctx, dow) && state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
         return code(CODES.LOP, 'Absent', { payable: false, lop: true });
       }
@@ -312,9 +322,12 @@
       return code(CODES.P, 'Present', { payable: true, worked: true, clockIn: rec.clock_in_time, clockOut: rec.clock_out_time });
     }
 
-    // No attendance row — approved leave still covers the day.
+    // No attendance row — a real portal clock-in still counts as Present (sync lag safety).
+    if (ctx.portalLog && ctx.portalLog(dateStr)) return code(CODES.P, 'Present (portal log)', { payable: true, worked: true });
+    // Approved leave still covers the day.
     if (req) return resolveLeaveDay(ctx, dateStr, req, state);
-
+    // Paid Official Event day (no clock-in required).
+    if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
     // Weekly off (only when eligible).
     if (isWeeklyOff(ctx, dow)) {
       if (state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
@@ -329,9 +342,16 @@
     if (state.onProbation) return code(CODES.LOP, 'Leave during probation → LOP', { payable: false, lop: true });
     if (state.onNotice) return code(CODES.LOP, 'Leave during notice → LOP', { payable: false, lop: true });
     var kind = req ? normType(req.leave_type) : 'OTHER';
+    var exception = req && (req.status === 'Exception Approved' || req.final_treatment === 'exception' || req.exception_by);
+    // The request's resolved treatment (set at eligibility/approval, which knows the balance
+    // ledgers) is authoritative — payroll reads it so one screen can't say Paid while another
+    // says LOP. Exception overrides any LOP treatment.
+    if (req && !exception) {
+      if (req.final_treatment === 'lop_double') return code(CODES.LOP, 'Leave → LOP (Double Deduction)', { payable: false, lop: true, lopFactor: 2 });
+      if (req.final_treatment === 'lop') return code(CODES.LOP, 'Leave beyond entitlement → LOP', { payable: false, lop: true });
+    }
     // Adjacency double-LOP unless a management exception was granted on the request.
     var adj = detectAdjacency(ctx, (req && req.start_date || dateStr).slice(0, 10), (req && req.end_date || dateStr).slice(0, 10));
-    var exception = req && (req.status === 'Exception Approved' || (req.exception_by));
     if (adj.adjacent && !exception) return code(CODES.LOP, 'Leave adjacent to ' + adj.what + ' → LOP (Double Deduction)', { payable: false, lop: true, lopFactor: 2 });
     if (kind === 'SL') return code(CODES.SL, 'Sick Leave', { payable: true, leave: true });
     if (kind === 'CL') return code(CODES.CL, 'Casual Leave', { payable: true, leave: true });
@@ -371,7 +391,7 @@
     var p = monthStr.split('-').map(Number), y = p[0], m = p[1];
     var daysInMonth = new Date(y, m, 0).getDate();
     var todayStr = ymd(ctx.now || new Date());
-    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, wo: 0, holiday: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0 };
+    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0 };
     var lopDays = 0, breakdown = [];
     for (var d = 1; d <= daysInMonth; d++) {
       var dateStr = monthStr + '-' + String(d).padStart(2, '0');
@@ -386,6 +406,7 @@
         case CODES.CL: buckets.cl++; break;
         case CODES.WO: buckets.wo++; break;
         case CODES.H: buckets.holiday++; break;
+        case CODES.OE: buckets.oe++; break;
         case 'HD': buckets.half++; lopDays += 0.5; breakdown.push({ date: dateStr, code: 'HD', lop: 0.5, reason: 'Half day' }); break;
         case CODES.LOP:
         default:

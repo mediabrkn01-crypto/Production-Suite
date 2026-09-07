@@ -1539,12 +1539,79 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
 // ── hrCalculatePayrollForMonth (orig line 10345) ──
+        // Leave Policy v2: payroll now consumes the ONE shared resolver
+        // (LeavePolicy.resolveAttendanceStatus / .resolveIncidents / .resolvePayrollDeduction)
+        // for every per-day paid/LOP decision, so the payslip, attendance report and dashboard
+        // can never disagree (§19/§21). This wrapper keeps payroll's own joining/elapsed
+        // proration + the exact return shape the payslip UI already reads. The old monthly
+        // HR_MONTHLY_PAID_LEAVE_DAYS cap is gone — a leave day is paid only if the request's
+        // resolved treatment says so (SL monthly / CL bucket entitlement, probation/notice/
+        // adjacency → LOP), plus late/early incident deductions (§11).
         function hrCalculatePayrollForMonth(employeeId, monthStr) {
             const [y, m] = monthStr.split('-').map(Number);
             const daysInMonth = new Date(y, m, 0).getDate();
             const salary = hrGetEffectiveSalary(employeeId, monthStr);
             const dailySalary = daysInMonth ? salary / daysInMonth : 0;
             const todayStr = new Date().toISOString().slice(0,10);
+            const employeeRow = hrEmployees.find(e => e.id === employeeId);
+            if (employeeRow && typeof LeavePolicy !== 'undefined') {
+                const ctx = {
+                    employee: employeeRow,
+                    requests: hrLeaveRequests.filter(r => r.employee_id === employeeId),
+                    attendance: hrAttendance.filter(a => a.employee_id === employeeId),
+                    holidays: hrHolidays,
+                    settings: hrCompanySettings,
+                    officialEvents: hrOfficialEvents.filter(ev => ev.applies_to === 'all' || ev.applies_to === employeeRow.division),
+                    portalLog: (d) => hrPortalLogFor(employeeRow, d),
+                    now: new Date(), date: todayStr
+                };
+                const monthPrefix = monthStr, todayMonthPrefix = todayStr.slice(0, 7);
+                const elapsedDays = monthPrefix < todayMonthPrefix ? daysInMonth : monthPrefix > todayMonthPrefix ? 0 : Number(todayStr.slice(8, 10));
+                const joiningDate = employeeRow.joining_date || null;
+                let present=0, sl=0, cl=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
+                let leaveLop=0, absentLop=0, doubleExtra=0;
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${monthStr}-${String(d).padStart(2,'0')}`;
+                    if (dateStr > todayStr) continue;
+                    if (joiningDate && dateStr < joiningDate) { preJoining++; continue; }
+                    const r = LeavePolicy.resolveAttendanceStatus(ctx, dateStr);
+                    if (r.preJoining) { preJoining++; continue; }
+                    switch (r.code) {
+                        case 'P': case 'L': case 'WFH': present++; break;
+                        case 'SL': sl++; break;
+                        case 'CL': cl++; break;
+                        case 'WO': wo++; break;
+                        case 'H': holiday++; break;
+                        case 'OE': oe++; break;
+                        case 'HD': half++; break;
+                        default: { // LOP
+                            const factor = r.lopFactor === 2 ? 2 : 1;
+                            if (factor === 2) doubleExtra += 1; // the extra (2nd) unit of a double deduction
+                            const hasLeave = hrApprovedLeaveFor(employeeId, dateStr);
+                            if (hasLeave) leaveLop += 1; else absentLop += 1;
+                        }
+                    }
+                }
+                const incidents = LeavePolicy.resolveIncidents(ctx, monthStr);
+                const incidentDays = incidents.deductionDays;
+                const paidLeaveDays = sl + cl;
+                const lopDays = leaveLop + absentLop + doubleExtra + half * 0.5 + incidentDays;
+                const payableDays = present + paidLeaveDays + oe + wo + holiday + half * 0.5;
+                const futureDays = daysInMonth - elapsedDays;
+                const earnedBasic = Math.round(dailySalary * elapsedDays * 100) / 100;
+                const leaveDeduction = Math.round(dailySalary * (lopDays + preJoining) * 100) / 100;
+                return {
+                    salary, daysInMonth, dailySalary,
+                    presentDays: present, paidLeaveDays, eligibleLeaveDays: paidLeaveDays,
+                    excessLeaveDays: leaveLop, unpaidLeaveDays: leaveLop, absentDays: absentLop,
+                    holidayDays: holiday, weeklyOffDays: wo, halfDayDays: half,
+                    preJoiningDays: preJoining, officialEventDays: oe,
+                    elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
+                    incidentDays, incidents, doubleDeductionDays: doubleExtra,
+                    slDays: sl, clDays: cl
+                };
+            }
+            // Fallback: engine unavailable → previous behavior (kept intact below).
             // "Basic = full salary, LOP is the only deduction" only works if every day in the
             // month is actually a day the employee was employed. A joining date partway through
             // the month means the days before it were never part of this job — without this,
