@@ -7466,12 +7466,16 @@ async function tryMediaSSO(){
       const byName=await mediaHrDB.from('hr_employees').select('*').eq('full_name',s.name).limit(1);
       rec=byName.data&&byName.data[0];
     }
-    if(!rec || rec.division!=='education')return false; /* not Education dept — no academic access */
+    // Global management role (Manager/Founder = user_roster.role 'manager', or HR 'admin') may
+    // oversee Academics even though their division isn't Education — additive bypass only.
+    let isGlobalMgr=false;
+    try{const {data:rr}=await mediaHrDB.from('user_roster').select('role').eq('email',String(s.email).trim().toLowerCase()).maybeSingle();if(rr&&['manager','admin'].includes((rr.role||'').toLowerCase()))isGlobalMgr=true;}catch(_){}
+    if(!rec || (rec.division!=='education' && !isGlobalMgr))return false; /* not Education dept and not a global manager — no academic access */
     const roles=(rec.department||'').split(',').map(x=>x.trim()).filter(Boolean);
     const stripLevel=r=>r.replace(/^(Senior|Mid-Level|Junior)\s+/,'');
     // Class Coordinator has identical management access to Academic Head — same rule
     // already established on the HR/index.html side (checkAcademicAccess, HR_ROLES.education).
-    const isHead=roles.some(r=>{const x=stripLevel(r);return x==='Academic Head'||x==='Class Coordinator';});
+    const isHead=isGlobalMgr||roles.some(r=>{const x=stripLevel(r);return x==='Academic Head'||x==='Class Coordinator';});
     currentUser={username:s.email,name:rec.full_name||s.name,role:isHead?'academic_head':'trainer'};
     _authSource='media';
     window._mediaEmployeeId=rec.id; // used by clock in/out to sync into the Media Suite's own hr_attendance table

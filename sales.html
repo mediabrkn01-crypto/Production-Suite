@@ -503,9 +503,13 @@ const CADENCE=[0,1,3,7]; // days after fu #1..#4
     const div=(rec&&rec.division||'').toLowerCase();
     const deptDesig=((rec&&rec.department||'')+' '+(rec&&rec.designation||'')).toLowerCase();
     const isFounder=/founder|master admin/.test(deptDesig);
-    if(!rec||(div!=='sales'&&!isFounder)){location.href='index.html';return;}
+    // Global management role (Manager/Founder = user_roster.role 'manager', or HR 'admin') may
+    // enter EVERY department — additive bypass, never removes a normal user's existing access.
+    let isGlobalMgr=isFounder;
+    try{const {data:rr}=await sb.from('user_roster').select('role').eq('email',String(s.email).trim().toLowerCase()).maybeSingle();if(rr&&['manager','admin'].includes((rr.role||'').toLowerCase()))isGlobalMgr=true;}catch(_){}
+    if(!rec||(div!=='sales'&&!isGlobalMgr)){location.href='index.html';return;}
     if(rec.employment_status==='inactive'||rec.employment_status==='exited'){location.href='index.html';return;}
-    const isHead=isFounder||/head|manager/.test(deptDesig);
+    const isHead=isGlobalMgr||/head|manager/.test(deptDesig);
     ME={id:rec.id,name:rec.full_name||s.name,email:String(s.email).trim().toLowerCase(),isHead,isFounder,rec};
     document.getElementById('loading').style.display='none';
     document.getElementById('app').style.display='flex';
