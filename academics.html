@@ -1811,7 +1811,10 @@ async function _acadFetchAllRows(table, select, extra){
 }
 
 async function loadLive(){
-  const isHead=currentUser.role==='founder'||currentUser.role==='academic_head';
+  // Head OR an active Temporary Academic Head delegation → full company batch/student list
+  // (spec: delegated Head sees ALL batches, not just their own). Personal "Today's Classes"/
+  // "My Calendar" stay scoped to own teaching via _acadIsRealHeadForSchedule(), unchanged.
+  const isHead=isCurrentlyAcademicHead();
   // Scoped at the query level for a Trainer (was: fetch every student, then filter the
   // rendered rows client-side \u2014 the other trainers' students still left the database in the
   // network response even though they never appeared on screen). ilike matches the same
@@ -2712,8 +2715,10 @@ async function boot(){
   // right after window._myTrainerId is known (needed for the server-side trainer_id filter)
   // and BEFORE the data-loading Promise.all below, so it never delays first render; opening
   // the WebSocket connections doesn't block on anything.
-  _acadInitRealtime();
+  // Resolve any active delegation FIRST, so isCurrentlyAcademicHead() is already true before
+  // realtime subscribes (company-wide vs own-trainer scoping) and before the tab loaders run.
   await refreshActiveDelegation();
+  _acadInitRealtime();
   // Re-checks roughly once a minute for as long as this tab stays open — the delegation
   // itself always expires purely by its own end_datetime falling out of the live query in
   // refreshActiveDelegation(), this interval just makes an ALREADY-open session notice that
@@ -2724,10 +2729,13 @@ async function boot(){
     await refreshActiveDelegation();
     if (before !== !!window._activeDelegation) {
       applyAcadRoleGates(); renderDelegationBanner();
-      // A delegation starting/expiring changes isCurrentlyAcademicHead() (card()'s isHead,
-      // and the My Assigned Batches / Other Trainers' Batches split), so Live Batches needs
-      // to redraw right away too — no manual browser refresh required (spec item 7).
-      if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
+      // A delegation starting/expiring flips isCurrentlyAcademicHead(), which changes the SCOPE
+      // of the data queries (own-trainer vs company-wide) — so re-FETCH, not just re-render the
+      // already-scoped cache: Live Batches + the current tab's data must widen/narrow live, no
+      // browser refresh (spec item 7). loadLive re-runs its own now-delegation-aware query.
+      if (typeof loadLive === 'function') loadLive();
+      if (typeof loadTrainersTable === 'function' && document.getElementById('tab-acad-trainers')?.classList.contains('on')) loadTrainersTable();
+      if (typeof renderStudentsTable === 'function' && document.getElementById('tab-acad-students')?.classList.contains('on')) renderStudentsTable();
     }
   }, 60000);
 
@@ -3390,7 +3398,7 @@ function _acadInitRealtime(){
   // stacks a second set of channels; existing ones are torn down first if present.
   _acadTeardownRealtime();
   if (typeof sb === 'undefined' || !sb || typeof sb.channel !== 'function') return; // defensive — never blocks boot() if realtime isn't available for some reason
-  const isHead = currentUser.role === 'founder' || currentUser.role === 'academic_head';
+  const isHead = isCurrentlyAcademicHead(); // real Head OR active delegation → company-wide realtime
   const myTrainerId = window._myTrainerId;
 
   // batches — new/reassigned/completed/deleted batches. Server-side filtered to this
@@ -3883,7 +3891,7 @@ async function loadTrainersTable(){
   // Academic Head-only (Strict Trainer/Coach Access Control) — a Trainer has no "Coaches"
   // nav item to reach this from anymore, and boot() no longer calls this for a Trainer
   // either; this guard is defense-in-depth in case something else ever calls it directly.
-  if (currentUser.role !== 'founder' && currentUser.role !== 'academic_head') return;
+  if (!isCurrentlyAcademicHead()) return; // real Head OR active delegation — full trainer roster
   await acadSyncTrainersFromHRLocal();
   const [{ data: trainers }, { data: allBatches }] = await Promise.all([
     sb.from('trainers').select('*').order('created_at'),
