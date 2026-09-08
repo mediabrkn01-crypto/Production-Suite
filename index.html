@@ -9354,7 +9354,14 @@ async function saveLeave(){
     var zipName=((_wf.row.topic||'approved').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,''))+'-Approved';
     try{
       var res=await fetch(GOOGLE_SCRIPT_URL,{method:'POST',body:JSON.stringify({action:'zipFiles',fileIds:ids,zipName:zipName})}).then(x=>x.json());
-      if(res && res.success && res.url){ var l=document.createElement('a'); l.href=res.url; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); return; }
+      if(res && res.success && res.zipBase64){
+        var bin=atob(res.zipBase64), len=bin.length, arr=new Uint8Array(len);
+        for(var b=0;b<len;b++) arr[b]=bin.charCodeAt(b);
+        var blob=new Blob([arr],{type:'application/zip'}), url=URL.createObjectURL(blob);
+        var l=document.createElement('a'); l.href=url; l.download=res.zipName||(zipName+'.zip'); document.body.appendChild(l); l.click(); l.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); },5000); return;
+      }
+      if(res && res.success && res.url){ var l2=document.createElement('a'); l2.href=res.url; l2.target='_blank'; l2.rel='noopener'; document.body.appendChild(l2); l2.click(); l2.remove(); return; }
     }catch(e){}
     toast('info','ZIP unavailable — downloading files individually.');
     ap.forEach(function(f,k){ setTimeout(function(){ var t=beDownloadTarget(wfFileEntry(f)); if(t){ var l=document.createElement('a'); l.href=t.href; if(t.newtab){l.target='_blank';l.rel='noopener';}else{l.download=t.name||'';} document.body.appendChild(l); l.click(); l.remove(); } }, k*450); });
