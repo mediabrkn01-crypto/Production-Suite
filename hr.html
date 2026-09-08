@@ -5682,9 +5682,13 @@ async function populateHRJobDeptOptions() {
             if (!employee_id || !month) { showToast('warning','Pick an employee and month first.'); return; }
             // PART-TIME ACADEMIC TRAINER → session-based teaching pay, NOT fixed salary (§10/§11).
             const _emp = hrEmployees.find(e => e.id === employee_id);
-            if (_emp && _emp.employment_type === 'part_time' && (_emp.division === 'education')) {
-                return autoCalcPartTimeTrainerPayroll(_emp, month);
-            }
+            // EVERY Part-Time Trainer/Coach → session-based teaching pay (§ global rule), detected
+            // from HR fields only: employment_type part_time AND (system_role trainer OR education
+            // division/role). No per-employee exception.
+            const _sr = (_emp && _emp.system_role || '').toLowerCase();
+            const _isPTTrainer = _emp && _emp.employment_type === 'part_time'
+                && (_sr === 'trainer' || _sr === 'academic_head' || _emp.division === 'education' || /coach|trainer/i.test(_emp.designation||''));
+            if (_isPTTrainer) { return autoCalcPartTimeTrainerPayroll(_emp, month); }
             const calc = hrCalculatePayrollForMonth(employee_id, month);
             // Basic is the employee's full contracted salary — LOP Deduction (unpaid leave +
             // absent/unmarked days, at the daily rate) is the one mechanism that reduces it.
@@ -5704,38 +5708,74 @@ async function populateHRJobDeptOptions() {
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
             updateHRPayrollNetPreview();
         }
-        // Session-based payroll for a Part-Time academic trainer. Base pay = sum of that month's
-        // completed-session earnings (traceable to real trainer_session_earnings rows — never a
-        // progress number). Bonuses/deductions/advances still apply on top.
+        // Duration (minutes) of a batch's session: real schedule first (time_slot "HH:MM-HH:MM"),
+        // else class_duration_minutes, else 60. Never assume every class is an hour.
+        function _hrBatchDurationMin(b) {
+            let dur = Number(b && b.class_duration_minutes) || 0;
+            const ts = ((b && b.time_slot) || '').match(/(\d{1,2}:\d{2})\s*(?:-|–|to)\s*(\d{1,2}:\d{2})/i);
+            if (ts) { const toMin = t => { const p = t.split(':').map(Number); return p[0]*60 + p[1]; }; let d = toMin(ts[2]) - toMin(ts[1]); if (d < 0) d += 1440; if (d > 0) dur = d; }
+            return dur || 60;
+        }
+        window._hrPtSessionBreakdown = [];
+        // Session-based payroll for a Part-Time trainer — derived DIRECTLY from the canonical
+        // student `attendance` evidence (the real proof the trainer conducted the class), not a
+        // pre-populated ledger that could be empty for sessions marked before the ledger existed.
+        // A completed session = one distinct (batch_name, session_num) with a VALID session_date in
+        // the month, on a batch ASSIGNED to this trainer (by trainers.hr_employee_id → employee, or
+        // trainer_name). Duration from the batch schedule; earning = rate × duration/60. Active AND
+        // finished batches count. Invalid/legacy null-date rows excluded. Never per student, never
+        // double-counted (distinct session_num dedupes re-marks). Full-time payroll untouched.
         async function autoCalcPartTimeTrainerPayroll(emp, month) {
             const start = month + '-01';
             const end = (function(){ const [y,m]=month.split('-').map(Number); return `${month}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; })();
-            let rows = [];
+            const rate = (emp.hourly_rate != null && emp.hourly_rate !== '') ? Number(emp.hourly_rate) : null;
+            const empName = (emp.full_name || '').trim().toLowerCase();
+            let sessions = [];
             try {
-                let q = dbInstance.from('trainer_session_earnings').select('*').gte('session_date', start).lte('session_date', end).order('session_date');
-                // Prefer the HR-employee link; fall back to trainer name match for legacy rows.
-                const { data: byEmp } = await q.eq('hr_employee_id', emp.id);
-                rows = byEmp || [];
-                if (!rows.length && emp.full_name) {
-                    const { data: byName } = await dbInstance.from('trainer_session_earnings').select('*').gte('session_date', start).lte('session_date', end).eq('trainer_name', emp.full_name).order('session_date');
-                    rows = byName || [];
+                // 1. Which trainer rows map to THIS employee (stable id first, name fallback).
+                const { data: trs } = await dbInstance.from('trainers').select('id,name,hr_employee_id');
+                const myTrainerIds = new Set();
+                (trs||[]).forEach(t => { if ((t.hr_employee_id && t.hr_employee_id === emp.id) || (empName && (t.name||'').trim().toLowerCase() === empName)) myTrainerIds.add(t.id); });
+                // 2. Batches assigned to this trainer — active AND finished (history counts).
+                const { data: batches } = await dbInstance.from('batches').select('id,name,trainer_id,trainer_name,programme,time_slot,class_duration_minutes');
+                const myBatches = (batches||[]).filter(b => myTrainerIds.has(b.trainer_id) || (empName && (b.trainer_name||'').trim().toLowerCase() === empName));
+                const batchByName = {}; myBatches.forEach(b => { batchByName[b.name] = b; });
+                const names = Object.keys(batchByName);
+                if (names.length) {
+                    // 3. Attendance rows in the month for those batches (valid session_date only —
+                    //    the DB date range excludes NULL/invalid legacy dates automatically).
+                    const { data: att } = await dbInstance.from('attendance').select('batch_name,session_num,session_date').in('batch_name', names).gte('session_date', start).lte('session_date', end);
+                    const seen = new Set();
+                    (att||[]).forEach(a => {
+                        if (!a.session_date) return;
+                        const key = a.batch_name + '|' + a.session_num;   // one earning per session, dedupes re-marks
+                        if (seen.has(key)) return; seen.add(key);
+                        const b = batchByName[a.batch_name] || {};
+                        const dur = _hrBatchDurationMin(b);
+                        const amt = rate != null ? Math.round(rate * (dur/60) * 100) / 100 : 0;
+                        sessions.push({ date: a.session_date, batch: a.batch_name, course: b.programme||'', dur, amt });
+                    });
+                    sessions.sort((x,y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
                 }
             } catch(e) { showToast('error','Could not load sessions: '+e.message); }
-            const totalMin = rows.reduce((s,r)=>s+(+r.duration_minutes||0),0);
-            const total = Math.round(rows.reduce((s,r)=>s+(+r.amount||0),0)*100)/100;
+            const totalMin = sessions.reduce((s,r)=>s+r.dur,0);
+            const total = Math.round(sessions.reduce((s,r)=>s+r.amt,0)*100)/100;
             const hrs = Math.round(totalMin/60*100)/100;
-            const rate = rows.length ? (rows[0].hourly_rate ?? emp.hourly_rate) : emp.hourly_rate;
+            window._hrPtSessionBreakdown = sessions;
             document.getElementById('hr-pr-basic').value = total;
             document.getElementById('hr-pr-leave-deduction').value = 0;
             document.getElementById('hr-pr-paid-days').value = 0;
             document.getElementById('hr-pr-unpaid-days').value = 0;
             document.getElementById('hr-pr-absent-days').value = 0;
-            const list = rows.slice(0,40).map(r => `${(r.session_date||'').slice(5)} ${r.batch_name||''} ${r.duration_minutes||0}m ₹${(+r.amount||0).toLocaleString('en-IN')}`).join('  ·  ');
-            document.getElementById('hr-pr-leave-breakdown').textContent =
-                `PART-TIME TRAINER · Completed Sessions: ${rows.length} · Teaching Hours: ${hrs} hrs · Rate ₹${rate!=null?rate:'—'}/hr · Session Earnings ₹${total.toLocaleString('en-IN')}`
-                + (rows.length ? '  ||  ' + list + (rows.length>40?`  · +${rows.length-40} more`:'') : '  ||  No completed sessions recorded this month.');
+            const list = sessions.slice(0,40).map(r => `${r.date.slice(5)} ${r.batch} ${r.dur}m ₹${r.amt.toLocaleString('en-IN')}`).join('  ·  ');
+            document.getElementById('hr-pr-leave-breakdown').innerHTML =
+                `PART-TIME TRAINER (Teaching Earnings) · Completed Sessions: <b>${sessions.length}</b> · Teaching Hours: <b>${hrs}</b> · Rate ₹${rate!=null?rate:'—'}/hr · <b>₹${total.toLocaleString('en-IN')}</b>`
+                + (rate==null ? ' <span style="color:#fb923c">⚠ set this employee\'s Teaching Rate per Hour in HR → Edit Employee</span>' : '')
+                + (sessions.length ? ` &nbsp;·&nbsp; <a href="#" onclick="hrTogglePtBreakdown(event)" style="color:#60a5fa">View Session Breakdown</a><div id="hr-pt-breakdown" style="display:none;margin-top:8px;font-size:11px;color:#a5adcf">${list}${sessions.length>40?` · +${sessions.length-40} more`:''}</div>`
+                    : '  ||  No completed sessions with attendance recorded this month.');
             updateHRPayrollNetPreview();
         }
+        function hrTogglePtBreakdown(e){ if(e)e.preventDefault(); const el=document.getElementById('hr-pt-breakdown'); if(el) el.style.display = el.style.display==='none' ? 'block' : 'none'; }
 
 // ── hrSavePayrollRow (orig line 10830) ──
         async function hrSavePayrollRow(payload, editId) {
