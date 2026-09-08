@@ -1097,9 +1097,6 @@
                 <!-- MANAGER -->
                 <div id="nav-group-manager" style="margin-bottom:14px" class="manager-only non-hr-nav-group">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">MANAGER</div>
-                    <button onclick="location.href='manager.html'" class="sidebar-link" style="width:100%;text-align:left">
-                        <i data-lucide="layout-dashboard" style="width:14px;height:14px"></i> Command Center
-                    </button>
                     <button id="nav-team" onclick="switchTab('team')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="users-round" style="width:14px;height:14px"></i> My Team
                     </button>
@@ -8577,11 +8574,12 @@ async function saveLeave(){
 })();
 </script>
 <script>
-// Manager/Founder recognition — global access is controlled by the HR-set System Role
-// (hr_employees.system_role), NOT the login role. Once a session is active, resolve it and, for
-// an active manager/founder, reveal the manager UI (Command Center link + My Team) by adding the
-// existing body.role-manager class. Additive + guarded; never removes anyone's access.
+// Manager/Founder landing — a global manager's PERMANENT shell is manager.html, not the Media
+// Suite. Once a session is active, resolve the HR-set System Role and route an active
+// manager/founder to manager.html. EXCEPTION: when index.html is embedded inside manager.html
+// (its Media view iframe), do NOT redirect — that would loop; show the Media module instead.
 (function(){
+  if (window.self !== window.top) return; // embedded as manager.html's Media view — no redirect
   var tries = 0;
   var iv = setInterval(async function(){
     tries++;
@@ -8591,7 +8589,7 @@ async function saveLeave(){
       var r = await dbInstance.from('hr_employees').select('system_role,employment_status').eq('portal_email', String(activeEmail).toLowerCase()).maybeSingle();
       var e = r && r.data; if (!e) return;
       var sr = (e.system_role || '').toLowerCase(), st = (e.employment_status || '').toLowerCase();
-      if ((sr === 'manager' || sr === 'founder') && st !== 'inactive' && st !== 'exited') document.body.classList.add('role-manager');
+      if ((sr === 'manager' || sr === 'founder') && st !== 'inactive' && st !== 'exited' && !/manager\.html$/.test(location.pathname)) location.href = 'manager.html';
     } catch (err) {}
   }, 400);
 })();
