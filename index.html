@@ -1058,11 +1058,12 @@
                      assignment system. Hidden for normal Media employees. -->
                 <div style="margin-bottom:14px" class="non-hr-nav-group mediahead-only">
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">WORK MANAGEMENT</div>
-                    <button onclick="mhWorkAssignment()" class="sidebar-link" style="width:100%;text-align:left">
+                    <button id="nav-work-assignment" onclick="switchTab('work-assignment')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="clipboard-plus" style="width:14px;height:14px"></i> Work Assignment
                     </button>
-                    <button onclick="if(typeof openApprovals==='function')openApprovals()" class="sidebar-link" style="width:100%;text-align:left">
-                        <i data-lucide="clipboard-check" style="width:14px;height:14px"></i> Work Approvals
+                    <button id="nav-work-approvals" onclick="switchTab('work-approvals')" class="sidebar-link" style="width:100%;text-align:left;display:flex;align-items:center;gap:11px">
+                        <i data-lucide="clipboard-check" style="width:14px;height:14px"></i> <span>Work Approvals</span>
+                        <span id="nav-wa-badge" style="margin-left:auto;min-width:18px;height:18px;border-radius:99px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-size:9px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 5px"></span>
                     </button>
                 </div>
 
@@ -1673,6 +1674,25 @@
 
 
                 </div>
+            </div>
+
+            <!-- WORK ASSIGNMENT — dedicated Media Head tab. The existing Create & Assign panel is
+                 relocated into #wa-panel-mount at runtime (same node/handlers, no duplication). -->
+            <div id="tab-content-work-assignment" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Work Assignment</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Create and assign production work to your Media team or yourself.</p>
+                </div>
+                <div id="wa-panel-mount"></div>
+            </div>
+
+            <!-- WORK APPROVALS — dedicated Media Head tab (full page, not a modal). -->
+            <div id="tab-content-work-approvals" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Work Approvals</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Completed work submitted for your final review.</p>
+                </div>
+                <div id="mh-appr-tab-body" class="space-y-3"></div>
             </div>
 
             <div id="tab-content-attendance" class="space-y-6 hidden">
@@ -3325,6 +3345,8 @@
             document.getElementById('tab-content-my-docs').classList.add('hidden');
             document.getElementById('tab-content-my-payslips').classList.add('hidden');
             document.getElementById('tab-content-team').classList.add('hidden');
+            document.getElementById('tab-content-work-assignment')?.classList.add('hidden');
+            document.getElementById('tab-content-work-approvals')?.classList.add('hidden');
 
             // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
             // force it hidden by default on every tab switch, then re-show it (if applicable)
@@ -3365,6 +3387,20 @@
                 document.getElementById('tab-content-reports').classList.remove('hidden');
                 initReportSelectors();
                 generateReports(true); // true = animate on open
+            } else if (targetTab === 'work-assignment') {
+                document.getElementById('nav-work-assignment')?.classList.add('active');
+                document.getElementById('tab-content-work-assignment').classList.remove('hidden');
+                // Relocate the EXISTING Create & Assign panel into this tab (same node + handlers,
+                // no duplicate assignment system) and reveal it. Lazy: employee/classification
+                // options were already populated at boot.
+                var _ap = document.getElementById('admin-assignment-panel'), _mnt = document.getElementById('wa-panel-mount');
+                if (_ap && _mnt && _ap.parentElement !== _mnt) _mnt.appendChild(_ap);
+                if (_ap) _ap.classList.remove('hidden');
+                if (window.lucide) lucide.createIcons();
+            } else if (targetTab === 'work-approvals') {
+                document.getElementById('nav-work-approvals')?.classList.add('active');
+                document.getElementById('tab-content-work-approvals').classList.remove('hidden');
+                if (typeof window.mhRenderApprovalsTab === 'function') window.mhRenderApprovalsTab();
             } else if (targetTab === 'my-profile') {
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
@@ -8641,19 +8677,15 @@ async function saveLeave(){
   function toast(t,m){ if(typeof showToast==='function') showToast(t,m); }
 
   function ensureUI(){
-    if (document.getElementById('mh-approvals-btn')) return;
-    var btn=document.createElement('button'); btn.id='mh-approvals-btn'; btn.className='mediahead-only';
-    btn.innerHTML='<i data-lucide="clipboard-check" style="width:14px;height:14px"></i> Approvals <span id="mh-appr-count" style="display:none;min-width:16px;height:16px;border-radius:99px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-size:9px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 4px"></span>';
-    btn.style.cssText='position:fixed;right:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:7px;padding:11px 16px;border-radius:12px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;border:none;font-size:12.5px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,6,82,.35)';
-    btn.onclick=openApprovals; document.body.appendChild(btn);
-    var ov=document.createElement('div'); ov.id='mh-appr-overlay';
-    ov.style.cssText='position:fixed;inset:0;z-index:9001;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
-    ov.innerHTML='<div style="width:100%;max-width:920px;background:linear-gradient(145deg,#141019,#0a080c);border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.85)">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.07)"><div style="font-size:16px;font-weight:800;color:#fff">Approvals <span style="color:#6b74a0;font-weight:600;font-size:12px">— work ready for final review</span></div><button onclick="document.getElementById(\'mh-appr-overlay\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer">✕</button></div>'
-      +'<div id="mh-appr-body" style="padding:14px 22px 22px;max-height:70vh;overflow:auto"></div></div>';
-    document.body.appendChild(ov);
-    ov.addEventListener('click',function(e){ if(e.target===ov) ov.style.display='none'; });
-    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+    // No floating button / modal — Work Approvals is a real sidebar tab now. Relocate the
+    // Create & Assign panel out of Pipeline Matrix into the Work Assignment tab, and remove the
+    // in-pipeline assign toggle, so Pipeline Matrix shows ONLY the production matrix for a
+    // Media Head. Remove any old floating button if a stale one exists.
+    var oldBtn=document.getElementById('mh-approvals-btn'); if(oldBtn) oldBtn.remove();
+    var oldOv=document.getElementById('mh-appr-overlay'); if(oldOv) oldOv.remove();
+    var ap=document.getElementById('admin-assignment-panel'), mnt=document.getElementById('wa-panel-mount');
+    if(ap && mnt && ap.parentElement!==mnt){ mnt.appendChild(ap); ap.classList.remove('hidden'); }
+    var toggle=document.getElementById('btn-open-assign-panel'); if(toggle) toggle.style.display='none';
     refreshCount();
   }
 
@@ -8665,28 +8697,34 @@ async function saveLeave(){
   }
   async function refreshCount(){
     if(!isMediaHead()) return;
-    try{ var rows=await fetchPending(); var c=document.getElementById('mh-appr-count'); if(c){ c.textContent=rows.length; c.style.display=rows.length?'inline-flex':'none'; } }catch(e){}
+    try{ var rows=await fetchPending(); var c=document.getElementById('nav-wa-badge'); if(c){ c.textContent=rows.length; c.style.display=rows.length?'inline-flex':'none'; } }catch(e){}
   }
-  async function openApprovals(){
-    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
-    ensureUI();
-    var ov=document.getElementById('mh-appr-overlay'), body=document.getElementById('mh-appr-body');
-    ov.style.display='flex'; body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px;text-align:center">Loading…</div>';
+  // Renders pending approvals into the dedicated Work Approvals TAB (not a modal).
+  window.mhRenderApprovalsTab=async function(){
+    var body=document.getElementById('mh-appr-tab-body'); if(!body) return;
+    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Not authorized.</div>'; return; }
+    body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Loading…</div>';
     var rows=await fetchPending();
-    if(!rows.length){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:30px;text-align:center">No work is waiting for approval right now.</div>'; return; }
+    if(!rows.length){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No work is waiting for approval right now.</div>'; return; }
     body.innerHTML=rows.map(function(a){
-      var deliv=a.asset_link?('<a href="'+esc(a.asset_link)+'" target="_blank" rel="noopener" style="color:#38bdf8">View delivery</a>'):'<span style="color:#4a5182">—</span>';
+      var deliv=a.asset_link?('<a href="'+esc(a.asset_link)+'" target="_blank" rel="noopener" style="color:#38bdf8;font-weight:700">View Delivery</a>'):'<span style="color:#4a5182">No delivery link</span>';
       var ref=a.reference_file?(' · <a href="'+esc(a.reference_file)+'" target="_blank" rel="noopener" style="color:#60a5fa">Reference</a>'):'';
-      return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:13px 15px;margin-bottom:10px;background:rgba(255,255,255,.02)">'
-        +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700;color:#fff;font-size:14px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span></div>'
-        +'<div style="color:#8890b5;font-size:11.5px;margin-top:2px">By '+esc(a.assigned_to||a.employee_email||'—')+' · target '+esc(a.date||'—')+'</div>'
-        +'<div style="font-size:11.5px;margin-top:4px">'+deliv+ref+'</div>'
-        +(a.description?'<div style="color:#a5adcf;font-size:11.5px;margin-top:5px">'+esc(a.description)+'</div>':'')+'</div>'
-        +'<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
-        +'<button onclick="mhApprove('+a.id+')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:7px 14px;border-radius:9px;cursor:pointer">Approve</button>'
-        +'<button onclick="mhRework('+a.id+')" style="background:rgba(251,146,60,.14);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-size:11px;font-weight:800;padding:7px 14px;border-radius:9px;cursor:pointer">Send for Rework</button>'
+      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)">'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:220px;flex:1"><div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span></div>'
+        +'<div style="color:#8890b5;font-size:12px;margin-top:3px">Employee: '+esc(a.assigned_to||a.employee_email||'—')+' · Target '+esc(a.date||'—')+'</div>'
+        +'<div style="font-size:12px;margin-top:5px">'+deliv+ref+'</div>'
+        +(a.description?'<div style="color:#a5adcf;font-size:12px;margin-top:6px">'+esc(a.description)+'</div>':'')+'</div>'
+        +'<div style="display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap">'
+        +'<button onclick="mhApprove('+a.id+')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Approve</button>'
+        +'<button onclick="mhRework('+a.id+')" style="background:rgba(251,146,60,.14);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Send for Rework</button>'
+        +'<button onclick="mhReject('+a.id+')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Reject</button>'
         +'</div></div></div>';
     }).join('');
+  };
+  // Work Approvals nav / any legacy caller → open the tab (never a modal).
+  async function openApprovals(){
+    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
+    if(typeof switchTab==='function') switchTab('work-approvals'); else window.mhRenderApprovalsTab();
   }
 
   window.mhApprove=async function(id){
@@ -8698,7 +8736,7 @@ async function saveLeave(){
     var {error}=await d.from('assignments').update({ manager_approved:true, approved_by:actor(), approved_at:nowIso, social_media_status:'pending' }).eq('id',id).eq('status','Completed');
     if(error){ toast('error','Approve failed: '+error.message); return; }
     toast('success','Approved — handed off to Social Media.');
-    openApprovals(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+    window.mhRenderApprovalsTab(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
   };
   window.mhRework=function(id){
     if(!isMediaHead()){ toast('error','Not authorized.'); return; }
@@ -8716,7 +8754,28 @@ async function saveLeave(){
       var {error}=await d.from('assignments').update({ status:'Rework Required', rework_reason:note, reviewed_by:actor(), reviewed_at:nowIso, manager_approved:false }).eq('id',id);
       if(error){ toast('error','Failed: '+error.message); return; }
       m.style.display='none'; toast('success','Sent back for rework.');
-      openApprovals(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+      window.mhRenderApprovalsTab(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+    };
+  };
+  // REJECT — distinct from Rework. Branded reason dialog; sets status Rejected + audit; keeps the
+  // record (never deletes). Employee notified via the same status change the pipeline reads.
+  window.mhReject=function(id){
+    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
+    var m=document.getElementById('mh-reject-modal');
+    if(!m){ m=document.createElement('div'); m.id='mh-reject-modal';
+      m.style.cssText='position:fixed;inset:0;z-index:9002;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+      m.innerHTML='<div style="width:100%;max-width:440px;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px"><div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:6px">Reject Work</div><div style="font-size:12px;color:#8890b5;margin-bottom:10px">The work is rejected (not sent for rework). Give a clear reason — this is kept in history.</div><textarea id="mh-reject-note" rows="4" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:10px;font-size:13px;resize:vertical" placeholder="Reason for rejection…"></textarea><div style="display:flex;gap:8px;margin-top:14px"><button onclick="document.getElementById(\'mh-reject-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Cancel</button><button id="mh-reject-send" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#dc2626,#ef4444);border:none;color:#fff;font-weight:800;cursor:pointer">Reject Work</button></div></div>';
+      document.body.appendChild(m);
+    }
+    m.style.display='flex'; document.getElementById('mh-reject-note').value='';
+    document.getElementById('mh-reject-send').onclick=async function(){
+      var note=(document.getElementById('mh-reject-note').value||'').trim();
+      if(!note){ toast('error','A rejection reason is required.'); return; }
+      var d=db(); if(!d) return; var nowIso=new Date().toISOString();
+      var {error}=await d.from('assignments').update({ status:'Rejected', rejection_reason:note, rejected_by:actor(), rejected_at:nowIso, manager_approved:false }).eq('id',id);
+      if(error){ toast('error','Reject failed: '+error.message); return; }
+      m.style.display='none'; toast('success','Work rejected.');
+      window.mhRenderApprovalsTab(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
     };
   };
   window.openApprovals=openApprovals; // reachable from the Work Approvals sidebar item
