@@ -1053,6 +1053,19 @@
                     </button>
                 </div>
 
+                <!-- WORK MANAGEMENT — Media Head only (system_role=media_head → body.role-mediahead).
+                     Reuses the existing Create & Assign Work panel + Approvals overlay; no new
+                     assignment system. Hidden for normal Media employees. -->
+                <div style="margin-bottom:14px" class="non-hr-nav-group mediahead-only">
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin-bottom:6px;padding-left:8px;font-weight:600">WORK MANAGEMENT</div>
+                    <button onclick="mhWorkAssignment()" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="clipboard-plus" style="width:14px;height:14px"></i> Work Assignment
+                    </button>
+                    <button onclick="if(typeof openApprovals==='function')openApprovals()" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="clipboard-check" style="width:14px;height:14px"></i> Work Approvals
+                    </button>
+                </div>
+
                 <!-- ACADEMIC — only shown once checkAcademicAccess() confirms this employee's
                      HR record is Education division with an Academic role. Replaces PIPELINE
                      as their primary workspace (that group is hidden for them at the same
@@ -6757,6 +6770,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (window.lucide) lucide.createIcons();
         }
 
+        // Media Head "Work Assignment" nav — reuses the existing Create & Assign Work panel
+        // (no new assignment system). Lands on the pipeline, opens the panel, scrolls to it.
+        function mhWorkAssignment() {
+            try { switchTab('dashboard'); } catch(e){}
+            if (typeof closeMobileSidebar === 'function') closeMobileSidebar();
+            setTimeout(function(){
+                var p = document.getElementById('admin-assignment-panel');
+                if (p && p.classList.contains('hidden') && typeof toggleAssignPanel === 'function') toggleAssignPanel();
+                if (p) p.scrollIntoView({ behavior:'smooth', block:'start' });
+            }, 80);
+        }
+
         // ── MOBILE SIDEBAR ─────────────────────────────────────────
         function openMobileSidebar() {
             document.getElementById('mobile-sidebar').classList.add('open');
@@ -8684,6 +8709,7 @@ async function saveLeave(){
       openApprovals(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
     };
   };
+  window.openApprovals=openApprovals; // reachable from the Work Approvals sidebar item
   window.initMediaHeadApprovals=function(){ if(!isMediaHead()) return; ensureUI(); };
   // if role resolved before this script ran
   if (isMediaHead()) ensureUI();
