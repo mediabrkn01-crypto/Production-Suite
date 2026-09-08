@@ -512,6 +512,28 @@
         .hr-act-amber:hover  { background:rgba(251,146,60,0.9); color:#fff; }
         .hr-act-red    { color:#f87171; border-color:rgba(248,113,113,0.2); background:rgba(248,113,113,0.07); }
         .hr-act-red:hover    { background:rgba(239,68,68,0.9); color:#fff; }
+        /* Leave Calendar — month grid in the platform dark style. */
+        .lc-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+        .lc-nav { display:flex; align-items:center; gap:6px; }
+        .lc-navbtn { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:#a5adcf; width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:14px; line-height:1; }
+        .lc-navbtn:hover { color:#fff; border-color:rgba(255,107,6,0.4); }
+        .lc-title { font-size:15px; font-weight:700; color:#fff; min-width:150px; text-align:center; }
+        .lc-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+        .lc-dow { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b74a0; text-align:center; padding:4px 0; }
+        .lc-cell { min-height:96px; border:1px solid rgba(255,255,255,0.06); border-radius:12px; background:rgba(255,255,255,0.02); padding:6px 7px; display:flex; flex-direction:column; gap:4px; overflow:hidden; }
+        .lc-cell.lc-blank { background:transparent; border-color:transparent; }
+        .lc-cell.lc-off { background:rgba(255,255,255,0.012); }
+        .lc-cell.lc-hol { background:rgba(192,132,252,0.06); border-color:rgba(192,132,252,0.25); }
+        .lc-cell.lc-today { border-color:rgba(255,107,6,0.6); box-shadow:0 0 0 1px rgba(255,107,6,0.35) inset; }
+        .lc-daynum { font-size:11px; font-weight:700; color:#8890b5; display:flex; align-items:center; justify-content:space-between; }
+        .lc-cell.lc-today .lc-daynum { color:#ff6b06; }
+        .lc-holname { font-size:9px; color:#c084fc; font-weight:600; }
+        .lc-pill { display:flex; align-items:center; gap:5px; font-size:10.5px; color:#e6e9f5; background:rgba(255,255,255,0.04); border-radius:6px; padding:2px 5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .lc-dot { width:14px; height:14px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:7px; font-weight:800; color:#0a080a; }
+        .lc-more { font-size:9.5px; color:#6b74a0; padding-left:2px; }
+        .lc-legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11px; color:#a5adcf; }
+        .lc-legend span { display:flex; align-items:center; gap:5px; }
+        .lc-lg { width:10px; height:10px; border-radius:3px; }
 /* ── Academic Module (ported from academics.html — same visual language, own class
    prefix to avoid any collision with the rest of this file) ── */
 .acadx-dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
@@ -1204,8 +1226,8 @@
                 <div id="hr-sub-leave-calendar" class="space-y-4 hidden">
                     <h1 class="text-xl font-bold tracking-tight">Leave Calendar</h1>
                     <div class="card glass-card p-4 md:p-6 rounded-2xl">
-                        <input id="hr-leave-cal-month" type="month" class="hr-input" onchange="renderHRLeaveCalendar()">
-                        <div id="hr-leave-cal-rows" class="space-y-2 mt-3"></div>
+                        <input id="hr-leave-cal-month" type="month" class="hr-input" onchange="renderHRLeaveCalendar()" style="display:none">
+                        <div id="hr-leave-cal-rows"></div>
                     </div>
                 </div>
 
@@ -4167,15 +4189,79 @@
         }
 
 // ── renderHRLeaveCalendar (orig line 9820) ──
+        function hrShiftLeaveCalMonth(delta) {
+            const input = document.getElementById('hr-leave-cal-month');
+            const [y, m] = (input.value || new Date().toISOString().slice(0,7)).split('-').map(Number);
+            const d = new Date(y, m - 1 + delta, 1);
+            input.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            renderHRLeaveCalendar();
+        }
+        function _lcTypeMeta(leaveType) {
+            const t = (leaveType || '').toLowerCase();
+            if (t.indexOf('sick') >= 0) return { code: 'SL', color: '#60a5fa' };
+            if (t.indexOf('casual') >= 0) return { code: 'CL', color: '#818cf8' };
+            if (/home|wfh/.test(t)) return { code: 'WFH', color: '#2dd4bf' };
+            if (t.indexOf('half') >= 0) return { code: 'HD', color: '#fde047' };
+            return { code: 'L', color: '#9aa3c7' };
+        }
+        function _lcInitials(name) {
+            return (name || '?').trim().split(/\s+/).map(w => w[0] || '').slice(0,2).join('').toUpperCase();
+        }
+        // Leave Calendar — real month grid (platform dark pattern) instead of a flat list.
+        // Each cell shows that day's approved leave/WFH as avatar-dot + type pills; holidays,
+        // weekly-offs and today are visually distinct. Same approved-leave source as payroll.
         function renderHRLeaveCalendar() {
-            const month = document.getElementById('hr-leave-cal-month').value;
-            const rows = hrLeaveRequests.filter(r => r.status === 'approved' && (r.start_date.startsWith(month) || r.end_date.startsWith(month))).sort((a,b) => a.start_date.localeCompare(b.start_date));
-            document.getElementById('hr-leave-cal-rows').innerHTML = rows.length ? rows.map(r => `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
-                    <span class="text-sm text-white">${hrEmpName(r.employee_id)} — ${r.leave_type}</span>
-                    <span class="text-xs text-[#a5adcf]">${r.start_date} → ${r.end_date}</span>
-                </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">No approved leave in this month.</p>';
+            const input = document.getElementById('hr-leave-cal-month');
+            if (input && !input.value) input.value = new Date().toISOString().slice(0,7);
+            const month = (input && input.value) || new Date().toISOString().slice(0,7);
+            const [y, m] = month.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const firstDow = new Date(y, m - 1, 1).getDay();
+            const todayStr = new Date().toISOString().slice(0,10);
+
+            // Bucket approved leave/WFH days that fall in this month, by date.
+            const byDate = {};
+            hrLeaveRequests.filter(r => r.status === 'approved' && r.start_date && r.end_date).forEach(r => {
+                const s = new Date(r.start_date), e = new Date(r.end_date);
+                for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+                    const ds = d.toISOString().slice(0,10);
+                    if (ds.slice(0,7) !== month) continue;
+                    (byDate[ds] = byDate[ds] || []).push({ name: hrEmpName(r.employee_id), meta: _lcTypeMeta(r.leave_type), type: r.leave_type });
+                }
+            });
+
+            const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let cells = '';
+            for (let i = 0; i < firstDow; i++) cells += '<div class="lc-cell lc-blank"></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const ds = `${month}-${String(d).padStart(2,'0')}`;
+                const wd = new Date(y, m - 1, d).getDay();
+                const hol = hrHolidays.find(h => (h.holiday_date||'').slice(0,10) === ds);
+                const isOff = (typeof hrIsWeeklyOff === 'function') && hrIsWeeklyOff(wd);
+                const entries = byDate[ds] || [];
+                const cls = ['lc-cell', ds === todayStr ? 'lc-today' : '', hol ? 'lc-hol' : (isOff ? 'lc-off' : '')].filter(Boolean).join(' ');
+                const shown = entries.slice(0, 3).map(en =>
+                    `<span class="lc-pill" title="${en.name} — ${en.type}"><span class="lc-dot" style="background:${en.meta.color}">${en.meta.code}</span>${en.name.split(' ')[0]}</span>`).join('');
+                const more = entries.length > 3 ? `<span class="lc-more">+${entries.length - 3} more</span>` : '';
+                cells += `<div class="${cls}"><div class="lc-daynum"><span>${d}</span>${hol ? '<span class="lc-holname" title="'+(hol.name||'Holiday')+'">'+ (hol.name||'Holiday').slice(0,10) +'</span>' : (isOff ? '<span class="lc-holname" style="color:#6b74a0">Off</span>' : '')}</div>${shown}${more}</div>`;
+            }
+
+            document.getElementById('hr-leave-cal-rows').innerHTML =
+                `<div class="lc-head">
+                    <div class="lc-nav">
+                        <button class="lc-navbtn" onclick="hrShiftLeaveCalMonth(-1)" aria-label="Previous month">‹</button>
+                        <div class="lc-title">${monthLabel}</div>
+                        <button class="lc-navbtn" onclick="hrShiftLeaveCalMonth(1)" aria-label="Next month">›</button>
+                    </div>
+                    <div class="lc-legend">
+                        <span><span class="lc-lg" style="background:#60a5fa"></span>Sick</span>
+                        <span><span class="lc-lg" style="background:#818cf8"></span>Casual</span>
+                        <span><span class="lc-lg" style="background:#2dd4bf"></span>WFH</span>
+                        <span><span class="lc-lg" style="background:#fde047"></span>Half Day</span>
+                    </div>
+                 </div>
+                 <div class="lc-grid">${dow.map(x => `<div class="lc-dow">${x}</div>`).join('')}${cells}</div>`;
         }
 
 // ── hrRenderEmployeeDocuments (orig line 9833) ──
