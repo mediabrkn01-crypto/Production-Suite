@@ -1138,6 +1138,9 @@
                         <i data-lucide="clipboard-check" style="width:14px;height:14px"></i> <span>Work Approvals</span>
                         <span id="nav-wa-badge" style="margin-left:auto;min-width:18px;height:18px;border-radius:99px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-size:9px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 5px"></span>
                     </button>
+                    <button id="nav-approved-works" onclick="switchTab('approved-works')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="badge-check" style="width:14px;height:14px"></i> Approved Works
+                    </button>
                 </div>
 
                 <!-- ACADEMIC — only shown once checkAcademicAccess() confirms this employee's
@@ -1782,6 +1785,15 @@
                             <option value="rejected">Rejected</option>
                             <option value="all">All</option>
                         </select>
+                        <select id="wa-f-date" onchange="waSetFilter('date',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="all">All Dates</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="month">This Month</option>
+                            <option value="prevmonth">Previous Month</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
                         <select id="wa-f-sort" onchange="waSetFilter('sort',this.value)" style="min-width:180px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
                             <option value="new">Newest Submitted First</option>
                             <option value="old">Oldest Submitted First</option>
@@ -1791,8 +1803,63 @@
                             <option value="emp-za">Employee Z–A</option>
                         </select>
                     </div>
+                    <div id="wa-custom-range" class="flex flex-wrap items-center gap-2 hidden">
+                        <span class="text-[11px] text-[#6b74a0] font-semibold">From</span>
+                        <input id="wa-date-from" type="date" onchange="waSetFilter('from',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                        <span class="text-[11px] text-[#6b74a0] font-semibold">To</span>
+                        <input id="wa-date-to" type="date" onchange="waSetFilter('to',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                    </div>
                 </div>
                 <div id="mh-appr-tab-body" class="space-y-3"></div>
+            </div>
+
+            <!-- APPROVED WORKS — permanent approval archive (separate tab). -->
+            <div id="tab-content-approved-works" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Approved Works</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Permanent history of work you approved.</p>
+                </div>
+                <div class="space-y-3">
+                    <div style="position:relative">
+                        <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:#6b74a0"></i>
+                        <input id="aw-search" type="text" placeholder="Search campaign, employee, work name..." oninput="awOnSearch(this.value)"
+                               class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-[#6b74a0] focus:outline-none focus:border-orange-500 transition-colors">
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <select id="aw-f-emp" onchange="awSetFilter('emp',this.value)" style="min-width:170px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Employees</option></select>
+                        <select id="aw-f-type" onchange="awSetFilter('type',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Types</option></select>
+                        <select id="aw-f-date" onchange="awSetFilter('date',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="all">All Dates</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="month">This Month</option>
+                            <option value="prevmonth">Previous Month</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                        <select id="aw-f-sort" onchange="awSetFilter('sort',this.value)" style="min-width:180px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="app-new">Newest Approved First</option>
+                            <option value="app-old">Oldest Approved First</option>
+                            <option value="sub-new">Newest Submitted First</option>
+                            <option value="sub-old">Oldest Submitted First</option>
+                            <option value="emp-az">Employee A–Z</option>
+                            <option value="emp-za">Employee Z–A</option>
+                        </select>
+                        <select id="aw-f-page" onchange="awSetFilter('per',this.value)" style="min-width:110px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="10">10 / page</option>
+                            <option value="25">25 / page</option>
+                            <option value="50">50 / page</option>
+                        </select>
+                    </div>
+                    <div id="aw-custom-range" class="flex flex-wrap items-center gap-2 hidden">
+                        <span class="text-[11px] text-[#6b74a0] font-semibold">From</span>
+                        <input id="aw-date-from" type="date" onchange="awSetFilter('from',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                        <span class="text-[11px] text-[#6b74a0] font-semibold">To</span>
+                        <input id="aw-date-to" type="date" onchange="awSetFilter('to',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                    </div>
+                </div>
+                <div id="aw-tab-body" class="space-y-3"></div>
+                <div id="aw-pager" class="flex items-center justify-center gap-2 flex-wrap"></div>
             </div>
 
             <div id="tab-content-attendance" class="space-y-6 hidden">
@@ -3447,6 +3514,7 @@
             document.getElementById('tab-content-team').classList.add('hidden');
             document.getElementById('tab-content-work-assignment')?.classList.add('hidden');
             document.getElementById('tab-content-work-approvals')?.classList.add('hidden');
+            document.getElementById('tab-content-approved-works')?.classList.add('hidden');
 
             // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
             // force it hidden by default on every tab switch, then re-show it (if applicable)
@@ -3501,6 +3569,10 @@
                 document.getElementById('nav-work-approvals')?.classList.add('active');
                 document.getElementById('tab-content-work-approvals').classList.remove('hidden');
                 if (typeof window.mhRenderApprovalsTab === 'function') window.mhRenderApprovalsTab();
+            } else if (targetTab === 'approved-works') {
+                document.getElementById('nav-approved-works')?.classList.add('active');
+                document.getElementById('tab-content-approved-works').classList.remove('hidden');
+                if (typeof window.mhRenderApprovedWorks === 'function') window.mhRenderApprovedWorks();
             } else if (targetTab === 'my-profile') {
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
@@ -4322,7 +4394,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             await dbInstance
                 .from('assignments')
-                .update({ status: "Completed", asset_link: finalPayloadValue, manager_approved: false, social_approved: false })
+                .update({ status: "Completed", asset_link: finalPayloadValue, manager_approved: false, social_approved: false, submitted_at: new Date().toISOString() })
                 .eq('id', currentTargetTaskId);
 
             await pushLogEntry(`Creator ${targetTask.assignedTo} deployed production deliverables into the matrix pipeline.`);
@@ -8857,8 +8929,10 @@ async function saveLeave(){
     return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">🔗</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">This delivery is an external link. Open it to review.</div>'+acts('')+'</div>';
   }
   // Branded in-app delivery preview modal. Multiple entries → left selector, single preview pane.
-  window.mhViewDelivery=function(id){
-    var a=_waRowById[id]; if(!a) return;
+  window.mhViewDelivery=function(id,opts){
+    var a=_waRowById[id]||_awRowById[id]; if(!a) return;
+    opts=opts||{};
+    var isApproved=opts.approved || (a.manager_approved && waStatusOf(a)==='approved');
     var entries=beParseDelivery(a.asset_link);
     var m=document.getElementById('mh-deliv-modal');
     if(!m){ m=document.createElement('div'); m.id='mh-deliv-modal';
@@ -8868,10 +8942,11 @@ async function saveLeave(){
     }
     var who=esc(a.assigned_to||a.employee_email||'—');
     var note=(a.explanation&&a.explanation!=='None')?a.explanation:(a.description||'');
+    var times='<div style="font-size:11px;color:#6b74a0;margin-top:4px">Submitted: '+esc(beFmtDT(waSubIso(a)))+(isApproved?(' · Approved: '+esc(beFmtDT(a.approved_at))):'')+'</div>';
     var head='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)">'
       +'<div><div style="font-size:9px;font-weight:800;letter-spacing:.14em;color:#ff6b06">WORK PREVIEW</div>'
       +'<div style="font-size:16px;font-weight:800;color:#fff;margin-top:3px">'+esc(a.topic||'Untitled')+'</div>'
-      +'<div style="font-size:12px;color:#8890b5;margin-top:2px">'+esc(a.type||'')+' · Submitted by '+who+'</div></div>'
+      +'<div style="font-size:12px;color:#8890b5;margin-top:2px">'+esc(a.type||'')+' · Submitted by '+who+'</div>'+times+'</div>'
       +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:16px;flex-shrink:0">✕</button></div>';
     var bodyHtml;
     if(!entries.length){
@@ -8887,17 +8962,25 @@ async function saveLeave(){
       bodyHtml=selector+'<div id="mh-deliv-pane" style="padding:16px 18px">'+bePreviewMarkup(entries[0])+'</div>'
         +(note?'<div style="padding:0 18px 6px"><div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#6b74a0;margin-bottom:4px">DELIVERY NOTE</div><div style="color:#c5cbe8;font-size:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 12px">'+esc(note)+'</div></div>':'');
     }
-    var footer='<div style="display:flex;gap:8px;padding:14px 18px;border-top:1px solid rgba(255,255,255,.08)">'
-      +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Close</button>'
-      +(entries.length?'<button onclick="mhApprove('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-weight:800;cursor:pointer">Approve</button>'
-      +'<button onclick="mhRework('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(251,146,60,.16);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-weight:800;cursor:pointer">Rework</button>'
-      +'<button onclick="mhReject('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800;cursor:pointer">Reject</button>':'')
-      +'</div>';
+    var footer;
+    if(isApproved){
+      footer='<div style="padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+        +'<div style="flex:1;min-width:180px"><div style="font-size:10px;font-weight:800;letter-spacing:.12em;color:#22c55e">✓ APPROVED</div>'
+        +'<div style="font-size:11px;color:#8890b5;margin-top:2px">Approved by '+esc(a.approved_by||'—')+' · '+esc(beFmtDT(a.approved_at))+'</div></div>'
+        +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="padding:10px 18px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Close</button></div>';
+    } else {
+      footer='<div style="display:flex;gap:8px;padding:14px 18px;border-top:1px solid rgba(255,255,255,.08)">'
+        +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Close</button>'
+        +(entries.length?'<button onclick="mhApprove('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-weight:800;cursor:pointer">Approve</button>'
+        +'<button onclick="mhRework('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(251,146,60,.16);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-weight:800;cursor:pointer">Rework</button>'
+        +'<button onclick="mhReject('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800;cursor:pointer">Reject</button>':'')
+        +'</div>';
+    }
     m.innerHTML='<div style="width:100%;max-width:820px;max-height:92vh;overflow:auto;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:18px" onclick="event.stopPropagation()">'+head+bodyHtml+footer+'</div>';
     m.style.display='flex';
   };
   window.beSelectDeliv=function(id,idx){
-    var a=_waRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
+    var a=_waRowById[id]||_awRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
     var pane=document.getElementById('mh-deliv-pane'); if(pane) pane.innerHTML=bePreviewMarkup(e);
     var m=document.getElementById('mh-deliv-modal'); if(m){ m.querySelectorAll('[data-di]').forEach(function(b){
       var on=+b.getAttribute('data-di')===idx; b.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.05)'; b.style.color=on?'#ff8a3d':'#a5adcf'; b.style.borderColor=on?'rgba(255,107,6,.4)':'rgba(255,255,255,.12)'; }); }
@@ -8905,7 +8988,20 @@ async function saveLeave(){
   // ── Work Approvals: shared cache + client-side search / filter / sort (no reload) ──
   var _waRowById={};      // id -> row, ALL fetched rows (modal always resolves any id)
   var _waAll=[];          // every submission-lifecycle row
-  var _waFilter={ q:'', emp:'all', type:'all', status:'pending', sort:'new' };
+  var _waFilter={ q:'', emp:'all', type:'all', status:'pending', sort:'new', date:'all', from:'', to:'' };
+  // Shared date-range resolver for the Date filter (both Work Approvals + Approved Works).
+  function beDateRange(key,from,to){
+    var now=new Date(), today=new Date(now.getFullYear(),now.getMonth(),now.getDate()), DAY=86400000, s=null,e=null;
+    if(key==='today'){ s=today; e=new Date(today.getTime()+DAY); }
+    else if(key==='yesterday'){ e=today; s=new Date(today.getTime()-DAY); }
+    else if(key==='7d'){ s=new Date(today.getTime()-6*DAY); e=new Date(today.getTime()+DAY); }
+    else if(key==='month'){ s=new Date(now.getFullYear(),now.getMonth(),1); e=new Date(now.getFullYear(),now.getMonth()+1,1); }
+    else if(key==='prevmonth'){ s=new Date(now.getFullYear(),now.getMonth()-1,1); e=new Date(now.getFullYear(),now.getMonth(),1); }
+    else if(key==='custom'){ if(from) s=new Date(from+'T00:00:00'); if(to) e=new Date(to+'T23:59:59.999'); }
+    return { s:s, e:e };
+  }
+  function beInRange(iso,r){ if(!r.s&&!r.e) return true; if(!iso) return false; var t=new Date(iso).getTime(); if(isNaN(t)) return false; if(r.s&&t<r.s.getTime()) return false; if(r.e&&t>=r.e.getTime()) return false; return true; }
+  function waSubIso(a){ return a.submitted_at || (a.id ? new Date(Number(a.id)).toISOString() : null); }
   // Map a row to one review state. Order matters: rejected/rework are terminal-ish signals.
   function waStatusOf(a){
     if(a.status==='Rejected') return 'rejected';
@@ -8923,7 +9019,7 @@ async function saveLeave(){
   function waNote(a){ var n=(a.explanation&&a.explanation!=='None')?a.explanation:''; return n||a.description||''; }
   var _WA_STATUS_META={ pending:{t:'Pending Review',c:'#38bdf8'}, approved:{t:'Approved',c:'#22c55e'}, rework:{t:'Rework',c:'#fb923c'}, rejected:{t:'Rejected',c:'#f87171'} };
   window.waOnSearch=function(v){ _waFilter.q=v||''; waRender(); };
-  window.waSetFilter=function(k,v){ _waFilter[k]=v; waRender(); };
+  window.waSetFilter=function(k,v){ _waFilter[k]=v; if(k==='date'){ var cr=document.getElementById('wa-custom-range'); if(cr) cr.classList.toggle('hidden', v!=='custom'); } waRender(); };
   // Populate the two data-driven dropdowns (employees + work types) from the cache, preserving
   // the current selection. be-select.js auto-enhances / re-syncs on the option mutation.
   function waPopulateFilterOptions(){
@@ -8935,17 +9031,20 @@ async function saveLeave(){
   }
   function waFilteredSorted(){
     var q=_waFilter.q.trim().toLowerCase();
+    var r=beDateRange(_waFilter.date,_waFilter.from,_waFilter.to);
     var list=_waAll.filter(function(a){
       if(_waFilter.status!=='all' && waStatusOf(a)!==_waFilter.status) return false;
       if(_waFilter.emp!=='all' && waEmpName(a)!==_waFilter.emp) return false;
       if(_waFilter.type!=='all' && (a.type||'')!==_waFilter.type) return false;
+      if(_waFilter.date!=='all' && !beInRange(waSubIso(a),r)) return false;
       if(q){ var hay=[a.topic,waEmpName(a),a.type,waNote(a)].join(' ').toLowerCase(); if(hay.indexOf(q)===-1) return false; }
       return true;
     });
     var s=_waFilter.sort;
+    function subT(a){ var i=waSubIso(a); return i?new Date(i).getTime():0; }
     list.sort(function(x,y){
-      if(s==='new') return (y.id||0)-(x.id||0);
-      if(s==='old') return (x.id||0)-(y.id||0);
+      if(s==='new') return subT(y)-subT(x);
+      if(s==='old') return subT(x)-subT(y);
       if(s==='dl-near') return String(x.date||'~').localeCompare(String(y.date||'~'));
       if(s==='dl-late') return String(y.date||'').localeCompare(String(x.date||''));
       if(s==='emp-az') return waEmpName(x).localeCompare(waEmpName(y));
@@ -8994,6 +9093,109 @@ async function saveLeave(){
     _waRowById={}; _waAll.forEach(function(a){ _waRowById[a.id]=a; });
     waPopulateFilterOptions();
     waRender();
+  };
+
+  // ── APPROVED WORKS: permanent archive of approved deliveries (separate tab) ──
+  function beFmtDT(iso){ if(!iso) return '—'; var d=new Date(iso); if(isNaN(d)) return '—';
+    var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM'; h=h%12||12;
+    return (d.getDate()<10?'0':'')+d.getDate()+' '+mo+' '+d.getFullYear()+' · '+(h<10?'0':'')+h+':'+(m<10?'0':'')+m+' '+ap; }
+  function beDownloadTarget(entry){
+    if(!entry||entry.folder) return null; var low=entry.url.toLowerCase();
+    if(/drive\.google\.com/.test(low)){ var id=beDriveId(entry.url); return id?{href:'https://drive.google.com/uc?export=download&id='+id,newtab:true,name:beNameFor(entry)}:null; }
+    if(/docs\.google\.com|youtube\.com|youtu\.be|vimeo\.com/.test(low)) return null;
+    if(/^https?:\/\/[^?#]+\.[a-z0-9]{2,5}(\?|#|$)/i.test(entry.url)) return {href:entry.url,newtab:false,name:beNameFor(entry)};
+    return null;
+  }
+  window.awDownload=function(id){
+    var a=_awRowById[id]||_waRowById[id]; if(!a) return;
+    var ent=beParseDelivery(a.asset_link), tgt=null;
+    for(var i=0;i<ent.length;i++){ tgt=beDownloadTarget(ent[i]); if(tgt) break; }
+    if(!tgt){ toast('info','No directly downloadable file — use View Delivery → Open Original.'); return; }
+    var link=document.createElement('a'); link.href=tgt.href; if(tgt.newtab){ link.target='_blank'; link.rel='noopener'; } else { link.download=tgt.name||''; }
+    document.body.appendChild(link); link.click(); link.remove();
+  };
+  var _awAll=[], _awRowById={};
+  var _awFilter={ q:'', emp:'all', type:'all', date:'all', from:'', to:'', sort:'app-new', per:10, page:1 };
+  async function fetchApproved(){
+    var d=db(); if(!d) return [];
+    var r=await d.from('assignments').select('*').eq('manager_approved',true).order('approved_at',{ascending:false});
+    return (r.data||[]);
+  }
+  window.awOnSearch=function(v){ _awFilter.q=v||''; _awFilter.page=1; awRender(); };
+  window.awSetFilter=function(k,v){ _awFilter[k]=(k==='per'?parseInt(v,10)||10:v); if(k!=='per') _awFilter.page=1;
+    if(k==='date'){ var cr=document.getElementById('aw-custom-range'); if(cr) cr.classList.toggle('hidden', v!=='custom'); }
+    awRender(); };
+  window.awGoPage=function(p){ _awFilter.page=p; awRender(); var b=document.getElementById('tab-content-approved-works'); if(b) b.scrollIntoView({behavior:'smooth',block:'start'}); };
+  function awPopulateOptions(){
+    var emps={}, types={};
+    _awAll.forEach(function(a){ emps[waEmpName(a)]=1; if(a.type) types[a.type]=1; });
+    var eSel=document.getElementById('aw-f-emp'), tSel=document.getElementById('aw-f-type');
+    if(eSel){ var ev=_awFilter.emp; eSel.innerHTML='<option value="all">All Employees</option>'+Object.keys(emps).sort().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join(''); eSel.value=ev; if(eSel.value!==ev){ _awFilter.emp='all'; eSel.value='all'; } }
+    if(tSel){ var tv=_awFilter.type; tSel.innerHTML='<option value="all">All Types</option>'+Object.keys(types).sort().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join(''); tSel.value=tv; if(tSel.value!==tv){ _awFilter.type='all'; tSel.value='all'; } }
+  }
+  function awFilteredSorted(){
+    var q=_awFilter.q.trim().toLowerCase();
+    var r=beDateRange(_awFilter.date,_awFilter.from,_awFilter.to);
+    var list=_awAll.filter(function(a){
+      if(_awFilter.emp!=='all' && waEmpName(a)!==_awFilter.emp) return false;
+      if(_awFilter.type!=='all' && (a.type||'')!==_awFilter.type) return false;
+      if(_awFilter.date!=='all' && !beInRange(a.approved_at,r)) return false;
+      if(q){ var hay=[a.topic,waEmpName(a),a.type,waNote(a)].join(' ').toLowerCase(); if(hay.indexOf(q)===-1) return false; }
+      return true;
+    });
+    function appT(a){ return a.approved_at?new Date(a.approved_at).getTime():0; }
+    function subT(a){ var i=waSubIso(a); return i?new Date(i).getTime():0; }
+    var s=_awFilter.sort;
+    list.sort(function(x,y){
+      if(s==='app-new') return appT(y)-appT(x);
+      if(s==='app-old') return appT(x)-appT(y);
+      if(s==='sub-new') return subT(y)-subT(x);
+      if(s==='sub-old') return subT(x)-subT(y);
+      if(s==='emp-az') return waEmpName(x).localeCompare(waEmpName(y));
+      if(s==='emp-za') return waEmpName(y).localeCompare(waEmpName(x));
+      return 0;
+    });
+    return list;
+  }
+  function awRender(){
+    var body=document.getElementById('aw-tab-body'), pager=document.getElementById('aw-pager'); if(!body) return;
+    var all=awFilteredSorted(), per=_awFilter.per, total=all.length, pages=Math.max(1,Math.ceil(total/per));
+    if(_awFilter.page>pages) _awFilter.page=pages;
+    var start=(_awFilter.page-1)*per, rows=all.slice(start,start+per);
+    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No approved work matches these filters.</div>'; if(pager) pager.innerHTML=''; return; }
+    body.innerHTML=rows.map(function(a){
+      var hasDeliv=beParseDelivery(a.asset_link).length>0;
+      var dlBtn=hasDeliv?'<button onclick="awDownload('+a.id+')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#e5e9f5;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Download</button>':'';
+      var viewBtn=hasDeliv?'<button onclick="mhViewDelivery('+a.id+',{approved:true})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>':'<span style="color:#6b74a0;font-size:11px">No delivery</span>';
+      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)">'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:240px;flex:1">'
+        +'<div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> <span style="font-size:10px;font-weight:800;color:#22c55e;background:#22c55e22;border:1px solid #22c55e55;padding:2px 8px;border-radius:999px">Approved</span></div>'
+        +'<div style="color:#8890b5;font-size:12px;margin-top:4px">Employee: '+esc(waEmpName(a))+' · Target '+esc(a.date||'—')+'</div>'
+        +'<div style="color:#8890b5;font-size:11px;margin-top:3px">Submitted: '+esc(beFmtDT(waSubIso(a)))+'</div>'
+        +'<div style="color:#8890b5;font-size:11px;margin-top:2px">Approved: '+esc(beFmtDT(a.approved_at))+' · by '+esc(a.approved_by||'—')+'</div>'
+        +(waNote(a)?'<div style="color:#a5adcf;font-size:12px;margin-top:6px">'+esc(waNote(a))+'</div>':'')
+        +'<div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">'+viewBtn+dlBtn+'</div>'
+        +'</div></div></div>';
+    }).join('');
+    if(pager){
+      var html='<button onclick="awGoPage('+Math.max(1,_awFilter.page-1)+')" '+(_awFilter.page<=1?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_awFilter.page<=1?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700;cursor:'+(_awFilter.page<=1?'not-allowed':'pointer')+'">Prev</button>';
+      for(var p=1;p<=pages;p++){ if(pages>7 && p>2 && p<pages-1 && Math.abs(p-_awFilter.page)>1){ if(p===3||p===pages-1) html+='<span style="color:#4a5182;font-size:12px;padding:0 4px">…</span>'; continue; }
+        var on=p===_awFilter.page; html+='<button onclick="awGoPage('+p+')" style="min-width:32px;padding:6px 10px;border-radius:8px;background:'+(on?'linear-gradient(135deg,#ff6b06,#f9182f)':'rgba(255,255,255,.05)')+';border:1px solid '+(on?'transparent':'rgba(255,255,255,.1)')+';color:#fff;font-size:12px;font-weight:700;cursor:pointer">'+p+'</button>'; }
+      html+='<button onclick="awGoPage('+Math.min(pages,_awFilter.page+1)+')" '+(_awFilter.page>=pages?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_awFilter.page>=pages?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700;cursor:'+(_awFilter.page>=pages?'not-allowed':'pointer')+'">Next</button>';
+      html+='<span style="color:#6b74a0;font-size:11px;margin-left:8px">'+total+' approved · page '+_awFilter.page+' / '+pages+'</span>';
+      pager.innerHTML=html;
+    }
+  }
+  window.mhRenderApprovedWorks=async function(){
+    var body=document.getElementById('aw-tab-body'); if(!body) return;
+    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Not authorized.</div>'; return; }
+    body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Loading…</div>';
+    _awAll=await fetchApproved();
+    _awRowById={}; _awAll.forEach(function(a){ _awRowById[a.id]=a; });
+    awPopulateOptions();
+    _awFilter.page=1;
+    awRender();
   };
   // Work Approvals nav / any legacy caller → open the tab (never a modal).
   async function openApprovals(){
