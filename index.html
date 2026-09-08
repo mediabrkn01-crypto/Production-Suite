@@ -1708,6 +1708,33 @@
                     <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Work Approvals</h1>
                     <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Completed work submitted for your final review.</p>
                 </div>
+                <!-- Filter bar: search + branded dropdowns. Native <select> auto-enhanced by be-select.js. -->
+                <div id="mh-appr-filterbar" class="space-y-3">
+                    <div style="position:relative">
+                        <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:#6b74a0"></i>
+                        <input id="wa-search" type="text" placeholder="Search work, employee, campaign..." oninput="waOnSearch(this.value)"
+                               class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-[#6b74a0] focus:outline-none focus:border-orange-500 transition-colors">
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <select id="wa-f-emp" onchange="waSetFilter('emp',this.value)" style="min-width:170px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Employees</option></select>
+                        <select id="wa-f-type" onchange="waSetFilter('type',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Types</option></select>
+                        <select id="wa-f-status" onchange="waSetFilter('status',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="pending">Pending Review</option>
+                            <option value="approved">Approved</option>
+                            <option value="rework">Sent for Rework</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="all">All</option>
+                        </select>
+                        <select id="wa-f-sort" onchange="waSetFilter('sort',this.value)" style="min-width:180px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="new">Newest Submitted First</option>
+                            <option value="old">Oldest Submitted First</option>
+                            <option value="dl-near">Deadline Nearest First</option>
+                            <option value="dl-late">Deadline Latest First</option>
+                            <option value="emp-az">Employee A–Z</option>
+                            <option value="emp-za">Employee Z–A</option>
+                        </select>
+                    </div>
+                </div>
                 <div id="mh-appr-tab-body" class="space-y-3"></div>
             </div>
 
@@ -8733,32 +8760,44 @@ async function saveLeave(){
     }).filter(Boolean);
   }
   function beDriveId(url){ var m=url.match(/\/file\/d\/([^/]+)/)||url.match(/[?&]id=([^&]+)/); return m?m[1]:''; }
+  function beNameFor(entry){ if(entry.name) return entry.name; try{ var u=new URL(entry.url); return decodeURIComponent((u.pathname.split('/').pop())||''); }catch(e){ return ''; } }
+  var _DL_ICO='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+  function beDlBtn(href, name, newtab){
+    return '<a href="'+esc(href)+'"'+(newtab?' target="_blank" rel="noopener"':(' download="'+esc(name||'')+'"'))+' title="Download '+esc(name||'file')+'" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#e5e9f5;font-weight:800;font-size:12px;padding:9px 16px;border-radius:9px;text-decoration:none">'+_DL_ICO+' Download</a>';
+  }
   // Returns HTML for an embedded preview of a single entry, or an "open" fallback when the
-  // provider can't be embedded. type sniffed from url + filename.
+  // provider can't be embedded. type sniffed from url + filename. Actions row = Open Original +
+  // Download (only where a REAL direct download exists — never faked for YouTube/Vimeo/folder).
   function bePreviewMarkup(entry){
     var url=entry.url, name=(entry.name||'').toLowerCase(), low=url.toLowerCase();
     var openBtn='<a href="'+esc(url)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:800;font-size:12px;padding:9px 16px;border-radius:9px;text-decoration:none">Open Original ↗</a>';
+    function acts(dl){ return '<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'+openBtn+(dl||'')+'</div>'; }
     if(entry.folder){
-      return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">📁</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">A Drive folder was submitted. Open it to review its contents.</div>'+openBtn+'</div>';
+      return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">📁</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">A Drive folder was submitted. Open it to review its contents.</div>'+acts('')+'</div>';
     }
     var isDrive=/drive\.google\.com/i.test(low), isDocs=/docs\.google\.com/i.test(low);
     if(isDrive){ var id=beDriveId(url); if(id){
-      return '<iframe src="https://drive.google.com/file/d/'+esc(id)+'/preview" allow="autoplay" style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe>'
-        +'<div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; } }
+      var dl=beDlBtn('https://drive.google.com/uc?export=download&id='+id, beNameFor(entry), true); // Drive serves the real file w/ its own name
+      return '<iframe src="https://drive.google.com/file/d/'+esc(id)+'/preview" allow="autoplay" style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe>'+acts(dl); } }
     if(isDocs){
       var pv=url.replace(/\/(edit|view)(\?[^#]*)?(#.*)?$/,'/preview');
-      return '<iframe src="'+esc(pv)+'" style="width:100%;height:62vh;border:0;border-radius:12px;background:#fff"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; }
+      return '<iframe src="'+esc(pv)+'" style="width:100%;height:62vh;border:0;border-radius:12px;background:#fff"></iframe>'+acts(''); }
     var yt=low.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
-    if(yt){ return '<iframe src="https://www.youtube.com/embed/'+esc(yt[1])+'" allowfullscreen style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; }
+    if(yt){ return '<iframe src="https://www.youtube.com/embed/'+esc(yt[1])+'" allowfullscreen style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe>'+acts(''); }
     var vm=low.match(/vimeo\.com\/(\d+)/);
-    if(vm){ return '<iframe src="https://player.vimeo.com/video/'+esc(vm[1])+'" allowfullscreen style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; }
+    if(vm){ return '<iframe src="https://player.vimeo.com/video/'+esc(vm[1])+'" allowfullscreen style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe>'+acts(''); }
     var isImg=/\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|$)/.test(low)||/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/.test(name);
     var isVid=/\.(mp4|webm|mov|m4v|ogg)(\?|$)/.test(low)||/\.(mp4|webm|mov|m4v|ogg)$/.test(name);
     var isPdf=/\.pdf(\?|$)/.test(low)||/\.pdf$/.test(name);
-    if(isImg) return '<div style="text-align:center"><img src="'+esc(url)+'" style="max-width:100%;max-height:62vh;border-radius:12px" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><div style="display:none;color:#8890b5;font-size:12px;padding:30px">Preview couldn\'t load.</div><div style="margin-top:12px">'+openBtn+'</div></div>';
-    if(isVid) return '<video src="'+esc(url)+'" controls style="width:100%;max-height:62vh;border-radius:12px;background:#000"></video><div style="margin-top:12px;text-align:center">'+openBtn+'</div>';
-    if(isPdf) return '<iframe src="'+esc(url)+'" style="width:100%;height:62vh;border:0;border-radius:12px;background:#fff"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>';
-    return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">🔗</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">This delivery is an external link. Open it to review.</div>'+openBtn+'</div>';
+    var fileDl=beDlBtn(url, beNameFor(entry), false); // real stored file → browser download, filename preserved
+    if(isImg) return '<div style="text-align:center"><img src="'+esc(url)+'" style="max-width:100%;max-height:62vh;border-radius:12px" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><div style="display:none;color:#8890b5;font-size:12px;padding:30px">Preview couldn\'t load.</div>'+acts(fileDl)+'</div>';
+    if(isVid) return '<video src="'+esc(url)+'" controls style="width:100%;max-height:62vh;border-radius:12px;background:#000"></video>'+acts(fileDl);
+    if(isPdf) return '<iframe src="'+esc(url)+'" style="width:100%;height:62vh;border:0;border-radius:12px;background:#fff"></iframe>'+acts(fileDl);
+    // Unknown direct file (doc/zip/etc) → file info card + Open + Download.
+    if(/^https?:\/\/[^?#]+\.[a-z0-9]{2,5}(\?|#|$)/i.test(url)){
+      return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">📄</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 4px">'+esc(beNameFor(entry)||'File')+'</div><div style="color:#6b74a0;font-size:11px;margin-bottom:16px">Preview not available for this file type.</div>'+acts(fileDl)+'</div>';
+    }
+    return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">🔗</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">This delivery is an external link. Open it to review.</div>'+acts('')+'</div>';
   }
   // Branded in-app delivery preview modal. Multiple entries → left selector, single preview pane.
   window.mhViewDelivery=function(id){
@@ -8806,17 +8845,67 @@ async function saveLeave(){
     var m=document.getElementById('mh-deliv-modal'); if(m){ m.querySelectorAll('[data-di]').forEach(function(b){
       var on=+b.getAttribute('data-di')===idx; b.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.05)'; b.style.color=on?'#ff8a3d':'#a5adcf'; b.style.borderColor=on?'rgba(255,107,6,.4)':'rgba(255,255,255,.12)'; }); }
   };
-  // Renders pending approvals into the dedicated Work Approvals TAB (not a modal).
-  var _waRowById={};
-  window.mhRenderApprovalsTab=async function(){
+  // ── Work Approvals: shared cache + client-side search / filter / sort (no reload) ──
+  var _waRowById={};      // id -> row, ALL fetched rows (modal always resolves any id)
+  var _waAll=[];          // every submission-lifecycle row
+  var _waFilter={ q:'', emp:'all', type:'all', status:'pending', sort:'new' };
+  // Map a row to one review state. Order matters: rejected/rework are terminal-ish signals.
+  function waStatusOf(a){
+    if(a.status==='Rejected') return 'rejected';
+    if(a.status==='Rework Required') return 'rework';
+    if(a.manager_approved) return 'approved';
+    if(a.status==='Completed') return 'pending';
+    return '';
+  }
+  async function fetchAllApprovals(){
+    var d=db(); if(!d) return [];
+    var r=await d.from('assignments').select('*').order('id',{ascending:false});
+    return (r.data||[]).filter(function(a){ return !!waStatusOf(a); });
+  }
+  function waEmpName(a){ return a.assigned_to||a.employee_email||'—'; }
+  function waNote(a){ var n=(a.explanation&&a.explanation!=='None')?a.explanation:''; return n||a.description||''; }
+  var _WA_STATUS_META={ pending:{t:'Pending Review',c:'#38bdf8'}, approved:{t:'Approved',c:'#22c55e'}, rework:{t:'Rework',c:'#fb923c'}, rejected:{t:'Rejected',c:'#f87171'} };
+  window.waOnSearch=function(v){ _waFilter.q=v||''; waRender(); };
+  window.waSetFilter=function(k,v){ _waFilter[k]=v; waRender(); };
+  // Populate the two data-driven dropdowns (employees + work types) from the cache, preserving
+  // the current selection. be-select.js auto-enhances / re-syncs on the option mutation.
+  function waPopulateFilterOptions(){
+    var emps={}, types={};
+    _waAll.forEach(function(a){ emps[waEmpName(a)]=1; if(a.type) types[a.type]=1; });
+    var eSel=document.getElementById('wa-f-emp'), tSel=document.getElementById('wa-f-type');
+    if(eSel){ var ev=_waFilter.emp; eSel.innerHTML='<option value="all">All Employees</option>'+Object.keys(emps).sort().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join(''); eSel.value=ev; if(eSel.value!==ev){ _waFilter.emp='all'; eSel.value='all'; } }
+    if(tSel){ var tv=_waFilter.type; tSel.innerHTML='<option value="all">All Types</option>'+Object.keys(types).sort().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join(''); tSel.value=tv; if(tSel.value!==tv){ _waFilter.type='all'; tSel.value='all'; } }
+  }
+  function waFilteredSorted(){
+    var q=_waFilter.q.trim().toLowerCase();
+    var list=_waAll.filter(function(a){
+      if(_waFilter.status!=='all' && waStatusOf(a)!==_waFilter.status) return false;
+      if(_waFilter.emp!=='all' && waEmpName(a)!==_waFilter.emp) return false;
+      if(_waFilter.type!=='all' && (a.type||'')!==_waFilter.type) return false;
+      if(q){ var hay=[a.topic,waEmpName(a),a.type,waNote(a)].join(' ').toLowerCase(); if(hay.indexOf(q)===-1) return false; }
+      return true;
+    });
+    var s=_waFilter.sort;
+    list.sort(function(x,y){
+      if(s==='new') return (y.id||0)-(x.id||0);
+      if(s==='old') return (x.id||0)-(y.id||0);
+      if(s==='dl-near') return String(x.date||'~').localeCompare(String(y.date||'~'));
+      if(s==='dl-late') return String(y.date||'').localeCompare(String(x.date||''));
+      if(s==='emp-az') return waEmpName(x).localeCompare(waEmpName(y));
+      if(s==='emp-za') return waEmpName(y).localeCompare(waEmpName(x));
+      return 0;
+    });
+    return list;
+  }
+  // Pure render from the cache + current filters. No network.
+  function waRender(){
     var body=document.getElementById('mh-appr-tab-body'); if(!body) return;
-    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Not authorized.</div>'; return; }
-    body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Loading…</div>';
-    var rows=await fetchPending();
-    _waRowById={}; rows.forEach(function(a){ _waRowById[a.id]=a; });
-    if(!rows.length){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No work is waiting for approval right now.</div>'; return; }
+    var rows=waFilteredSorted();
+    if(!rows.length){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No work matches these filters.</div>'; return; }
     body.innerHTML=rows.map(function(a){
+      var st=waStatusOf(a), meta=_WA_STATUS_META[st]||{t:st,c:'#8890b5'};
       var hasDeliv=beParseDelivery(a.asset_link).length>0;
+      var chip='<span style="font-size:10px;font-weight:800;color:'+meta.c+';background:'+meta.c+'22;border:1px solid '+meta.c+'55;padding:2px 8px;border-radius:999px">'+esc(meta.t)+'</span>';
       var deliv=hasDeliv
         ? '<button onclick="mhViewDelivery('+a.id+')" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>'
         : '<span style="color:#f87171;font-size:11px;font-weight:600">No delivery submitted yet</span>';
@@ -8824,8 +8913,8 @@ async function saveLeave(){
         ? '<button onclick="mhApprove('+a.id+')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Approve</button>'
         : '<button disabled title="No delivery to review" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#4a5182;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:not-allowed">Approve</button>';
       return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)">'
-        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:220px;flex:1"><div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span></div>'
-        +'<div style="color:#8890b5;font-size:12px;margin-top:3px">Employee: '+esc(a.assigned_to||a.employee_email||'—')+' · Target '+esc(a.date||'—')+'</div>'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:220px;flex:1"><div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> '+chip+'</div>'
+        +'<div style="color:#8890b5;font-size:12px;margin-top:3px">Employee: '+esc(waEmpName(a))+' · Target '+esc(a.date||'—')+'</div>'
         +'<div style="font-size:12px;margin-top:7px">'+deliv+'</div>'
         +(a.description?'<div style="color:#a5adcf;font-size:12px;margin-top:6px">'+esc(a.description)+'</div>':'')+'</div>'
         +'<div style="display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap">'
@@ -8834,6 +8923,20 @@ async function saveLeave(){
         +'<button onclick="mhReject('+a.id+')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Reject</button>'
         +'</div></div></div>';
     }).join('');
+  }
+  // Patch a cached row in place + re-render + refresh counter — no refetch, no page reload.
+  function waPatch(id,fields){
+    var a=_waRowById[id]; if(a){ Object.keys(fields).forEach(function(k){ a[k]=fields[k]; }); }
+    waRender(); refreshCount();
+  }
+  window.mhRenderApprovalsTab=async function(){
+    var body=document.getElementById('mh-appr-tab-body'); if(!body) return;
+    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Not authorized.</div>'; return; }
+    body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Loading…</div>';
+    _waAll=await fetchAllApprovals();
+    _waRowById={}; _waAll.forEach(function(a){ _waRowById[a.id]=a; });
+    waPopulateFilterOptions();
+    waRender();
   };
   // Work Approvals nav / any legacy caller → open the tab (never a modal).
   async function openApprovals(){
@@ -8850,7 +8953,7 @@ async function saveLeave(){
     var {error}=await d.from('assignments').update({ manager_approved:true, approved_by:actor(), approved_at:nowIso, social_media_status:'pending' }).eq('id',id).eq('status','Completed');
     if(error){ toast('error','Approve failed: '+error.message); return; }
     toast('success','Approved — handed off to Social Media.');
-    window.mhRenderApprovalsTab(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+    waPatch(id,{ manager_approved:true, approved_at:nowIso, social_media_status:'pending' }); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
   };
   window.mhRework=function(id){
     if(!isMediaHead()){ toast('error','Not authorized.'); return; }
@@ -8868,7 +8971,7 @@ async function saveLeave(){
       var {error}=await d.from('assignments').update({ status:'Rework Required', rework_reason:note, reviewed_by:actor(), reviewed_at:nowIso, manager_approved:false }).eq('id',id);
       if(error){ toast('error','Failed: '+error.message); return; }
       m.style.display='none'; toast('success','Sent back for rework.');
-      window.mhRenderApprovalsTab(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+      waPatch(id,{ status:'Rework Required', rework_reason:note, reviewed_at:nowIso, manager_approved:false }); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
     };
   };
   // REJECT — distinct from Rework. Branded reason dialog; sets status Rejected + audit; keeps the
@@ -8889,7 +8992,7 @@ async function saveLeave(){
       var {error}=await d.from('assignments').update({ status:'Rejected', rejection_reason:note, rejected_by:actor(), rejected_at:nowIso, manager_approved:false }).eq('id',id);
       if(error){ toast('error','Reject failed: '+error.message); return; }
       m.style.display='none'; toast('success','Work rejected.');
-      window.mhRenderApprovalsTab(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+      waPatch(id,{ status:'Rejected', rejection_reason:note, rejected_at:nowIso, manager_approved:false }); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
     };
   };
   window.openApprovals=openApprovals; // reachable from the Work Approvals sidebar item
