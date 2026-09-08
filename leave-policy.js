@@ -253,13 +253,13 @@
       if (lead < 1) warnings.push('Applied less than 1 day in advance (not flagged emergency) — normally not approved.');
     }
 
-    // §8 leave adjacent to a week-off/holiday → LOP double deduction unless exception.
+    // §8 leave adjacent to a week-off/holiday: surface as a WARNING for HR review only — it does
+    // NOT auto-convert a valid approved paid leave into LOP. An eligible SL/CL stays Paid unless
+    // HR explicitly marks it unpaid. (Prevents the "valid CL wrongly became LOP-double" bug.)
     var adj = detectAdjacency(ctx, start, end);
     var treatment = lopDays > 0 && paidDays === 0 ? 'lop' : (lopDays > 0 ? 'partial_lop' : 'paid');
     if (adj.adjacent) {
-      warnings.push('Leave is adjacent to a ' + adj.what + ' (' + adj.date + '). Policy result: LOP – Double Deduction unless a Management Exception is approved.');
-      requiresException = true;
-      treatment = 'lop_double';
+      warnings.push('Note: leave is adjacent to a ' + adj.what + ' (' + adj.date + '). HR may review; it remains Paid Leave unless HR marks it unpaid.');
     }
 
     function finalize(t) {
@@ -369,20 +369,18 @@
     if (state.onNotice) return code(CODES.LOP, 'Leave during notice → LOP', { payable: false, lop: true });
     var kind = req ? normType(req.leave_type) : 'OTHER';
     var exception = req && (req.status === 'Exception Approved' || req.final_treatment === 'exception' || req.exception_by);
-    // The request's resolved treatment (set at eligibility/approval, which knows the balance
-    // ledgers) is authoritative — payroll reads it so one screen can't say Paid while another
-    // says LOP. Exception overrides any LOP treatment.
-    if (req && !exception) {
-      if (req.final_treatment === 'lop_double') return code(CODES.LOP, 'Leave → LOP (Double Deduction)', { payable: false, lop: true, lopFactor: 2 });
-      if (req.final_treatment === 'lop') return code(CODES.LOP, 'Leave beyond entitlement → LOP', { payable: false, lop: true });
-    }
-    // Adjacency double-LOP unless a management exception was granted on the request.
-    var adj = detectAdjacency(ctx, (req && req.start_date || dateStr).slice(0, 10), (req && req.end_date || dateStr).slice(0, 10));
-    if (adj.adjacent && !exception) return code(CODES.LOP, 'Leave adjacent to ' + adj.what + ' → LOP (Double Deduction)', { payable: false, lop: true, lopFactor: 2 });
+    // A valid APPROVED paid leave stays PAID. It becomes LOP ONLY when explicitly marked so:
+    // final_treatment 'lop' (set when HR/policy resolved it as unpaid, or entitlement exhausted)
+    // — NEVER auto-converted by week-off/holiday adjacency. Adjacency now surfaces as a warning
+    // at request time (see resolveLeaveEligibility), so HR can choose to LOP it, but the default
+    // for an eligible approved SL/CL is Paid Leave. (Balance-exhaustion → LOP is enforced by the
+    // payroll consumer, which knows the running SL/CL balance for the month.)
+    if (req && !exception && req.final_treatment === 'lop') return code(CODES.LOP, 'Marked unpaid / entitlement exhausted → LOP', { payable: false, lop: true });
     if (kind === 'SL') return code(CODES.SL, 'Sick Leave', { payable: true, leave: true });
     if (kind === 'CL') return code(CODES.CL, 'Casual Leave', { payable: true, leave: true });
     if (kind === 'WFH') return code(CODES.WFH, 'WFH', { payable: true, worked: true });
-    return code(CODES.LOP, 'Unpaid/undefined leave → LOP', { payable: false, lop: true });
+    // Only a leave type that is not a configured paid entitlement falls to LOP.
+    return code(CODES.LOP, 'Unpaid / non-entitlement leave → LOP', { payable: false, lop: true });
   }
 
   function code(c, label, meta) { return Object.assign({ code: c, label: label }, meta || {}); }
