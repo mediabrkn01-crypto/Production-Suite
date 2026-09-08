@@ -1627,6 +1627,7 @@
                         </div>
                     </div>
                     <div id="hr-emp-parttime-fields" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2"><label class="hr-field-label">Teaching Rate per Hour (₹)</label><input id="hr-emp-hourly-rate" type="number" min="0" step="1" class="hr-input w-full" placeholder="e.g. 500"><p class="text-[11px] text-[#6b74a0]" style="margin-top:4px">Part-Time trainers are paid per completed teaching session: rate × (session minutes ÷ 60). No fixed monthly salary.</p></div>
                         <div><label class="hr-field-label">Max Classes / Day</label><input id="hr-emp-pt-max-classes" type="number" min="1" class="hr-input w-full" placeholder="e.g. 2"></div>
                         <div><label class="hr-field-label">Max Working Hours / Day</label><input id="hr-emp-pt-max-hours" type="number" min="0" step="0.5" class="hr-input w-full" placeholder="e.g. 3"></div>
                         <div class="sm:col-span-2"><label class="hr-field-label">Available Days</label>
@@ -3073,6 +3074,7 @@
             document.getElementById('hr-emp-employment-type').value = e?.employment_type || '';
             hrEmpSelectedCourses = e?.teachable_courses ? e.teachable_courses.split(',').map(s => s.trim()).filter(Boolean) : [];
             hrEmpSelectedPtDays = e?.pt_available_days ? e.pt_available_days.split(',').map(s => s.trim()).filter(Boolean) : [];
+            document.getElementById('hr-emp-hourly-rate').value = e?.hourly_rate ?? '';
             document.getElementById('hr-emp-pt-max-classes').value = e?.pt_max_classes_per_day || '';
             document.getElementById('hr-emp-pt-max-hours').value = e?.pt_max_hours || '';
             // hrGetWorkingHourRanges (common.js) — reads pt_time_ranges, falling back to the
@@ -3346,6 +3348,7 @@
                 // currently hold, i.e. blank/empty for everyone else.
                 employment_type: document.getElementById('hr-emp-employment-type').value || null,
                 teachable_courses: hrEmpSelectedCourses.join(', '),
+                hourly_rate: parseFloat(document.getElementById('hr-emp-hourly-rate').value) || null,
                 pt_max_classes_per_day: parseInt(document.getElementById('hr-emp-pt-max-classes').value) || null,
                 pt_max_hours: parseFloat(document.getElementById('hr-emp-pt-max-hours').value) || null,
                 pt_available_days: hrEmpSelectedPtDays.join(', '),
@@ -5673,10 +5676,15 @@ async function populateHRJobDeptOptions() {
         }
 
 // ── autoCalculateHRPayroll (orig line 10802) ──
-        function autoCalculateHRPayroll() {
+        async function autoCalculateHRPayroll() {
             const employee_id = document.getElementById('hr-pr-employee').value;
             const month = document.getElementById('hr-pr-month').value;
-            if (!employee_id || !month) { alert('Pick an employee and month first.'); return; }
+            if (!employee_id || !month) { showToast('warning','Pick an employee and month first.'); return; }
+            // PART-TIME ACADEMIC TRAINER → session-based teaching pay, NOT fixed salary (§10/§11).
+            const _emp = hrEmployees.find(e => e.id === employee_id);
+            if (_emp && _emp.employment_type === 'part_time' && (_emp.division === 'education')) {
+                return autoCalcPartTimeTrainerPayroll(_emp, month);
+            }
             const calc = hrCalculatePayrollForMonth(employee_id, month);
             // Basic is the employee's full contracted salary — LOP Deduction (unpaid leave +
             // absent/unmarked days, at the daily rate) is the one mechanism that reduces it.
@@ -5694,6 +5702,38 @@ async function populateHRJobDeptOptions() {
             document.getElementById('hr-pr-paid-days').value = calc.paidLeaveDays;
             document.getElementById('hr-pr-unpaid-days').value = calc.unpaidLeaveDays;
             document.getElementById('hr-pr-absent-days').value = calc.absentDays;
+            updateHRPayrollNetPreview();
+        }
+        // Session-based payroll for a Part-Time academic trainer. Base pay = sum of that month's
+        // completed-session earnings (traceable to real trainer_session_earnings rows — never a
+        // progress number). Bonuses/deductions/advances still apply on top.
+        async function autoCalcPartTimeTrainerPayroll(emp, month) {
+            const start = month + '-01';
+            const end = (function(){ const [y,m]=month.split('-').map(Number); return `${month}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; })();
+            let rows = [];
+            try {
+                let q = dbInstance.from('trainer_session_earnings').select('*').gte('session_date', start).lte('session_date', end).order('session_date');
+                // Prefer the HR-employee link; fall back to trainer name match for legacy rows.
+                const { data: byEmp } = await q.eq('hr_employee_id', emp.id);
+                rows = byEmp || [];
+                if (!rows.length && emp.full_name) {
+                    const { data: byName } = await dbInstance.from('trainer_session_earnings').select('*').gte('session_date', start).lte('session_date', end).eq('trainer_name', emp.full_name).order('session_date');
+                    rows = byName || [];
+                }
+            } catch(e) { showToast('error','Could not load sessions: '+e.message); }
+            const totalMin = rows.reduce((s,r)=>s+(+r.duration_minutes||0),0);
+            const total = Math.round(rows.reduce((s,r)=>s+(+r.amount||0),0)*100)/100;
+            const hrs = Math.round(totalMin/60*100)/100;
+            const rate = rows.length ? (rows[0].hourly_rate ?? emp.hourly_rate) : emp.hourly_rate;
+            document.getElementById('hr-pr-basic').value = total;
+            document.getElementById('hr-pr-leave-deduction').value = 0;
+            document.getElementById('hr-pr-paid-days').value = 0;
+            document.getElementById('hr-pr-unpaid-days').value = 0;
+            document.getElementById('hr-pr-absent-days').value = 0;
+            const list = rows.slice(0,40).map(r => `${(r.session_date||'').slice(5)} ${r.batch_name||''} ${r.duration_minutes||0}m ₹${(+r.amount||0).toLocaleString('en-IN')}`).join('  ·  ');
+            document.getElementById('hr-pr-leave-breakdown').textContent =
+                `PART-TIME TRAINER · Completed Sessions: ${rows.length} · Teaching Hours: ${hrs} hrs · Rate ₹${rate!=null?rate:'—'}/hr · Session Earnings ₹${total.toLocaleString('en-IN')}`
+                + (rows.length ? '  ||  ' + list + (rows.length>40?`  · +${rows.length-40} more`:'') : '  ||  No completed sessions recorded this month.');
             updateHRPayrollNetPreview();
         }
 

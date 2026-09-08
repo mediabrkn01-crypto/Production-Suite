@@ -2487,9 +2487,43 @@ async function saveAtt(){
       else await sb.from('sessions').insert({ batch_id: window._attBatchId, session_date: date, notes: classLogText, logged_by: currentUser.name, type: 'class_log', status: 'completed' });
     } catch(e) { console.warn('Could not save class log:', e.message); }
   }
+  // PART-TIME TRAINER session earning \u2014 one completed session = one earning, credited to the
+  // batch's ASSIGNED trainer (not whoever marked). Idempotent by session_key so re-opening/
+  // editing/re-saving never double-pays; a paid session is never modified. Full-time trainers
+  // are skipped entirely (they keep the fixed-salary system). Never per-student.
+  try { await _acadRecordSessionEarning(window._attBatchId, realBatchName, num, date, currentUser.name); } catch(e){ console.warn('session earning:', e && e.message); }
   showToast('success','Attendance saved: '+b.name+' \u00b7 session '+num);
   loadLive();
   document.getElementById('modalAtt').classList.remove('on');
+}
+async function _acadRecordSessionEarning(batchId, batchName, num, date, markedBy){
+  if(!batchId) return;
+  const sessionKey = batchId + '|' + num;
+  const { data: existing } = await sb.from('trainer_session_earnings').select('id,status').eq('session_key', sessionKey).maybeSingle();
+  if (existing && existing.status === 'paid') return;                    // never touch a paid session (\u00a716)
+  const { data: batch } = await sb.from('batches').select('trainer_id,trainer_name,programme,class_duration_minutes,time_slot,name').eq('id', batchId).maybeSingle();
+  if (!batch || !batch.trainer_id) return;
+  const { data: tr } = await sb.from('trainers').select('id,name,type,hr_employee_id').eq('id', batch.trainer_id).maybeSingle();
+  if (!tr) return;
+  let emp = null;
+  if (tr.hr_employee_id) { const { data } = await sb.from('hr_employees').select('id,employment_type,hourly_rate').eq('id', tr.hr_employee_id).maybeSingle(); emp = data; }
+  const isPT = (tr.type === 'pt') || (emp && /part.?time/i.test(emp.employment_type || ''));
+  if (!isPT) return;                                                     // full-time \u2192 salary system, untouched (\u00a711)
+  const rate = (emp && emp.hourly_rate != null) ? Number(emp.hourly_rate) : null;
+  let dur = Number(batch.class_duration_minutes) || 0, start = null, end = null;
+  const ts = (batch.time_slot || '').match(/(\d{1,2}:\d{2})\s*(?:-|\u2013|to)\s*(\d{1,2}:\d{2})/i);
+  if (ts) { start = ts[1]; end = ts[2]; const toMin = t => { const p = t.split(':').map(Number); return p[0]*60 + p[1]; }; let d = toMin(end) - toMin(start); if (d < 0) d += 1440; if (d > 0) dur = d; }
+  if (!dur) dur = 60;
+  const amount = rate != null ? Math.round(rate * (dur/60) * 100) / 100 : null;
+  const row = {
+    session_key: sessionKey, batch_id: batchId, batch_name: batchName, course: batch.programme || null,
+    trainer_id: tr.id, trainer_name: tr.name, hr_employee_id: tr.hr_employee_id || null,
+    session_num: num, session_date: date, start_time: start, end_time: end, duration_minutes: dur,
+    hourly_rate: rate, amount: amount, attendance_marked_by: markedBy, attendance_marked_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  if (!existing) row.status = 'pending';                                 // new session; keep existing status on re-mark
+  await sb.from('trainer_session_earnings').upsert(row, { onConflict: 'session_key' });
 }
 // Session History \u2014 past sessions for one batch: date, trainer, attendance summary, class log
 // notes. Reachable from Mark Attendance (this batch) and from every batch card, active or
