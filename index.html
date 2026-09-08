@@ -384,8 +384,10 @@
         /* Employee-only: hidden when admin is logged in */
         body.role-admin .employee-only { display: none !important; }
         /* Admin-manager-only: hidden unless admin or manager */
-        body:not(.role-admin):not(.role-manager) .admin-manager-only { display: none !important; }
+        body:not(.role-admin):not(.role-manager):not(.role-mediahead) .admin-manager-only { display: none !important; }
         body:not(.role-manager) .manager-only { display: none !important; }
+        /* Media Head — production management (Create/Assign Work + Approvals). system_role-driven. */
+        body:not(.role-mediahead) .mediahead-only { display: none !important; }
         body.role-admin .non-hr-nav-group { display: none !important; }
         body:not(.role-admin) .hr-mode-only { display: none !important; }
 
@@ -8589,9 +8591,111 @@ async function saveLeave(){
       var r = await dbInstance.from('hr_employees').select('system_role,employment_status').eq('portal_email', String(activeEmail).toLowerCase()).maybeSingle();
       var e = r && r.data; if (!e) return;
       var sr = (e.system_role || '').toLowerCase(), st = (e.employment_status || '').toLowerCase();
-      if ((sr === 'manager' || sr === 'founder') && st !== 'inactive' && st !== 'exited' && !/manager\.html$/.test(location.pathname)) location.href = 'manager.html';
+      var active = st !== 'inactive' && st !== 'exited';
+      if ((sr === 'manager' || sr === 'founder') && active && !/manager\.html$/.test(location.pathname)) { location.href = 'manager.html'; return; }
+      // Media Head stays in the Media Suite but gains production-management UI (Create/Assign
+      // Work via the existing .admin-manager-only controls + the Approvals view). system_role
+      // driven, not designation/login-role. Window._systemRole exposed for JS permission checks.
+      window._systemRole = sr;
+      if (sr === 'media_head' && active) { document.body.classList.add('role-mediahead'); if (typeof window.initMediaHeadApprovals === 'function') window.initMediaHeadApprovals(); }
     } catch (err) {}
   }, 400);
+})();
+</script>
+<script>
+// ── MEDIA HEAD — Approvals workflow (self-contained; does not alter the existing Media pipeline).
+// Gated by system_role='media_head' (set above). Reviews COMPLETED production work, approves it
+// (→ Social Media handoff on the SAME assignment row, no duplicate) or sends it back for rework.
+// All writes verify permission via the resolved system_role; realtime handled by re-fetch on open.
+(function(){
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function isMediaHead(){ return (window._systemRole||'')==='media_head'; }
+  function db(){ return (typeof dbInstance!=='undefined'&&dbInstance)?dbInstance:null; }
+  function actor(){ return (typeof activeUser!=='undefined'&&activeUser)||(typeof activeEmail!=='undefined'&&activeEmail)||'Media Head'; }
+  function toast(t,m){ if(typeof showToast==='function') showToast(t,m); }
+
+  function ensureUI(){
+    if (document.getElementById('mh-approvals-btn')) return;
+    var btn=document.createElement('button'); btn.id='mh-approvals-btn'; btn.className='mediahead-only';
+    btn.innerHTML='<i data-lucide="clipboard-check" style="width:14px;height:14px"></i> Approvals <span id="mh-appr-count" style="display:none;min-width:16px;height:16px;border-radius:99px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-size:9px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 4px"></span>';
+    btn.style.cssText='position:fixed;right:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:7px;padding:11px 16px;border-radius:12px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;border:none;font-size:12.5px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,6,82,.35)';
+    btn.onclick=openApprovals; document.body.appendChild(btn);
+    var ov=document.createElement('div'); ov.id='mh-appr-overlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:9001;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
+    ov.innerHTML='<div style="width:100%;max-width:920px;background:linear-gradient(145deg,#141019,#0a080c);border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.85)">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.07)"><div style="font-size:16px;font-weight:800;color:#fff">Approvals <span style="color:#6b74a0;font-weight:600;font-size:12px">— work ready for final review</span></div><button onclick="document.getElementById(\'mh-appr-overlay\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer">✕</button></div>'
+      +'<div id="mh-appr-body" style="padding:14px 22px 22px;max-height:70vh;overflow:auto"></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){ if(e.target===ov) ov.style.display='none'; });
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+    refreshCount();
+  }
+
+  async function fetchPending(){
+    var d=db(); if(!d) return [];
+    // "Completed" delivery not yet manager-approved and not already sent back = ready for review.
+    var r=await d.from('assignments').select('*').eq('status','Completed').order('id',{ascending:false});
+    return (r.data||[]).filter(function(a){ return !a.manager_approved; });
+  }
+  async function refreshCount(){
+    if(!isMediaHead()) return;
+    try{ var rows=await fetchPending(); var c=document.getElementById('mh-appr-count'); if(c){ c.textContent=rows.length; c.style.display=rows.length?'inline-flex':'none'; } }catch(e){}
+  }
+  async function openApprovals(){
+    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
+    ensureUI();
+    var ov=document.getElementById('mh-appr-overlay'), body=document.getElementById('mh-appr-body');
+    ov.style.display='flex'; body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px;text-align:center">Loading…</div>';
+    var rows=await fetchPending();
+    if(!rows.length){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:30px;text-align:center">No work is waiting for approval right now.</div>'; return; }
+    body.innerHTML=rows.map(function(a){
+      var deliv=a.asset_link?('<a href="'+esc(a.asset_link)+'" target="_blank" rel="noopener" style="color:#38bdf8">View delivery</a>'):'<span style="color:#4a5182">—</span>';
+      var ref=a.reference_file?(' · <a href="'+esc(a.reference_file)+'" target="_blank" rel="noopener" style="color:#60a5fa">Reference</a>'):'';
+      return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:13px 15px;margin-bottom:10px;background:rgba(255,255,255,.02)">'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700;color:#fff;font-size:14px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span></div>'
+        +'<div style="color:#8890b5;font-size:11.5px;margin-top:2px">By '+esc(a.assigned_to||a.employee_email||'—')+' · target '+esc(a.date||'—')+'</div>'
+        +'<div style="font-size:11.5px;margin-top:4px">'+deliv+ref+'</div>'
+        +(a.description?'<div style="color:#a5adcf;font-size:11.5px;margin-top:5px">'+esc(a.description)+'</div>':'')+'</div>'
+        +'<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
+        +'<button onclick="mhApprove('+a.id+')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:7px 14px;border-radius:9px;cursor:pointer">Approve</button>'
+        +'<button onclick="mhRework('+a.id+')" style="background:rgba(251,146,60,.14);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-size:11px;font-weight:800;padding:7px 14px;border-radius:9px;cursor:pointer">Send for Rework</button>'
+        +'</div></div></div>';
+    }).join('');
+  }
+
+  window.mhApprove=async function(id){
+    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
+    var ok = (typeof showConfirm==='function') ? await showConfirm('This marks the work approved and hands it off to Social Media.',{title:'Approve this work?',confirmLabel:'Approve'}) : true;
+    if(!ok) return;
+    var d=db(); if(!d) return;
+    var nowIso=new Date().toISOString();
+    var {error}=await d.from('assignments').update({ manager_approved:true, approved_by:actor(), approved_at:nowIso, social_media_status:'pending' }).eq('id',id).eq('status','Completed');
+    if(error){ toast('error','Approve failed: '+error.message); return; }
+    toast('success','Approved — handed off to Social Media.');
+    openApprovals(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+  };
+  window.mhRework=function(id){
+    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
+    var m=document.getElementById('mh-rework-modal');
+    if(!m){ m=document.createElement('div'); m.id='mh-rework-modal';
+      m.style.cssText='position:fixed;inset:0;z-index:9002;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+      m.innerHTML='<div style="width:100%;max-width:440px;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px"><div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:6px">Send for Rework</div><div style="font-size:12px;color:#8890b5;margin-bottom:10px">Explain what needs correcting — the task returns to the employee\'s active queue.</div><textarea id="mh-rework-note" rows="4" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:10px;font-size:13px;resize:vertical" placeholder="Correction instructions…"></textarea><div style="display:flex;gap:8px;margin-top:14px"><button onclick="document.getElementById(\'mh-rework-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Cancel</button><button id="mh-rework-send" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#ff6b06,#f9182f);border:none;color:#fff;font-weight:800;cursor:pointer">Send Back</button></div></div>';
+      document.body.appendChild(m);
+    }
+    m.style.display='flex'; document.getElementById('mh-rework-note').value='';
+    document.getElementById('mh-rework-send').onclick=async function(){
+      var note=(document.getElementById('mh-rework-note').value||'').trim();
+      if(!note){ toast('error','Add a correction note.'); return; }
+      var d=db(); if(!d) return; var nowIso=new Date().toISOString();
+      var {error}=await d.from('assignments').update({ status:'Rework Required', rework_reason:note, reviewed_by:actor(), reviewed_at:nowIso, manager_approved:false }).eq('id',id);
+      if(error){ toast('error','Failed: '+error.message); return; }
+      m.style.display='none'; toast('success','Sent back for rework.');
+      openApprovals(); refreshCount(); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+    };
+  };
+  window.initMediaHeadApprovals=function(){ if(!isMediaHead()) return; ensureUI(); };
+  // if role resolved before this script ran
+  if (isMediaHead()) ensureUI();
 })();
 </script>
 </body>
