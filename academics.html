@@ -3480,6 +3480,18 @@ function _acadInitRealtime(){
     })
     .subscribe();
   _acadRealtimeChannels.push(hrEmpChannel);
+
+  // courses — the single source of truth for course info. A rename/enable/disable/add in ANY
+  // session (or this one) refreshes the cached COURSE_ROWS/courseById so every course label,
+  // filter and dropdown reflects the latest value without a browser refresh (spec #3/#4/#6).
+  // One channel, subscribed once, cleaned up in _acadTeardownRealtime — no duplicate subs.
+  const coursesChannel = sb.channel('acad-rt-courses-' + (currentUser.username || 'anon'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, async () => {
+      try { if (typeof loadCourses === 'function') await loadCourses(); } catch(e){}
+      _acadScheduleRealtimeRefresh();
+    })
+    .subscribe();
+  _acadRealtimeChannels.push(coursesChannel);
 }
 function _acadTeardownRealtime(){
   _acadRealtimeChannels.forEach(ch => { try { sb.removeChannel(ch); } catch(e) {} });
@@ -5891,11 +5903,33 @@ async function saveCourse(){
     default_days:days||null,
     mc_day:document.getElementById('c_mc').value||null};
   if(type==='recorded'){rec.sessions_total=null;rec.max_students=null;rec.default_days=null;rec.mc_day=null;}
-  let error;
+  let error; const oldName = (_editCourse && _editCourse.name) || null;
   if(_editCourse&&_editCourse.id){({error}=await sb.from('courses').update(rec).eq('id',_editCourse.id));}
   else{rec.active=true;({error}=await sb.from('courses').insert(rec));}
   if(error){alert('Save failed: '+error.message);return;}
+  // COURSE RENAME CASCADE — courses is the single source of truth, but legacy students/leads
+  // store the course as a text copy (no course_id), and batches keep a text label alongside
+  // their course_id. Propagate a rename to those copies in the DB so every screen (Students,
+  // profile, filters, batches, Sales handoff) shows the new name with no refresh. This is a
+  // DATA update keyed on the exact old name, never an HTML text swap.
+  const renamed = !!(_editCourse && _editCourse.id && oldName && oldName !== rec.name);
+  if (renamed) {
+    try {
+      await Promise.all([
+        sb.from('students').update({ programme: rec.name }).eq('programme', oldName),
+        sb.from('batches').update({ programme: rec.name }).eq('programme', oldName),
+        sb.from('leads').update({ course_interest: rec.name }).eq('course_interest', oldName),
+      ]);
+      // live-update this session's caches so the open page reflects it instantly
+      if (typeof _allStudents !== 'undefined' && Array.isArray(_allStudents)) _allStudents.forEach(s => { if (s.programme === oldName) s.programme = rec.name; });
+      if (Array.isArray(window._allStudents)) window._allStudents.forEach(s => { if (s.programme === oldName) s.programme = rec.name; });
+    } catch (e) { console.warn('course rename cascade failed', e); }
+  }
   closeModal('course'); await loadCourses();
+  // re-render dependent open views without a browser refresh
+  try { if (document.getElementById('tab-acad-students')?.classList.contains('on') && typeof renderStudentsTable === 'function') renderStudentsTable(); } catch(e){}
+  try { if (typeof loadLive === 'function') loadLive(); } catch(e){}
+  if (renamed && typeof showToast === 'function') showToast('success', 'Course renamed — updated across Students, Batches & filters.');
 }
 async function toggleCourse(id){
   if(!requireHeadAccess())return;
