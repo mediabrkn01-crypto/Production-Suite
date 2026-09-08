@@ -8699,23 +8699,121 @@ async function saveLeave(){
     if(!isMediaHead()) return;
     try{ var rows=await fetchPending(); var c=document.getElementById('nav-wa-badge'); if(c){ c.textContent=rows.length; c.style.display=rows.length?'inline-flex':'none'; } }catch(e){}
   }
+  // ── Delivery parsing + preview (SHARED). asset_link stores "name|url" entries joined by ";;"
+  // (legacy: "," ). A leading "__folder__|<folderUrl>" entry carries a Drive folder link.
+  // NEVER treat the raw stored string as an href — it contains the filename + pipe and would
+  // resolve as a relative path (the GitHub Pages 404 bug). Always parse to {name,url} first.
+  function beParseDelivery(assetString){
+    if(!assetString) return [];
+    var raw = assetString.indexOf(';;')>-1 ? assetString.split(';;') : assetString.split(',');
+    return raw.map(function(p){
+      p=(p||'').trim(); if(!p) return null;
+      var name,url;
+      if(p.indexOf('|')>-1){ var i=p.indexOf('|'); name=p.slice(0,i).trim(); url=p.slice(i+1).trim(); }
+      else { url=p; name=''; }
+      if(!/^https?:\/\//i.test(url)) return null; // guard: only real absolute URLs (kills 404 paths)
+      var isFolder = name==='__folder__' || /\/folders\//i.test(url);
+      return { name:(name==='__folder__'?'':name), url:url, folder:isFolder };
+    }).filter(Boolean);
+  }
+  function beDriveId(url){ var m=url.match(/\/file\/d\/([^/]+)/)||url.match(/[?&]id=([^&]+)/); return m?m[1]:''; }
+  // Returns HTML for an embedded preview of a single entry, or an "open" fallback when the
+  // provider can't be embedded. type sniffed from url + filename.
+  function bePreviewMarkup(entry){
+    var url=entry.url, name=(entry.name||'').toLowerCase(), low=url.toLowerCase();
+    var openBtn='<a href="'+esc(url)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:800;font-size:12px;padding:9px 16px;border-radius:9px;text-decoration:none">Open Original ↗</a>';
+    if(entry.folder){
+      return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">📁</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">A Drive folder was submitted. Open it to review its contents.</div>'+openBtn+'</div>';
+    }
+    var isDrive=/drive\.google\.com/i.test(low), isDocs=/docs\.google\.com/i.test(low);
+    if(isDrive){ var id=beDriveId(url); if(id){
+      return '<iframe src="https://drive.google.com/file/d/'+esc(id)+'/preview" allow="autoplay" style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe>'
+        +'<div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; } }
+    if(isDocs){
+      var pv=url.replace(/\/(edit|view)(\?[^#]*)?(#.*)?$/,'/preview');
+      return '<iframe src="'+esc(pv)+'" style="width:100%;height:62vh;border:0;border-radius:12px;background:#fff"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; }
+    var yt=low.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
+    if(yt){ return '<iframe src="https://www.youtube.com/embed/'+esc(yt[1])+'" allowfullscreen style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; }
+    var vm=low.match(/vimeo\.com\/(\d+)/);
+    if(vm){ return '<iframe src="https://player.vimeo.com/video/'+esc(vm[1])+'" allowfullscreen style="width:100%;height:62vh;border:0;border-radius:12px;background:#000"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>'; }
+    var isImg=/\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|$)/.test(low)||/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/.test(name);
+    var isVid=/\.(mp4|webm|mov|m4v|ogg)(\?|$)/.test(low)||/\.(mp4|webm|mov|m4v|ogg)$/.test(name);
+    var isPdf=/\.pdf(\?|$)/.test(low)||/\.pdf$/.test(name);
+    if(isImg) return '<div style="text-align:center"><img src="'+esc(url)+'" style="max-width:100%;max-height:62vh;border-radius:12px" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><div style="display:none;color:#8890b5;font-size:12px;padding:30px">Preview couldn\'t load.</div><div style="margin-top:12px">'+openBtn+'</div></div>';
+    if(isVid) return '<video src="'+esc(url)+'" controls style="width:100%;max-height:62vh;border-radius:12px;background:#000"></video><div style="margin-top:12px;text-align:center">'+openBtn+'</div>';
+    if(isPdf) return '<iframe src="'+esc(url)+'" style="width:100%;height:62vh;border:0;border-radius:12px;background:#fff"></iframe><div style="margin-top:12px;text-align:center">'+openBtn+'</div>';
+    return '<div style="text-align:center;padding:40px 16px"><div style="font-size:40px">🔗</div><div style="color:#a5adcf;font-size:13px;margin:10px 0 16px">This delivery is an external link. Open it to review.</div>'+openBtn+'</div>';
+  }
+  // Branded in-app delivery preview modal. Multiple entries → left selector, single preview pane.
+  window.mhViewDelivery=function(id){
+    var a=_waRowById[id]; if(!a) return;
+    var entries=beParseDelivery(a.asset_link);
+    var m=document.getElementById('mh-deliv-modal');
+    if(!m){ m=document.createElement('div'); m.id='mh-deliv-modal';
+      m.style.cssText='position:fixed;inset:0;z-index:9003;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px';
+      m.addEventListener('click',function(e){ if(e.target===m) m.style.display='none'; });
+      document.body.appendChild(m);
+    }
+    var who=esc(a.assigned_to||a.employee_email||'—');
+    var note=(a.explanation&&a.explanation!=='None')?a.explanation:(a.description||'');
+    var head='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)">'
+      +'<div><div style="font-size:9px;font-weight:800;letter-spacing:.14em;color:#ff6b06">WORK PREVIEW</div>'
+      +'<div style="font-size:16px;font-weight:800;color:#fff;margin-top:3px">'+esc(a.topic||'Untitled')+'</div>'
+      +'<div style="font-size:12px;color:#8890b5;margin-top:2px">'+esc(a.type||'')+' · Submitted by '+who+'</div></div>'
+      +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:16px;flex-shrink:0">✕</button></div>';
+    var bodyHtml;
+    if(!entries.length){
+      bodyHtml='<div style="padding:44px 20px;text-align:center;color:#8890b5;font-size:14px">No delivery has been submitted for this work yet.</div>';
+    } else {
+      var selector='';
+      if(entries.length>1){
+        selector='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 18px 0">'+entries.map(function(e,i){
+          var lbl=e.folder?'📁 Folder':(e.name||('File '+(i+1)));
+          return '<button data-di="'+i+'" onclick="beSelectDeliv('+id+','+i+')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#a5adcf;font-size:11px;font-weight:700;padding:6px 11px;border-radius:8px;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(lbl)+'</button>';
+        }).join('')+'</div>';
+      }
+      bodyHtml=selector+'<div id="mh-deliv-pane" style="padding:16px 18px">'+bePreviewMarkup(entries[0])+'</div>'
+        +(note?'<div style="padding:0 18px 6px"><div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#6b74a0;margin-bottom:4px">DELIVERY NOTE</div><div style="color:#c5cbe8;font-size:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 12px">'+esc(note)+'</div></div>':'');
+    }
+    var footer='<div style="display:flex;gap:8px;padding:14px 18px;border-top:1px solid rgba(255,255,255,.08)">'
+      +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Close</button>'
+      +(entries.length?'<button onclick="mhApprove('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-weight:800;cursor:pointer">Approve</button>'
+      +'<button onclick="mhRework('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(251,146,60,.16);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-weight:800;cursor:pointer">Rework</button>'
+      +'<button onclick="mhReject('+id+');document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800;cursor:pointer">Reject</button>':'')
+      +'</div>';
+    m.innerHTML='<div style="width:100%;max-width:820px;max-height:92vh;overflow:auto;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:18px" onclick="event.stopPropagation()">'+head+bodyHtml+footer+'</div>';
+    m.style.display='flex';
+  };
+  window.beSelectDeliv=function(id,idx){
+    var a=_waRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
+    var pane=document.getElementById('mh-deliv-pane'); if(pane) pane.innerHTML=bePreviewMarkup(e);
+    var m=document.getElementById('mh-deliv-modal'); if(m){ m.querySelectorAll('[data-di]').forEach(function(b){
+      var on=+b.getAttribute('data-di')===idx; b.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.05)'; b.style.color=on?'#ff8a3d':'#a5adcf'; b.style.borderColor=on?'rgba(255,107,6,.4)':'rgba(255,255,255,.12)'; }); }
+  };
   // Renders pending approvals into the dedicated Work Approvals TAB (not a modal).
+  var _waRowById={};
   window.mhRenderApprovalsTab=async function(){
     var body=document.getElementById('mh-appr-tab-body'); if(!body) return;
     if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Not authorized.</div>'; return; }
     body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Loading…</div>';
     var rows=await fetchPending();
+    _waRowById={}; rows.forEach(function(a){ _waRowById[a.id]=a; });
     if(!rows.length){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No work is waiting for approval right now.</div>'; return; }
     body.innerHTML=rows.map(function(a){
-      var deliv=a.asset_link?('<a href="'+esc(a.asset_link)+'" target="_blank" rel="noopener" style="color:#38bdf8;font-weight:700">View Delivery</a>'):'<span style="color:#4a5182">No delivery link</span>';
-      var ref=a.reference_file?(' · <a href="'+esc(a.reference_file)+'" target="_blank" rel="noopener" style="color:#60a5fa">Reference</a>'):'';
+      var hasDeliv=beParseDelivery(a.asset_link).length>0;
+      var deliv=hasDeliv
+        ? '<button onclick="mhViewDelivery('+a.id+')" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>'
+        : '<span style="color:#f87171;font-size:11px;font-weight:600">No delivery submitted yet</span>';
+      var approveBtn=hasDeliv
+        ? '<button onclick="mhApprove('+a.id+')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Approve</button>'
+        : '<button disabled title="No delivery to review" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#4a5182;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:not-allowed">Approve</button>';
       return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)">'
         +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:220px;flex:1"><div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span></div>'
         +'<div style="color:#8890b5;font-size:12px;margin-top:3px">Employee: '+esc(a.assigned_to||a.employee_email||'—')+' · Target '+esc(a.date||'—')+'</div>'
-        +'<div style="font-size:12px;margin-top:5px">'+deliv+ref+'</div>'
+        +'<div style="font-size:12px;margin-top:7px">'+deliv+'</div>'
         +(a.description?'<div style="color:#a5adcf;font-size:12px;margin-top:6px">'+esc(a.description)+'</div>':'')+'</div>'
         +'<div style="display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap">'
-        +'<button onclick="mhApprove('+a.id+')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Approve</button>'
+        +approveBtn
         +'<button onclick="mhRework('+a.id+')" style="background:rgba(251,146,60,.14);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Send for Rework</button>'
         +'<button onclick="mhReject('+a.id+')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-size:11px;font-weight:800;padding:8px 14px;border-radius:9px;cursor:pointer">Reject</button>'
         +'</div></div></div>';
