@@ -684,6 +684,7 @@ details[open] .rawsum::before{content:'▾ '}
             <select id="live_filter_course" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Courses</option></select>
           </div>
           <div id="liveBatches" class="loading">Loading…</div>
+          <div id="liveBatchPager" style="margin-top:14px"></div>
         </div>
         <div class="section role-head-only hidden">
           <h2>Batches <span class="tag" id="batchesCount">0</span> <button onclick="acadSwitchTab('createbatch')">+ Create Batch</button></h2>
@@ -2115,18 +2116,35 @@ function renderLiveBatchCards(){
     // delegating Head's — so "My Assigned Batches" is always the real, current user's own
     // teaching load, not whoever they're temporarily standing in for.
     const isHeadSplit = isCurrentlyAcademicHead() && window._myTrainerId;
+    const mine = isHeadSplit ? shown.filter(x => String(x.b._trainerId||'') === String(window._myTrainerId)) : [];
+    const others = isHeadSplit ? shown.filter(x => String(x.b._trainerId||'') !== String(window._myTrainerId)) : [];
+    // One ordered sequence (mine first, then others) so pagination slices consistently; group
+    // subheads are re-emitted per page for whichever cards land on it.
+    const ordered = isHeadSplit ? mine.concat(others) : shown;
+    const total = ordered.length;
+    // Reset to page 1 whenever the search/filters (or page size) change — never on an unrelated
+    // realtime re-render (same signature → keep the current page).
+    const size = window._liveBatchPageSize || 10;
+    const sig = term + '|' + trainerFilter + '|' + batchFilter + '|' + courseFilter + '|' + size;
+    if (window._liveFilterSig !== sig) { window._liveBatchPage = 1; window._liveFilterSig = sig; }
+    const pages = Math.max(1, Math.ceil(total / size));
+    let page = window._liveBatchPage || 1; if (page > pages) page = pages; if (page < 1) page = 1; window._liveBatchPage = page;
+    const startI = (page - 1) * size, endI = Math.min(startI + size, total);
+    const pageItems = ordered.slice(startI, endI);
     if (!shown.length) {
       el.innerHTML = `<div class="empty">${anyFilterActive ? 'No batches match the current search/filters.' : 'No active batches for you.'}</div>`;
-    } else if (isHeadSplit) {
-      const mine = shown.filter(x => String(x.b._trainerId||'') === String(window._myTrainerId));
-      const others = shown.filter(x => String(x.b._trainerId||'') !== String(window._myTrainerId));
-      el.innerHTML =
-        (mine.length ? '<div class="subhead">My Assigned Batches</div>' + mine.map(x => card(x.b, x.i, false)).join('')
-          : (anyFilterActive ? '' : '<div class="subhead">My Assigned Batches</div><div class="empty">No batches assigned to you as a trainer right now.</div>'))
-        + (others.length ? '<div class="subhead">Other Trainers’ Batches</div>' + others.map(x => card(x.b, x.i, false)).join('') : '');
     } else {
-      el.innerHTML = shown.map(x => card(x.b, x.i, false)).join('');
+      let html = '', lastGroup = null;
+      pageItems.forEach(x => {
+        if (isHeadSplit) {
+          const grp = String(x.b._trainerId||'') === String(window._myTrainerId) ? 'mine' : 'others';
+          if (grp !== lastGroup) { html += '<div class="subhead">' + (grp === 'mine' ? 'My Assigned Batches' : 'Other Trainers’ Batches') + '</div>'; lastGroup = grp; }
+        }
+        html += card(x.b, x.i, false);
+      });
+      el.innerHTML = html;
     }
+    _renderLiveBatchPager(total, page, pages, startI, endI, size);
   }
   const prevEl = document.getElementById('previousClasses');
   if (prevEl) {
@@ -2135,6 +2153,41 @@ function renderLiveBatchCards(){
       : `<div class="empty">${term ? 'No completed batches match "'+esc(term)+'".' : 'No completed batches yet.'}</div>`;
   }
   if (typeof renderAcadActionRequired === 'function') renderAcadActionRequired();
+}
+// Live Batches pagination — custom BE-styled control (no native pager). Slices the already-
+// filtered list; page size 10/20/50; page 1 reset handled in renderLiveBatchCards on filter change.
+function _liveGoPage(n){ window._liveBatchPage = n; renderLiveBatchCards(); const s=document.getElementById('liveSection'); if(s) s.scrollIntoView({behavior:'smooth',block:'start'}); }
+function _liveSetPageSize(v){ window._liveBatchPageSize = parseInt(v)||10; window._liveBatchPage = 1; renderLiveBatchCards(); }
+function _renderLiveBatchPager(total, page, pages, startI, endI, size){
+  const el = document.getElementById('liveBatchPager'); if (!el) return;
+  if (!total) { el.innerHTML = ''; return; }
+  const btn = (label, pg, opts) => {
+    opts = opts || {};
+    const active = opts.active, disabled = opts.disabled;
+    const style = 'min-width:34px;height:34px;padding:0 10px;border-radius:9px;font-size:12.5px;font-weight:700;cursor:'
+      + (disabled?'not-allowed':'pointer') + ';border:1px solid rgba(255,255,255,.1);'
+      + (active ? 'background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;border-color:transparent;'
+                : 'background:rgba(255,255,255,.04);color:' + (disabled?'var(--tx3)':'var(--tx2)') + ';');
+    return `<button ${disabled?'disabled':`onclick="_liveGoPage(${pg})"`} style="${style}">${label}</button>`;
+  };
+  // page-number set with ellipsis
+  let nums = '', last = 0;
+  for (let i = 1; i <= pages; i++) {
+    if (i === 1 || i === pages || Math.abs(i - page) <= 1) {
+      if (last && i - last > 1) nums += `<span style="color:var(--tx3);padding:0 4px">…</span>`;
+      nums += btn(i, i, { active: i === page }); last = i;
+    }
+  }
+  const sizeSel = `<select onchange="_liveSetPageSize(this.value)" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 10px;color:var(--tx);font-size:12px;outline:none;cursor:pointer">`
+    + [10,20,50].map(n=>`<option value="${n}" ${n===size?'selected':''}>${n} / page</option>`).join('') + `</select>`;
+  el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--tx2)">Showing ${total?startI+1:0}–${endI} of ${total} batches</span>${sizeSel}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;overflow-x:auto;max-width:100%">
+        ${btn('‹ Prev', page-1, { disabled: page<=1 })}${nums}${btn('Next ›', page+1, { disabled: page>=pages })}
+      </div>
+    </div>`;
 }
 // Redesigned card \u2014 same data/actions as before (Rename/Set Progress/Mark Attendance, same
 // Head-only click-to-view-student behavior), cleaner presentation: a real header row with a
