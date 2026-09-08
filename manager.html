@@ -235,9 +235,14 @@
   var C = function(t){ return db.from(t).select('id',{count:'exact',head:true}); };
 
   // ── in-app section switcher (lazy cached iframes; department modules reuse this session) ──
-  var SEC = { media:{src:'index.html?embed=1',title:'Media / Production'}, hr:{src:'hr.html?embed=1',title:'HR Management'},
-    academics:{src:'academics.html?embed=1',title:'Academics'}, sales:{src:'sales.html?embed=1',title:'Sales'},
-    'ws-profile':{src:'index.html?embed=1&tab=my-profile',title:'My Profile'} };
+  // Embedded modules resume the SAME session via the ?e=&n= SSO bridge (index has no
+  // localStorage session-resume, so without ?e it would show its Login form). Academics/Sales
+  // also read the seeded be_media_academic_session; passing ?e is harmless + uniform. NO second
+  // login anywhere. Manager gets Media-Head-level UI inside the embedded Media view.
+  var _q = 'embed=1&e=' + encodeURIComponent(email) + '&n=' + encodeURIComponent((meRec&&meRec.full_name)||'');
+  var SEC = { media:{src:'index.html?'+_q,title:'Media / Production'}, hr:{src:'hr.html?'+_q,title:'HR Management'},
+    academics:{src:'academics.html?'+_q,title:'Academics'}, sales:{src:'sales.html?'+_q,title:'Sales'},
+    'ws-profile':{src:'index.html?'+_q+'&tab=my-profile',title:'My Profile'} };
   var frames = {};
   window.mgrSection = function(sec){
     var content=document.getElementById('mgr-content'), dash=document.getElementById('mgr-dash');

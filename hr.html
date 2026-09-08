@@ -6299,20 +6299,32 @@ async function populateHRJobDeptOptions() {
         // exact same re-verification before anything else happens.
         async function bootHRPage() {
             console.log('[HR INIT] bootHRPage start, activeUser=', activeUser, 'cached activeRole=', activeRole, 'activeEmail=', activeEmail);
-            if (!activeUser) { window.location.href = 'index.html'; return; }
+            // Use activeEmail as the "logged-in" signal — activeUser isn't persisted across a
+            // fresh page load (e.g. when HR is embedded in the Manager Portal), only be_active_email is.
+            if (!activeEmail && !activeUser) { window.location.href = 'index.html'; return; }
+            // Global management (HR-set System Role manager|founder) gets HR-Admin-level access to
+            // this module WITHOUT changing their real role — company oversight (spec §3/§8).
+            let _isGlobalMgr = false;
             try {
-                const { data } = await dbInstance.from('user_roster').select('role').eq('email', activeEmail).limit(1);
-                const liveRole = data && data[0] && data[0].role;
-                if (liveRole && liveRole !== activeRole) {
-                    activeRole = liveRole;
-                    localStorage.setItem('be_active_role', activeRole);
+                const { data: _emp } = await dbInstance.from('hr_employees').select('system_role,employment_status,full_name').eq('portal_email', String(activeEmail||'').toLowerCase()).maybeSingle();
+                if (_emp) {
+                    const _sr = (_emp.system_role||'').toLowerCase(), _st = (_emp.employment_status||'').toLowerCase();
+                    _isGlobalMgr = (_sr==='manager'||_sr==='founder') && _st!=='inactive' && _st!=='exited';
+                    if (!activeUser && _emp.full_name) activeUser = _emp.full_name;
                 }
+            } catch(e) {}
+            try {
+                const { data } = await dbInstance.from('user_roster').select('role,name').eq('email', activeEmail).limit(1);
+                const liveRole = data && data[0] && data[0].role;
+                if (liveRole && liveRole !== activeRole) { activeRole = liveRole; localStorage.setItem('be_active_role', activeRole); }
+                if (!activeUser && data && data[0] && data[0].name) activeUser = data[0].name;
             } catch (e) {
-                // Network hiccup — fall back to the cached role rather than locking an already-
-                // valid admin out over a transient error; still correct in the common case,
-                // and no worse than the previous (always-cached) behavior on failure.
                 console.warn('Could not re-verify role from user_roster, using cached role:', e.message);
             }
+            if (!activeUser) activeUser = activeEmail;
+            // A global Manager/Founder is treated as HR-Admin here; keep their real activeRole
+            // otherwise, and still block anyone who is neither admin nor a global manager.
+            if (_isGlobalMgr && activeRole !== 'admin') { activeRole = 'admin'; }
             if (activeRole !== 'admin') {
                 window.location.href = 'index.html';
                 return;
