@@ -696,8 +696,65 @@
   document.documentElement.classList.add('be-embed');
   var s=document.createElement('style'); s.id='be-embed-style';
   s.textContent='.be-embed #be-sidebar,.be-embed #aside,.be-embed #mobile-sidebar,.be-embed #mobile-topbar,'
-    +'.be-embed #topbar-account-btn,.be-embed #hr-topbar-account-btn,.be-embed #acad-topbar-account-btn,.be-embed #sales-topbar-account-btn{display:none !important}';
+    +'.be-embed #topbar-account-btn,.be-embed #hr-topbar-account-btn,.be-embed #acad-topbar-account-btn,.be-embed #sales-topbar-account-btn{display:none !important}'
+    +'.be-embed #be-embed-subnav::-webkit-scrollbar{height:6px}.be-embed #be-embed-subnav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}';
   document.head.appendChild(s);
+  // Convert this department's OWN (now hidden) vertical sidebar into a horizontal secondary nav
+  // at the top of the content area. Each chip click-proxies the original hidden button, so ALL
+  // existing tab-switch / lazy-load / realtime logic is reused untouched. Rebuilt when async role
+  // resolution later unhides head-only buttons (so the Manager gets FULL dept nav, not just default).
+  var lastSig='';
+  function navButtons(sb){
+    return [].slice.call(sb.querySelectorAll('.sidebar-link,.acad-nav-link')).filter(function(b){
+      var t=(b.textContent||'').trim(); if(!t) return false;
+      if(/log\s*out/i.test(t)) return false;
+      if(b.classList.contains('hidden')) return false;
+      if(getComputedStyle(b).display==='none') return false;
+      return true;
+    });
+  }
+  function syncActive(bar){
+    [].forEach.call(bar.children,function(chip){
+      var o=chip.__orig, on=o&&(o.classList.contains('active')||o.classList.contains('on'));
+      chip.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.04)';
+      chip.style.color=on?'#ff8a3d':'#a5adcf';
+      chip.style.borderColor=on?'rgba(255,107,6,.4)':'rgba(255,255,255,.08)';
+    });
+  }
+  function build(){
+    var sb=document.getElementById('be-sidebar')||document.getElementById('aside');
+    var main=document.querySelector('main.flex-1, .acad-main, .main');
+    if(!sb||!main) return;
+    var seen={}, originals=[];
+    navButtons(sb).forEach(function(b){ var t=(b.textContent||'').trim().toLowerCase(); if(seen[t])return; seen[t]=1; originals.push(b); });
+    var sig=originals.map(function(b){return (b.textContent||'').trim();}).join('|');
+    var bar=document.getElementById('be-embed-subnav');
+    if(bar && sig===lastSig){ syncActive(bar); return; }
+    lastSig=sig;
+    if(bar) bar.remove();
+    if(!originals.length) return;
+    bar=document.createElement('div'); bar.id='be-embed-subnav';
+    bar.style.cssText='display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,.07)';
+    originals.forEach(function(b){
+      var chip=document.createElement('button'); chip.type='button'; chip.__orig=b;
+      chip.style.cssText='flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#a5adcf;font-size:12px;font-weight:700;padding:7px 13px;border-radius:9px;cursor:pointer';
+      chip.innerHTML=b.innerHTML;
+      chip.querySelectorAll('[id]').forEach(function(e){ e.removeAttribute('id'); });
+      chip.addEventListener('click',function(){ try{b.click();}catch(_){} setTimeout(function(){syncActive(bar);},60); });
+      bar.appendChild(chip);
+    });
+    main.insertBefore(bar, main.children[1]||null);
+    syncActive(bar);
+    if(window.lucide&&lucide.createIcons){ try{lucide.createIcons();}catch(e){} }
+  }
+  function boot(){
+    var sb=document.getElementById('be-sidebar')||document.getElementById('aside'); if(!sb){ setTimeout(boot,200); return; }
+    build();
+    var t; var mo=new MutationObserver(function(){ clearTimeout(t); t=setTimeout(build,120); });
+    mo.observe(sb,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
+    [400,1200,2500].forEach(function(d){ setTimeout(build,d); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 }catch(e){}})();
 </script>
 
