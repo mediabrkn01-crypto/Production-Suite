@@ -499,6 +499,19 @@
         .hr-field-label { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:#8890b5; font-weight:700; margin-bottom:5px; display:block; }
         .hr-icon-btn { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:#a5adcf; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:11px; }
         .hr-icon-btn:hover { color:#fff; border-color:rgba(255,107,6,0.4); }
+        /* Payroll row actions — compact, color-coded, tinted default → filled on hover. */
+        .hr-actions { display:flex; align-items:center; gap:6px; justify-content:flex-end; flex-wrap:wrap; }
+        .hr-act { display:inline-flex; align-items:center; gap:4px; padding:5px 10px; border-radius:8px; cursor:pointer; font-size:11px; font-weight:600; line-height:1;
+                  border:1px solid transparent; background:rgba(255,255,255,0.04); color:#a5adcf; transition:background .12s, color .12s, border-color .12s; white-space:nowrap; }
+        .hr-act:hover { background:rgba(255,255,255,0.09); color:#fff; }
+        .hr-act-blue   { color:#60a5fa; border-color:rgba(96,165,250,0.22); background:rgba(96,165,250,0.08); }
+        .hr-act-blue:hover   { background:rgba(96,165,250,0.9); color:#fff; }
+        .hr-act-green  { color:#4ade80; border-color:rgba(74,222,128,0.22); background:rgba(74,222,128,0.08); }
+        .hr-act-green:hover  { background:rgba(34,197,94,0.9); color:#fff; }
+        .hr-act-amber  { color:#fb923c; border-color:rgba(251,146,60,0.22); background:rgba(251,146,60,0.08); }
+        .hr-act-amber:hover  { background:rgba(251,146,60,0.9); color:#fff; }
+        .hr-act-red    { color:#f87171; border-color:rgba(248,113,113,0.2); background:rgba(248,113,113,0.07); }
+        .hr-act-red:hover    { background:rgba(239,68,68,0.9); color:#fff; }
 /* ── Academic Module (ported from academics.html — same visual language, own class
    prefix to avoid any collision with the rest of this file) ── */
 .acadx-dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
@@ -5634,15 +5647,17 @@ async function populateHRJobDeptOptions() {
                     <td class="py-2.5 px-4 text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</td>
                     <td class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
                     <td class="py-2.5 px-4">${p.published ? '<span class="hr-badge hr-badge-approved">Sent</span>' : '<span class="hr-badge hr-badge-pending">Draft — HR only</span>'}</td>
-                    <td class="py-2.5 px-4 text-center" style="white-space:nowrap">
-                        <button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button>
-                        <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">View</button>
+                    <td class="py-2.5 px-4">
+                      <div class="hr-actions">
+                        <button onclick="editHRPayroll('${p.id}')" class="hr-act hr-act-blue">Edit</button>
+                        <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-act">View</button>
                         ${p.published
-                            ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#fb923c">Revoke</button>`
-                            : `<button onclick="sendHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Send</button>`}
-                        ${p.published ? `<button onclick="resendHRPayslipEmail('${p.id}', true)" class="hr-icon-btn" style="margin-left:4px;color:#60a5fa" title="Email this payslip to the employee's personal email via Brevo">✉ Email</button>` : ''}
-                        ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Mark Paid</button>` : ''}
-                        <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
+                            ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-act hr-act-amber">Revoke</button>`
+                            : `<button onclick="sendHRPayslip('${p.id}')" class="hr-act hr-act-green">Send</button>`}
+                        ${p.published ? `<button onclick="resendHRPayslipEmail('${p.id}', true)" class="hr-act hr-act-blue" title="Email this payslip to the employee's personal email via Brevo">✉ Email</button>` : ''}
+                        ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-act hr-act-green">Mark Paid</button>` : ''}
+                        <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-act hr-act-red">Del</button>
+                      </div>
                     </td>
                 </tr>
             `).join('') : `<tr><td colspan="13" class="py-8 text-center text-[#4a5182] text-xs">No payroll entries for this month.</td></tr>`;
