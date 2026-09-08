@@ -1543,6 +1543,7 @@
                 </div>
                 <div><label class="hr-field-label">Date of Birth</label><input id="hr-emp-dob" type="date" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Personal Email</label><input id="hr-emp-personal-email" type="email" placeholder="employee's own email — payslips are sent here" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Manager (login email)</label><input id="hr-emp-manager-email" placeholder="manager's login email" class="hr-input w-full"></div>
                 <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
                     <p class="hr-field-label" style="margin-bottom:8px">Work Schedule <span style="color:#6b74a0;font-weight:400">— drives Late / Early Logout for THIS employee. Leave Flexible if they have no fixed hours (never auto-marked Late).</span></p>
@@ -2961,6 +2962,7 @@
             document.getElementById('hr-emp-status').value = e?.employment_status || 'active';
             document.getElementById('hr-emp-dob').value = e?.dob || '';
             document.getElementById('hr-emp-phone').value = e?.phone || '';
+            document.getElementById('hr-emp-personal-email').value = e?.personal_email || '';
             document.getElementById('hr-emp-email').value = e?.portal_email || '';
             document.getElementById('hr-emp-manager-email').value = e?.manager_email || '';
             document.getElementById('hr-emp-portal-access').checked = e ? (e.portal_access_enabled !== false) : true;
@@ -3177,6 +3179,7 @@
                 employment_status: document.getElementById('hr-emp-status').value,
                 dob: document.getElementById('hr-emp-dob').value || null,
                 phone: document.getElementById('hr-emp-phone').value.trim(),
+                personal_email: (document.getElementById('hr-emp-personal-email').value || '').trim().toLowerCase() || null,
                 portal_email: loginEmail,
                 manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
                 portal_access_enabled: document.getElementById('hr-emp-portal-access').checked,
@@ -5637,6 +5640,7 @@ async function populateHRJobDeptOptions() {
                         ${p.published
                             ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#fb923c">Revoke</button>`
                             : `<button onclick="sendHRPayslip('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Send</button>`}
+                        ${p.published ? `<button onclick="resendHRPayslipEmail('${p.id}', true)" class="hr-icon-btn" style="margin-left:4px;color:#60a5fa" title="Email this payslip to the employee's personal email via Brevo">✉ Email</button>` : ''}
                         ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#4ade80">Mark Paid</button>` : ''}
                         <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="margin-left:4px;color:#f87171">Del</button>
                     </td>
@@ -5663,10 +5667,30 @@ async function populateHRJobDeptOptions() {
 // ── sendHRPayslip (orig line 11008) ──
         async function sendHRPayslip(id) {
             const { error } = await hrSetPayrollPublished(id, true);
-            if (error) { alert(error.message); return; }
+            if (error) { showToast('error', error.message); return; }
             await loadHRData();
             renderHRPayroll();
             renderHREmployeeProfile();
+            // Auto-send the payslip to the employee's personal email via Brevo. Publishing to
+            // "My Payslips" already succeeded above — email is an ADDITIONAL delivery channel and
+            // its failure must never undo the payslip (it stays published either way).
+            const p = hrPayroll.find(x => x.id === id);
+            const emp = p ? hrEmployees.find(e => e.id === p.employee_id) : null;
+            showToast('success', 'Payslip generated & sent to My Payslips.');
+            if (typeof hrEmailPayslip === 'function') {
+                const res = await hrEmailPayslip(id);
+                hrPayslipEmailToast(res, emp && emp.full_name);
+            }
+        }
+        // Manual (Re)send from the payroll/payslip list. resend=true bypasses the dedupe guard.
+        async function resendHRPayslipEmail(id, resend) {
+            const p = hrPayroll.find(x => x.id === id);
+            const emp = p ? hrEmployees.find(e => e.id === p.employee_id) : null;
+            if (p && !p.published) { showToast('warning', 'Send the payslip to the employee first, then email it.'); return; }
+            showToast('info', 'Emailing payslip…');
+            const res = await hrEmailPayslip(id, { resend: !!resend });
+            hrPayslipEmailToast(res, emp && emp.full_name);
+            renderHRPayroll();
         }
 
 // ── revokeHRPayslipAccess (orig line 11015) ──
@@ -5691,7 +5715,10 @@ async function populateHRJobDeptOptions() {
             for (const p of rows) {
                 if (statusEl) statusEl.textContent = `Sending ${sent + 1} of ${rows.length}…`;
                 const { error } = await hrSetPayrollPublished(p.id, true);
-                if (error) failed.push(`${hrEmpName(p.employee_id)}: ${error.message}`); else sent++;
+                if (error) { failed.push(`${hrEmpName(p.employee_id)}: ${error.message}`); continue; }
+                sent++;
+                // Additional channel — email each published payslip; never blocks the batch.
+                if (typeof hrEmailPayslip === 'function') { try { await hrEmailPayslip(p.id); } catch (e) {} }
             }
             await loadHRData();
             renderHRPayroll();

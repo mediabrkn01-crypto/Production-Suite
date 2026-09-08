@@ -2094,6 +2094,53 @@ function hrOfficialEventFor(employee, dateStr) {
             }
         }
 
+// ── Brevo transactional email (payslip) ─────────────────────────────────────
+// Shared client-side entry to the secure `send-payslip-email` Edge Function. The Brevo API
+// key lives ONLY server-side; here we just build the SAME payslip PDF the platform already
+// generates, hand it over as an attachment, and let the function fetch authoritative
+// salary/recipient from the DB. Returns the function's JSON result (never throws to the
+// caller — email failure must never break payroll). Reusable for future transactional mail.
+        async function hrEmailPayslip(payrollId, opts) {
+            opts = opts || {};
+            const p = hrPayroll.find(x => x.id === payrollId);
+            if (!p) return { ok: false, error: 'payroll_not_found' };
+            const e = hrEmployees.find(x => x.id === p.employee_id);
+            if (!e) return { ok: false, error: 'employee_not_found' };
+            // No personal email → don't attempt; surface the exact policy warning.
+            if (!e.personal_email || !String(e.personal_email).trim()) return { ok: false, error: 'no_personal_email' };
+            let pdf_base64 = null;
+            try {
+                const doc = await _buildHRPayslipDoc(p, e);   // the existing payslip — never a second one
+                pdf_base64 = doc.output('datauristring');     // data:application/pdf;base64,...
+            } catch (err) { console.warn('payslip PDF build failed (emailing without attachment):', err && err.message); }
+            try {
+                const { data, error } = await dbInstance.functions.invoke('send-payslip-email', {
+                    body: {
+                        employee_id: p.employee_id,
+                        payroll_id: p.id,
+                        pdf_base64,
+                        caller_email: (typeof activeEmail !== 'undefined' && activeEmail) || null,
+                        resend: !!opts.resend
+                    }
+                });
+                if (error) return { ok: false, error: 'invoke_failed', detail: error.message };
+                return data || { ok: false, error: 'no_response' };
+            } catch (err) {
+                return { ok: false, error: 'network_error', detail: err && err.message };
+            }
+        }
+        // Human toast for a hrEmailPayslip() result. Reused by auto-send + manual (Re)send.
+        function hrPayslipEmailToast(res, empName) {
+            if (!res) return;
+            const who = empName ? (' — ' + empName) : '';
+            if (res.ok && res.already) { if (typeof showToast==='function') showToast('info', 'Payslip already emailed' + who + '.'); return; }
+            if (res.ok && res.sent) { if (typeof showToast==='function') showToast('success', 'Email sent to employee' + who + '.'); return; }
+            if (res.error === 'no_personal_email') { if (typeof showToast==='function') showToast('warning', 'Payslip generated, but employee personal email is missing' + who + '.'); return; }
+            if (res.error === 'brevo_not_configured') { if (typeof showToast==='function') showToast('warning', 'Email not sent — Brevo is not configured yet (ask admin to set the API key).'); return; }
+            if (res.error === 'not_authorized') { if (typeof showToast==='function') showToast('error', 'Not authorized to email payslips.'); return; }
+            if (typeof showToast==='function') showToast('error', 'Email delivery failed' + who + (res.detail ? ' (' + String(res.detail).slice(0,120) + ')' : '') + '.');
+        }
+
 // hrSyncLeaveToAttendance — moved here from hr.html so decideHRLeave (below) can call it from
 // any page. When a leave request is approved, writes/updates an on_leave hr_attendance row for
 // every date in the request's range, so the calendar/payroll's own recorded-row branch shows
