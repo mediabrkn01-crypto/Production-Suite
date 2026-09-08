@@ -2948,6 +2948,24 @@
         async function launchSession() {
             if (!activeUser) return;
 
+            // ── AUTHORITATIVE ROLE ROUTING (System Role wins over department/designation/login
+            //    role). Company Manager/Founder have ONE entry point: manager.html. Runs BEFORE
+            //    any Media Suite render so a manager never lands here first. Skipped when index
+            //    is embedded as manager.html's own Media view (iframe) to avoid a redirect loop.
+            if (window.self === window.top && typeof dbInstance !== 'undefined' && dbInstance && activeEmail && !/manager\.html$/.test(location.pathname)) {
+                try {
+                    const _rr = await dbInstance.from('hr_employees').select('system_role,employment_status').eq('portal_email', String(activeEmail).toLowerCase()).maybeSingle();
+                    const _e = _rr && _rr.data;
+                    if (_e) {
+                        const _sr = (_e.system_role || '').toLowerCase(), _st = (_e.employment_status || '').toLowerCase();
+                        const _active = _st !== 'inactive' && _st !== 'exited';
+                        window._systemRole = _sr;
+                        if ((_sr === 'manager' || _sr === 'founder') && _active) { location.href = 'manager.html'; return; }
+                        if (_sr === 'media_head' && _active) { document.body.classList.add('role-mediahead'); if (typeof window.initMediaHeadApprovals === 'function') window.initMediaHeadApprovals(); }
+                    }
+                } catch (_) {}
+            }
+
             await syncLedgerEngine(false);
             // Realtime replaces the old 4s polling loop — subscribed once per login, right
             // after the initial sync above so it never delays first render.
@@ -8573,33 +8591,6 @@ async function saveLeave(){
     saveAccountForSwitching(activeUser, activeRole, activeEmail, found.pass || '');
     await launchSession(); // also runs checkAcademicAccess() and the ?tab= deep-link handler; hides #auth-loading-screen itself
   } catch (_) { showLoginNow(); /* fall through to the normal login screen on any failure */ }
-})();
-</script>
-<script>
-// Manager/Founder landing — a global manager's PERMANENT shell is manager.html, not the Media
-// Suite. Once a session is active, resolve the HR-set System Role and route an active
-// manager/founder to manager.html. EXCEPTION: when index.html is embedded inside manager.html
-// (its Media view iframe), do NOT redirect — that would loop; show the Media module instead.
-(function(){
-  if (window.self !== window.top) return; // embedded as manager.html's Media view — no redirect
-  var tries = 0;
-  var iv = setInterval(async function(){
-    tries++;
-    if (typeof activeEmail === 'undefined' || !activeEmail || typeof dbInstance === 'undefined' || !dbInstance) { if (tries > 40) clearInterval(iv); return; }
-    clearInterval(iv);
-    try {
-      var r = await dbInstance.from('hr_employees').select('system_role,employment_status').eq('portal_email', String(activeEmail).toLowerCase()).maybeSingle();
-      var e = r && r.data; if (!e) return;
-      var sr = (e.system_role || '').toLowerCase(), st = (e.employment_status || '').toLowerCase();
-      var active = st !== 'inactive' && st !== 'exited';
-      if ((sr === 'manager' || sr === 'founder') && active && !/manager\.html$/.test(location.pathname)) { location.href = 'manager.html'; return; }
-      // Media Head stays in the Media Suite but gains production-management UI (Create/Assign
-      // Work via the existing .admin-manager-only controls + the Approvals view). system_role
-      // driven, not designation/login-role. Window._systemRole exposed for JS permission checks.
-      window._systemRole = sr;
-      if (sr === 'media_head' && active) { document.body.classList.add('role-mediahead'); if (typeof window.initMediaHeadApprovals === 'function') window.initMediaHeadApprovals(); }
-    } catch (err) {}
-  }, 400);
 })();
 </script>
 <script>
