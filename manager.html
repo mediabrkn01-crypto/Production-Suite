@@ -137,14 +137,23 @@
 <script src="common.js"></script>
 <script src="leave-policy.js"></script>
 <script>
-(function(){
+(async function(){
   'use strict';
-  // Auth — reuse the SAME session common.js reads (activeEmail/activeRole from localStorage).
-  // Manager Command Center is for the global management roles only (Manager/Founder + HR admin);
-  // everyone else is routed back to the portal. This never weakens any other page's gating.
   var email = (typeof activeEmail !== 'undefined' && activeEmail) || null;
-  var role  = (typeof activeRole  !== 'undefined' && activeRole)  || null;
-  if (!email || !['manager','admin'].includes((role||'').toLowerCase())) { location.href = 'index.html'; return; }
+  if (!email) { location.href = 'index.html'; return; }
+  var db = (typeof dbInstance !== 'undefined' && dbInstance) ? dbInstance : null;
+  if (!db) { location.href = 'index.html'; return; }
+  // Authorization is controlled ONLY by the HR-set System Role on the employee's own record
+  // (hr_employees.system_role = 'manager' | 'founder'), and only while employment is active
+  // (§7/§9/§14). No separate manager account, no localStorage role, no designation text. If HR
+  // demotes or deactivates the employee, this gate fails immediately on next load.
+  var meRec = null;
+  try { var r0 = await db.from('hr_employees').select('*').eq('portal_email', String(email).toLowerCase()).maybeSingle(); meRec = r0 && r0.data; } catch(e){}
+  var sysRole = ((meRec && meRec.system_role) || '').toLowerCase();
+  var st = ((meRec && meRec.employment_status) || '').toLowerCase();
+  var isGlobal = (sysRole === 'manager' || sysRole === 'founder') && st !== 'inactive' && st !== 'exited';
+  if (!isGlobal) { location.href = 'index.html'; return; }
+  window._mgrEmp = meRec;
 
   function icons(){ try{ if(window.lucide) lucide.createIcons(); }catch(e){} }
   function num(id, v, cls){ var el=document.getElementById(id); if(el) el.querySelector('.v').className='v'+(cls?' '+cls:''), el.querySelector('.v').textContent=v; }
@@ -155,7 +164,6 @@
   document.getElementById('k-sales').innerHTML= [{id:'sl-tot',label:'Total Leads'},{id:'sl-fc',label:'Need Contact'},{id:'sl-en',label:'Enrolled'},{id:'sl-nw',label:'New (30d)'}].map(cell).join('');
   icons();
 
-  var db = (typeof dbInstance !== 'undefined' && dbInstance) ? dbInstance : null;
   var today = new Date().toISOString().slice(0,10);
   var mago = new Date(Date.now()-30*864e5).toISOString().slice(0,10);
   var curMonth = today.slice(0,7);
@@ -186,17 +194,15 @@
       put('sl-tot',v[8]); put('sl-fc',v[9],'a'); put('sl-en',v[10],'g'); put('sl-nw',v[11],'b');
     });
 
-    // Employee record (for account-menu photo + shared celebration banner). One row, not the
-    // whole roster — no full-company fetch on load (spec §5/§31).
-    db.from('hr_employees').select('*').eq('portal_email', String(email).toLowerCase()).maybeSingle().then(function(r){
-      var me = r && r.data; if (!me) return;
-      window._mgrEmp = me;
-      var av = document.getElementById('mgr-account-btn');
-      if (av) { var url = me.photo_base64 || me.photo_url; av.textContent = (me.full_name||'M').trim().charAt(0).toUpperCase();
-        if (url) av.innerHTML = '<img src="'+url+'" alt="">'; }
-      try { if (typeof runCelebrationQueue === 'function') runCelebrationQueue(me); } catch(e){ console.warn('celebration', e); }
-    }).catch(function(){});
   }
+  // Account-menu avatar photo + shared celebration/announcement banner, from the record already
+  // fetched in the auth gate (no second employee query).
+  (function(){
+    var me = window._mgrEmp; if (!me) return;
+    var av = document.getElementById('mgr-account-btn');
+    if (av) { var url = me.photo_base64 || me.photo_url; av.textContent = (me.full_name||'M').trim().charAt(0).toUpperCase(); if (url) av.innerHTML = '<img src="'+url+'" alt="">'; }
+    try { if (typeof runCelebrationQueue === 'function') runCelebrationQueue(me); } catch(e){ console.warn('celebration', e); }
+  })();
 
   // Shared header widgets — greeting + live clock + account menu, same components as every module.
   try { if (typeof initLiveGreeting==='function') initLiveGreeting({ mount:'#greeting', getName:function(){ return (window._mgrEmp && window._mgrEmp.full_name) || (typeof activeUser!=='undefined'&&activeUser) || 'Manager'; } }); } catch(e){}

@@ -1589,6 +1589,20 @@
                     </select>
                 </div>
                 <div><label class="hr-field-label">Designation</label><input id="hr-emp-designation" class="hr-input w-full" placeholder="e.g. Manager, HR / Admin"></div>
+                <div>
+                    <label class="hr-field-label">System Role</label>
+                    <select id="hr-emp-system-role" class="hr-select w-full" onchange="hrSysRoleHint()">
+                        <option value="">Employee (default)</option>
+                        <option value="trainer">Trainer / Coach</option>
+                        <option value="academic_head">Academic Head</option>
+                        <option value="hr_admin">HR / Admin</option>
+                        <option value="sales">Sales</option>
+                        <option value="manager">Manager</option>
+                        <option value="founder">Founder</option>
+                    </select>
+                    <p class="text-[11px] text-[#6b74a0]" style="margin-top:4px">System Role controls dashboard and application access (separate from Designation).</p>
+                    <p id="hr-sysrole-hint" class="text-[11px]" style="display:none;margin-top:2px;color:#4ade80">Full company access: Media, HR, Academics and Sales.</p>
+                </div>
                 <div class="sm:col-span-2">
                     <label class="hr-field-label">Roles (select one or more)</label>
                     <div id="hr-emp-roles-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -3076,6 +3090,8 @@
             document.getElementById('hr-emp-dob').value = e?.dob || '';
             document.getElementById('hr-emp-phone').value = e?.phone || '';
             document.getElementById('hr-emp-personal-email').value = e?.personal_email || '';
+            document.getElementById('hr-emp-system-role').value = e?.system_role || '';
+            hrSysRoleHint();
             document.getElementById('hr-emp-email').value = e?.portal_email || '';
             document.getElementById('hr-emp-manager-email').value = e?.manager_email || '';
             document.getElementById('hr-emp-portal-access').checked = e ? (e.portal_access_enabled !== false) : true;
@@ -3261,6 +3277,11 @@
                 : 'Late = clock-in after Expected Start + grace. Early Logout = clock-out before Expected End − grace. Only these count toward the monthly incident deduction.';
         }
 
+        function hrSysRoleHint() {
+            const v = (document.getElementById('hr-emp-system-role')?.value || '').toLowerCase();
+            const hint = document.getElementById('hr-sysrole-hint');
+            if (hint) hint.style.display = (v === 'manager' || v === 'founder') ? 'block' : 'none';
+        }
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
             if (!name) { alert('Full name is required.'); return; }
@@ -3293,6 +3314,7 @@
                 dob: document.getElementById('hr-emp-dob').value || null,
                 phone: document.getElementById('hr-emp-phone').value.trim(),
                 personal_email: (document.getElementById('hr-emp-personal-email').value || '').trim().toLowerCase() || null,
+                system_role: document.getElementById('hr-emp-system-role').value || null,
                 portal_email: loginEmail,
                 manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
                 portal_access_enabled: document.getElementById('hr-emp-portal-access').checked,

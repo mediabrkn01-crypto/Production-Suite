@@ -8576,5 +8576,25 @@ async function saveLeave(){
   } catch (_) { showLoginNow(); /* fall through to the normal login screen on any failure */ }
 })();
 </script>
+<script>
+// Manager/Founder recognition — global access is controlled by the HR-set System Role
+// (hr_employees.system_role), NOT the login role. Once a session is active, resolve it and, for
+// an active manager/founder, reveal the manager UI (Command Center link + My Team) by adding the
+// existing body.role-manager class. Additive + guarded; never removes anyone's access.
+(function(){
+  var tries = 0;
+  var iv = setInterval(async function(){
+    tries++;
+    if (typeof activeEmail === 'undefined' || !activeEmail || typeof dbInstance === 'undefined' || !dbInstance) { if (tries > 40) clearInterval(iv); return; }
+    clearInterval(iv);
+    try {
+      var r = await dbInstance.from('hr_employees').select('system_role,employment_status').eq('portal_email', String(activeEmail).toLowerCase()).maybeSingle();
+      var e = r && r.data; if (!e) return;
+      var sr = (e.system_role || '').toLowerCase(), st = (e.employment_status || '').toLowerCase();
+      if ((sr === 'manager' || sr === 'founder') && st !== 'inactive' && st !== 'exited') document.body.classList.add('role-manager');
+    } catch (err) {}
+  }, 400);
+})();
+</script>
 </body>
 </html>

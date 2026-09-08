@@ -7466,10 +7466,11 @@ async function tryMediaSSO(){
       const byName=await mediaHrDB.from('hr_employees').select('*').eq('full_name',s.name).limit(1);
       rec=byName.data&&byName.data[0];
     }
-    // Global management role (Manager/Founder = user_roster.role 'manager', or HR 'admin') may
-    // oversee Academics even though their division isn't Education — additive bypass only.
-    let isGlobalMgr=false;
-    try{const {data:rr}=await mediaHrDB.from('user_roster').select('role').eq('email',String(s.email).trim().toLowerCase()).maybeSingle();if(rr&&['manager','admin'].includes((rr.role||'').toLowerCase()))isGlobalMgr=true;}catch(_){}
+    // Global access is controlled ONLY by the HR-set System Role (hr_employees.system_role =
+    // 'manager' | 'founder'), never by department/designation — additive bypass only.
+    const _sysRole=((rec&&rec.system_role)||'').toLowerCase();
+    const _st=((rec&&rec.employment_status)||'').toLowerCase();
+    const isGlobalMgr=(_sysRole==='manager'||_sysRole==='founder') && _st!=='inactive' && _st!=='exited';
     if(!rec || (rec.division!=='education' && !isGlobalMgr))return false; /* not Education dept and not a global manager — no academic access */
     const roles=(rec.department||'').split(',').map(x=>x.trim()).filter(Boolean);
     const stripLevel=r=>r.replace(/^(Senior|Mid-Level|Junior)\s+/,'');
