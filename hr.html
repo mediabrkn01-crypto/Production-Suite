@@ -557,6 +557,20 @@
         .hr-menu-item.danger { color:#f87171; }
         .hr-menu-item.danger:hover { background:rgba(239,68,68,0.14); color:#fca5a5; }
         .hr-menu-sep { height:1px; background:rgba(255,255,255,0.07); margin:5px 4px; }
+        /* custom month picker (replaces native <input type=month> grid) */
+        #hr-month-picker { position:fixed; z-index:10000; width:250px; background:linear-gradient(145deg,#181219,#0c0a0d); border:1px solid rgba(255,255,255,0.1);
+                           border-radius:14px; padding:12px; box-shadow:0 20px 50px rgba(0,0,0,.7); display:none; }
+        #hr-month-picker.open { display:block; }
+        .mp-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        .mp-year { font-size:14px; font-weight:800; color:#fff; }
+        .mp-nav { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:#a5adcf; width:28px; height:28px; border-radius:8px; cursor:pointer; }
+        .mp-nav:hover { color:#fff; border-color:rgba(255,107,6,0.4); }
+        .mp-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+        .mp-m { padding:8px 0; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid transparent; color:#c7cce4; font-size:12px; font-weight:600; cursor:pointer; text-align:center; }
+        .mp-m:hover { background:rgba(255,255,255,0.1); color:#fff; }
+        .mp-m.sel { background:linear-gradient(135deg,#ff6b06,#f9182f); color:#fff; }
+        .mp-foot { display:flex; justify-content:flex-end; margin-top:10px; }
+        .mp-today { background:none; border:none; color:#ff6b06; font-size:11px; font-weight:700; cursor:pointer; }
         /* status + access pills */
         .pr-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:99px; font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
         .pr-pill.amber { color:#fbbf24; background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.3); }
@@ -1298,7 +1312,8 @@
                     <!-- one clean toolbar: left = month + Export dropdown, right = tiered actions -->
                     <div class="pr-toolbar">
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                            <input id="hr-payroll-month" type="month" class="hr-input" onchange="renderHRPayroll()">
+                            <input id="hr-payroll-month" type="hidden" onchange="renderHRPayroll()">
+                            <button id="hr-payroll-month-btn" class="pr-btn" onclick="hrOpenMonthPicker('hr-payroll-month', this, 'renderHRPayroll')" style="min-width:150px;justify-content:space-between">Select month <span class="chev">▼</span></button>
                             <button class="pr-btn" onclick="hrPayrollExportMenu(this)">⬇ Export <span class="chev">▼</span></button>
                         </div>
                         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -5789,6 +5804,9 @@ async function populateHRJobDeptOptions() {
             return published ? '<span class="pr-pill blue">Employee Access</span>' : '<span class="pr-pill muted">HR Only</span>';
         }
         function renderHRPayroll() {
+            const _mi = document.getElementById('hr-payroll-month');
+            if (_mi && !_mi.value) _mi.value = new Date().toISOString().slice(0,7);
+            if (typeof hrSetMonthLabel === 'function') hrSetMonthLabel('hr-payroll-month');
             const month = document.getElementById('hr-payroll-month').value;
             const rows = hrPayroll.filter(p => !month || p.month === month);
             hrSelectedPayrollIds = new Set([...hrSelectedPayrollIds].filter(id => rows.some(p => p.id === id)));
@@ -5882,6 +5900,45 @@ async function populateHRJobDeptOptions() {
         document.addEventListener('click', e => { const el = document.getElementById('hr-float-menu'); if (el && el.classList.contains('open') && !el.contains(e.target) && !(e.target.closest && e.target.closest('[onclick*="Menu"]'))) hrCloseFloatMenu(); }, true);
         window.addEventListener('scroll', hrCloseFloatMenu, true);
         window.addEventListener('resize', hrCloseFloatMenu);
+
+        // ── Custom month picker (replaces the native <input type=month> browser grid) ──
+        // Writes 'YYYY-MM' into a hidden input so every existing reader of .value is unchanged.
+        let _mpState = null;
+        function _hrMonthPickerEl() { let e = document.getElementById('hr-month-picker'); if (!e) { e = document.createElement('div'); e.id = 'hr-month-picker'; document.body.appendChild(e); } return e; }
+        function hrCloseMonthPicker() { const e = document.getElementById('hr-month-picker'); if (e) e.classList.remove('open'); }
+        function hrSetMonthLabel(inputId) {
+            const inp = document.getElementById(inputId), btn = document.getElementById(inputId + '-btn'); if (!inp || !btn) return;
+            const chev = ' <span class="chev">▼</span>';
+            if (inp.value) { const [y, m] = inp.value.split('-').map(Number);
+                const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                btn.innerHTML = `${names[m-1]} ${y}` + chev; } else btn.innerHTML = 'Select month' + chev;
+        }
+        function hrOpenMonthPicker(inputId, btn, onchangeName) {
+            const inp = document.getElementById(inputId);
+            const cur = (inp.value || new Date().toISOString().slice(0,7)).split('-').map(Number);
+            _mpState = { inputId, onchange: onchangeName, year: cur[0], selYear: cur[0], selMonth: cur[1], anchor: btn };
+            _renderMonthPicker();
+        }
+        function _renderMonthPicker() {
+            const s = _mpState, el = _hrMonthPickerEl();
+            const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            el.innerHTML = `<div class="mp-head"><button class="mp-nav" onclick="_mpYear(-1)">‹</button><span class="mp-year">${s.year}</span><button class="mp-nav" onclick="_mpYear(1)">›</button></div>
+                <div class="mp-grid">${names.map((n,i)=>`<button class="mp-m ${(s.year===s.selYear && s.selMonth===i+1)?'sel':''}" onclick="_mpPick(${i+1})">${n}</button>`).join('')}</div>
+                <div class="mp-foot"><button class="mp-today" onclick="_mpThisMonth()">This month</button></div>`;
+            el.classList.add('open');
+            const r = s.anchor.getBoundingClientRect(), mw = el.offsetWidth || 250;
+            let left = Math.max(10, Math.min(r.left, window.innerWidth - mw - 10));
+            let top = r.bottom + 6; if (top + el.offsetHeight > window.innerHeight - 10) top = Math.max(10, r.top - el.offsetHeight - 6);
+            el.style.left = left + 'px'; el.style.top = top + 'px';
+        }
+        function _mpYear(d) { _mpState.year += d; _renderMonthPicker(); }
+        function _mpPick(m) { const s = _mpState, inp = document.getElementById(s.inputId);
+            inp.value = s.year + '-' + String(m).padStart(2,'0'); hrSetMonthLabel(s.inputId); hrCloseMonthPicker();
+            if (s.onchange && typeof window[s.onchange] === 'function') window[s.onchange](); }
+        function _mpThisMonth() { const n = new Date(); _mpState.year = n.getFullYear(); _mpPick(n.getMonth() + 1); }
+        document.addEventListener('click', e => { const el = document.getElementById('hr-month-picker'); if (el && el.classList.contains('open') && !el.contains(e.target) && !(e.target.closest && e.target.closest('[onclick*="MonthPicker"]'))) hrCloseMonthPicker(); }, true);
+        window.addEventListener('scroll', hrCloseMonthPicker, true);
+        window.addEventListener('resize', hrCloseMonthPicker);
 
         function hrPayrollExportMenu(btn) {
             hrOpenFloatMenu(btn, [
