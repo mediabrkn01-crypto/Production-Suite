@@ -8934,6 +8934,10 @@ async function saveLeave(){
     opts=opts||{};
     var isApproved=opts.approved || (a.manager_approved && waStatusOf(a)==='approved');
     var entries=beParseDelivery(a.asset_link);
+    // A BARE Drive folder (no sibling file entries stored at submit) → per-file review gallery.
+    var folderEntry=null; for(var _i=0;_i<entries.length;_i++){ if(entries[_i].folder){ folderEntry=entries[_i]; break; } }
+    var hasSiblingFiles=entries.some(function(e){ return !e.folder; });
+    if(folderEntry && !hasSiblingFiles){ return mhFolderReview(id, a); }
     var m=document.getElementById('mh-deliv-modal');
     if(!m){ m=document.createElement('div'); m.id='mh-deliv-modal';
       m.style.cssText='position:fixed;inset:0;z-index:9003;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px';
@@ -9197,6 +9201,165 @@ async function saveLeave(){
     _awFilter.page=1;
     awRender();
   };
+
+  // ══ FOLDER REVIEW — per-file approval gallery for a submitted Drive folder ══
+  function beFolderId(url){ var m=(url||'').match(/\/folders\/([^/?#]+)/); return m?m[1]:''; }
+  var _WF_META={ pending_review:{t:'Pending Review',c:'#38bdf8'}, approved:{t:'Approved',c:'#22c55e'}, rework:{t:'Rework Requested',c:'#fb923c'}, rejected:{t:'Rejected',c:'#f87171'} };
+  var _wf={ subId:null, row:null, files:[], idx:0 };
+  async function wfLoad(subId, folderId){
+    var d=db(); if(!d) return {error:'db'};
+    var r=await d.from('work_submission_files').select('*').eq('submission_id',subId).order('file_name');
+    var files=(r.data||[]);
+    if(!files.length){
+      var listed;
+      try{ listed=await fetch(GOOGLE_SCRIPT_URL,{method:'POST',body:JSON.stringify({action:'listFolder',folderId:folderId})}).then(x=>x.json()); }
+      catch(e){ return {error:'access'}; }
+      if(!listed || !listed.success || !listed.files) return {error:'access'};
+      if(!listed.files.length) return {files:[]};
+      var rows=listed.files.map(function(f){ return { submission_id:subId, drive_file_id:f.id, file_name:f.name||('file-'+f.id), mime_type:f.mimeType||'', file_url:f.url||('https://drive.google.com/file/d/'+f.id+'/view'), status:'pending_review' }; });
+      try{ await d.from('work_submission_files').upsert(rows,{onConflict:'submission_id,drive_file_id'}); }catch(e){}
+      var r2=await d.from('work_submission_files').select('*').eq('submission_id',subId).order('file_name');
+      files=(r2.data||[]);
+    }
+    return {files:files};
+  }
+  function wfCounts(){ var c={approved:0,pending_review:0,rework:0,rejected:0}; _wf.files.forEach(function(f){ c[f.status]=(c[f.status]||0)+1; }); return c; }
+  function wfFileEntry(f){ return { name:f.file_name, url:f.file_url, folder:false }; }
+  function wfModal(){ var m=document.getElementById('mh-deliv-modal');
+    if(!m){ m=document.createElement('div'); m.id='mh-deliv-modal';
+      m.style.cssText='position:fixed;inset:0;z-index:9003;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px';
+      m.addEventListener('click',function(e){ if(e.target===m) m.style.display='none'; });
+      document.body.appendChild(m);
+    } return m;
+  }
+  window.mhFolderReview=async function(id, a){
+    _wf={ subId:id, row:a, files:[], idx:0 };
+    var m=wfModal();
+    var who=esc(a.assigned_to||a.employee_email||'—');
+    var headHtml='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)">'
+      +'<div><div style="font-size:9px;font-weight:800;letter-spacing:.14em;color:#ff6b06">WORK PREVIEW</div>'
+      +'<div style="font-size:16px;font-weight:800;color:#fff;margin-top:3px">'+esc(a.topic||'Untitled')+'</div>'
+      +'<div style="font-size:12px;color:#8890b5;margin-top:2px">'+esc(a.type||'')+' · Submitted by '+who+'</div>'
+      +'<div style="font-size:11px;color:#6b74a0;margin-top:4px">Submitted: '+esc(beFmtDT(waSubIso(a)))+'</div></div>'
+      +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:16px;flex-shrink:0">✕</button></div>';
+    m.innerHTML='<div style="width:100%;max-width:900px;max-height:92vh;overflow:auto;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:18px" onclick="event.stopPropagation()">'+headHtml
+      +'<div id="wf-body" style="padding:22px;text-align:center;color:#6b74a0;font-size:13px">Loading folder contents…</div></div>';
+    m.style.display='flex';
+    var folderId=beFolderId((beParseDelivery(a.asset_link).find(function(e){return e.folder;})||{}).url||'');
+    var res=await wfLoad(id, folderId);
+    var body=document.getElementById('wf-body'); if(!body) return;
+    if(res.error==='access'){ body.innerHTML='<div style="padding:30px 16px;text-align:center"><div style="font-size:34px">🔒</div><div style="color:#f87171;font-size:13px;margin-top:10px">Folder contents cannot be accessed. Please check the Drive sharing permissions (and that the listFolder action is deployed).</div><div style="margin-top:16px"><a href="https://drive.google.com/drive/folders/'+esc(folderId)+'" target="_blank" rel="noopener" style="background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:800;font-size:12px;padding:9px 16px;border-radius:9px;text-decoration:none">Open Folder ↗</a></div></div>'; return; }
+    if(res.error){ body.innerHTML='<div style="padding:30px;color:#f87171;font-size:13px">Could not load folder.</div>'; return; }
+    _wf.files=res.files||[];
+    if(!_wf.files.length){ body.innerHTML='<div style="padding:30px;color:#8890b5;font-size:13px">This folder is empty.</div>'; return; }
+    wfRenderBody();
+  };
+  function wfRenderBody(){
+    var body=document.getElementById('wf-body'); if(!body) return;
+    var c=wfCounts(), n=_wf.files.length, cur=_wf.files[_wf.idx];
+    var summary='<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:12px 0 14px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px">'
+      +'<div style="font-size:14px;font-weight:800;color:#fff">'+n+' Files</div>'
+      +'<span style="font-size:11px;color:#22c55e;font-weight:700">Approved '+c.approved+'</span>'
+      +'<span style="font-size:11px;color:#38bdf8;font-weight:700">Pending '+c.pending_review+'</span>'
+      +'<span style="font-size:11px;color:#fb923c;font-weight:700">Rework '+c.rework+'</span>'
+      +'<span style="font-size:11px;color:#f87171;font-weight:700">Rejected '+c.rejected+'</span>'
+      +'<div style="flex:1"></div>'
+      +'<div style="font-size:11px;color:#8890b5;font-weight:700">'+c.approved+' / '+n+' Approved</div></div>';
+    // large preview
+    var pane='<div id="wf-pane">'+bePreviewMarkup(wfFileEntry(cur))+'</div>';
+    // current file meta + per-file controls
+    var meta=_WF_META[cur.status]||{t:cur.status,c:'#8890b5'};
+    var statusLine;
+    if(cur.status==='approved') statusLine='<div style="font-size:11px;color:#22c55e;font-weight:800">✓ Approved</div><div style="font-size:11px;color:#8890b5">by '+esc(cur.reviewed_by||'—')+' · '+esc(beFmtDT(cur.reviewed_at))+'</div>';
+    else if(cur.status==='rework') statusLine='<div style="font-size:11px;color:#fb923c;font-weight:800">🟠 Rework Requested</div>'+(cur.review_note?'<div style="font-size:11px;color:#8890b5">'+esc(cur.review_note)+'</div>':'');
+    else if(cur.status==='rejected') statusLine='<div style="font-size:11px;color:#f87171;font-weight:800">✕ Rejected</div>'+(cur.review_note?'<div style="font-size:11px;color:#8890b5">'+esc(cur.review_note)+'</div>':'');
+    else statusLine='<div style="font-size:11px;color:#38bdf8;font-weight:800">Pending Review</div>';
+    var controls='<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px">'
+      +'<button onclick="wfAct(\'approved\')" style="background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-size:11px;font-weight:800;padding:8px 16px;border-radius:9px;cursor:pointer">Approve</button>'
+      +'<button onclick="wfAct(\'rework\')" style="background:rgba(251,146,60,.14);border:1px solid rgba(251,146,60,.4);color:#fb923c;font-size:11px;font-weight:800;padding:8px 16px;border-radius:9px;cursor:pointer">Rework</button>'
+      +'<button onclick="wfAct(\'rejected\')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-size:11px;font-weight:800;padding:8px 16px;border-radius:9px;cursor:pointer">Reject</button>'
+      +'<button onclick="wfDownloadCurrent()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#e5e9f5;font-size:11px;font-weight:800;padding:8px 16px;border-radius:9px;cursor:pointer">Download</button></div>';
+    var nav='<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:12px">'
+      +'<button onclick="wfPrev()" '+(_wf.idx<=0?'disabled':'')+' style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:'+(_wf.idx<=0?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:'+(_wf.idx<=0?'not-allowed':'pointer')+'">← Previous</button>'
+      +'<span style="font-size:12px;color:#8890b5;font-weight:700">'+(_wf.idx+1)+' / '+n+'</span>'
+      +'<button onclick="wfNext()" '+(_wf.idx>=n-1?'disabled':'')+' style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:'+(_wf.idx>=n-1?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:'+(_wf.idx>=n-1?'not-allowed':'pointer')+'">Next →</button></div>';
+    var fileMeta='<div style="text-align:center;margin-top:10px"><div style="font-size:13px;font-weight:700;color:#fff">'+esc(cur.file_name||'')+'</div><div style="margin-top:4px">'+statusLine+'</div>'+controls+'</div>';
+    // thumbnail strip
+    var strip='<div style="display:flex;gap:8px;overflow-x:auto;padding:14px 0 4px;margin-top:14px;border-top:1px solid rgba(255,255,255,.07)">'+_wf.files.map(function(f,i){
+      var mt=_WF_META[f.status]||{c:'#8890b5'}; var on=i===_wf.idx;
+      var fid=beDriveId(f.file_url); var thumb=fid?('https://drive.google.com/thumbnail?id='+fid+'&sz=w160'):'';
+      var inner = thumb? '<img src="'+esc(thumb)+'" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<div style=&quot;font-size:20px&quot;>📄</div>\'">' : '<div style="font-size:20px">📄</div>';
+      return '<button onclick="wfSelect('+i+')" title="'+esc(f.file_name||'')+'" style="flex:0 0 auto;width:72px;height:72px;border-radius:9px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.04);cursor:pointer;position:relative;border:2px solid '+(on?'#ff6b06':mt.c+'66')+'">'+inner+'<span style="position:absolute;bottom:0;left:0;right:0;height:4px;background:'+mt.c+'"></span></button>';
+    }).join('')+'</div>';
+    var footer='<div style="display:flex;gap:8px;padding:16px 0 2px;margin-top:8px;border-top:1px solid rgba(255,255,255,.08);flex-wrap:wrap">'
+      +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="flex:1;min-width:120px;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Close</button>'
+      +'<button onclick="wfDownloadAllApproved()" style="flex:1;min-width:180px;padding:10px;border-radius:9px;background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;font-weight:800;cursor:pointer">Download All Approved ('+c.approved+')</button></div>';
+    body.innerHTML=summary+pane+fileMeta+nav+strip+footer;
+    if(window.lucide&&lucide.createIcons){ try{lucide.createIcons();}catch(e){} }
+  }
+  window.wfSelect=function(i){ if(i<0||i>=_wf.files.length) return; _wf.idx=i; wfRenderBody(); };
+  window.wfPrev=function(){ if(_wf.idx>0){ _wf.idx--; wfRenderBody(); } };
+  window.wfNext=function(){ if(_wf.idx<_wf.files.length-1){ _wf.idx++; wfRenderBody(); } };
+  window.wfDownloadCurrent=function(){ var f=_wf.files[_wf.idx]; if(!f) return; var t=beDownloadTarget(wfFileEntry(f)); if(!t){ toast('info','No direct download — use Open Original.'); return; } var l=document.createElement('a'); l.href=t.href; if(t.newtab){l.target='_blank';l.rel='noopener';}else{l.download=t.name||'';} document.body.appendChild(l); l.click(); l.remove(); };
+  async function wfWrite(f, status, note){
+    var d=db(); if(!d) return;
+    var patch={ status:status, reviewed_by:actor(), reviewed_at:new Date().toISOString() };
+    if(note!=null) patch.review_note=note;
+    var {error}=await d.from('work_submission_files').update(patch).eq('submission_id',_wf.subId).eq('drive_file_id',f.drive_file_id);
+    if(error){ toast('error','Failed: '+error.message); return; }
+    Object.keys(patch).forEach(function(k){ f[k]=patch[k]; });
+    wfRenderBody(); wfRollup();
+  }
+  window.wfAct=function(status){
+    var f=_wf.files[_wf.idx]; if(!f) return;
+    if(status==='approved'){ wfWrite(f,'approved',null); toast('success','File approved.'); return; }
+    var isRework=status==='rework';
+    wfNoteModal(isRework?'Rework Required':'Reject File', f.file_name, isRework, function(note){
+      if(isRework && !note){ toast('error','Add a correction note.'); return false; }
+      wfWrite(f,status,note||''); toast('success', isRework?'Sent for rework.':'File rejected.'); return true;
+    });
+  };
+  // Branded note modal (shared by folder Rework/Reject). cb(note) returns false to keep open.
+  function wfNoteModal(title, fileName, required, cb){
+    var m=document.getElementById('wf-note-modal');
+    if(!m){ m=document.createElement('div'); m.id='wf-note-modal'; m.style.cssText='position:fixed;inset:0;z-index:9004;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(m); }
+    m.innerHTML='<div style="width:100%;max-width:440px;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px"><div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:4px">'+esc(title)+'</div><div style="font-size:12px;color:#8890b5;margin-bottom:10px">File: '+esc(fileName||'')+'</div><textarea id="wf-note-ta" rows="4" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:10px;font-size:13px;resize:vertical" placeholder="'+(required?'Reason / instructions…':'Optional reason…')+'"></textarea><div style="display:flex;gap:8px;margin-top:14px"><button id="wf-note-cancel" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Cancel</button><button id="wf-note-ok" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#ff6b06,#f9182f);border:none;color:#fff;font-weight:800;cursor:pointer">Confirm</button></div></div>';
+    m.style.display='flex'; var ta=document.getElementById('wf-note-ta'); ta.value=''; ta.focus();
+    document.getElementById('wf-note-cancel').onclick=function(){ m.style.display='none'; };
+    document.getElementById('wf-note-ok').onclick=function(){ var v=(ta.value||'').trim(); var r=cb(v); if(r!==false) m.style.display='none'; };
+  }
+  // Roll the child-file statuses up to the parent assignment.
+  async function wfRollup(){
+    var c=wfCounts(), n=_wf.files.length, d=db(); if(!d||!n) return;
+    var allApproved = c.approved===n;
+    var row=_wf.row;
+    if(allApproved && !row.manager_approved){
+      var nowIso=new Date().toISOString();
+      await d.from('assignments').update({ manager_approved:true, approved_by:actor(), approved_at:nowIso, social_media_status:'pending' }).eq('id',_wf.subId);
+      row.manager_approved=true; row.approved_by=actor(); row.approved_at=nowIso;
+      toast('success','All files approved — folder handed off.');
+    } else if(!allApproved && row.manager_approved){
+      await d.from('assignments').update({ manager_approved:false }).eq('id',_wf.subId);
+      row.manager_approved=false;
+    }
+    try{ if(typeof waRender==='function' && _waRowById[_wf.subId]) waRender(); }catch(e){}
+    try{ refreshCount(); }catch(e){}
+    try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+  }
+  window.wfDownloadAllApproved=async function(){
+    var ap=_wf.files.filter(function(f){ return f.status==='approved'; });
+    if(!ap.length){ toast('info','No approved files yet.'); return; }
+    toast('info','Preparing ZIP of '+ap.length+' approved file(s)…');
+    var ids=ap.map(function(f){ return f.drive_file_id; });
+    var zipName=((_wf.row.topic||'approved').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,''))+'-Approved';
+    try{
+      var res=await fetch(GOOGLE_SCRIPT_URL,{method:'POST',body:JSON.stringify({action:'zipFiles',fileIds:ids,zipName:zipName})}).then(x=>x.json());
+      if(res && res.success && res.url){ var l=document.createElement('a'); l.href=res.url; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); return; }
+    }catch(e){}
+    toast('info','ZIP unavailable — downloading files individually.');
+    ap.forEach(function(f,k){ setTimeout(function(){ var t=beDownloadTarget(wfFileEntry(f)); if(t){ var l=document.createElement('a'); l.href=t.href; if(t.newtab){l.target='_blank';l.rel='noopener';}else{l.download=t.name||'';} document.body.appendChild(l); l.click(); l.remove(); } }, k*450); });
+  };
+
   // Work Approvals nav / any legacy caller → open the tab (never a modal).
   async function openApprovals(){
     if(!isMediaHead()){ toast('error','Not authorized.'); return; }
