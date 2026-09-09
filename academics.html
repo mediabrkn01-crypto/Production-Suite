@@ -2309,8 +2309,10 @@ function card(b,i,isPrevious){
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         ${isPrevious ? `<span class="badge b-active">Completed</span>
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
         ` : `
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
@@ -3863,21 +3865,32 @@ async function loadAcadDashboard(){
       document.getElementById('acadUpcomingAvailSection').style.display = 'none';
     }
 
-    // "Today's Schedule" — the actual `sessions` rows for today (real scheduled classes,
-    // same source/scoping loadClassesTab() uses below), not just "which batches are
-    // currently active" — gives a genuine per-class status dot instead of a plain list.
+    // "Today's Schedule" — generated from each active batch's RECURRING schedule (day_pattern +
+    // time_slot), the SAME source Today's Classes uses (generateBatchOccurrences). The old code
+    // read the `sessions` table, which only has a row once attendance is marked — so a real
+    // recurring class that hadn't been marked yet showed "No classes scheduled today" even
+    // though the class genuinely runs today. Own-teaching scope for a Trainer; all for a Head/
+    // delegated Head/Management (isHead already resolves delegation + global-manager bypass).
     try {
-      let sessQuery = sb.from('sessions').select('*, batches(name)').eq('session_date', today);
-      if (!isHead) {
-        const myId = window._myTrainerId;
-        const { data: myB } = myId ? await sb.from('batches').select('id').eq('trainer_id', myId) : { data: [] };
-        const myIds = (myB||[]).map(b=>b.id);
-        sessQuery = myIds.length ? sessQuery.in('batch_id', myIds) : null;
+      // Same scope as Today's Classes: own teaching for a Trainer AND for a delegated Head
+      // (dashboard card = "my classes today"); a real Head/Management sees all.
+      var _schedHead = (typeof _acadIsRealHeadForSchedule === 'function') ? _acadIsRealHeadForSchedule() : isHead;
+      let bq = sb.from('batches').select('*').eq('status','active');
+      if (!_schedHead) bq = bq.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
+      const { data: _tb } = await bq;
+      let _trows = (_tb || []).filter(b => !_isBatchDeleted(b));
+      // drop batches already at their real session total (same rule as Today's Classes)
+      if (_trows.length) {
+        const _nm = _trows.map(b=>b.name).filter(Boolean);
+        const _done = {};
+        if (_nm.length) { try { const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', _nm); (att||[]).forEach(a=>{ (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(a.session_num); }); } catch(e){} }
+        _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,(b.baseline_sessions||0)+((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
-      const { data: todaySessions } = sessQuery ? await sessQuery : { data: [] };
-      const dotColor = s => s.status === 'completed' ? 'var(--green)' : (s.status === 'in_progress' ? 'var(--brand-1)' : 'var(--blue)');
-      document.getElementById('dashToday').innerHTML = (todaySessions||[]).length
-        ? todaySessions.slice(0, 8).map(s => `<div class="dash-row"><span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(s)};margin-right:8px"></span>${esc(s.batches?.name || s.type || 'Session')}</span><span style="color:var(--tx3)">${esc(s.status||'scheduled')}</span></div>`).join('')
+      let _occ = [];
+      _trows.forEach(b => { _occ = _occ.concat(generateBatchOccurrences(b, today, today)); });
+      _occ = _occ.filter(o => o.date === today).sort((a,b)=>a.startTime-b.startTime);
+      document.getElementById('dashToday').innerHTML = _occ.length
+        ? _occ.slice(0, 8).map(o => `<div class="dash-row" style="cursor:pointer" onclick="openBatchDetails('${o.batch.id}')"><span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue);margin-right:8px"></span>${esc(o.batch.name)}${o.batch.programme?' · '+esc(o.batch.programme):''}</span><span style="color:var(--tx3)">${esc(o.batch.time_slot||'')}</span></div>`).join('')
         : '<div class="empty">No classes scheduled today.</div>';
     } catch (e) {
       // Fall back to the batch-list view if `sessions` isn't reachable for some reason —
@@ -6242,16 +6255,38 @@ async function openBatchDetails(id){
   if (!b) return;
   const { data: students } = await sb.from('students').select('id,name,uin,status,batch_id,batch_name').eq('batch_id', id).order('name');
   const rows = students||[];
+  // Progress from REAL data: baseline + distinct marked attendance sessions vs sessions_total.
+  let _bdDone = 0, _bdTotal = b.sessions_total || 0;
+  try {
+    const { data: att } = await sb.from('attendance').select('session_num').eq('batch_name', b.name);
+    const marked = new Set((att||[]).map(a=>a.session_num)).size;
+    _bdDone = Math.min(_bdTotal||Infinity, (b.baseline_sessions||0) + marked);
+  } catch(e){}
+  const _bdRemain = _bdTotal ? Math.max(0, _bdTotal - _bdDone) : null;
+  const _bdPct = _bdTotal ? Math.round(_bdDone/_bdTotal*100) : 0;
+  // Next class from the real recurrence (today .. +60d), first future occurrence.
+  let _bdNext = '—';
+  try {
+    if (b.status === 'active' && typeof generateBatchOccurrences === 'function') {
+      const _n = new Date(); const _t = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
+      const _e2 = new Date(_n); _e2.setDate(_e2.getDate()+60); const _es = `${_e2.getFullYear()}-${String(_e2.getMonth()+1).padStart(2,'0')}-${String(_e2.getDate()).padStart(2,'0')}`;
+      const occ = generateBatchOccurrences(b, _t, _es).filter(o=>o.date>=_t).sort((a,c)=>a.date===c.date?a.startTime-c.startTime:a.date.localeCompare(c.date));
+      if (occ.length){ const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const d=new Date(occ[0].date+'T00:00:00'); _bdNext = DOW[occ[0].dow]+', '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+(b.time_slot?' · '+b.time_slot:''); }
+    }
+  } catch(e){}
   document.getElementById('bd_title').textContent = b.name;
   document.getElementById('bd_body').innerHTML =
     '<span class="k">Course</span><span class="v">'+esc(b.courses?.name||courseLabel(b.batch_type)||'—')+'</span>'
+    +'<span class="k">Type</span><span class="v">'+((b.capacity===1)?'1:1 / Individual':'Group')+'</span>'
     +'<span class="k">Trainer</span><span class="v">'+esc(b.trainers?.name||'—')+'</span>'
     +'<span class="k">Schedule</span><span class="v">'+esc(b.day_pattern||'—')+'</span>'
     +'<span class="k">Time</span><span class="v">'+esc(b.time_slot||'—')+'</span>'
     +'<span class="k">Class Duration</span><span class="v">'+(b.class_duration_minutes?b.class_duration_minutes+' min':'—')+'</span>'
-    +'<span class="k">Prep Buffer</span><span class="v">'+(b.prep_buffer_minutes!=null?b.prep_buffer_minutes+' min':'—')+'</span>'
     +'<span class="k">Students</span><span class="v">'+rows.length+(b.capacity?' / '+b.capacity:'')+'</span>'
     +'<span class="k">Status</span><span class="v">'+esc(b.status||'active')+'</span>'
+    +'<span class="k">Progress</span><span class="v">'+(_bdTotal?(_bdDone+' / '+_bdTotal+' · '+_bdPct+'%'):'—')+'</span>'
+    +'<span class="k">Remaining</span><span class="v">'+(_bdRemain!=null?(_bdRemain+' session'+(_bdRemain===1?'':'s')):'—')+'</span>'
+    +'<span class="k">Next Class</span><span class="v">'+esc(_bdNext)+'</span>'
     +'<span class="k">Start Date</span><span class="v">'+(b.start_date||'—')+'</span>'
     +'<span class="k">End Date</span><span class="v">'+(b.expected_completion_date||'—')+'</span>';
   document.getElementById('bd_stu_count').textContent = rows.length;
