@@ -2635,7 +2635,10 @@
                 // Supervisor employees (e.g. already-registered accounts) always show up in HR
                 // without ever creating a duplicate row for the same person.
                 if (!emp.error && userRoster.length > 0) {
-                    const existingEmails = new Set(hrEmployees.map(e => (e.portal_email || '').toLowerCase()).filter(Boolean));
+                    // Include MANAGEMENT emails too (they're split out of hrEmployees) — otherwise
+                    // a management login gets re-seeded as a duplicate employee row on every load,
+                    // which broke management routing (maybeSingle -> null). Use the raw fetch.
+                    const existingEmails = new Set((_hrRawEmp || []).map(e => (e.portal_email || '').toLowerCase()).filter(Boolean));
                     const newFromRoster = userRoster.filter(u => u.email && !existingEmails.has(u.email.toLowerCase()));
                     if (newFromRoster.length) {
                         const seedPayload = newFromRoster.map(u => ({
@@ -6708,10 +6711,14 @@ async function populateHRJobDeptOptions() {
             // this module WITHOUT changing their real role — company oversight (spec §3/§8).
             let _isGlobalMgr = false;
             try {
-                const { data: _emp } = await dbInstance.from('hr_employees').select('system_role,employment_status,full_name').eq('portal_email', String(activeEmail||'').toLowerCase()).maybeSingle();
+                // Fetch all rows for this login; prefer the management/leadership row (a duplicate
+                // row made maybeSingle() return null and drop global-manager HR access).
+                const _MGMT_SET = ['manager','founder','co_founder','managing_director','director'];
+                const { data: _emps } = await dbInstance.from('hr_employees').select('system_role,employment_status,full_name,account_type').eq('portal_email', String(activeEmail||'').toLowerCase());
+                const _emp = (_emps||[]).find(r => (r.account_type||'')==='management' || _MGMT_SET.indexOf((r.system_role||'').toLowerCase())>-1) || (_emps||[])[0];
                 if (_emp) {
                     const _sr = (_emp.system_role||'').toLowerCase(), _st = (_emp.employment_status||'').toLowerCase();
-                    _isGlobalMgr = (['manager','founder','co_founder','managing_director','director'].indexOf(_sr)>-1) && _st!=='inactive' && _st!=='exited';
+                    _isGlobalMgr = (_MGMT_SET.indexOf(_sr)>-1) && _st!=='inactive' && _st!=='exited';
                     if (!activeUser && _emp.full_name) activeUser = _emp.full_name;
                 }
             } catch(e) {}

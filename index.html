@@ -3315,8 +3315,13 @@
             //    is embedded as manager.html's own Media view (iframe) to avoid a redirect loop.
             if (typeof dbInstance !== 'undefined' && dbInstance && activeEmail && !/manager\.html$/.test(location.pathname)) {
                 try {
-                    const _rr = await dbInstance.from('hr_employees').select('system_role,employment_status').eq('portal_email', String(activeEmail).toLowerCase()).maybeSingle();
-                    const _e = _rr && _rr.data;
+                    // Fetch ALL rows for this login (not maybeSingle — a duplicate row would make
+                    // it return null and silently skip management routing). Management/leadership
+                    // is the source of truth, so pick that row first if any exists.
+                    const _MGMT_SET = ['manager','founder','co_founder','managing_director','director'];
+                    const _rr = await dbInstance.from('hr_employees').select('system_role,employment_status,account_type').eq('portal_email', String(activeEmail).toLowerCase());
+                    const _rows = (_rr && _rr.data) || [];
+                    const _e = _rows.find(r => (r.account_type||'')==='management' || _MGMT_SET.indexOf((r.system_role||'').toLowerCase())>-1) || _rows[0];
                     if (_e) {
                         const _sr = (_e.system_role || '').toLowerCase(), _st = (_e.employment_status || '').toLowerCase();
                         const _active = _st !== 'inactive' && _st !== 'exited';

@@ -219,9 +219,15 @@
   if (!email) { location.href = 'index.html'; return; }
   var db = (typeof dbInstance !== 'undefined' && dbInstance) ? dbInstance : null;
   if (!db) { location.href = 'index.html'; return; }
-  // Authorization: HR-set System Role only (manager|founder) + active. No second login.
+  // Authorization: HR-set System Role (leadership set) + active. No second login.
+  // Fetch ALL rows for this login and prefer the management/leadership one — maybeSingle()
+  // returned null on a duplicate row, wrongly bouncing a real manager back to index.html.
   var meRec = null;
-  try { var r0 = await db.from('hr_employees').select('*').eq('portal_email', String(email).toLowerCase()).maybeSingle(); meRec = r0 && r0.data; } catch(e){}
+  var _MGMT_SET = ['manager','founder','co_founder','managing_director','director'];
+  try { var r0 = await db.from('hr_employees').select('*').eq('portal_email', String(email).toLowerCase());
+    var _rows = (r0 && r0.data) || [];
+    meRec = _rows.find(function(r){ return (r.account_type||'')==='management' || _MGMT_SET.indexOf((r.system_role||'').toLowerCase())>-1; }) || _rows[0] || null;
+  } catch(e){}
   var sysRole = ((meRec && meRec.system_role) || '').toLowerCase();
   var stt = ((meRec && meRec.employment_status) || '').toLowerCase();
   if (!((['manager','founder','co_founder','managing_director','director'].indexOf(sysRole)>-1) && stt!=='inactive' && stt!=='exited')) { location.href = 'index.html'; return; }

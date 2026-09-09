@@ -7638,8 +7638,10 @@ async function tryMediaSSO(){
     if(!raw)return false;
     const s=JSON.parse(raw);
     if(!s.email || Date.now()-(s.t||0) > 2592e6)return false; /* 30 days */
-    let {data:rows}=await mediaHrDB.from('hr_employees').select('*').eq('portal_email',String(s.email).trim().toLowerCase()).limit(1);
-    let rec=rows&&rows[0];
+    const _MGMT_SET=['manager','founder','co_founder','managing_director','director'];
+    let {data:rows}=await mediaHrDB.from('hr_employees').select('*').eq('portal_email',String(s.email).trim().toLowerCase());
+    // prefer the management/leadership row if this login has duplicates
+    let rec=(rows||[]).find(r=>(r.account_type||'')==='management'||_MGMT_SET.indexOf((r.system_role||'').toLowerCase())>-1)||(rows||[])[0];
     if(!rec && s.name){
       const byName=await mediaHrDB.from('hr_employees').select('*').eq('full_name',s.name).limit(1);
       rec=byName.data&&byName.data[0];
