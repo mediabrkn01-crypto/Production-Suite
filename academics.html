@@ -1300,6 +1300,7 @@ details[open] .rawsum::before{content:'▾ '}
       <span style="font-size:10px;color:var(--tx3);font-weight:600;display:flex;gap:12px;flex-wrap:wrap">
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--green);vertical-align:0"></span> Completed</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--blue);vertical-align:0"></span> Scheduled</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#ef4444;vertical-align:0"></span> Attendance Not Marked</span>
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.1);vertical-align:0"></span> No class</span>
       </span></div>
     <div id="bd_calendar" style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px"></div>
@@ -6298,45 +6299,54 @@ async function openBatchDetails(id){
   if (!b) return;
   const { data: students } = await sb.from('students').select('id,name,uin,status,batch_id,batch_name').eq('batch_id', id).order('name');
   const rows = students||[];
-  // Progress from REAL data: baseline + distinct marked attendance sessions vs sessions_total.
-  let _bdDone = 0, _bdTotal = b.sessions_total || 0, _attRows = [];
+  // ── SINGLE SOURCE OF TRUTH: dated attendance rows. completed = distinct dated sessions;
+  //    the calendar green dates ARE these same dates, so Progress and the calendar can never
+  //    disagree. Legacy imported baseline is shown separately, never faked as green dates. ──
+  let _bdTotal = b.sessions_total || 0, _attRows = [];
   try {
     const { data: att } = await sb.from('attendance').select('session_num,session_date,status,marked_by,created_at').eq('batch_name', b.name);
     _attRows = att || [];
-    const marked = new Set(_attRows.map(a=>a.session_num)).size;
-    _bdDone = Math.min(_bdTotal||Infinity, (b.baseline_sessions||0) + marked);
-  } catch(e){}
-  const _bdRemain = _bdTotal ? Math.max(0, _bdTotal - _bdDone) : null;
-  const _bdPct = _bdTotal ? Math.round(_bdDone/_bdTotal*100) : 0;
-  // Next class from the real recurrence (today .. +60d), first future occurrence.
-  let _bdNext = '—';
-  try {
-    if (b.status === 'active' && typeof generateBatchOccurrences === 'function') {
-      const _n = new Date(); const _t = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
-      const _e2 = new Date(_n); _e2.setDate(_e2.getDate()+60); const _es = `${_e2.getFullYear()}-${String(_e2.getMonth()+1).padStart(2,'0')}-${String(_e2.getDate()).padStart(2,'0')}`;
-      const occ = generateBatchOccurrences(b, _t, _es).filter(o=>o.date>=_t).sort((a,c)=>a.date===c.date?a.startTime-c.startTime:a.date.localeCompare(c.date));
-      if (occ.length){ const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const d=new Date(occ[0].date+'T00:00:00'); _bdNext = DOW[occ[0].dow]+', '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+(b.time_slot?' · '+b.time_slot:''); }
-    }
   } catch(e){}
   const _DOWL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const _fmtD = iso => { const d=new Date(iso+'T00:00:00'); return isNaN(d)?iso:(_DOWL[d.getDay()]+', '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})); };
-  // future occurrences (today..+1yr), capped to remaining sessions
-  let _future = [];
-  try {
-    if (b.status==='active' && _bdRemain>0 && typeof generateBatchOccurrences==='function') {
-      const _n=new Date(); const _t=`${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
-      const _e=new Date(_n); _e.setDate(_e.getDate()+365); const _es=`${_e.getFullYear()}-${String(_e.getMonth()+1).padStart(2,'0')}-${String(_e.getDate()).padStart(2,'0')}`;
-      _future = generateBatchOccurrences(b,_t,_es).filter(o=>o.date>=_t).sort((a,c)=>a.date.localeCompare(c.date)).slice(0,_bdRemain);
-    }
-  } catch(e){}
+  const _now = new Date();
+  const _iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const _todayISO = _iso(_now);
   const _doneDates = [...new Set(_attRows.map(a=>a.session_date).filter(Boolean))].sort();
-  const _futDates = _future.map(o=>o.date);
-  // estimated completion + approx remaining duration
+  const _doneSet = new Set(_doneDates);
+  const _completed = _bdTotal ? Math.min(_bdTotal, _doneSet.size) : _doneSet.size;
+  // Generate the real recurrence across the batch's whole span, assign each occurrence a status.
+  const _startISO = b.start_date || _doneDates[0] || _todayISO;
+  const _farD = new Date(_now); _farD.setMonth(_farD.getMonth()+18);
+  let _allOcc = [];
+  try { if (typeof generateBatchOccurrences === 'function') _allOcc = generateBatchOccurrences(b, _startISO, _iso(_farD)).sort((a,c)=>a.date===c.date?a.startTime-c.startTime:a.date.localeCompare(c.date)); } catch(e){}
+  const _occEnd = o => { const dur=(b.class_duration_minutes||60); const m=(o.startTime!=null?o.startTime:0)+dur; const d=new Date(o.date+'T00:00:00'); d.setMinutes(d.getMinutes()+m); return d; };
+  // done (dated) → green; else past-end → red (attendance missing); else future → blue.
+  // Cap non-done occurrences so done+missing+scheduled never exceeds the required total.
+  const _statByDate = {}; let _missing = 0, _sched = 0; const _schedOcc = [];
+  const _needNonDone = _bdTotal ? Math.max(0, _bdTotal - _completed) : Infinity;
+  let _usedNonDone = 0;
+  _allOcc.forEach(o => {
+    if (_statByDate[o.date]) return;
+    if (_doneSet.has(o.date)) { _statByDate[o.date]='done'; return; }
+    if (_usedNonDone >= _needNonDone) return;
+    if (_occEnd(o) < _now) { _statByDate[o.date]='missing'; _missing++; }
+    else { _statByDate[o.date]='sched'; _sched++; _schedOcc.push(o); }
+    _usedNonDone++;
+  });
+  _doneDates.forEach(d => { if (!_statByDate[d]) _statByDate[d]='done'; }); // manual/legacy dated sessions off the recurrence
+  const _bdRemain = _sched;                                   // future scheduled = remaining to run
+  const _bdPct = _bdTotal ? Math.round(_completed/_bdTotal*100) : 0;
+  const _legacy = Math.max(0, (b.baseline_sessions||0));      // imported progress with no dated records
+  // next class = first future scheduled occurrence
+  let _bdNext = '—';
+  if (_schedOcc.length) { const o=_schedOcc[0]; _bdNext = _DOWL[o.dow]+', '+new Date(o.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+(b.time_slot?' · '+b.time_slot:''); }
+  // estimated completion = date of the last scheduled occurrence needed to reach total
   let _est = 'Completion date not available', _estDur = '';
-  if (_bdRemain===0 && _bdTotal) _est = 'Completed';
-  else if (_future.length && _future.length>=_bdRemain) {
-    const _lastD = _future[_future.length-1].date; _est = _fmtD(_lastD);
-    const _days = Math.round((new Date(_lastD+'T00:00:00') - new Date()) / 86400000);
+  if (_bdTotal && _completed >= _bdTotal) _est = 'Completed';
+  else if (_schedOcc.length) {
+    const _lastD = _schedOcc[_schedOcc.length-1].date; _est = _fmtD(_lastD);
+    const _days = Math.round((new Date(_lastD+'T00:00:00') - _now) / 86400000);
     if (_days>0) _estDur = '~'+(_days>=14?(Math.round(_days/7)+' weeks'):(_days+' days'))+' left';
   }
   // ── HEADER + SUMMARY CARDS ──
@@ -6360,22 +6370,20 @@ async function openBatchDetails(id){
       +_cardKV('Start Date', esc(b.start_date||'—'))
       +_cardKV('End Date', esc(b.expected_completion_date||'—')))
     + _cardWrap('PROGRESS',
-      _cardKV('Completed', _bdTotal?(_bdDone+' / '+_bdTotal):'—')
-      +_cardKV('Remaining', _bdRemain!=null?(_bdRemain+' session'+(_bdRemain===1?'':'s')):'—')
+      _cardKV('Completed', _bdTotal?(_completed+' / '+_bdTotal):String(_completed))
+      +_cardKV('Attendance Missing', '<span style="color:'+(_missing?'#f87171':'var(--tx)')+'">'+_missing+'</span>')
+      +_cardKV('Remaining', _bdRemain+' session'+(_bdRemain===1?'':'s'))
+      +(_legacy?_cardKV('Legacy (imported)', _legacy):'')
       +'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--tx3)">Progress</span><span style="color:var(--brand-1);font-weight:800">'+_bdPct+'%</span></div><div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden"><div style="height:100%;width:'+_bdPct+'%;background:linear-gradient(90deg,var(--brand-2,#ff6b06),var(--brand-1,#f9182f));border-radius:99px"></div></div></div>')
     + _cardWrap('ESTIMATED COMPLETION',
       '<div style="font-size:18px;font-weight:800;color:var(--tx);margin-bottom:4px">'+esc(_est)+'</div>'
-      +_cardKV('Remaining', _bdRemain!=null?(_bdRemain+' session'+(_bdRemain===1?'':'s')):'—')
+      +_cardKV('Remaining', _bdRemain+' session'+(_bdRemain===1?'':'s'))
       +(_estDur?_cardKV('Approx.', _estDur):''));
-  // ── CALENDAR (real month grids from completed + scheduled dates) ──
-  const _statByDate = {};
-  _doneDates.forEach(d=>{ _statByDate[d]='done'; });
-  _futDates.forEach(d=>{ if(!_statByDate[d]) _statByDate[d]='sched'; });
-  // months to show = distinct YYYY-MM across start_date + done + future
+  // ── CALENDAR — one source of truth (_statByDate): green=done, blue=sched, red=missing ──
   const _mset = new Set();
   const _addM = iso => { if(!iso) return; const p=iso.slice(0,7); if(/^\d{4}-\d{2}$/.test(p)) _mset.add(p); };
   if (b.start_date) _addM(b.start_date);
-  _doneDates.forEach(_addM); _futDates.forEach(_addM);
+  Object.keys(_statByDate).forEach(_addM);
   const _months = [..._mset].sort();
   const _monthGrid = ym => {
     const [Y,M] = ym.split('-').map(Number);
@@ -6386,13 +6394,16 @@ async function openBatchDetails(id){
     for (let d=1; d<=days; d++) {
       const iso = Y+'-'+String(M).padStart(2,'0')+'-'+String(d).padStart(2,'0');
       const st = _statByDate[iso];
-      const bg = st==='done'?'var(--green)':(st==='sched'?'var(--blue)':'rgba(255,255,255,.05)');
+      const bg = st==='done'?'var(--green)':(st==='sched'?'var(--blue)':(st==='missing'?'#ef4444':'rgba(255,255,255,.05)'));
       const col = st?'#0a0d14':'var(--tx3)';
-      cells += '<div title="'+iso+(st?(' · '+(st==='done'?'Completed':'Scheduled')):'')+'" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:6px;background:'+bg+';color:'+col+';font-weight:'+(st?'800':'500')+'">'+d+'</div>';
+      const lbl = st==='done'?'Completed':(st==='sched'?'Scheduled':(st==='missing'?'Attendance Not Marked':''));
+      cells += '<div title="'+iso+(st?(' · '+lbl):'')+'" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:6px;background:'+bg+';color:'+col+';font-weight:'+(st?'800':'500')+'">'+d+'</div>';
     }
-    const doneN = Object.keys(_statByDate).filter(x=>x.slice(0,7)===ym && _statByDate[x]==='done').length;
-    const schN = Object.keys(_statByDate).filter(x=>x.slice(0,7)===ym && _statByDate[x]==='sched').length;
-    return '<div style="flex:0 0 auto;width:250px"><div style="font-size:12px;font-weight:800;color:var(--tx);margin-bottom:6px">'+esc(label)+' <span style="font-size:10px;color:var(--tx3);font-weight:600">· '+doneN+'✓ '+schN+'●</span></div>'
+    const mk = x => x.slice(0,7)===ym;
+    const doneN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='done').length;
+    const schN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='sched').length;
+    const missN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='missing').length;
+    return '<div style="flex:0 0 auto;width:250px"><div style="font-size:12px;font-weight:800;color:var(--tx);margin-bottom:6px">'+esc(label)+' <span style="font-size:10px;color:var(--tx3);font-weight:600">· '+doneN+'✓ '+schN+'●'+(missN?(' <span style=\"color:#f87171\">'+missN+'!</span>'):'')+'</span></div>'
       +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:9px;color:var(--tx3);text-align:center;margin-bottom:3px">'+['S','M','T','W','T','F','S'].map(x=>'<div>'+x+'</div>').join('')+'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">'+cells+'</div></div>';
   };
