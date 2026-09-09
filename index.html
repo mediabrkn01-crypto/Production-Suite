@@ -2673,7 +2673,15 @@
         // [moved to shared/common.js: original lines 1924-1924]
         
         // Accumulative state variables for multiple file tracking queues
-        let deliveryFilesQueue = [];
+        // Delivery file selection is PER-TASK (keyed by assignment id) so Work A's selected
+        // files can never appear inside Work B's modal. _curSel() returns the buffer for the
+        // task the modal is currently viewing.
+        const _selByTask = new Map();
+        function _curSel() {
+            if (_deliveryViewTaskId == null) return [];
+            if (!_selByTask.has(_deliveryViewTaskId)) _selByTask.set(_deliveryViewTaskId, []);
+            return _selByTask.get(_deliveryViewTaskId);
+        }
         let taskRefFilesQueue = [];
 
         // --- TEAM CHAT STATE ---
@@ -2809,7 +2817,7 @@
 
         // ── Chunked resumable upload (handles files up to 1GB+, avoids Apps Script's
         //    request-size cap by sending small sequential chunks instead of one big base64 blob) ──
-        const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk (must be multiple of 256KB per Drive API spec)
+        const UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024; // 8MB per chunk — fewer round-trips = faster; base64 (~10.7MB req) stays under Apps Script's ~50MB cap. Must be a multiple of 256KB per Drive API spec.
 
         function _readFileChunkAsBase64Once(file, start, end) {
             return new Promise((resolve, reject) => {
@@ -4259,10 +4267,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (zone) zone.classList.remove('border-orange-500', 'bg-orange-500/5');
             const files = event.dataTransfer?.files;
             if (files && files.length > 0) {
+                const sel = _curSel();
                 Array.from(files).forEach(f => {
-                    if (!deliveryFilesQueue.some(e => e.name === f.name && e.size === f.size)) {
-                        deliveryFilesQueue.push(f);
-                    }
+                    if (!sel.some(e => e.name === f.name && e.size === f.size)) sel.push(f);
                 });
                 renderDeliveryFilesQueue();
                 if (window.lucide) lucide.createIcons();
@@ -4349,10 +4356,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const header = jobs.length > 1 ? `<div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#8890b5;padding:0 2px">UPLOADS (${jobs.length})</div>` : '';
             dock.innerHTML = header + jobs.map(j => {
                 const failed = j.status === 'failed';
+                let rate = '';
+                if (!failed && j.totalBytes && j.startedAt && j.progress > 0) {
+                    const done = (j.progress / 100) * j.totalBytes;
+                    const elapsed = Math.max(0.5, (Date.now() - j.startedAt) / 1000);
+                    const mbps = (done / elapsed) / (1024 * 1024);
+                    const etaSec = mbps > 0 ? Math.round(((j.totalBytes - done) / (1024 * 1024)) / mbps) : 0;
+                    rate = `<div style="font-size:9px;color:#6b74a0;margin-top:2px">${mbps.toFixed(1)} MB/s · ~${etaSec}s left</div>`;
+                }
                 const bar = failed
                     ? `<div style="font-size:10px;color:#f87171;font-weight:700;margin-top:4px">Upload Failed</div>`
-                    : `<div style="display:flex;justify-content:space-between;font-size:9px;font-weight:800;margin-top:5px"><span style="color:#fff/70;color:#a5adcf;text-transform:uppercase;letter-spacing:.04em">Uploading</span><span style="color:#ff8a3d">${j.progress}%</span></div>
-                       <div style="width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${j.progress}%;background:linear-gradient(135deg,#ff6b06,#f9182f);border-radius:999px;transition:width .2s"></div></div>`;
+                    : `<div style="display:flex;justify-content:space-between;font-size:9px;font-weight:800;margin-top:5px"><span style="color:#a5adcf;text-transform:uppercase;letter-spacing:.04em">Uploading</span><span style="color:#ff8a3d">${j.progress}%</span></div>
+                       <div style="width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${j.progress}%;background:linear-gradient(135deg,#ff6b06,#f9182f);border-radius:999px;transition:width .2s"></div></div>${rate}`;
                 const actions = failed
                     ? `<button onclick="beRetryUpload('${j.uploadId}')" style="flex:1;font-size:10px;font-weight:800;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f);border:none;padding:5px;border-radius:7px;cursor:pointer">Retry</button><button onclick="beDismissUpload('${j.uploadId}')" style="font-size:10px;font-weight:700;color:#a5adcf;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:5px 9px;border-radius:7px;cursor:pointer">Dismiss</button>`
                     : `<button onclick="restoreDeliveryModal(${JSON.stringify(j.taskId)})" style="flex:1;font-size:10px;font-weight:700;color:#a5adcf;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:5px;border-radius:7px;cursor:pointer">Restore</button><button onclick="beCancelUpload('${j.uploadId}')" title="Cancel upload" style="font-size:10px;font-weight:700;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);padding:5px 9px;border-radius:7px;cursor:pointer">Cancel</button>`;
@@ -4386,7 +4401,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         window.beRetryUpload = function (uploadId) {
             const job = _beUploads.get(uploadId);
             if (!job) return;
-            job.status = 'uploading'; job.progress = 0; job.error = null;
+            job.status = 'uploading'; job.progress = 0; job.error = null; job.startedAt = Date.now();
             _beOnJobProgress(job);
             _beRunUpload(job);
         };
@@ -4438,18 +4453,17 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if(!fileInput) return;
             
             if(fileInput.files.length > 0) {
+                const sel = _curSel();
                 Array.from(fileInput.files).forEach(f => {
-                    if (!deliveryFilesQueue.some(existing => existing.name === f.name && existing.size === f.size)) {
-                        deliveryFilesQueue.push(f);
-                    }
+                    if (!sel.some(existing => existing.name === f.name && existing.size === f.size)) sel.push(f);
                 });
             }
             renderDeliveryFilesQueue();
-            fileInput.value = '';
+            fileInput.value = '';   // never let the native input retain the previous FileList
         }
 
         function removeFileFromDeliveryQueue(index) {
-            deliveryFilesQueue.splice(index, 1);
+            _curSel().splice(index, 1);
             renderDeliveryFilesQueue();
         }
 
@@ -4457,10 +4471,10 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const previewContainer = document.getElementById('delivery-files-preview-list');
             if(!previewContainer) return;
             previewContainer.innerHTML = '';
-            
-            if(deliveryFilesQueue.length > 0) {
-                previewContainer.innerHTML = `<p class="text-white/70 font-bold uppercase tracking-wider text-[9px] mb-1">Selected Files for Upload (${deliveryFilesQueue.length}):</p>`;
-                deliveryFilesQueue.forEach((f, i) => {
+            const sel = _curSel();
+            if(sel.length > 0) {
+                previewContainer.innerHTML = `<p class="text-white/70 font-bold uppercase tracking-wider text-[9px] mb-1">Selected Files for Upload (${sel.length}):</p>`;
+                sel.forEach((f, i) => {
                     previewContainer.innerHTML += `
                         <div class="flex items-center justify-between gap-2 text-gray-300 bg-transparent px-2 py-1.5 rounded border border-white/[0.06] text-[10px] animate-item">
                             <span class="truncate flex-1">${i+1}. ${f.name} (${(f.size/(1024*1024)).toFixed(2)} MB)</span>
@@ -4504,7 +4518,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
-            deliveryFilesQueue = [];
+            // Discard THIS task's idle selection only (never touch other tasks' buffers/jobs).
+            if (_deliveryViewTaskId != null) _selByTask.set(_deliveryViewTaskId, []);
             setUploadProgress(null);
             const submitBtn = document.getElementById('btn-submit-delivery');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = "Deploy Work Package"; }
@@ -4539,22 +4554,24 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
 
             // ── FILE delivery: hand off to a background upload job ──
-            if (deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
-            for (const f of deliveryFilesQueue) {
+            const sel = _selByTask.get(taskId) || [];
+            if (sel.length === 0) { alert("Please select file assets first!"); return; }
+            for (const f of sel) {
                 if (f.size > 1024 * 1024 * 1024) { alert(`File "${f.name}" exceeds the 1GB upload limit.`); return; }
             }
             // One delivery = ONE job (even with multiple files). Snapshot files so clearing the
-            // modal queue for the next work can't disturb this job.
-            const files = [...deliveryFilesQueue];
+            // task's selection buffer for the next work can't disturb this job.
+            const files = [...sel];
             const uploadId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('u_' + taskId + '_' + Date.now());
             const job = {
                 uploadId, taskId, taskTitle: targetTask.topic,
                 fileName: files.length === 1 ? files[0].name : (files.length + ' files'),
-                files, progress: 0, status: 'uploading', error: null, task: targetTask, startedAt: Date.now()
+                files, progress: 0, status: 'uploading', error: null, task: targetTask,
+                startedAt: Date.now(), totalBytes: files.reduce((s, f) => s + (f.size || 0), 0)
             };
             _beUploads.set(uploadId, job);
-            // Reset the modal for the NEXT work and close the view. The upload continues in bg.
-            deliveryFilesQueue = [];
+            // Clear only THIS task's selection buffer; close the view. Upload continues in bg.
+            _selByTask.set(taskId, []);
             closeAssetModal();
             renderUploadDock();
             _beNotify('Uploading "' + (job.taskTitle || 'delivery') + '" in the background…');
@@ -4573,14 +4590,18 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             if (newStatus === "Completed") {
                 currentTargetTaskId = id;
                 _deliveryViewTaskId = id;
-                // Fresh modal state for THIS work — never inherit another work's file queue or
-                // progress bar (fixes the progress-leak bug). Does NOT touch background jobs.
-                deliveryFilesQueue = [];
+                // Fresh modal state for THIS work — never inherit another work's file selection
+                // or progress bar. Reset this task's buffer (unless it has a running upload, in
+                // which case _beSyncModalToTask below shows the live progress). Never touches
+                // other tasks' buffers or background jobs.
+                let _hasActiveJob = false; _beUploads.forEach(j => { if (j.taskId == id && j.status === 'uploading') _hasActiveJob = true; });
+                if (!_hasActiveJob) _selByTask.set(id, []);
                 document.getElementById('delivery-url-input').value = '';
                 document.getElementById('delivery-file-input').value = '';
                 document.getElementById('delivery-files-preview-list').innerHTML = '';
                 setUploadProgress(null);
                 setDeliveryMethod('file');
+                renderDeliveryFilesQueue();
                 const _adm = document.getElementById('asset-delivery-modal');
                 _adm.classList.remove('hidden');
                 _adm.style.display = 'flex';
