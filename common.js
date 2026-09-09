@@ -167,6 +167,31 @@ async function refreshAcademicEmailsCache() {
     } catch (e) { /* leave the previous cache in place rather than blanking it on a transient error */ }
 }
 
+// ---------- Media / Production department roster (for Work Assignment creator list) ----------
+// Only ACTIVE hr_employees in division='production' whose system_role is NOT manager/founder.
+// The Media Head (system_role='media_head') IS included — they're a real Production employee
+// who can self-assign. Company Manager/Founder are excluded even if they touch Media.
+let _productionPortalEmails = new Set();
+let _lastProductionEmailsFetch = 0;
+async function refreshProductionEmailsCache() {
+    const now = Date.now();
+    if (now - _lastProductionEmailsFetch < 60000) return; // slow-changing list
+    _lastProductionEmailsFetch = now;
+    try {
+        const { data, error } = await dbInstance.from('hr_employees')
+            .select('portal_email, system_role, employment_status').eq('division', 'production');
+        if (!error && data) {
+            _productionPortalEmails = new Set(
+                data.filter(e => {
+                    const st = (e.employment_status || '').toLowerCase();
+                    const sr = (e.system_role || '').toLowerCase();
+                    return st !== 'exited' && st !== 'inactive' && sr !== 'manager' && sr !== 'founder';
+                }).map(e => (e.portal_email || '').toLowerCase()).filter(Boolean)
+            );
+        }
+    } catch (e) { /* keep previous cache on transient error */ }
+}
+
 // ---------- Department-scoped "who's on leave" widget (Team Members section) ----------
 // Deliberately NOT the full employee directory — Coaches/regular employees don't get that
 // (see role-head-only on the Coaches roster, and Manager-only on My Team). This is a

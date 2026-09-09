@@ -1610,6 +1610,14 @@
                             </select>
                         </div>
                         <div>
+                            <label class="text-[#6b74a0] text-[11px] block mb-1">Priority</label>
+                            <select id="task-priority" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 transition-colors duration-200">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="very_high">Very High</option>
+                            </select>
+                        </div>
+                        <div>
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Target Deadline Date</label>
                             <input type="date" id="task-date" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-orange-500 transition-colors duration-200">
                         </div>
@@ -1788,6 +1796,12 @@
                             <option value="rejected">Rejected</option>
                             <option value="all">All</option>
                         </select>
+                        <select id="wa-f-priority" onchange="waSetFilter('priority',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="all">All Priorities</option>
+                            <option value="very_high">Very High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
                         <select id="wa-f-date" onchange="waSetFilter('date',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
                             <option value="all">All Dates</option>
                             <option value="today">Today</option>
@@ -1800,6 +1814,7 @@
                         <select id="wa-f-sort" onchange="waSetFilter('sort',this.value)" style="min-width:180px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
                             <option value="new">Newest Submitted First</option>
                             <option value="old">Oldest Submitted First</option>
+                            <option value="priority">Priority — Highest First</option>
                             <option value="dl-near">Deadline Nearest First</option>
                             <option value="dl-late">Deadline Latest First</option>
                             <option value="emp-az">Employee A–Z</option>
@@ -1890,6 +1905,12 @@
                             <option value="completed">Approved / Completed</option>
                             <option value="overdue">Overdue</option>
                         </select>
+                        <select id="tw-f-priority" onchange="twSetFilter('priority',this.value)" style="min-width:140px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="all">All Priorities</option>
+                            <option value="very_high">Very High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
                         <select id="tw-f-date" onchange="twSetFilter('date',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
                             <option value="all">All Time</option>
                             <option value="today">Today</option>
@@ -1899,6 +1920,7 @@
                         </select>
                         <select id="tw-f-sort" onchange="twSetFilter('sort',this.value)" style="min-width:170px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
                             <option value="active-desc">Most Active</option>
+                            <option value="priority-desc">Priority — Highest First</option>
                             <option value="pending-desc">Most Pending</option>
                             <option value="completed-desc">Most Completed</option>
                             <option value="deadline">Nearest Deadline</option>
@@ -2927,6 +2949,7 @@
                     // dropdown — refreshed (throttled) before the dropdown rebuilds so the
                     // filter is never working off a stale/empty cache.
                     if (typeof refreshAcademicEmailsCache === 'function') await refreshAcademicEmailsCache();
+                    if (typeof refreshProductionEmailsCache === 'function') await refreshProductionEmailsCache();
                     populateDropdownSelectors();
                 } else if (errU) {
                     console.error('[BE] user_roster fetch error:', errU);
@@ -2948,6 +2971,7 @@
                         assetLink: t.asset_link,
                         referenceFile: t.reference_file,
                         assignedBy: t.assigned_by || '',
+                        priority: t.priority || 'medium',
                         managerApproved: t.manager_approved || false,
                         socialApproved: t.social_approved || false,
                         assignApproved: t.assign_approved || false
@@ -3497,7 +3521,8 @@
             
             if (totalActive > 0 || totalRework > 0) {
                 banner.classList.remove('hidden');
-                txt.innerHTML = `Welcome back <span class="text-white font-bold">${activeUser}</span>! You have been assigned <span class="text-white/70 font-bold">${totalActive} active tasks</span> waiting in your queue line, and <span class="text-yellow-400 font-bold">${totalRework} items require rework modifications</span>. Please update status metrics immediately upon file delivery.`;
+                const reworkTag = totalRework > 0 ? ` <span style="font-size:10px;font-weight:800;letter-spacing:.04em;color:#f43f7e;background:rgba(244,63,126,.14);border:1px solid rgba(244,63,126,.45);padding:2px 8px;border-radius:999px">VERY HIGH PRIORITY</span>` : '';
+                txt.innerHTML = `Welcome back <span class="text-white font-bold">${activeUser}</span>! You have been assigned <span class="text-white/70 font-bold">${totalActive} active tasks</span> waiting in your queue line, and <span class="text-yellow-400 font-bold">${totalRework} items require rework modifications</span>${reworkTag}. Please update status metrics immediately upon file delivery.`;
             } else {
                 banner.classList.remove('hidden');
                 txt.innerHTML = `Hello <span class="text-white font-bold">${activeUser}</span>. No newly tracked active task assignments found assigned to your email queue scope.`;
@@ -3891,9 +3916,20 @@
             empDropdown.innerHTML = '<option value="">-- Select Employee --</option>';
             // Academic employees must never show up in Production's assignment list — see
             // refreshAcademicEmailsCache() in shared/common.js (department separation).
+            // MEDIA CREATOR LIST: only actual Production House employees (hr_employees.division=
+            // 'production', excluding Manager/Founder; Media Head included). Filter by DEPARTMENT,
+            // never by the generic 'employee' system role. If the production cache hasn't loaded
+            // yet, fall back to the old (academic-excluded) list so the dropdown is never empty.
+            const prodSet = (typeof _productionPortalEmails !== 'undefined') ? _productionPortalEmails : new Set();
+            const isProduction = u => prodSet.has((u.email || '').toLowerCase());
             const isAcademic = u => (typeof _academicPortalEmails !== 'undefined') && _academicPortalEmails.has((u.email || '').toLowerCase());
-            const assignable = userRoster.filter(u => u.role !== 'admin' && !isAcademic(u));
-            const list = assignable.length > 0 ? assignable : userRoster.filter(u => !isAcademic(u));
+            let list;
+            if (prodSet.size > 0) {
+                list = userRoster.filter(u => u.role !== 'admin' && isProduction(u));
+            } else {
+                const assignable = userRoster.filter(u => u.role !== 'admin' && !isAcademic(u));
+                list = assignable.length > 0 ? assignable : userRoster.filter(u => !isAcademic(u));
+            }
             list.forEach(u => {
                 empDropdown.innerHTML += `<option value="${u.name}">${u.name} (${u.role})</option>`;
             });
@@ -4126,6 +4162,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const targetEmpName = document.getElementById('task-assigned-employee').value;
             const description = document.getElementById('task-description').value.trim();
             const deadlineDate = document.getElementById('task-date').value;
+            const priority = (document.getElementById('task-priority')?.value) || 'medium';
 
             if (!topic || !targetEmpName || !deadlineDate || !description) {
                 alert("All task setup configuration parameters are strictly mandatory!"); return;
@@ -4181,6 +4218,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     asset_link: "",
                     reference_file: finalRefFileUrl,
                     assigned_by: activeUser,
+                    priority: priority,
                     assign_approved: assigneeIsSocial ? false : true
                 }]);
 
@@ -4191,6 +4229,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             document.getElementById('task-topic').value = '';
             document.getElementById('task-description').value = '';
             document.getElementById('task-date').value = '';
+            if (document.getElementById('task-priority')) document.getElementById('task-priority').value = 'medium';
             clearRefFile();
 
             await syncLedgerEngine(false);
@@ -6159,7 +6198,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-transparent/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-transparent z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic}${assignedByLine}</td>
+                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-transparent z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic} ${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}${assignedByLine}</td>
                     <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
                     <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-[#4a5182] text-[10px]">${t.employeeEmail}</span>${creatorDesignationLine}</td>
                     <td class="py-3 px-4 text-[#6b74a0] max-w-xs truncate cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</td>
@@ -9061,7 +9100,7 @@ async function saveLeave(){
   // ── Work Approvals: shared cache + client-side search / filter / sort (no reload) ──
   var _waRowById={};      // id -> row, ALL fetched rows (modal always resolves any id)
   var _waAll=[];          // every submission-lifecycle row
-  var _waFilter={ q:'', emp:'all', type:'all', status:'pending', sort:'new', date:'all', from:'', to:'' };
+  var _waFilter={ q:'', emp:'all', type:'all', status:'pending', sort:'new', date:'all', from:'', to:'', priority:'all' };
   // Shared date-range resolver for the Date filter (both Work Approvals + Approved Works).
   function beDateRange(key,from,to){
     var now=new Date(), today=new Date(now.getFullYear(),now.getMonth(),now.getDate()), DAY=86400000, s=null,e=null;
@@ -9110,12 +9149,14 @@ async function saveLeave(){
       if(_waFilter.emp!=='all' && waEmpName(a)!==_waFilter.emp) return false;
       if(_waFilter.type!=='all' && (a.type||'')!==_waFilter.type) return false;
       if(_waFilter.date!=='all' && !beInRange(waSubIso(a),r)) return false;
+      if(_waFilter.priority!=='all' && bePriorityOf(a)!==_waFilter.priority) return false;
       if(q){ var hay=[a.topic,waEmpName(a),a.type,waNote(a)].join(' ').toLowerCase(); if(hay.indexOf(q)===-1) return false; }
       return true;
     });
     var s=_waFilter.sort;
     function subT(a){ var i=waSubIso(a); return i?new Date(i).getTime():0; }
     list.sort(function(x,y){
+      if(s==='priority'){ var pr=bePriorityRank(x)-bePriorityRank(y); return pr!==0?pr:subT(y)-subT(x); }
       if(s==='new') return subT(y)-subT(x);
       if(s==='old') return subT(x)-subT(y);
       if(s==='dl-near') return String(x.date||'~').localeCompare(String(y.date||'~'));
@@ -9134,7 +9175,7 @@ async function saveLeave(){
     body.innerHTML=rows.map(function(a){
       var st=waStatusOf(a), meta=_WA_STATUS_META[st]||{t:st,c:'#8890b5'};
       var hasDeliv=beParseDelivery(a.asset_link).length>0;
-      var chip='<span style="font-size:10px;font-weight:800;color:'+meta.c+';background:'+meta.c+'22;border:1px solid '+meta.c+'55;padding:2px 8px;border-radius:999px">'+esc(meta.t)+'</span>';
+      var chip='<span style="font-size:10px;font-weight:800;color:'+meta.c+';background:'+meta.c+'22;border:1px solid '+meta.c+'55;padding:2px 8px;border-radius:999px">'+esc(meta.t)+'</span> '+bePriorityBadge(a);
       var deliv=hasDeliv
         ? '<button onclick="mhViewDelivery('+a.id+')" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>'
         : '<span style="color:#f87171;font-size:11px;font-weight:600">No delivery submitted yet</span>';
@@ -9169,6 +9210,12 @@ async function saveLeave(){
   };
 
   // ── APPROVED WORKS: permanent archive of approved deliveries (separate tab) ──
+  // Priority: normalized low|medium|very_high (missing → medium). Shared badge for every view.
+  window.bePriorityOf=function(a){ var p=((a&&a.priority)||'medium').toLowerCase(); return (p==='low'||p==='very_high')?p:'medium'; };
+  window.bePriorityBadge=function(a){ var p=window.bePriorityOf(a);
+    var m={ low:{t:'LOW',c:'#8890b5'}, medium:{t:'MEDIUM',c:'#fbbf24'}, very_high:{t:'VERY HIGH',c:'#f43f7e'} }[p];
+    return '<span style="font-size:9px;font-weight:800;letter-spacing:.04em;color:'+m.c+';background:'+m.c+'22;border:1px solid '+m.c+'55;padding:2px 7px;border-radius:999px">'+m.t+'</span>'; };
+  window.bePriorityRank=function(a){ return { very_high:0, medium:1, low:2 }[window.bePriorityOf(a)]; };
   function beFmtDT(iso){ if(!iso) return '—'; var d=new Date(iso); if(isNaN(d)) return '—';
     var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
     var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM'; h=h%12||12;
@@ -9243,7 +9290,7 @@ async function saveLeave(){
       var viewBtn=hasDeliv?'<button onclick="mhViewDelivery('+a.id+',{approved:true})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>':'<span style="color:#6b74a0;font-size:11px">No delivery</span>';
       return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)">'
         +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:240px;flex:1">'
-        +'<div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> <span style="font-size:10px;font-weight:800;color:#22c55e;background:#22c55e22;border:1px solid #22c55e55;padding:2px 8px;border-radius:999px">Approved</span></div>'
+        +'<div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> <span style="font-size:10px;font-weight:800;color:#22c55e;background:#22c55e22;border:1px solid #22c55e55;padding:2px 8px;border-radius:999px">Approved</span> '+bePriorityBadge(a)+'</div>'
         +'<div style="color:#8890b5;font-size:12px;margin-top:4px">Employee: '+esc(waEmpName(a))+' · Target '+esc(a.date||'—')+'</div>'
         +'<div style="color:#8890b5;font-size:11px;margin-top:3px">Submitted: '+esc(beFmtDT(waSubIso(a)))+'</div>'
         +'<div style="color:#8890b5;font-size:11px;margin-top:2px">Approved: '+esc(beFmtDT(a.approved_at))+' · by '+esc(a.approved_by||'—')+'</div>'
@@ -9438,7 +9485,7 @@ async function saveLeave(){
 
   // ══ TEAM WORKFLOW — Media Head team monitor ══
   var _twAll=[], _twEmp={}, _twRowById={};
-  var _twFilter={ q:'', type:'all', status:'all', date:'all', from:'', to:'', sort:'active-desc', per:10, page:1 };
+  var _twFilter={ q:'', type:'all', status:'all', date:'all', from:'', to:'', sort:'active-desc', per:10, page:1, priority:'all' };
   function twName(a){ return a.assigned_to||a.employee_email||'—'; }
   function twStat(a){
     if(a.status==='Rejected') return 'rejected';
@@ -9482,12 +9529,13 @@ async function saveLeave(){
     if(s==='overdue' && !twOverdue(a)) return false;
     if(s!=='all' && s!=='active' && s!=='overdue' && twStat(a)!==s) return false;
     if(_twFilter.type!=='all' && twType(a)!==_twFilter.type) return false;
+    if(_twFilter.priority!=='all' && bePriorityOf(a)!==_twFilter.priority) return false;
     if((s==='completed'||s==='all') && !twTaskInDate(a) && _twFilter.date!=='all' && s==='completed') return false;
     return true;
   }
   function twEmpCounts(tasks){
-    var c={active:0,pending:0,inprogress:0,approval:0,rework:0,rejected:0,completed:0,overdue:0,video:0,thumb:0,poster:0,other:0};
-    tasks.forEach(function(a){ var s=twStat(a); c[s]=(c[s]||0)+1; if(twActive(s)) c.active++; if(twOverdue(a)) c.overdue++;
+    var c={active:0,pending:0,inprogress:0,approval:0,rework:0,rejected:0,completed:0,overdue:0,video:0,thumb:0,poster:0,other:0,veryhigh:0};
+    tasks.forEach(function(a){ var s=twStat(a); c[s]=(c[s]||0)+1; if(twActive(s)){ c.active++; if(bePriorityOf(a)==='very_high') c.veryhigh++; } if(twOverdue(a)) c.overdue++;
       if(s==='completed' && twTaskInDate(a)){ c[twType(a)]++; } });
     return c;
   }
@@ -9520,13 +9568,13 @@ async function saveLeave(){
     var q=_twFilter.q.trim().toLowerCase();
     var rows=keys.map(function(k){ return groups[k]; }).filter(function(g){
       var matchTasks=g.tasks.filter(twTaskMatch);
-      if(_twFilter.status!=='all' || _twFilter.type!=='all'){ if(!matchTasks.length) return false; }
+      if(_twFilter.status!=='all' || _twFilter.type!=='all' || _twFilter.priority!=='all'){ if(!matchTasks.length) return false; }
       if(q){ var inName=g.name.toLowerCase().indexOf(q)>-1; var inTask=g.tasks.some(function(a){ return ((a.topic||'')+' '+(a.type||'')).toLowerCase().indexOf(q)>-1; }); if(!inName&&!inTask) return false; }
       return true;
     });
     rows.forEach(function(g){ g._c=twEmpCounts(g.tasks); });
     var s=_twFilter.sort;
-    rows.sort(function(x,y){ if(s==='active-desc')return y._c.active-x._c.active; if(s==='pending-desc')return y._c.pending-x._c.pending; if(s==='completed-desc')return y._c.completed-x._c.completed;
+    rows.sort(function(x,y){ if(s==='active-desc')return y._c.active-x._c.active; if(s==='priority-desc')return y._c.veryhigh-x._c.veryhigh; if(s==='pending-desc')return y._c.pending-x._c.pending; if(s==='completed-desc')return y._c.completed-x._c.completed;
       if(s==='name-az')return x.name.localeCompare(y.name);
       if(s==='deadline'){ var dx=twNearestDue(x.tasks), dy=twNearestDue(y.tasks); return (dx||'~').localeCompare(dy||'~'); } return 0; });
     var total=rows.length, per=_twFilter.per, pages=Math.max(1,Math.ceil(total/per));
@@ -9537,7 +9585,7 @@ async function saveLeave(){
       var desig=(g.rec&&g.rec.designation)||''; var ph=twPhoto(g.rec);
       var avatar=ph?'<img src="'+esc(ph)+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover">':'<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:15px">'+esc((g.name||'?').charAt(0).toUpperCase())+'</div>';
       var current=g.tasks.filter(function(a){ return twActive(twStat(a)); }).sort(function(a,b){ return String(a.date||'~').localeCompare(String(b.date||'~')); }).slice(0,3);
-      var curHtml=current.length?current.map(function(a){ return '<div style="font-size:11px;color:#a5adcf">• '+esc(a.topic||'Untitled')+' — '+esc(a.type||'')+' — Due '+esc(a.date||'—')+'</div>'; }).join(''):'<div style="font-size:11px;color:#4a5182">No active work</div>';
+      var curHtml=current.length?current.map(function(a){ return '<div style="font-size:11px;color:#a5adcf">• '+esc(a.topic||'Untitled')+' — '+esc(a.type||'')+' — Due '+esc(a.date||'—')+' '+bePriorityBadge(a)+'</div>'; }).join(''):'<div style="font-size:11px;color:#4a5182">No active work</div>';
       function box(lbl,val,col){ return '<div style="text-align:center;min-width:52px"><div style="font-size:15px;font-weight:800;color:'+col+'">'+val+'</div><div style="font-size:8px;font-weight:700;letter-spacing:.04em;color:#6b74a0;text-transform:uppercase">'+lbl+'</div></div>'; }
       return '<div class="card glass-card rounded-2xl" onclick="twOpenEmployee(\''+g.key.replace(/'/g,"\\'")+'\')" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02);cursor:pointer">'
         +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
@@ -9562,7 +9610,7 @@ async function saveLeave(){
     var c=twEmpCounts(g.tasks); var ph=twPhoto(g.rec); var desig=(g.rec&&g.rec.designation)||'Media Team';
     var avatar=ph?'<img src="'+esc(ph)+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover">':'<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:20px">'+esc((g.name||'?').charAt(0).toUpperCase())+'</div>';
     function sect(title,list){ if(!list.length) return ''; return '<div style="margin-top:14px"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:6px">'+esc(title)+' ('+list.length+')</div>'+list.map(function(a){ var st=twStat(a),meta=_TW_STAT_META[st]||{t:st,c:'#8890b5'}; var hasD=beParseDelivery(a.asset_link).length>0;
-      return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:9px 11px;margin-bottom:6px;background:rgba(255,255,255,.02)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:#fff">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:10px">· '+esc(a.type||'')+'</span></div><span style="font-size:9px;font-weight:800;color:'+meta.c+';background:'+meta.c+'22;border:1px solid '+meta.c+'55;padding:1px 7px;border-radius:999px;height:fit-content">'+esc(meta.t)+'</span></div>'
+      return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:9px 11px;margin-bottom:6px;background:rgba(255,255,255,.02)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:#fff">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:10px">· '+esc(a.type||'')+'</span></div><div style="display:flex;gap:5px;align-items:center">'+bePriorityBadge(a)+'<span style="font-size:9px;font-weight:800;color:'+meta.c+';background:'+meta.c+'22;border:1px solid '+meta.c+'55;padding:1px 7px;border-radius:999px;height:fit-content">'+esc(meta.t)+'</span></div></div>'
         +'<div style="font-size:10px;color:#8890b5;margin-top:3px">Assigned '+esc(a.assigned_date||'—')+' · Target '+esc(a.date||'—')+(a.approved_at?(' · Approved '+esc(beFmtDT(a.approved_at))):'')+'</div>'
         +(hasD?'<button onclick="event.stopPropagation();mhViewDelivery('+a.id+')" style="margin-top:6px;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:10px;padding:4px 10px;border-radius:7px;cursor:pointer">View Delivery</button>':'')+'</div>'; }).join('')+'</div>'; }
     var byStat={pending:[],inprogress:[],approval:[],rework:[],rejected:[],completed:[]};
@@ -9621,10 +9669,10 @@ async function saveLeave(){
       var note=(document.getElementById('mh-rework-note').value||'').trim();
       if(!note){ toast('error','Add a correction note.'); return; }
       var d=db(); if(!d) return; var nowIso=new Date().toISOString();
-      var {error}=await d.from('assignments').update({ status:'Rework Required', rework_reason:note, reviewed_by:actor(), reviewed_at:nowIso, manager_approved:false }).eq('id',id);
+      var {error}=await d.from('assignments').update({ status:'Rework Required', rework_reason:note, reviewed_by:actor(), reviewed_at:nowIso, manager_approved:false, priority:'very_high' }).eq('id',id);
       if(error){ toast('error','Failed: '+error.message); return; }
       m.style.display='none'; toast('success','Sent back for rework.');
-      waPatch(id,{ status:'Rework Required', rework_reason:note, reviewed_at:nowIso, manager_approved:false }); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+      waPatch(id,{ status:'Rework Required', rework_reason:note, reviewed_at:nowIso, manager_approved:false, priority:'very_high' }); try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
     };
   };
   // REJECT — distinct from Rework. Branded reason dialog; sets status Rejected + audit; keeps the
