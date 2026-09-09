@@ -1141,6 +1141,9 @@
                     <button id="nav-approved-works" onclick="switchTab('approved-works')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="badge-check" style="width:14px;height:14px"></i> Approved Works
                     </button>
+                    <button id="nav-team-workflow" onclick="switchTab('team-workflow')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="users-round" style="width:14px;height:14px"></i> Team Workflow
+                    </button>
                 </div>
 
                 <!-- ACADEMIC — only shown once checkAcademicAccess() confirms this employee's
@@ -1860,6 +1863,63 @@
                 </div>
                 <div id="aw-tab-body" class="space-y-3"></div>
                 <div id="aw-pager" class="flex items-center justify-center gap-2 flex-wrap"></div>
+            </div>
+
+            <!-- TEAM WORKFLOW — Media Head team monitor (summary + per-employee workload). -->
+            <div id="tab-content-team-workflow" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Team Workflow</h1>
+                    <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Who's doing what across the Media team — live.</p>
+                </div>
+                <div id="tw-cards" class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2"></div>
+                <div class="space-y-3">
+                    <div style="position:relative">
+                        <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:#6b74a0"></i>
+                        <input id="tw-search" type="text" placeholder="Search employee, campaign or work name..." oninput="twOnSearch(this.value)"
+                               class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-[#6b74a0] focus:outline-none focus:border-orange-500 transition-colors">
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <select id="tw-f-type" onchange="twSetFilter('type',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Types</option></select>
+                        <select id="tw-f-status" onchange="twSetFilter('status',this.value)" style="min-width:170px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="all">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="inprogress">In Progress</option>
+                            <option value="approval">Waiting Approval</option>
+                            <option value="rework">Rework</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="completed">Approved / Completed</option>
+                            <option value="overdue">Overdue</option>
+                        </select>
+                        <select id="tw-f-date" onchange="twSetFilter('date',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="all">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                        <select id="tw-f-sort" onchange="twSetFilter('sort',this.value)" style="min-width:170px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="active-desc">Most Active</option>
+                            <option value="pending-desc">Most Pending</option>
+                            <option value="completed-desc">Most Completed</option>
+                            <option value="deadline">Nearest Deadline</option>
+                            <option value="name-az">Name A–Z</option>
+                        </select>
+                        <select id="tw-f-page" onchange="twSetFilter('per',this.value)" style="min-width:110px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <option value="10">10 / page</option>
+                            <option value="20">20 / page</option>
+                            <option value="50">50 / page</option>
+                        </select>
+                    </div>
+                    <div id="tw-custom-range" class="flex flex-wrap items-center gap-2 hidden">
+                        <span class="text-[11px] text-[#6b74a0] font-semibold">From</span>
+                        <input id="tw-date-from" type="date" onchange="twSetFilter('from',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                        <span class="text-[11px] text-[#6b74a0] font-semibold">To</span>
+                        <input id="tw-date-to" type="date" onchange="twSetFilter('to',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                    </div>
+                </div>
+                <div id="tw-output" class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)"></div>
+                <div id="tw-body" class="space-y-3"></div>
+                <div id="tw-pager" class="flex items-center justify-center gap-2 flex-wrap"></div>
             </div>
 
             <div id="tab-content-attendance" class="space-y-6 hidden">
@@ -2941,7 +3001,11 @@
         let _beRealtimeDebounce = null;
         function _beScheduleRealtimeSync() {
             clearTimeout(_beRealtimeDebounce);
-            _beRealtimeDebounce = setTimeout(() => { if (activeUser) syncLedgerEngine(false); }, 600);
+            _beRealtimeDebounce = setTimeout(() => {
+                if (activeUser) syncLedgerEngine(false);
+                // Reuse the SAME assignments realtime event to keep Team Workflow live (no dup sub).
+                try { if (typeof window.mhTeamWorkflowLiveRefresh === 'function') window.mhTeamWorkflowLiveRefresh(); } catch (e) {}
+            }, 600);
         }
         function _beInitRealtime() {
             _beTeardownRealtime();
@@ -3515,6 +3579,7 @@
             document.getElementById('tab-content-work-assignment')?.classList.add('hidden');
             document.getElementById('tab-content-work-approvals')?.classList.add('hidden');
             document.getElementById('tab-content-approved-works')?.classList.add('hidden');
+            document.getElementById('tab-content-team-workflow')?.classList.add('hidden');
 
             // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
             // force it hidden by default on every tab switch, then re-show it (if applicable)
@@ -3573,6 +3638,10 @@
                 document.getElementById('nav-approved-works')?.classList.add('active');
                 document.getElementById('tab-content-approved-works').classList.remove('hidden');
                 if (typeof window.mhRenderApprovedWorks === 'function') window.mhRenderApprovedWorks();
+            } else if (targetTab === 'team-workflow') {
+                document.getElementById('nav-team-workflow')?.classList.add('active');
+                document.getElementById('tab-content-team-workflow').classList.remove('hidden');
+                if (typeof window.mhRenderTeamWorkflow === 'function') window.mhRenderTeamWorkflow();
             } else if (targetTab === 'my-profile') {
                 document.getElementById('nav-my-profile').classList.add('active');
                 document.getElementById('tab-content-my-profile').classList.remove('hidden');
@@ -8930,7 +8999,7 @@ async function saveLeave(){
   }
   // Branded in-app delivery preview modal. Multiple entries → left selector, single preview pane.
   window.mhViewDelivery=function(id,opts){
-    var a=_waRowById[id]||_awRowById[id]; if(!a) return;
+    var a=_waRowById[id]||_awRowById[id]||_twRowById[id]; if(!a) return;
     opts=opts||{};
     var isApproved=opts.approved || (a.manager_approved && waStatusOf(a)==='approved');
     var entries=beParseDelivery(a.asset_link);
@@ -8984,7 +9053,7 @@ async function saveLeave(){
     m.style.display='flex';
   };
   window.beSelectDeliv=function(id,idx){
-    var a=_waRowById[id]||_awRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
+    var a=_waRowById[id]||_awRowById[id]||_twRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
     var pane=document.getElementById('mh-deliv-pane'); if(pane) pane.innerHTML=bePreviewMarkup(e);
     var m=document.getElementById('mh-deliv-modal'); if(m){ m.querySelectorAll('[data-di]').forEach(function(b){
       var on=+b.getAttribute('data-di')===idx; b.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.05)'; b.style.color=on?'#ff8a3d':'#a5adcf'; b.style.borderColor=on?'rgba(255,107,6,.4)':'rgba(255,255,255,.12)'; }); }
@@ -9365,6 +9434,161 @@ async function saveLeave(){
     }catch(e){}
     toast('info','ZIP unavailable — downloading files individually.');
     ap.forEach(function(f,k){ setTimeout(function(){ var t=beDownloadTarget(wfFileEntry(f)); if(t){ var l=document.createElement('a'); l.href=t.href; if(t.newtab){l.target='_blank';l.rel='noopener';}else{l.download=t.name||'';} document.body.appendChild(l); l.click(); l.remove(); } }, k*450); });
+  };
+
+  // ══ TEAM WORKFLOW — Media Head team monitor ══
+  var _twAll=[], _twEmp={}, _twRowById={};
+  var _twFilter={ q:'', type:'all', status:'all', date:'all', from:'', to:'', sort:'active-desc', per:10, page:1 };
+  function twName(a){ return a.assigned_to||a.employee_email||'—'; }
+  function twStat(a){
+    if(a.status==='Rejected') return 'rejected';
+    if(a.status==='Rework Required') return 'rework';
+    if(a.manager_approved) return 'completed';
+    if(a.status==='Completed') return 'approval';   // submitted, waiting approval
+    if(a.status==='In Progress') return 'inprogress';
+    return 'pending';
+  }
+  function twActive(s){ return s==='pending'||s==='inprogress'||s==='approval'||s==='rework'; }
+  function twOverdue(a){ if(!twActive(twStat(a))||!a.date) return false; var d=new Date(a.date+'T23:59:59'); return !isNaN(d) && d.getTime()<Date.now(); }
+  function twType(a){ var t=(a.type||'').toLowerCase();
+    if(/video|reel|motion|edit/.test(t)) return 'video';
+    if(/thumb/.test(t)) return 'thumb';
+    if(/poster|design|broch|flyer|banner/.test(t)) return 'poster';
+    return 'other'; }
+  function twCompletedIso(a){ return a.approved_at||a.submitted_at||(a.date?a.date+'T00:00:00':null); }
+  var _TW_STAT_META={ pending:{t:'Pending',c:'#fbbf24'}, inprogress:{t:'In Progress',c:'#60a5fa'}, approval:{t:'Waiting Approval',c:'#38bdf8'}, rework:{t:'Rework',c:'#fb923c'}, rejected:{t:'Rejected',c:'#f87171'}, completed:{t:'Completed',c:'#22c55e'} };
+  function twEmpRec(a){ var byMail=_twEmp[(a.employee_email||'').toLowerCase()]; if(byMail) return byMail; return _twEmp['name:'+twName(a).toLowerCase()]||null; }
+  function twPhoto(rec){ if(!rec) return ''; return rec.photo_base64||rec.photo_url||''; }
+  async function twLoad(assignmentsOnly){
+    var d=db(); if(!d) return;
+    var r=await d.from('assignments').select('id,topic,type,assigned_to,employee_email,status,assigned_date,date,submitted_at,approved_at,approved_by,manager_approved,asset_link,description,explanation,rework_reason,rejection_reason').order('id',{ascending:false});
+    _twAll=r.data||[];
+    _twRowById={}; _twAll.forEach(function(a){ _twRowById[a.id]=a; });
+    if(assignmentsOnly) return;
+    var e=await d.from('hr_employees').select('full_name,portal_email,designation,photo_url,photo_base64,division,system_role');
+    _twEmp={}; (e.data||[]).forEach(function(x){ var k=(x.portal_email||'').toLowerCase(); if(k) _twEmp[k]=x; _twEmp['name:'+(x.full_name||'').toLowerCase()]=x; });
+  }
+  function twGroups(){
+    var g={};
+    _twAll.forEach(function(a){ var name=twName(a); if(!name||name==='—') return; var key=name.toLowerCase();
+      if(!g[key]) g[key]={ key:key, name:name, email:a.employee_email||'', rec:twEmpRec(a), tasks:[] };
+      g[key].tasks.push(a); });
+    return g;
+  }
+  function twTaskInDate(a){ if(_twFilter.date==='all') return true; var r=beDateRange(_twFilter.date==='week'?'7d':_twFilter.date,_twFilter.from,_twFilter.to); return beInRange(twCompletedIso(a),r); }
+  function twTaskMatch(a){
+    var s=_twFilter.status;
+    if(s==='active' && !twActive(twStat(a))) return false;
+    if(s==='overdue' && !twOverdue(a)) return false;
+    if(s!=='all' && s!=='active' && s!=='overdue' && twStat(a)!==s) return false;
+    if(_twFilter.type!=='all' && twType(a)!==_twFilter.type) return false;
+    if((s==='completed'||s==='all') && !twTaskInDate(a) && _twFilter.date!=='all' && s==='completed') return false;
+    return true;
+  }
+  function twEmpCounts(tasks){
+    var c={active:0,pending:0,inprogress:0,approval:0,rework:0,rejected:0,completed:0,overdue:0,video:0,thumb:0,poster:0,other:0};
+    tasks.forEach(function(a){ var s=twStat(a); c[s]=(c[s]||0)+1; if(twActive(s)) c.active++; if(twOverdue(a)) c.overdue++;
+      if(s==='completed' && twTaskInDate(a)){ c[twType(a)]++; } });
+    return c;
+  }
+  function twLoadLabel(active){ if(active===0) return {t:'Available',c:'#22c55e'}; if(active<=2) return {t:'Normal Load',c:'#38bdf8'}; if(active<=4) return {t:'Busy',c:'#fb923c'}; return {t:'Overloaded',c:'#f87171'}; }
+  window.twOnSearch=function(v){ _twFilter.q=v||''; _twFilter.page=1; twRender(); };
+  window.twSetFilter=function(k,v){ _twFilter[k]=(k==='per'?parseInt(v,10)||10:v); if(k!=='per') _twFilter.page=1;
+    if(k==='date'){ var cr=document.getElementById('tw-custom-range'); if(cr) cr.classList.toggle('hidden', v!=='custom'); }
+    twRender(); };
+  window.twGoPage=function(p){ _twFilter.page=p; twRender(); };
+  window.twCardFilter=function(status){ _twFilter.status=status; _twFilter.page=1; var sel=document.getElementById('tw-f-status'); if(sel){ sel.value=status; } twRender(); };
+  function twPopulateTypes(){
+    var types={}; _twAll.forEach(function(a){ if(a.type) types[a.type]=1; });
+    var t=document.getElementById('tw-f-type'); if(!t) return; var tv=_twFilter.type;
+    t.innerHTML='<option value="all">All Types</option>'+Object.keys(types).sort().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join(''); t.value=tv; if(t.value!==tv){ _twFilter.type='all'; t.value='all'; }
+  }
+  function twRender(){
+    var cardsEl=document.getElementById('tw-cards'), body=document.getElementById('tw-body'), pager=document.getElementById('tw-pager'), outEl=document.getElementById('tw-output');
+    if(!body) return;
+    var groups=twGroups(), keys=Object.keys(groups);
+    // team-wide summary (date range applies to completed only)
+    var sum={team:keys.length,active:0,pending:0,inprogress:0,approval:0,rework:0,overdue:0,completed:0,video:0,thumb:0,poster:0,other:0};
+    _twAll.forEach(function(a){ var s=twStat(a); if(twActive(s)) sum.active++;
+      if(s==='pending')sum.pending++; if(s==='inprogress')sum.inprogress++; if(s==='approval')sum.approval++; if(s==='rework')sum.rework++;
+      if(twOverdue(a))sum.overdue++;
+      if(s==='completed' && twTaskInDate(a)){ sum.completed++; sum[twType(a)]++; } });
+    var cards=[['Total Team',sum.team,'all','#a5adcf'],['Active Work',sum.active,'active','#38bdf8'],['Pending',sum.pending,'pending','#fbbf24'],['In Progress',sum.inprogress,'inprogress','#60a5fa'],['Waiting Approval',sum.approval,'approval','#38bdf8'],['Rework',sum.rework,'rework','#fb923c'],['Overdue',sum.overdue,'overdue','#f87171'],['Completed',sum.completed,'completed','#22c55e']];
+    if(cardsEl) cardsEl.innerHTML=cards.map(function(c){ var on=_twFilter.status===c[2]; return '<button onclick="twCardFilter(\''+c[2]+'\')" class="card glass-card rounded-xl" style="border:1px solid '+(on?c[3]+'88':'rgba(255,255,255,.07)')+';padding:11px 12px;background:rgba(255,255,255,.02);text-align:left;cursor:pointer"><div style="font-size:20px;font-weight:800;color:'+c[3]+'">'+c[1]+'</div><div style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#8890b5;text-transform:uppercase;margin-top:2px">'+c[0]+'</div></button>'; }).join('');
+    if(outEl) outEl.innerHTML='<div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#6b74a0;margin-bottom:8px">TEAM OUTPUT'+(_twFilter.date!=='all'?' · selected period':'')+'</div><div style="display:flex;flex-wrap:wrap;gap:8px 22px"><span style="font-size:13px;color:#fff;font-weight:700">🎬 '+sum.video+' <span style="color:#8890b5;font-weight:500;font-size:11px">Videos</span></span><span style="font-size:13px;color:#fff;font-weight:700">🖼 '+sum.thumb+' <span style="color:#8890b5;font-weight:500;font-size:11px">Thumbnails</span></span><span style="font-size:13px;color:#fff;font-weight:700">🎨 '+sum.poster+' <span style="color:#8890b5;font-weight:500;font-size:11px">Posters</span></span><span style="font-size:13px;color:#fff;font-weight:700">📦 '+sum.other+' <span style="color:#8890b5;font-weight:500;font-size:11px">Other</span></span></div>';
+    // filter employees
+    var q=_twFilter.q.trim().toLowerCase();
+    var rows=keys.map(function(k){ return groups[k]; }).filter(function(g){
+      var matchTasks=g.tasks.filter(twTaskMatch);
+      if(_twFilter.status!=='all' || _twFilter.type!=='all'){ if(!matchTasks.length) return false; }
+      if(q){ var inName=g.name.toLowerCase().indexOf(q)>-1; var inTask=g.tasks.some(function(a){ return ((a.topic||'')+' '+(a.type||'')).toLowerCase().indexOf(q)>-1; }); if(!inName&&!inTask) return false; }
+      return true;
+    });
+    rows.forEach(function(g){ g._c=twEmpCounts(g.tasks); });
+    var s=_twFilter.sort;
+    rows.sort(function(x,y){ if(s==='active-desc')return y._c.active-x._c.active; if(s==='pending-desc')return y._c.pending-x._c.pending; if(s==='completed-desc')return y._c.completed-x._c.completed;
+      if(s==='name-az')return x.name.localeCompare(y.name);
+      if(s==='deadline'){ var dx=twNearestDue(x.tasks), dy=twNearestDue(y.tasks); return (dx||'~').localeCompare(dy||'~'); } return 0; });
+    var total=rows.length, per=_twFilter.per, pages=Math.max(1,Math.ceil(total/per));
+    if(_twFilter.page>pages)_twFilter.page=pages;
+    var pageRows=rows.slice((_twFilter.page-1)*per,(_twFilter.page-1)*per+per);
+    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No team members match these filters.</div>'; if(pager)pager.innerHTML=''; return; }
+    body.innerHTML=pageRows.map(function(g){ var c=g._c, wl=twLoadLabel(c.active);
+      var desig=(g.rec&&g.rec.designation)||''; var ph=twPhoto(g.rec);
+      var avatar=ph?'<img src="'+esc(ph)+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover">':'<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:15px">'+esc((g.name||'?').charAt(0).toUpperCase())+'</div>';
+      var current=g.tasks.filter(function(a){ return twActive(twStat(a)); }).sort(function(a,b){ return String(a.date||'~').localeCompare(String(b.date||'~')); }).slice(0,3);
+      var curHtml=current.length?current.map(function(a){ return '<div style="font-size:11px;color:#a5adcf">• '+esc(a.topic||'Untitled')+' — '+esc(a.type||'')+' — Due '+esc(a.date||'—')+'</div>'; }).join(''):'<div style="font-size:11px;color:#4a5182">No active work</div>';
+      function box(lbl,val,col){ return '<div style="text-align:center;min-width:52px"><div style="font-size:15px;font-weight:800;color:'+col+'">'+val+'</div><div style="font-size:8px;font-weight:700;letter-spacing:.04em;color:#6b74a0;text-transform:uppercase">'+lbl+'</div></div>'; }
+      return '<div class="card glass-card rounded-2xl" onclick="twOpenEmployee(\''+g.key.replace(/'/g,"\\'")+'\')" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02);cursor:pointer">'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
+        +'<div style="display:flex;gap:11px;min-width:200px;flex:1">'+avatar+'<div><div style="font-weight:800;color:#fff;font-size:14px">'+esc(g.name)+'</div><div style="font-size:11px;color:#8890b5">'+esc(desig||'Media Team')+'</div>'
+        +'<span style="display:inline-block;margin-top:5px;font-size:9px;font-weight:800;color:'+wl.c+';background:'+wl.c+'22;border:1px solid '+wl.c+'55;padding:2px 8px;border-radius:999px">'+wl.t+'</span></div></div>'
+        +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+box('Active',c.active,'#38bdf8')+box('Pending',c.pending,'#fbbf24')+box('Progress',c.inprogress,'#60a5fa')+box('Approval',c.approval,'#38bdf8')+box('Rework',c.rework,'#fb923c')+box('Done',c.completed,'#22c55e')+'</div></div>'
+        +'<div style="margin-top:11px;display:flex;gap:22px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:4px">CURRENT WORK</div>'+curHtml+'</div>'
+        +'<div><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:4px">OUTPUT'+(_twFilter.date!=='all'?' (period)':'')+'</div><div style="font-size:11px;color:#a5adcf">🎬 '+c.video+' Videos · 🖼 '+c.thumb+' Thumbs · 🎨 '+c.poster+' Posters</div></div></div></div>';
+    }).join('');
+    if(pager){ if(pages<=1){ pager.innerHTML=''; } else {
+      var h='<button onclick="twGoPage('+Math.max(1,_twFilter.page-1)+')" '+(_twFilter.page<=1?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_twFilter.page<=1?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700">Prev</button>';
+      for(var p=1;p<=pages;p++){ var on=p===_twFilter.page; h+='<button onclick="twGoPage('+p+')" style="min-width:32px;padding:6px 10px;border-radius:8px;background:'+(on?'linear-gradient(135deg,#ff6b06,#f9182f)':'rgba(255,255,255,.05)')+';border:1px solid '+(on?'transparent':'rgba(255,255,255,.1)')+';color:#fff;font-size:12px;font-weight:700">'+p+'</button>'; }
+      h+='<button onclick="twGoPage('+Math.min(pages,_twFilter.page+1)+')" '+(_twFilter.page>=pages?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_twFilter.page>=pages?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700">Next</button><span style="color:#6b74a0;font-size:11px;margin-left:8px">'+total+' members · page '+_twFilter.page+'/'+pages+'</span>';
+      pager.innerHTML=h; } }
+    if(window.lucide&&lucide.createIcons){ try{lucide.createIcons();}catch(e){} }
+  }
+  function twNearestDue(tasks){ var best=null; tasks.forEach(function(a){ if(twActive(twStat(a))&&a.date){ if(!best||a.date<best) best=a.date; } }); return best; }
+  window.twOpenEmployee=function(key){
+    var g=twGroups()[key]; if(!g) return;
+    var m=document.getElementById('mh-deliv-modal');
+    if(!m){ m=document.createElement('div'); m.id='mh-deliv-modal'; m.style.cssText='position:fixed;inset:0;z-index:9003;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px'; m.addEventListener('click',function(e){ if(e.target===m) m.style.display='none'; }); document.body.appendChild(m); }
+    var c=twEmpCounts(g.tasks); var ph=twPhoto(g.rec); var desig=(g.rec&&g.rec.designation)||'Media Team';
+    var avatar=ph?'<img src="'+esc(ph)+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover">':'<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:20px">'+esc((g.name||'?').charAt(0).toUpperCase())+'</div>';
+    function sect(title,list){ if(!list.length) return ''; return '<div style="margin-top:14px"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:6px">'+esc(title)+' ('+list.length+')</div>'+list.map(function(a){ var st=twStat(a),meta=_TW_STAT_META[st]||{t:st,c:'#8890b5'}; var hasD=beParseDelivery(a.asset_link).length>0;
+      return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:9px 11px;margin-bottom:6px;background:rgba(255,255,255,.02)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:#fff">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:10px">· '+esc(a.type||'')+'</span></div><span style="font-size:9px;font-weight:800;color:'+meta.c+';background:'+meta.c+'22;border:1px solid '+meta.c+'55;padding:1px 7px;border-radius:999px;height:fit-content">'+esc(meta.t)+'</span></div>'
+        +'<div style="font-size:10px;color:#8890b5;margin-top:3px">Assigned '+esc(a.assigned_date||'—')+' · Target '+esc(a.date||'—')+(a.approved_at?(' · Approved '+esc(beFmtDT(a.approved_at))):'')+'</div>'
+        +(hasD?'<button onclick="event.stopPropagation();mhViewDelivery('+a.id+')" style="margin-top:6px;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:10px;padding:4px 10px;border-radius:7px;cursor:pointer">View Delivery</button>':'')+'</div>'; }).join('')+'</div>'; }
+    var byStat={pending:[],inprogress:[],approval:[],rework:[],rejected:[],completed:[]};
+    g.tasks.forEach(function(a){ (byStat[twStat(a)]||(byStat[twStat(a)]=[])).push(a); });
+    var head='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)"><div style="display:flex;gap:12px">'+avatar+'<div><div style="font-size:17px;font-weight:800;color:#fff">'+esc(g.name)+'</div><div style="font-size:12px;color:#8890b5">'+esc(desig)+'</div><div style="font-size:11px;color:#6b74a0;margin-top:3px">Active '+c.active+' · Pending '+c.pending+' · Progress '+c.inprogress+' · Approval '+c.approval+' · Rework '+c.rework+' · Completed '+c.completed+'</div></div></div>'
+      +'<button onclick="document.getElementById(\'mh-deliv-modal\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:16px">✕</button></div>';
+    var bodyH='<div style="padding:12px 18px">'+sect('Waiting Approval',byStat.approval)+sect('In Progress',byStat.inprogress)+sect('Pending',byStat.pending)+sect('Rework',byStat.rework)+sect('Rejected',byStat.rejected)+sect('Completed',byStat.completed);
+    if(!g.tasks.length) bodyH+='<div style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No work assigned.</div>';
+    bodyH+='</div>';
+    m.innerHTML='<div style="width:100%;max-width:720px;max-height:92vh;overflow:auto;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:18px" onclick="event.stopPropagation()">'+head+bodyH+'</div>';
+    m.style.display='flex';
+  };
+  window.mhRenderTeamWorkflow=async function(){
+    var body=document.getElementById('tw-body'); if(!body) return;
+    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Not authorized.</div>'; return; }
+    body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:24px">Loading team workflow…</div>';
+    await twLoad(false);
+    _twRowById && Object.keys(_twRowById).length; // noop keep
+    twPopulateTypes();
+    twRender();
+  };
+  // Live refresh reuses the shared assignments realtime event (no duplicate subscription).
+  window.mhTeamWorkflowLiveRefresh=async function(){
+    var tab=document.getElementById('tab-content-team-workflow');
+    if(!tab || tab.classList.contains('hidden') || !isMediaHead()) return;
+    await twLoad(true); twRender();
   };
 
   // Work Approvals nav / any legacy caller → open the tab (never a modal).
