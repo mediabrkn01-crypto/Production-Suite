@@ -2892,11 +2892,14 @@
             return lastResult; // { success, done: true, fileUrl, fileName }
         }
 
-        async function uploadToGoogleDrive(file) {
-            setUploadProgress(0);
-            const result = await uploadFileChunked(file, null, null, (pct) => setUploadProgress(pct));
-            setUploadProgress(100);
-            setTimeout(() => setUploadProgress(null), 500);
+        async function uploadToGoogleDrive(file, onProgress) {
+            // onProgress lets a per-upload job own the progress (background uploads). When
+            // omitted, falls back to the shared modal progress bar (legacy small-file callers).
+            const cb = (typeof onProgress === 'function') ? onProgress : setUploadProgress;
+            cb(0);
+            const result = await uploadFileChunked(file, null, null, (pct) => cb(pct));
+            cb(100);
+            if (cb === setUploadProgress) setTimeout(() => setUploadProgress(null), 500);
             if (result && result.fileUrl) return result.fileUrl;
             throw new Error('Upload did not complete');
         }
@@ -4239,7 +4242,15 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
         // ── MINIMIZE STATE ──
         let _deliveryMinimized = false;
-        let _deliveryUploadTaskId = null;
+        let _deliveryUploadTaskId = null;   // legacy (kept so old references don't throw)
+        // ── CENTRAL UPLOAD MANAGER ──────────────────────────────────────────────
+        // Each delivery upload is an independent job keyed by uploadId. The modal is only a
+        // VIEW of one task; minimizing/closing it never touches a running job. Jobs finish in
+        // the background and write to their OWN captured taskId (never a shared global).
+        const _beUploads = new Map();   // uploadId -> { uploadId, taskId, taskTitle, fileName, files, progress, status, error, task }
+        let _deliveryViewTaskId = null; // which task the modal is currently showing (view only)
+        function _beNotify(msg) { const c = document.getElementById('call-toast'), t = document.getElementById('call-toast-text'); if (c && t) { t.textContent = msg; c.classList.remove('hidden'); setTimeout(() => c.classList.add('hidden'), 4000); } }
+        if (typeof window.toast !== 'function') window.toast = (type, msg) => _beNotify(msg);
 
         // ── DRAG & DROP HANDLER ──
         function handleDeliveryDrop(event) {
@@ -4258,39 +4269,55 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
-        // ── MINIMIZE: hide modal, upload keeps running ──
+        // ── MINIMIZE: hide the modal overlay ONLY. The upload job keeps running in the
+        // background (it lives in _beUploads, not in the modal). Never aborts anything.
         function minimizeDeliveryModal() {
-            _deliveryMinimized = true;
-            // Hide the modal overlay. NOTE: the modal is opened via an inline
-            // style.display='flex' (see employeeHandleStatusChange), and an inline
-            // style always wins over a class rule — classList.add('hidden') alone
-            // does NOT hide it. Must clear the inline style too.
             const modal = document.getElementById('asset-delivery-modal');
             modal.classList.add('hidden');
             modal.style.display = 'none';
-            // Show a small toast so user knows upload is still running in background
-            // Brief toast using the call-toast element
+            _deliveryMinimized = true;
+            renderUploadDock();
             const _ct = document.getElementById('call-toast');
             const _ctt = document.getElementById('call-toast-text');
             if (_ct && _ctt) {
-                _ctt.textContent = 'Upload running in background — watch Status Engine column';
+                _ctt.textContent = 'Upload running in background — see the upload dock (bottom-right).';
                 _ct.classList.remove('hidden');
                 setTimeout(() => _ct.classList.add('hidden'), 3500);
             }
         }
 
-        // ── RESTORE: bring the modal back while upload is still running/minimized ──
-        // Triggered by clicking the mirrored progress indicator in the Status Engine column.
-        function restoreDeliveryModal() {
-            if (!_deliveryUploadTaskId) return;
+        // ── RESTORE: reopen the modal for a SPECIFIC task's upload job (from the dock). ──
+        function restoreDeliveryModal(taskId) {
+            const tid = (taskId != null) ? taskId : _deliveryViewTaskId;
+            if (tid == null) return;
+            currentTargetTaskId = tid;
+            _deliveryViewTaskId = tid;
             _deliveryMinimized = false;
+            const task = assignmentsList.find(t => t.id == tid);
+            const _ht = document.getElementById('delivery-task-hint');
+            const _htopic = document.getElementById('delivery-task-hint-topic');
+            if (_ht && _htopic && task) { _htopic.textContent = task.topic || 'Unknown Task'; _ht.classList.remove('hidden'); }
             const modal = document.getElementById('asset-delivery-modal');
             modal.classList.remove('hidden');
             modal.style.display = 'flex';
-            // The modal's own progress bar (#upload-progress-wrap/bar/pct) was kept
-            // up to date the whole time by setUploadProgress(), so it already reflects
-            // current % — nothing else to sync here.
+            _beSyncModalToTask(tid);
             if (window.lucide) lucide.createIcons();
+        }
+        // Reflect a task's current upload state into the modal (progress bar / submit button).
+        function _beSyncModalToTask(taskId) {
+            let job = null;
+            _beUploads.forEach(j => { if (j.taskId == taskId) job = j; });
+            const submitBtn = document.getElementById('btn-submit-delivery');
+            if (job && (job.status === 'uploading' || job.status === 'queued')) {
+                setUploadProgress(job.progress);
+                if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Uploading ' + job.progress + '%…'; }
+            } else if (job && job.status === 'failed') {
+                setUploadProgress(null);
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Retry Upload'; }
+            } else {
+                setUploadProgress(null);
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Deploy Work Package'; }
+            }
         }
 
         // ── STATUS CELL HELPER ──
@@ -4303,37 +4330,107 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // ── PROGRESS: mirror to status column when minimized ──
         // Uses a separate mirror function called from every setUploadProgress invocation
         // (avoids JS hoisting issues with trying to wrap a function declaration)
-        function _mirrorProgressToStatusCell(pct) {
-            if (!_deliveryMinimized || !_deliveryUploadTaskId) return;
-            const cell = document.getElementById('status-engine-cell-' + _deliveryUploadTaskId);
-            if (!cell) return;
-            if (pct === null || pct === undefined) {
-                const task = assignmentsList.find(t => t.id == _deliveryUploadTaskId);
-                if (task) cell.innerHTML = _buildStatusCellHtml(task);
-                // Completion notification — the modal was minimized, so the user
-                // has no other way of knowing the background upload finished.
-                const _ct = document.getElementById('call-toast');
-                const _ctt = document.getElementById('call-toast-text');
-                if (_ct && _ctt) {
-                    _ctt.textContent = 'Background upload complete — deliverable submitted.';
-                    _ct.classList.remove('hidden');
-                    setTimeout(() => _ct.classList.add('hidden'), 4000);
-                }
-                _deliveryMinimized = false;
-                _deliveryUploadTaskId = null;
-            } else {
-                const p = Math.min(100, Math.round(pct));
-                cell.innerHTML = `
-                    <div class="space-y-1 min-w-[90px] cursor-pointer" onclick="restoreDeliveryModal()" title="Click to reopen upload window">
-                        <div class="flex justify-between text-[9px] font-bold">
-                            <span class="text-white/70 uppercase tracking-wide">Uploading</span>
-                            <span class="text-orange-300">${p}%</span>
-                        </div>
-                        <div class="w-full h-1.5 bg-transparent rounded-full overflow-hidden">
-                            <div class="h-full brand-gradient rounded-full transition-all duration-200" style="width:${p}%"></div>
-                        </div>
-                    </div>`;
+        // Background upload progress now lives in the upload dock (renderUploadDock), not the
+        // status-engine cell — kept as a no-op so legacy setUploadProgress() calls are harmless.
+        function _mirrorProgressToStatusCell(pct) { /* superseded by the upload dock */ }
+
+        // ── UPLOAD DOCK (bottom-right): one isolated card per active/failed job ──
+        function renderUploadDock() {
+            let dock = document.getElementById('be-upload-dock');
+            if (!dock) {
+                dock = document.createElement('div');
+                dock.id = 'be-upload-dock';
+                dock.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9002;width:290px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;gap:8px';
+                document.body.appendChild(dock);
             }
+            const jobs = Array.from(_beUploads.values()).filter(j => j.status === 'uploading' || j.status === 'queued' || j.status === 'failed');
+            if (!jobs.length) { dock.innerHTML = ''; dock.style.display = 'none'; return; }
+            dock.style.display = 'flex';
+            const header = jobs.length > 1 ? `<div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#8890b5;padding:0 2px">UPLOADS (${jobs.length})</div>` : '';
+            dock.innerHTML = header + jobs.map(j => {
+                const failed = j.status === 'failed';
+                const bar = failed
+                    ? `<div style="font-size:10px;color:#f87171;font-weight:700;margin-top:4px">Upload Failed</div>`
+                    : `<div style="display:flex;justify-content:space-between;font-size:9px;font-weight:800;margin-top:5px"><span style="color:#fff/70;color:#a5adcf;text-transform:uppercase;letter-spacing:.04em">Uploading</span><span style="color:#ff8a3d">${j.progress}%</span></div>
+                       <div style="width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${j.progress}%;background:linear-gradient(135deg,#ff6b06,#f9182f);border-radius:999px;transition:width .2s"></div></div>`;
+                const actions = failed
+                    ? `<button onclick="beRetryUpload('${j.uploadId}')" style="flex:1;font-size:10px;font-weight:800;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f);border:none;padding:5px;border-radius:7px;cursor:pointer">Retry</button><button onclick="beDismissUpload('${j.uploadId}')" style="font-size:10px;font-weight:700;color:#a5adcf;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:5px 9px;border-radius:7px;cursor:pointer">Dismiss</button>`
+                    : `<button onclick="restoreDeliveryModal(${JSON.stringify(j.taskId)})" style="flex:1;font-size:10px;font-weight:700;color:#a5adcf;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:5px;border-radius:7px;cursor:pointer">Restore</button><button onclick="beCancelUpload('${j.uploadId}')" title="Cancel upload" style="font-size:10px;font-weight:700;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);padding:5px 9px;border-radius:7px;cursor:pointer">Cancel</button>`;
+                return `<div class="card glass-card rounded-xl" style="border:1px solid ${failed ? 'rgba(248,113,113,.4)' : 'rgba(255,255,255,.1)'};padding:10px 11px;background:linear-gradient(145deg,#161116,#0a080a)">
+                    <div style="font-size:12px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(j.taskTitle||'Delivery')}</div>
+                    <div style="font-size:10px;color:#6b74a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(j.fileName||'')}</div>
+                    ${bar}
+                    <div style="display:flex;gap:6px;margin-top:8px">${actions}</div>
+                </div>`;
+            }).join('');
+        }
+        // Progress/status changed for one job → repaint its dock card + modal (if viewing it).
+        function _beOnJobProgress(job) {
+            renderUploadDock();
+            if (_deliveryViewTaskId != null && job.taskId == _deliveryViewTaskId) {
+                const modal = document.getElementById('asset-delivery-modal');
+                if (modal && modal.style.display !== 'none' && !modal.classList.contains('hidden')) _beSyncModalToTask(job.taskId);
+            }
+        }
+        window.beDismissUpload = function (uploadId) { _beUploads.delete(uploadId); renderUploadDock(); };
+        // Cancel = the only action that actually abandons an in-progress upload. The in-flight
+        // chunk request may still finish server-side, but finalize is guarded so nothing saves.
+        window.beCancelUpload = function (uploadId) {
+            const job = _beUploads.get(uploadId);
+            if (!job) return;
+            job.status = 'cancelled';
+            _beUploads.delete(uploadId);
+            renderUploadDock();
+            _beNotify('Upload cancelled: ' + (job.taskTitle || 'delivery'));
+        };
+        window.beRetryUpload = function (uploadId) {
+            const job = _beUploads.get(uploadId);
+            if (!job) return;
+            job.status = 'uploading'; job.progress = 0; job.error = null;
+            _beOnJobProgress(job);
+            _beRunUpload(job);
+        };
+        // Run a job's upload to completion in the background. Independent per job.
+        async function _beRunUpload(job) {
+            const onProg = (pct) => { if (pct == null || job.status === 'cancelled' || !_beUploads.has(job.uploadId)) return; job.progress = Math.min(100, Math.round(pct)); if (job.status !== 'uploading') job.status = 'uploading'; _beOnJobProgress(job); };
+            try {
+                const links = [];
+                if (job.files.length === 1) {
+                    const url = await uploadToGoogleDrive(job.files[0], onProg);
+                    links.push(job.files[0].name.replace(/\|/g, '-') + '|' + url);
+                } else {
+                    const grouped = await uploadRefFilesGrouped(job.files, (job.taskTitle || 'Delivery') + ' - Delivery Output', onProg);
+                    const enc = encodeRefFilesField(grouped);
+                    if (enc) links.push(enc);
+                }
+                job.progress = 100;
+                await _beFinalizeDelivery(job, links);
+            } catch (e) {
+                console.error('Background upload failed:', e);
+                job.status = 'failed'; job.error = (e && e.message) || 'Upload failed';
+                _beOnJobProgress(job);
+                if (typeof toast === 'function') toast('error', 'Upload failed: ' + (job.taskTitle || 'delivery'));
+            }
+        }
+        // Persist the finished delivery to ITS captured task. Dedup-guarded (never twice).
+        async function _beFinalizeDelivery(job, links) {
+            if (job.status === 'completed' || job.status === 'cancelled') return;   // fires once; skip if cancelled
+            if (!_beUploads.has(job.uploadId)) return;                              // cancelled/dismissed mid-flight
+            job.status = 'completed';
+            const payload = links.join(' ;; ');
+            const { error } = await dbInstance.from('assignments')
+                .update({ status: 'Completed', asset_link: payload, manager_approved: false, social_approved: false, submitted_at: new Date().toISOString() })
+                .eq('id', job.taskId);
+            if (error) { job.status = 'failed'; job.error = error.message; _beOnJobProgress(job); if (typeof toast === 'function') toast('error', 'Save failed: ' + job.taskTitle); return; }
+            try { await pushLogEntry(`Creator ${job.task ? job.task.assignedTo : ''} deployed deliverables for "${job.taskTitle}".`); } catch (e) {}
+            _beUploads.delete(job.uploadId);
+            renderUploadDock();
+            // If the modal is currently viewing this task, reset it to the fresh state.
+            if (_deliveryViewTaskId != null && job.taskId == _deliveryViewTaskId) _beSyncModalToTask(job.taskId);
+            if (typeof toast === 'function') toast('success', (job.taskTitle || 'Delivery') + ' delivery uploaded successfully.');
+            await syncLedgerEngine(false);
+            syncTasksToSheet();
+            syncMonthlyReportToSheet();
         }
 
         function handleDeliveryFilesSelect() {
@@ -4397,137 +4494,71 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             }
         }
 
+        // Close the modal VIEW only. Any running upload for this task keeps going in the
+        // background (it lives in _beUploads + the dock) — X never aborts it.
         function closeAssetModal() {
-            // If upload is actively running, closing means abandoning it — warn user
-            // but if they minimized, X closes the modal overlay without stopping anything
-            if (_deliveryUploadTaskId && !_deliveryMinimized) {
-                // Upload is in progress and NOT minimized — X was pressed
-                // Just minimize instead of stopping the upload
-                minimizeDeliveryModal();
-                return;
-            }
             const _adm2 = document.getElementById('asset-delivery-modal');
             _adm2.classList.add('hidden');
-            _adm2.style.display = '';
+            _adm2.style.display = 'none';
             document.getElementById('delivery-task-hint')?.classList.add('hidden');
             document.getElementById('delivery-url-input').value = '';
             document.getElementById('delivery-file-input').value = '';
             document.getElementById('delivery-files-preview-list').innerHTML = '';
             deliveryFilesQueue = [];
-            
+            setUploadProgress(null);
             const submitBtn = document.getElementById('btn-submit-delivery');
-            submitBtn.disabled = false;
-            submitBtn.innerText = "Deploy Work Package";
-            
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = "Deploy Work Package"; }
+            _deliveryViewTaskId = null;
             currentTargetTaskId = null;
-            renderTableRows();
+            renderUploadDock();
         }
 
         async function submitAssetDeliveryAction() {
             if (!currentTargetTaskId) return;
-            const targetTask = assignmentsList.find(t => t.id == currentTargetTaskId);
+            const taskId = currentTargetTaskId;                          // capture LOCAL (never re-read after await)
+            const targetTask = assignmentsList.find(t => t.id == taskId);
             if (!targetTask) return;
-
             const submitBtn = document.getElementById('btn-submit-delivery');
-            let finalLinksArray = [];
 
-            if(selectedDeliveryMethod === 'link') {
+            // ── LINK delivery: instant, no background job needed ──
+            if (selectedDeliveryMethod === 'link') {
                 const linkVal = document.getElementById('delivery-url-input').value.trim();
-                if(!linkVal) { alert("Please provide at least one valid destination deliverable URL!"); return; }
-                finalLinksArray = linkVal.split(',').map(l => l.trim()).filter(Boolean);
-            } else {
-                if(deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
-
-                submitBtn.disabled = true;
-                // Track which task + show minimize button
-                _deliveryUploadTaskId = currentTargetTaskId;
-                _deliveryMinimized = false;
-                const _minBtn = document.getElementById('btn-minimize-delivery');
-                if (_minBtn) _minBtn.classList.remove('hidden');
-
-                // Check all file sizes first
-                for (const f of deliveryFilesQueue) {
-                    if (f.size > 1024 * 1024 * 1024) {
-                        alert(`File "${f.name}" exceeds the 1GB upload limit.`);
-                        submitBtn.disabled = false;
-                        submitBtn.innerText = "Deploy Work Package";
-                        return;
-                    }
-                }
-
-                // Snapshot the queue immediately — prevents crash if queue is cleared
-                // while async upload is running (e.g. if close is accidentally triggered)
-                const _uploadFiles = [...deliveryFilesQueue];
-
-                if (_uploadFiles.length === 1) {
-                    // Single file → direct file link, named after the file
-                    submitBtn.innerText = `Uploading file...`;
-                    try {
-                        const fileUrl = await uploadToGoogleDrive(_uploadFiles[0]);
-                        const cleanName = _uploadFiles[0].name.replace(/\|/g, '-');
-                        finalLinksArray.push(`${cleanName}|${fileUrl}`);
-                    } catch (uploadError) {
-                        console.error("Drive Upload Error: ", uploadError);
-                        setUploadProgress(null);
-                        alert(`Storage Error: Failed to push file "${_uploadFiles[0].name}" into Google Drive.\n\nReason: ${uploadError.message || 'Unknown error — check console for details.'}`);
-                        submitBtn.disabled = false;
-                        submitBtn.innerText = "Deploy Work Package";
-                        return;
-                    }
-                } else {
-                    // Multiple files → upload all into ONE folder (same mechanism as reference
-                    // files, see uploadRefFilesGrouped) — keeps each file's own link too, not
-                    // just the folder's, so Delivery Output can show individual Download
-                    // buttons + Download All the same way Reference Files does.
-                    submitBtn.innerText = `Uploading ${_uploadFiles.length} files into one folder...`;
-                    try {
-                        const grouped = await uploadRefFilesGrouped(_uploadFiles, `${targetTask.topic} - Delivery Output`, (pct) => {
-                            submitBtn.innerHTML = `<span class="flex items-center gap-2 justify-center"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i> Uploading ${pct}%...</span>`;
-                            lucide.createIcons();
-                        });
-                        const encoded = encodeRefFilesField(grouped);
-                        if (encoded) finalLinksArray.push(encoded);
-                    } catch (uploadError) {
-                        console.error("Drive Folder Upload Error: ", uploadError);
-                        setUploadProgress(null);
-                        alert(`Storage Error: Failed to push files into Google Drive folder.\n\nReason: ${uploadError.message || 'Unknown error — check console for details.'}`);
-                        submitBtn.disabled = false;
-                        submitBtn.innerText = "Deploy Work Package";
-                        return;
-                    }
-                }
+                if (!linkVal) { alert("Please provide at least one valid destination deliverable URL!"); return; }
+                const links = linkVal.split(',').map(l => l.trim()).filter(Boolean);
+                submitBtn.disabled = true; submitBtn.innerText = 'Saving…';
+                const { error } = await dbInstance.from('assignments')
+                    .update({ status: "Completed", asset_link: links.join(' ;; '), manager_approved: false, social_approved: false, submitted_at: new Date().toISOString() })
+                    .eq('id', taskId);
+                submitBtn.disabled = false; submitBtn.innerText = 'Deploy Work Package';
+                if (error) { alert('Save failed: ' + error.message); return; }
+                await pushLogEntry(`Creator ${targetTask.assignedTo} submitted a delivery link for "${targetTask.topic}".`);
+                _beNotify((targetTask.topic || 'Delivery') + ' delivery submitted.');
+                closeAssetModal();
+                await syncLedgerEngine(false); syncTasksToSheet(); syncMonthlyReportToSheet();
+                return;
             }
 
-            const finalPayloadValue = finalLinksArray.join(' ;; ');
-
-            await dbInstance
-                .from('assignments')
-                .update({ status: "Completed", asset_link: finalPayloadValue, manager_approved: false, social_approved: false, submitted_at: new Date().toISOString() })
-                .eq('id', currentTargetTaskId);
-
-            await pushLogEntry(`Creator ${targetTask.assignedTo} deployed production deliverables into the matrix pipeline.`);
-            
-            submitBtn.disabled = false;
-            submitBtn.innerText = "Deploy Work Package";
-            
-            // Auto-close: hide modal whether minimized or not (already hidden if minimized).
-            // Must also clear the inline display:flex set on open, or the modal stays visible.
-            const _admDone = document.getElementById('asset-delivery-modal');
-            _admDone.classList.add('hidden');
-            _admDone.style.display = 'none';
-            document.getElementById('delivery-url-input').value = '';
-            document.getElementById('delivery-file-input').value = '';
-            document.getElementById('delivery-files-preview-list').innerHTML = '';
+            // ── FILE delivery: hand off to a background upload job ──
+            if (deliveryFilesQueue.length === 0) { alert("Please select file assets first!"); return; }
+            for (const f of deliveryFilesQueue) {
+                if (f.size > 1024 * 1024 * 1024) { alert(`File "${f.name}" exceeds the 1GB upload limit.`); return; }
+            }
+            // One delivery = ONE job (even with multiple files). Snapshot files so clearing the
+            // modal queue for the next work can't disturb this job.
+            const files = [...deliveryFilesQueue];
+            const uploadId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('u_' + taskId + '_' + Date.now());
+            const job = {
+                uploadId, taskId, taskTitle: targetTask.topic,
+                fileName: files.length === 1 ? files[0].name : (files.length + ' files'),
+                files, progress: 0, status: 'uploading', error: null, task: targetTask, startedAt: Date.now()
+            };
+            _beUploads.set(uploadId, job);
+            // Reset the modal for the NEXT work and close the view. The upload continues in bg.
             deliveryFilesQueue = [];
-            const _minBtn2 = document.getElementById('btn-minimize-delivery');
-            if (_minBtn2) _minBtn2.classList.add('hidden');
-            currentTargetTaskId = null;
-            _deliveryUploadTaskId = null;
-            _deliveryMinimized = false;
-            
-            await syncLedgerEngine(false);
-            syncTasksToSheet();
-            syncMonthlyReportToSheet();
+            closeAssetModal();
+            renderUploadDock();
+            _beNotify('Uploading "' + (job.taskTitle || 'delivery') + '" in the background…');
+            _beRunUpload(job);   // fire-and-forget; finishes + saves on its own
         }
 
         async function employeeHandleStatusChange(id, newStatus) {
@@ -4541,6 +4572,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
             if (newStatus === "Completed") {
                 currentTargetTaskId = id;
+                _deliveryViewTaskId = id;
+                // Fresh modal state for THIS work — never inherit another work's file queue or
+                // progress bar (fixes the progress-leak bug). Does NOT touch background jobs.
+                deliveryFilesQueue = [];
+                document.getElementById('delivery-url-input').value = '';
+                document.getElementById('delivery-file-input').value = '';
+                document.getElementById('delivery-files-preview-list').innerHTML = '';
+                setUploadProgress(null);
                 setDeliveryMethod('file');
                 const _adm = document.getElementById('asset-delivery-modal');
                 _adm.classList.remove('hidden');
@@ -4553,6 +4592,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     _htopic.textContent = _htask.topic || 'Unknown Task';
                     _ht.classList.remove('hidden');
                 }
+                // If THIS work already has a background upload running, reflect its live progress.
+                _beSyncModalToTask(id);
                 lucide.createIcons();
             } else {
                 await dbInstance
