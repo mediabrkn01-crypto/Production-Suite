@@ -9856,29 +9856,43 @@ async function saveLeave(){
     if(window.lucide&&lucide.createIcons){ try{lucide.createIcons();}catch(e){} }
   }
   // Branded cancel modal — soft-delete (status='cancelled' + audit). Never a browser confirm().
+  // Reason chips live INSIDE the modal (no dropdown/portal) so nothing can overflow or hide
+  // behind the footer. Reason is optional; "Other" reveals a free-text input.
+  var _AGW_REASONS=['Work no longer required','Campaign cancelled','Duplicate assignment','Assigned by mistake','Other'];
+  var _agwReasonSel='';
+  window.agwPickReason=function(idx){
+    _agwReasonSel=_AGW_REASONS[idx]||'';
+    var wrap=document.getElementById('agw-reason-chips');
+    if(wrap){ Array.prototype.forEach.call(wrap.children,function(b){ var on=b.getAttribute('data-r')===String(idx); b.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.05)'; b.style.color=on?'#ff8a3d':'#a5adcf'; b.style.borderColor=on?'rgba(255,107,6,.45)':'rgba(255,255,255,.12)'; }); }
+    var oth=document.getElementById('agw-reason-other'); if(oth){ oth.style.display=(_agwReasonSel==='Other')?'block':'none'; if(_agwReasonSel==='Other') oth.focus(); }
+  };
   window.agwCancel=function(id, strong){
     if(!isMediaHead()){ toast('error','Not authorized.'); return; }
     var a=_agwRowById[id]; if(!a) return;
+    _agwReasonSel='';   // reset every open — never carry a previous assignment's reason
     var m=document.getElementById('agw-cancel-modal');
-    if(!m){ m=document.createElement('div'); m.id='agw-cancel-modal'; m.style.cssText='position:fixed;inset:0;z-index:9004;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(m); }
+    if(!m){ m=document.createElement('div'); m.id='agw-cancel-modal'; m.style.cssText='position:fixed;inset:0;z-index:9004;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px'; m.addEventListener('click',function(e){ if(e.target===m) m.style.display='none'; }); document.body.appendChild(m); }
     var warn = strong ? '<div style="font-size:12px;color:#fb923c;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.4);border-radius:10px;padding:9px 11px;margin-bottom:10px">This work is currently '+esc(agwState(a).t)+'. Cancelling now discards in-progress delivery activity.</div>' : '';
-    m.innerHTML='<div style="width:100%;max-width:460px;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px">'
+    var chips=_AGW_REASONS.map(function(r,i){ return '<button type="button" data-r="'+i+'" onclick="agwPickReason('+i+')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#a5adcf;font-size:11px;font-weight:700;padding:6px 11px;border-radius:8px;cursor:pointer">'+esc(r)+'</button>'; }).join('');
+    m.innerHTML='<div style="width:100%;max-width:460px;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px" onclick="event.stopPropagation()">'
       +'<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px">Remove this assignment?</div>'
       +'<div style="font-size:12px;color:#8890b5;margin-bottom:12px">"'+esc(a.topic||'Untitled')+'" will be removed from '+esc(waEmpName(a))+"'s active pipeline and will no longer appear as pending work. A cancelled-history record is kept for audit.</div>"
       +warn
-      +'<label style="font-size:10px;font-weight:800;letter-spacing:.1em;color:#6b74a0">REASON (OPTIONAL)</label>'
-      +'<select id="agw-cancel-reason" style="width:100%;box-sizing:border-box;margin-top:4px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:9px;font-size:13px"><option value="">— Select a reason —</option><option>Work no longer required</option><option>Campaign cancelled</option><option>Duplicate assignment</option><option>Assigned by mistake</option><option>Other</option></select>'
-      +'<div style="display:flex;gap:8px;margin-top:16px"><button onclick="document.getElementById(\'agw-cancel-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Cancel</button>'
+      +'<div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:6px">REASON (OPTIONAL)</div>'
+      +'<div id="agw-reason-chips" style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div>'
+      +'<input id="agw-reason-other" type="text" placeholder="Type a reason…" style="display:none;width:100%;box-sizing:border-box;margin-top:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:9px;font-size:13px">'
+      +'<div style="display:flex;gap:8px;margin-top:16px"><button onclick="document.getElementById(\'agw-cancel-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Keep Work</button>'
       +'<button id="agw-cancel-confirm" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#dc2626,#ef4444);border:none;color:#fff;font-weight:800;cursor:pointer">Remove Assignment</button></div></div>';
     m.style.display='flex';
     document.getElementById('agw-cancel-confirm').onclick=async function(){
-      var reason=(document.getElementById('agw-cancel-reason').value||'').trim();
+      var reason=_agwReasonSel;
+      if(reason==='Other') reason=(document.getElementById('agw-reason-other').value||'').trim();
       var d=db(); if(!d) return; var nowIso=new Date().toISOString();
-      var {error}=await d.from('assignments').update({ status:'cancelled', cancelled_at:nowIso, cancelled_by:actor(), cancellation_reason:reason }).eq('id',id);
+      var {error}=await d.from('assignments').update({ status:'cancelled', cancelled_at:nowIso, cancelled_by:actor(), cancellation_reason:reason||'' }).eq('id',id);
       if(error){ toast('error','Cancel failed: '+error.message); return; }
       m.style.display='none';
       // patch local + re-render; realtime propagates to pipeline/team/counts (assignments channel).
-      a.status='cancelled'; a.cancelled_at=nowIso; a.cancelled_by=actor(); a.cancellation_reason=reason;
+      a.status='cancelled'; a.cancelled_at=nowIso; a.cancelled_by=actor(); a.cancellation_reason=reason||'';
       agwRender();
       toast('success','Assignment cancelled.');
       try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
