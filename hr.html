@@ -500,6 +500,31 @@
         .hr-field-label { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:#8890b5; font-weight:700; margin-bottom:5px; display:block; }
         .hr-icon-btn { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:#a5adcf; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:11px; }
         .hr-icon-btn:hover { color:#fff; border-color:rgba(255,107,6,0.4); }
+        /* ── Employee workspace modal (Add / Edit Employee) — wide tabbed panel ── */
+        .hr-modal.hr-modal-wide { max-width:min(1180px,94vw); width:min(1180px,94vw); max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden; }
+        .hr-emp-head { padding:18px 24px 12px; background:#0d1120; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:14px; }
+        .hr-emp-head .hr-emp-head-av { flex-shrink:0; }
+        .hr-emp-tabs { display:flex; gap:2px; padding:0 24px; background:#0d1120; overflow-x:auto; border-bottom:1px solid rgba(255,255,255,0.08); scrollbar-width:thin; }
+        .hr-emp-tab { padding:11px 15px; border:none; background:transparent; color:#8890b5; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px; }
+        .hr-emp-tab:hover { color:#e6e9f5; }
+        .hr-emp-tab.active { color:#fff; border-bottom-color:#ff6b06; }
+        .hr-emp-tab.has-error { color:#f87171; }
+        .hr-emp-body { flex:1; overflow-y:auto; padding:20px 24px 4px; }
+        .hr-emp-panel { display:none; }
+        .hr-emp-panel.active { display:block; animation:hrEmpFade 0.15s ease; }
+        @keyframes hrEmpFade { from{opacity:0;transform:translateY(3px);} to{opacity:1;transform:none;} }
+        .hr-emp-grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 16px; align-items:start; }
+        .hr-emp-grid3 .span2 { grid-column:span 2; }
+        .hr-emp-grid3 .span3 { grid-column:1 / -1; }
+        .hr-emp-block { grid-column:1 / -1; border:1px solid rgba(255,255,255,0.06); border-radius:12px; background:rgba(255,255,255,0.02); padding:14px; }
+        .hr-emp-block-title { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#a5adcf; font-weight:700; margin-bottom:12px; }
+        .hr-emp-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 24px; background:#0d1120; border-top:1px solid rgba(255,255,255,0.08); }
+        .hr-emp-body input.hr-input, .hr-emp-body select.hr-select { height:38px; width:100%; }
+        .hr-emp-body input.invalid, .hr-emp-body select.invalid { border-color:#ef4444 !important; box-shadow:0 0 0 1px rgba(239,68,68,0.4); }
+        #hr-emp-coach-section:not(.hidden) { display:flex; }
+        #hr-emp-coach-section.hidden { display:none; }
+        @media(max-width:900px){ .hr-emp-grid3 { grid-template-columns:repeat(2,minmax(0,1fr)); } .hr-emp-grid3 .span2{ grid-column:1 / -1; } }
+        @media(max-width:560px){ .hr-modal.hr-modal-wide { max-width:100%; width:100%; height:100%; max-height:100%; border-radius:0; } .hr-emp-grid3 { grid-template-columns:1fr; } }
         /* Payroll row actions — compact, color-coded, tinted default → filled on hover. */
         .hr-actions { display:flex; align-items:center; gap:6px; justify-content:flex-end; flex-wrap:wrap; }
         .hr-act { display:inline-flex; align-items:center; gap:4px; padding:5px 10px; border-radius:8px; cursor:pointer; font-size:11px; font-weight:600; line-height:1;
@@ -1696,18 +1721,36 @@
     </div>
 
     <div id="hr-employee-modal" class="hr-modal-overlay hidden">
-        <div class="hr-modal">
-            <div class="flex items-center justify-between mb-4">
-                <h3 id="hr-employee-modal-title" class="text-lg font-bold text-white">Add Employee</h3>
+        <div class="hr-modal hr-modal-wide">
+            <!-- Sticky header -->
+            <div class="hr-emp-head">
+                <div id="hr-emp-head-av" class="hr-emp-head-av"></div>
+                <div style="flex:1;min-width:0">
+                    <h3 id="hr-employee-modal-title" class="text-lg font-bold text-white" style="line-height:1.1">Add Employee</h3>
+                    <p id="hr-emp-modal-sub" class="text-[11px] text-[#8890b5]" style="margin-top:2px">New team member</p>
+                </div>
                 <button onclick="closeHREmployeeModal()" class="hr-icon-btn">✕</button>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div class="sm:col-span-2" style="display:flex;align-items:center;gap:12px">
+            <!-- Tabs -->
+            <div class="hr-emp-tabs">
+                <button type="button" class="hr-emp-tab active" data-tab="basic" onclick="hrEmpTab('basic')">Basic Info</button>
+                <button type="button" class="hr-emp-tab" data-tab="role" onclick="hrEmpTab('role')">Employment &amp; Role</button>
+                <button type="button" class="hr-emp-tab" data-tab="sched" onclick="hrEmpTab('sched')">Schedule &amp; Payroll</button>
+                <button type="button" class="hr-emp-tab" data-tab="login" onclick="hrEmpTab('login')">Login &amp; Access</button>
+                <button type="button" class="hr-emp-tab" data-tab="contact" onclick="hrEmpTab('contact')">Contact &amp; Documents</button>
+            </div>
+            <!-- Scrollable body -->
+            <div class="hr-emp-body">
+
+            <!-- TAB 1 — BASIC INFO -->
+            <div class="hr-emp-panel active" data-panel="basic">
+              <div class="hr-emp-grid3">
+                <div class="span3" style="display:flex;align-items:center;gap:14px">
                     <div id="hr-emp-photo-preview"></div>
                     <div style="flex:1">
                         <label class="hr-field-label">Employee Photo</label>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <button type="button" onclick="document.getElementById('hr-emp-photo-file').click()" class="hr-select" style="cursor:pointer">📷 Upload Photo</button>
+                            <button type="button" onclick="document.getElementById('hr-emp-photo-file').click()" class="hr-select" style="cursor:pointer;height:auto">📷 Upload Photo</button>
                             <input type="file" id="hr-emp-photo-file" accept="image/*" style="display:none" onchange="handleHREmpPhotoUpload(event)">
                             <button type="button" id="hr-emp-photo-remove-btn" onclick="removeHREmpPhoto()" class="hr-icon-btn hidden" style="color:#f87171">Remove</button>
                             <span id="hr-emp-photo-upload-status" class="text-[10px] text-[#4a5182]"></span>
@@ -1720,7 +1763,24 @@
                     </div>
                 </div>
                 <div><label class="hr-field-label">Employee ID</label><input id="hr-emp-id" class="hr-input w-full"></div>
-                <div><label class="hr-field-label">Full Name *</label><input id="hr-emp-name" class="hr-input w-full" oninput="updateHREmpPhotoPreview()"></div>
+                <div class="span2"><label class="hr-field-label">Full Name *</label><input id="hr-emp-name" class="hr-input w-full" oninput="updateHREmpPhotoPreview()"></div>
+                <div><label class="hr-field-label">Date of Birth</label><input id="hr-emp-dob" type="date" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Personal Email</label><input id="hr-emp-personal-email" type="email" placeholder="payslips are sent here" class="hr-input w-full"></div>
+                <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full" oninput="updateHREmpProbationPreview()"></div>
+                <div><label class="hr-field-label">Employment Status</label>
+                    <select id="hr-emp-status" class="hr-select w-full">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="exited">Exited</option>
+                    </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 2 — EMPLOYMENT & ROLE -->
+            <div class="hr-emp-panel" data-panel="role">
+              <div class="hr-emp-grid3">
                 <div><label class="hr-field-label">Department *</label>
                     <select id="hr-emp-division" class="hr-select w-full" onchange="renderHREmpRoleChips()">
                         <option value="production">Production House</option>
@@ -1747,16 +1807,18 @@
                         <option value="co_founder">Co-Founder</option>
                         <option value="founder">Founder</option>
                     </select>
-                    <p class="text-[11px] text-[#6b74a0]" style="margin-top:4px">System Role controls dashboard and application access (separate from Designation).</p>
+                </div>
+                <div class="span3">
+                    <p class="text-[11px] text-[#6b74a0]" style="margin-top:-4px">System Role controls dashboard and application access (separate from Designation).</p>
                     <p id="hr-sysrole-hint" class="text-[11px]" style="display:none;margin-top:2px;color:#4ade80">Full company access: Media, HR, Academics and Sales.</p>
                 </div>
-                <div class="sm:col-span-2">
+                <div class="span3">
                     <label class="hr-field-label">Roles (select one or more)</label>
                     <div id="hr-emp-roles-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
                 </div>
                 <!-- Coach scheduling fields — Education department only. Courses come from the
                      existing Academic Courses table (acadDB), never hardcoded here. -->
-                <div id="hr-emp-coach-section" class="sm:col-span-2 hidden" style="display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:12px;background:rgba(255,255,255,0.02)">
+                <div id="hr-emp-coach-section" class="span3 hidden" style="flex-direction:column;gap:12px;padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:12px;background:rgba(255,255,255,0.02)">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div><label class="hr-field-label">Employment Type</label>
                             <select id="hr-emp-employment-type" class="hr-select w-full" onchange="renderHREmpPartTimeFields()">
@@ -1808,21 +1870,16 @@
                         <option value="Senior">Senior</option>
                     </select>
                 </div>
-                <div><label class="hr-field-label">Joining Date</label><input id="hr-emp-joining" type="date" class="hr-input w-full" oninput="updateHREmpProbationPreview()"></div>
-                <div><label class="hr-field-label">Employment Status</label>
-                    <select id="hr-emp-status" class="hr-select w-full">
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="exited">Exited</option>
-                    </select>
-                </div>
-                <div><label class="hr-field-label">Date of Birth</label><input id="hr-emp-dob" type="date" class="hr-input w-full"></div>
-                <div><label class="hr-field-label">Phone</label><input id="hr-emp-phone" class="hr-input w-full"></div>
-                <div><label class="hr-field-label">Personal Email</label><input id="hr-emp-personal-email" type="email" placeholder="employee's own email — payslips are sent here" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Manager (login email)</label><input id="hr-emp-manager-email" placeholder="manager's login email" class="hr-input w-full"></div>
-                <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
-                    <p class="hr-field-label" style="margin-bottom:8px">Work Schedule <span style="color:#6b74a0;font-weight:400">— drives Late / Early Logout for THIS employee. Leave Flexible if they have no fixed hours (never auto-marked Late).</span></p>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              </div>
+            </div>
+
+            <!-- TAB 3 — SCHEDULE & PAYROLL -->
+            <div class="hr-emp-panel" data-panel="sched">
+              <div class="hr-emp-grid3">
+                <div class="hr-emp-block">
+                    <p class="hr-emp-block-title">Work Schedule <span style="color:#6b74a0;font-weight:400;text-transform:none;letter-spacing:0">— drives Late / Early Logout for THIS employee. Leave Flexible if they have no fixed hours (never auto-marked Late).</span></p>
+                    <div class="hr-emp-grid3">
                         <div><label class="hr-field-label">Schedule Type</label>
                             <select id="hr-emp-sched-type" class="hr-select w-full" onchange="renderHREmpScheduleFields()">
                                 <option value="flexible">Flexible / Not Configured</option>
@@ -1834,14 +1891,31 @@
                         <div id="hr-emp-sched-grace-wrap"><label class="hr-field-label">Grace Period (minutes)</label><input id="hr-emp-sched-grace" type="number" min="0" class="hr-input w-full" placeholder="0"></div>
                         <div id="hr-emp-sched-start-wrap"><label class="hr-field-label">Expected Start Time</label><select id="hr-emp-sched-start" class="hr-select w-full"></select></div>
                         <div id="hr-emp-sched-end-wrap"><label class="hr-field-label">Expected End Time</label><select id="hr-emp-sched-end" class="hr-select w-full"></select></div>
-                        <div class="sm:col-span-2" id="hr-emp-sched-days-wrap"><label class="hr-field-label">Working Days</label><div id="hr-emp-sched-days-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div></div>
+                        <div class="span3" id="hr-emp-sched-days-wrap"><label class="hr-field-label">Working Days</label><div id="hr-emp-sched-days-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div></div>
                     </div>
                     <p id="hr-emp-sched-note" class="text-[11px] text-[#6b74a0]" style="margin-top:6px"></p>
                 </div>
-                <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
-                    <p class="hr-field-label" style="margin-bottom:8px">Login & System Access</p>
+                <div class="hr-emp-block">
+                    <p class="hr-emp-block-title">Salary</p>
+                    <div class="hr-emp-grid3">
+                        <div><label class="hr-field-label">Monthly Salary (₹)</label><input id="hr-emp-salary" type="number" min="0" class="hr-input w-full"></div>
+                        <div><label class="hr-field-label">Payment Cycle</label>
+                            <select id="hr-emp-payment-cycle" class="hr-select w-full">
+                                <option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option>
+                            </select>
+                        </div>
+                        <div><label class="hr-field-label">Probation Period (months)</label><input id="hr-emp-probation-months" type="number" min="0" class="hr-input w-full" placeholder="e.g. 3" oninput="updateHREmpProbationPreview()"></div>
+                        <div><label class="hr-field-label">Probation End Date</label><div id="hr-emp-probation-end" class="hr-input w-full" style="color:#8890b5;line-height:22px">—</div></div>
+                    </div>
                 </div>
-                <div id="hr-emp-academic-hint" class="sm:col-span-2 hidden" style="background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#5eead4;margin-bottom:2px">
+                <div class="span3"><label class="hr-field-label">Notes / History</label><textarea id="hr-emp-notes" rows="2" class="hr-input w-full"></textarea></div>
+              </div>
+            </div>
+
+            <!-- TAB 4 — LOGIN & ACCESS -->
+            <div class="hr-emp-panel" data-panel="login">
+              <div class="hr-emp-grid3">
+                <div id="hr-emp-academic-hint" class="span3 hidden" style="background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#5eead4">
                     <i data-lucide="graduation-cap" style="width:13px;height:13px;display:inline;vertical-align:-2px"></i>
                     Education-division employees need a Login Email + Password below to sign in — that's also what opens the Academic Module for them automatically. No separate Academic account needed.
                 </div>
@@ -1855,11 +1929,11 @@
                         <option value="social_media">Production / Social Media Admin</option>
                     </select>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px">
+                <div class="span3" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px">
                     <input type="checkbox" id="hr-emp-portal-access" checked style="width:16px;height:16px;accent-color:#ff6b06">
                     <label for="hr-emp-portal-access" style="font-size:12px;color:#e6e9f5;cursor:pointer">Login access enabled</label>
                 </div>
-                <div class="sm:col-span-2">
+                <div class="span3">
                     <label class="hr-field-label" style="margin-bottom:6px;display:block">Module Access</label>
                     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px">
                         <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="hr-emp-access-pipeline" style="accent-color:#ff6b06"> Pipeline</label>
@@ -1868,28 +1942,26 @@
                         <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="hr-emp-access-payroll" style="accent-color:#ff6b06"> Payroll</label>
                         <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="hr-emp-access-documents" checked style="accent-color:#ff6b06"> Documents</label>
                     </div>
-                    <p class="text-[10px] text-[#4a5182] mt-1">Employee/Manager/HR role still governs the main navigation (this app's existing permission system). These checkboxes are recorded on the employee record for reference and finer-grained access reviews — see note below.</p>
+                    <p class="text-[10px] text-[#4a5182] mt-1">Employee/Manager/HR role still governs the main navigation (this app's existing permission system). These checkboxes are recorded on the employee record for reference and finer-grained access reviews.</p>
                 </div>
-                <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
-                    <p class="hr-field-label" style="margin-bottom:8px">Emergency Contact</p>
-                </div>
+              </div>
+            </div>
+
+            <!-- TAB 5 — CONTACT & DOCUMENTS -->
+            <div class="hr-emp-panel" data-panel="contact">
+              <div class="hr-emp-grid3">
                 <div><label class="hr-field-label">Emergency Contact Name</label><input id="hr-emp-ec-name" class="hr-input w-full"></div>
                 <div><label class="hr-field-label">Emergency Contact Phone</label><input id="hr-emp-ec-phone" class="hr-input w-full"></div>
-                <div class="sm:col-span-2"><label class="hr-field-label">Document Links (offer letter, ID proof, etc — comma separated URLs; use the Documents tab on the employee's profile after saving for categorized uploads)</label><input id="hr-emp-docs" class="hr-input w-full"></div>
-                <div class="sm:col-span-2" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:4px">
-                    <p class="hr-field-label" style="margin-bottom:8px">Salary</p>
-                </div>
-                <div><label class="hr-field-label">Monthly Salary (₹)</label><input id="hr-emp-salary" type="number" min="0" class="hr-input w-full"></div>
-                <div><label class="hr-field-label">Payment Cycle</label>
-                    <select id="hr-emp-payment-cycle" class="hr-select w-full">
-                        <option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option>
-                    </select>
-                </div>
-                <div><label class="hr-field-label">Probation Period (months)</label><input id="hr-emp-probation-months" type="number" min="0" class="hr-input w-full" placeholder="e.g. 3" oninput="updateHREmpProbationPreview()"></div>
-                <div><label class="hr-field-label">Probation End Date</label><div id="hr-emp-probation-end" class="hr-input w-full" style="color:#8890b5">—</div></div>
-                <div class="sm:col-span-2"><label class="hr-field-label">Notes / History</label><textarea id="hr-emp-notes" rows="2" class="hr-input w-full"></textarea></div>
+                <div class="span3"><label class="hr-field-label">Document Links <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#6b74a0">(offer letter, ID proof, etc — comma separated URLs; use the Documents tab on the employee's profile after saving for categorized uploads)</span></label><input id="hr-emp-docs" class="hr-input w-full"></div>
+              </div>
             </div>
-            <button onclick="saveHREmployee()" class="brand-gradient text-white font-bold py-3 rounded-xl uppercase tracking-wider text-xs w-full mt-5">Save Employee</button>
+
+            </div><!-- /hr-emp-body -->
+            <!-- Sticky footer -->
+            <div class="hr-emp-foot">
+                <button onclick="closeHREmployeeModal()" class="hr-select" style="cursor:pointer;height:auto;padding:10px 22px">Cancel</button>
+                <button id="hr-emp-save-btn" onclick="saveHREmployee()" class="brand-gradient text-white font-bold rounded-xl uppercase tracking-wider text-xs" style="padding:10px 28px">Save Employee</button>
+            </div>
         </div>
     </div>
 
@@ -3199,6 +3271,27 @@
             sel.innerHTML = hrEmpSelectedRoles.map(r => `<option value="${r}"${r === hrEmpPrimaryRole ? ' selected' : ''}>${r}</option>`).join('');
         }
 
+// ── Employee workspace modal: tab switching (shared form state — panels stay in the
+//    DOM, only visibility toggles, so no field value is ever lost switching tabs) ──
+        function hrEmpTab(name) {
+            document.querySelectorAll('#hr-employee-modal .hr-emp-tab').forEach(t =>
+                t.classList.toggle('active', t.dataset.tab === name));
+            document.querySelectorAll('#hr-employee-modal .hr-emp-panel').forEach(p =>
+                p.classList.toggle('active', p.dataset.panel === name));
+            const body = document.querySelector('#hr-employee-modal .hr-emp-body');
+            if (body) body.scrollTop = 0;
+        }
+        // Jump to the tab holding a field, mark it invalid, focus it — used by save validation.
+        function hrEmpFocusField(fieldId) {
+            const el = document.getElementById(fieldId);
+            if (!el) return;
+            const panel = el.closest('.hr-emp-panel');
+            if (panel) hrEmpTab(panel.dataset.panel);
+            el.classList.add('invalid');
+            try { el.focus(); } catch (_) {}
+            el.addEventListener('input', () => el.classList.remove('invalid'), { once: true });
+        }
+
 // ── openHREmployeeModal (orig line 9029) ──
         function openHREmployeeModal(id = null) {
             window._hrForceManagement = false;   // reset; only openHRManagementModal() sets it
@@ -3281,8 +3374,16 @@
             renderHREmpScheduleFields();
             updateHREmpProbationPreview();
             updateHREmpAcademicHint(); // re-check now that hr-emp-email above actually has its final value
+            // Reset workspace: always open on Basic Info, clear any stale invalid marks, set header.
+            hrEmpTab('basic');
+            document.querySelectorAll('#hr-employee-modal .invalid').forEach(x => x.classList.remove('invalid'));
+            const subEl = document.getElementById('hr-emp-modal-sub');
+            if (subEl) subEl.textContent = e ? [e.full_name, e.employee_id].filter(Boolean).join(' · ') : 'New team member';
+            const saveBtn = document.getElementById('hr-emp-save-btn');
+            if (saveBtn) saveBtn.textContent = id ? 'Save Changes' : 'Save Employee';
             document.getElementById('hr-employee-modal').classList.remove('hidden');
             document.getElementById('hr-employee-modal').classList.add('flex');
+            setTimeout(() => { try { document.getElementById('hr-emp-name').focus(); } catch (_) {} }, 60);
         }
 
 // ── hrCreateOrSyncLogin (orig line 9087) ──
@@ -3312,7 +3413,10 @@
             const url = document.getElementById('hr-emp-photo-url').value.trim();
             const base64 = document.getElementById('hr-emp-photo-base64').value;
             const nameEl = document.getElementById('hr-emp-name');
-            document.getElementById('hr-emp-photo-preview').innerHTML = hrAvatarHTML({ full_name: nameEl ? nameEl.value : '', photo_base64: base64 || null, photo_url: url || null }, 48);
+            const av = { full_name: nameEl ? nameEl.value : '', photo_base64: base64 || null, photo_url: url || null };
+            document.getElementById('hr-emp-photo-preview').innerHTML = hrAvatarHTML(av, 64);
+            const head = document.getElementById('hr-emp-head-av');
+            if (head) head.innerHTML = hrAvatarHTML(av, 44);
             document.getElementById('hr-emp-photo-remove-btn').classList.toggle('hidden', !base64 && !url);
         }
 
@@ -3444,12 +3548,20 @@
         }
         async function saveHREmployee() {
             const name = document.getElementById('hr-emp-name').value.trim();
-            if (!name) { alert('Full name is required.'); return; }
+            if (!name) {
+                if (typeof hrEmpFocusField === 'function') hrEmpFocusField('hr-emp-name');
+                if (window.showToast) showToast('warning', 'Full Name is required.'); else alert('Full name is required.');
+                return;
+            }
             // Working Hours is optional — hrValidateTimeRanges() only blocks save when a row
             // the HR user actually started filling in is invalid (missing one side, end
             // before start, or overlapping another range); a completely empty list is fine.
             const { ranges: validTimeRanges, error: timeRangesError } = hrValidateTimeRanges();
-            if (timeRangesError) { alert(timeRangesError); return; }
+            if (timeRangesError) {
+                if (typeof hrEmpTab === 'function') hrEmpTab('role'); // time ranges live in the coach block on Employment & Role
+                alert(timeRangesError);
+                return;
+            }
             const monthly_salary = parseFloat(document.getElementById('hr-emp-salary').value) || 0;
             const joining_date = document.getElementById('hr-emp-joining').value || null;
             const loginEmail = document.getElementById('hr-emp-email').value.trim().toLowerCase();
