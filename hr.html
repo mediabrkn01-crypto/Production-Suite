@@ -3474,6 +3474,13 @@
                     hrVerifySavedFields(payload, updated && updated[0]);
                     await hrCreateOrSyncLogin(loginEmail, name, loginRole, loginPassword);
                 } else {
+                    // Block a duplicate MANAGEMENT account for a login that already has one
+                    // (management rows live in hrManagement, not hrEmployees, so the reuse check
+                    // below would otherwise miss them and insert a duplicate).
+                    if (payload.portal_email && (typeof hrManagement !== 'undefined')) {
+                        const mExisting = (hrManagement || []).find(e => (e.portal_email || '').toLowerCase() === payload.portal_email);
+                        if (mExisting) { hrShowToast('Management account already exists.', 'error'); return; }
+                    }
                     // Reuse an existing record instead of duplicating if this email is already
                     // linked to an HR employee (e.g. a returning employee already synced in).
                     if (payload.portal_email) {
@@ -3656,7 +3663,6 @@
                         <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
                         <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
                         <button onclick="openHREmployeeProfile('${e.id}','documents')" class="hr-icon-btn">Documents</button>
-                        <button onclick="hrMoveToManagement('${e.id}')" class="hr-icon-btn" title="Reclassify as leadership / management" style="color:#ff8a3d">→ Mgmt</button>
                         <button onclick="deleteHREmployee('${e.id}')" class="hr-icon-btn" style="margin-left:auto;color:#f87171">Del</button>
                     </div>
                 </div>
@@ -3665,7 +3671,10 @@
 
         // ── MANAGEMENT (leadership accounts) ──
         function renderHRManagement() {
-            var list = (typeof hrManagement !== 'undefined' && hrManagement) ? hrManagement : [];
+            var raw = (typeof hrManagement !== 'undefined' && hrManagement) ? hrManagement : [];
+            // Deduplicate by login email (stable id), never by display name — one card per account.
+            var seen = {}, list = [];
+            raw.forEach(function (e) { var k = (e.portal_email || e.id || '').toLowerCase(); if (k && seen[k]) return; if (k) seen[k] = 1; list.push(e); });
             var roleLabel = { founder: 'Founder', co_founder: 'Co-Founder', managing_director: 'Managing Director', director: 'Director', manager: 'Manager' };
             var el = document.getElementById('hr-management-cards'); if (!el) return;
             el.innerHTML = list.length ? list.map(function (e) {
@@ -3679,7 +3688,7 @@
                     <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
                         <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View</button>
                         <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
-                        <button onclick="hrMoveToEmployee('${e.id}')" class="hr-icon-btn" style="margin-left:auto">→ Employee</button>
+                        <button onclick="hrDeleteManagement('${e.id}')" class="hr-icon-btn" style="margin-left:auto;color:#f87171">Delete</button>
                     </div></div>`;
             }).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No management members yet. Use “+ Add Management Member”.</p>';
             if (window.lucide) lucide.createIcons();
@@ -3693,26 +3702,26 @@
             var t = document.getElementById('hr-employee-modal-title'); if (t) t.textContent = 'Add Management Member';
             if (typeof hrSysRoleHint === 'function') hrSysRoleHint();
         }
-        async function hrMoveToManagement(id) {
-            var ok = (typeof showConfirm === 'function')
-                ? await showConfirm('They will leave the Employees list (and its counts/attendance/leave/payroll) but keep their login, profile, ID and history. Company announcements still reach them.', { title: 'Move to Management?', confirmLabel: 'Move to Management' })
-                : (typeof beConfirm === 'function' ? await beConfirm('Move to Management?') : true);
-            if (!ok) return;
-            var { error } = await dbInstance.from('hr_employees').update({ account_type: 'management' }).eq('id', id);
-            if (error) { alert('Failed: ' + error.message); return; }
-            await loadHRData();
-            renderHREmployees(); renderHRManagement();
-            if (typeof hrToast === 'function') hrToast('Moved to Management.');
+        function hrShowToast(msg, kind) {
+            var t = document.getElementById('hr-inline-toast');
+            if (!t) { t = document.createElement('div'); t.id = 'hr-inline-toast'; t.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:10001;max-width:320px;padding:12px 16px;border-radius:12px;font-size:13px;font-weight:700;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none'; document.body.appendChild(t); }
+            t.style.background = kind === 'error' ? 'linear-gradient(135deg,#dc2626,#ef4444)' : 'linear-gradient(145deg,#161116,#0a080a)';
+            t.style.border = kind === 'error' ? 'none' : '1px solid rgba(34,197,94,.4)';
+            t.textContent = msg; t.style.display = 'block';
+            clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = 'none'; }, 3500);
         }
-        async function hrMoveToEmployee(id) {
+        async function hrDeleteManagement(id) {
+            var m = (typeof hrManagement !== 'undefined' && hrManagement) ? hrManagement.find(function (x) { return String(x.id) === String(id); }) : null;
+            var nm = (m && m.full_name) || 'this member';
             var ok = (typeof showConfirm === 'function')
-                ? await showConfirm('This account will return to the normal Employees list (counts, attendance, leave, payroll).', { title: 'Move to Employees?', confirmLabel: 'Move to Employees' })
+                ? await showConfirm('This will remove ' + nm + "'s management account and company-wide management access.", { title: 'Remove Management Member?', confirmLabel: 'Delete Management Member', danger: true })
                 : true;
             if (!ok) return;
-            var { error } = await dbInstance.from('hr_employees').update({ account_type: 'employee' }).eq('id', id);
-            if (error) { alert('Failed: ' + error.message); return; }
+            var { error } = await dbInstance.from('hr_employees').delete().eq('id', id);
+            if (error) { hrShowToast('Delete failed: ' + error.message, 'error'); return; }
             await loadHRData();
-            renderHRManagement(); renderHREmployees();
+            renderHRManagement();
+            hrShowToast('Management member removed.');
         }
 
 // ── openHREmployeeProfile (orig line 9381) ──
