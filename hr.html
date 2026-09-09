@@ -829,6 +829,11 @@
                         <i data-lucide="badge" style="width:14px;height:14px"></i> Designations
                     </button>
 
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">LEADERSHIP</div>
+                    <button id="hrtree-management" onclick="switchHRSubtab('management')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="crown" style="width:14px;height:14px"></i> Management
+                    </button>
+
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">ATTENDANCE</div>
                     <button id="hrtree-attendance" onclick="switchHRSubtab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="clock" style="width:14px;height:14px"></i> Attendance
@@ -1171,6 +1176,18 @@
                         <button onclick="openHREmployeeModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">+ Add Employee</button>
                     </div>
                     <div id="hr-employees-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </div>
+
+                <!-- HR: MANAGEMENT (leadership accounts — separate from Employees) -->
+                <div id="hr-sub-management" class="space-y-4 hidden">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h1 class="text-xl font-bold tracking-tight">Management</h1>
+                            <p class="text-xs text-[#6b74a0] mt-0.5">Founders, Co-Founders, Directors & Company Managers — full company access.</p>
+                        </div>
+                        <button onclick="openHRManagementModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider flex items-center gap-2"><i data-lucide="crown" class="w-3.5 h-3.5"></i> + Add Management Member</button>
+                    </div>
+                    <div id="hr-management-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
                 </div>
 
                 <!-- HR: DEPARTMENTS -->
@@ -1669,6 +1686,9 @@
                         <option value="hr_admin">HR / Admin</option>
                         <option value="sales">Sales</option>
                         <option value="manager">Manager</option>
+                        <option value="director">Director</option>
+                        <option value="managing_director">Managing Director</option>
+                        <option value="co_founder">Co-Founder</option>
                         <option value="founder">Founder</option>
                     </select>
                     <p class="text-[11px] text-[#6b74a0]" style="margin-top:4px">System Role controls dashboard and application access (separate from Designation).</p>
@@ -2181,7 +2201,7 @@
             production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators', 'Graphic Designers', 'Designers'],
             other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
         };
-        const HR_ALL_SUBTABS = ['dashboard','employees','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','accounts'];
         const HR_DOCUMENT_TYPES = ['ID Card / Government ID', 'Address Proof', 'Educational Certificates', 'Experience Certificates', 'Resume', 'Employment Documents', 'Other'];
         const HR_APPLICANT_STATUSES = ['Applied','Shortlisted','Interview','Selected','Rejected','Joined'];
         const HR_PAYROLL_OPTIONAL_COLUMNS = {
@@ -2503,8 +2523,14 @@
                     console.warn('HR tables missing/unreachable in Supabase:', missingTables.join(', '), emp.error, leaveReq.error, leaveBal.error, att.error, pay.error, jobs.error, applicants.error, salHist.error, holidays.error, empDocs.error, settings.error);
                 }
                 console.log('[HR INIT] emp query resolved, error=', emp.error && emp.error.message, 'rows=', (emp.data||[]).length, 'isHRPrivileged=', isHRPrivileged, 'activeRole=', activeRole);
-                hrEmployees = emp.data || [];
-                console.log('[HR INIT] hrEmployees set, count=', hrEmployees.length);
+                // Leadership accounts (Founder/Co-Founder/Director/Manager) are classified
+                // account_type='management' and split OUT of hrEmployees, so they never appear
+                // in employee lists, counts, attendance, leave, payroll or team rosters. They
+                // still receive company announcements/notifications (audience-based, not roster).
+                var _hrRawEmp = emp.data || [];
+                hrManagement = _hrRawEmp.filter(e => (e.account_type || '') === 'management');
+                hrEmployees = _hrRawEmp.filter(e => (e.account_type || '') !== 'management');
+                console.log('[HR INIT] hrEmployees set, count=', hrEmployees.length, 'management=', hrManagement.length);
                 // Leave Policy v2 ledgers (all employees, HR admin scope) — payroll + balance
                 // resolvers read these so paid/LOP is computed from the real SL/CL entitlement.
                 try {
@@ -2630,6 +2656,7 @@
             console.log('[HR INIT] switchHRSubtab(', tab, '), hrEmployees.length=', hrEmployees.length, 'hrLoaded=', hrLoaded);
             if (tab === 'dashboard') renderHRDashboard();
             else if (tab === 'employees') { populateHREmployeeFilterOptions(); renderHREmployees(); }
+            else if (tab === 'management') renderHRManagement();
             else if (tab === 'departments') renderHRDepartments();
             else if (tab === 'designations') renderHRDesignations();
             else if (tab === 'attendance') renderHRAttendance();
@@ -3115,6 +3142,7 @@
 
 // ── openHREmployeeModal (orig line 9029) ──
         function openHREmployeeModal(id = null) {
+            window._hrForceManagement = false;   // reset; only openHRManagementModal() sets it
             hrEditingEmployeeId = id;
             document.getElementById('hr-employee-modal-title').textContent = id ? 'Edit Employee' : 'Add Employee';
             const e = id ? hrEmployees.find(x => x.id === id) : null;
@@ -3388,6 +3416,9 @@
                 phone: document.getElementById('hr-emp-phone').value.trim(),
                 personal_email: (document.getElementById('hr-emp-personal-email').value || '').trim().toLowerCase() || null,
                 system_role: document.getElementById('hr-emp-system-role').value || null,
+                // Leadership roles (or the Add-Management flow) classify the account as
+                // 'management' → split out of the Employees list at load.
+                account_type: (function(){ var sr=(document.getElementById('hr-emp-system-role').value||'').toLowerCase(); return (window._hrForceManagement || ['manager','founder','co_founder','managing_director','director'].indexOf(sr)>-1) ? 'management' : 'employee'; })(),
                 portal_email: loginEmail,
                 manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
                 portal_access_enabled: document.getElementById('hr-emp-portal-access').checked,
@@ -3625,10 +3656,63 @@
                         <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
                         <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
                         <button onclick="openHREmployeeProfile('${e.id}','documents')" class="hr-icon-btn">Documents</button>
+                        <button onclick="hrMoveToManagement('${e.id}')" class="hr-icon-btn" title="Reclassify as leadership / management" style="color:#ff8a3d">→ Mgmt</button>
                         <button onclick="deleteHREmployee('${e.id}')" class="hr-icon-btn" style="margin-left:auto;color:#f87171">Del</button>
                     </div>
                 </div>
             `).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No employees found.</p>';
+        }
+
+        // ── MANAGEMENT (leadership accounts) ──
+        function renderHRManagement() {
+            var list = (typeof hrManagement !== 'undefined' && hrManagement) ? hrManagement : [];
+            var roleLabel = { founder: 'Founder', co_founder: 'Co-Founder', managing_director: 'Managing Director', director: 'Director', manager: 'Manager' };
+            var el = document.getElementById('hr-management-cards'); if (!el) return;
+            el.innerHTML = list.length ? list.map(function (e) {
+                var lr = roleLabel[(e.system_role || '').toLowerCase()] || (e.designation || 'Management');
+                return `<div class="card glass-card p-4 rounded-2xl space-y-2">
+                    <div class="flex items-start justify-between"><div style="display:flex;align-items:center;gap:10px">${hrAvatarHTML(e, 40)}<div><p class="text-white font-bold text-sm">${e.full_name}</p><p class="text-[10px] text-[#6b74a0] uppercase tracking-wider mt-0.5">${e.employee_id || 'No ID'}</p></div></div><span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span></div>
+                    <p class="text-xs" style="color:#ff8a3d;font-weight:700"><i data-lucide="crown" style="width:12px;height:12px;display:inline"></i> ${lr}</p>
+                    <p class="text-[11px] text-[#a5adcf]">Full Company Access</p>
+                    <p class="text-[10px] text-[#6b74a0]">${e.portal_email || '—'}${e.phone ? (' · ' + e.phone) : ''}</p>
+                    ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : `<p class="text-[10px] text-[#4a5182]">No login linked</p>`}
+                    <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
+                        <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View</button>
+                        <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
+                        <button onclick="hrMoveToEmployee('${e.id}')" class="hr-icon-btn" style="margin-left:auto">→ Employee</button>
+                    </div></div>`;
+            }).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No management members yet. Use “+ Add Management Member”.</p>';
+            if (window.lucide) lucide.createIcons();
+        }
+        // Add Management Member = the same employee modal, but flagged so the saved account is
+        // classified as management (leadership), pre-set to a Manager system role.
+        function openHRManagementModal() {
+            openHREmployeeModal();
+            window._hrForceManagement = true;
+            var s = document.getElementById('hr-emp-system-role'); if (s && !s.value) s.value = 'manager';
+            var t = document.getElementById('hr-employee-modal-title'); if (t) t.textContent = 'Add Management Member';
+            if (typeof hrSysRoleHint === 'function') hrSysRoleHint();
+        }
+        async function hrMoveToManagement(id) {
+            var ok = (typeof showConfirm === 'function')
+                ? await showConfirm('They will leave the Employees list (and its counts/attendance/leave/payroll) but keep their login, profile, ID and history. Company announcements still reach them.', { title: 'Move to Management?', confirmLabel: 'Move to Management' })
+                : (typeof beConfirm === 'function' ? await beConfirm('Move to Management?') : true);
+            if (!ok) return;
+            var { error } = await dbInstance.from('hr_employees').update({ account_type: 'management' }).eq('id', id);
+            if (error) { alert('Failed: ' + error.message); return; }
+            await loadHRData();
+            renderHREmployees(); renderHRManagement();
+            if (typeof hrToast === 'function') hrToast('Moved to Management.');
+        }
+        async function hrMoveToEmployee(id) {
+            var ok = (typeof showConfirm === 'function')
+                ? await showConfirm('This account will return to the normal Employees list (counts, attendance, leave, payroll).', { title: 'Move to Employees?', confirmLabel: 'Move to Employees' })
+                : true;
+            if (!ok) return;
+            var { error } = await dbInstance.from('hr_employees').update({ account_type: 'employee' }).eq('id', id);
+            if (error) { alert('Failed: ' + error.message); return; }
+            await loadHRData();
+            renderHRManagement(); renderHREmployees();
         }
 
 // ── openHREmployeeProfile (orig line 9381) ──
@@ -6459,7 +6543,7 @@ async function populateHRJobDeptOptions() {
                 const { data: _emp } = await dbInstance.from('hr_employees').select('system_role,employment_status,full_name').eq('portal_email', String(activeEmail||'').toLowerCase()).maybeSingle();
                 if (_emp) {
                     const _sr = (_emp.system_role||'').toLowerCase(), _st = (_emp.employment_status||'').toLowerCase();
-                    _isGlobalMgr = (_sr==='manager'||_sr==='founder') && _st!=='inactive' && _st!=='exited';
+                    _isGlobalMgr = (['manager','founder','co_founder','managing_director','director'].indexOf(_sr)>-1) && _st!=='inactive' && _st!=='exited';
                     if (!activeUser && _emp.full_name) activeUser = _emp.full_name;
                 }
             } catch(e) {}
