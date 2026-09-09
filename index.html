@@ -1771,6 +1771,70 @@
                     <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Create and assign production work to your Media team or yourself.</p>
                 </div>
                 <div id="wa-panel-mount"></div>
+
+                <!-- ASSIGNED WORK — full assignment-management list (Media Head / Manager only). -->
+                <div id="assigned-work-section">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="list-checks" style="width:18px;height:18px;color:#ff6b06"></i>
+                        <h2 class="text-lg font-bold tracking-tight">Assigned Work</h2>
+                    </div>
+                    <div class="space-y-3">
+                        <div style="position:relative">
+                            <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:#6b74a0"></i>
+                            <input id="agw-search" type="text" placeholder="Search task, employee, campaign..." oninput="agwOnSearch(this.value)"
+                                   class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-[#6b74a0] focus:outline-none focus:border-orange-500 transition-colors">
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <select id="agw-f-status" onchange="agwSetFilter('status',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                                <option value="all">All Statuses</option>
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="uploading">Uploading</option>
+                                <option value="pendingreview">Pending Review</option>
+                                <option value="Rework Required">Rework</option>
+                                <option value="completed">Completed</option>
+                                <option value="Rejected">Rejected</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                            <select id="agw-f-emp" onchange="agwSetFilter('emp',this.value)" style="min-width:160px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Employees</option></select>
+                            <select id="agw-f-type" onchange="agwSetFilter('type',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]"><option value="all">All Types</option></select>
+                            <select id="agw-f-priority" onchange="agwSetFilter('priority',this.value)" style="min-width:140px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                                <option value="all">All Priorities</option>
+                                <option value="very_high">Very High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                            <select id="agw-f-date" onchange="agwSetFilter('date',this.value)" style="min-width:150px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                                <option value="all">All Dates</option>
+                                <option value="today">Today</option>
+                                <option value="7d">Last 7 Days</option>
+                                <option value="month">This Month</option>
+                                <option value="prevmonth">Previous Month</option>
+                                <option value="custom">Custom Range</option>
+                            </select>
+                            <select id="agw-f-sort" onchange="agwSetFilter('sort',this.value)" style="min-width:170px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                                <option value="assigned-new">Newest Assigned</option>
+                                <option value="assigned-old">Oldest Assigned</option>
+                                <option value="deadline">Nearest Deadline</option>
+                                <option value="priority">Priority — Highest First</option>
+                                <option value="emp-az">Employee A–Z</option>
+                            </select>
+                            <select id="agw-f-page" onchange="agwSetFilter('per',this.value)" style="min-width:110px" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                                <option value="10">10 / page</option>
+                                <option value="25">25 / page</option>
+                                <option value="50">50 / page</option>
+                            </select>
+                        </div>
+                        <div id="agw-custom-range" class="flex flex-wrap items-center gap-2 hidden">
+                            <span class="text-[11px] text-[#6b74a0] font-semibold">From</span>
+                            <input id="agw-date-from" type="date" onchange="agwSetFilter('from',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                            <span class="text-[11px] text-[#6b74a0] font-semibold">To</span>
+                            <input id="agw-date-to" type="date" onchange="agwSetFilter('to',this.value)" class="glass-input rounded-xl px-3 py-2 text-xs text-white bg-transparent border border-white/[0.06]">
+                        </div>
+                    </div>
+                    <div id="agw-body" class="space-y-3 mt-3"></div>
+                    <div id="agw-pager" class="flex items-center justify-center gap-2 flex-wrap mt-2"></div>
+                </div>
             </div>
 
             <!-- WORK APPROVALS — dedicated Media Head tab (full page, not a modal). -->
@@ -2968,7 +3032,7 @@
 
                 const { data: tasks, error: errT } = await dbInstance.from('assignments').select('*');
                 if (!errT && tasks) {
-                    assignmentsList = tasks.map(t => ({
+                    assignmentsList = tasks.filter(t => t.status !== 'cancelled').map(t => ({
                         id: t.id,
                         topic: t.topic,
                         type: t.type,
@@ -3040,6 +3104,7 @@
                 if (activeUser) syncLedgerEngine(false);
                 // Reuse the SAME assignments realtime event to keep Team Workflow live (no dup sub).
                 try { if (typeof window.mhTeamWorkflowLiveRefresh === 'function') window.mhTeamWorkflowLiveRefresh(); } catch (e) {}
+                try { if (typeof window.mhAssignedWorkLiveRefresh === 'function') window.mhAssignedWorkLiveRefresh(); } catch (e) {}
             }, 600);
         }
         function _beInitRealtime() {
@@ -3665,6 +3730,7 @@
                 var _ap = document.getElementById('admin-assignment-panel'), _mnt = document.getElementById('wa-panel-mount');
                 if (_ap && _mnt && _ap.parentElement !== _mnt) _mnt.appendChild(_ap);
                 if (_ap) _ap.classList.remove('hidden');
+                if (typeof window.mhRenderAssignedWork === 'function') window.mhRenderAssignedWork();
                 if (window.lucide) lucide.createIcons();
             } else if (targetTab === 'work-approvals') {
                 document.getElementById('nav-work-approvals')?.classList.add('active');
@@ -9100,7 +9166,7 @@ async function saveLeave(){
   }
   // Branded in-app delivery preview modal. Multiple entries → left selector, single preview pane.
   window.mhViewDelivery=function(id,opts){
-    var a=_waRowById[id]||_awRowById[id]||_twRowById[id]; if(!a) return;
+    var a=_waRowById[id]||_awRowById[id]||_twRowById[id]||_agwRowById[id]; if(!a) return;
     opts=opts||{};
     var isApproved=opts.approved || (a.manager_approved && waStatusOf(a)==='approved');
     var entries=beParseDelivery(a.asset_link);
@@ -9154,7 +9220,7 @@ async function saveLeave(){
     m.style.display='flex';
   };
   window.beSelectDeliv=function(id,idx){
-    var a=_waRowById[id]||_awRowById[id]||_twRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
+    var a=_waRowById[id]||_awRowById[id]||_twRowById[id]||_agwRowById[id]; if(!a) return; var entries=beParseDelivery(a.asset_link); var e=entries[idx]; if(!e) return;
     var pane=document.getElementById('mh-deliv-pane'); if(pane) pane.innerHTML=bePreviewMarkup(e);
     var m=document.getElementById('mh-deliv-modal'); if(m){ m.querySelectorAll('[data-di]').forEach(function(b){
       var on=+b.getAttribute('data-di')===idx; b.style.background=on?'rgba(255,107,6,.16)':'rgba(255,255,255,.05)'; b.style.color=on?'#ff8a3d':'#a5adcf'; b.style.borderColor=on?'rgba(255,107,6,.4)':'rgba(255,255,255,.12)'; }); }
@@ -9178,6 +9244,7 @@ async function saveLeave(){
   function waSubIso(a){ return a.submitted_at || (a.id ? new Date(Number(a.id)).toISOString() : null); }
   // Map a row to one review state. Order matters: rejected/rework are terminal-ish signals.
   function waStatusOf(a){
+    if(a.status==='cancelled') return '';   // cancelled work never shows in approvals/team views
     if(a.status==='Rejected') return 'rejected';
     if(a.status==='Rework Required') return 'rework';
     if(a.manager_approved) return 'approved';
@@ -9699,6 +9766,143 @@ async function saveLeave(){
     var tab=document.getElementById('tab-content-team-workflow');
     if(!tab || tab.classList.contains('hidden') || !isMediaHead()) return;
     await twLoad(true); twRender();
+  };
+
+  // ══ ASSIGNED WORK — full assignment-management list (Media Head / Manager) ══
+  var _agwAll=[], _agwRowById={};
+  var _agwFilter={ q:'', status:'all', emp:'all', type:'all', priority:'all', date:'all', from:'', to:'', sort:'assigned-new', per:10, page:1 };
+  function agwHasActiveUpload(id){ var up=false; try{ if(typeof _beUploads!=='undefined') _beUploads.forEach(function(j){ if(j.taskId==id && j.status==='uploading') up=true; }); }catch(e){} return up; }
+  function agwState(a){
+    if(a.status==='cancelled') return {key:'cancelled',t:'Cancelled',c:'#8890b5'};
+    if(agwHasActiveUpload(a.id)) return {key:'uploading',t:'Uploading',c:'#ff8a3d'};
+    if(a.status==='Rejected') return {key:'Rejected',t:'Rejected',c:'#f87171'};
+    if(a.status==='Rework Required') return {key:'Rework Required',t:'Rework',c:'#fb923c'};
+    if(a.manager_approved) return {key:'completed',t:'Completed',c:'#22c55e'};
+    if(a.status==='Completed') return {key:'pendingreview',t:'Pending Review',c:'#38bdf8'};
+    if(a.status==='In Progress') return {key:'In Progress',t:'In Progress',c:'#60a5fa'};
+    return {key:'Pending',t:'Pending',c:'#fbbf24'};
+  }
+  function agwLastUpdated(a){
+    var c=[a.cancelled_at,a.approved_at,a.rejected_at,a.reviewed_at,a.submitted_at].filter(Boolean).map(function(x){return new Date(x).getTime();});
+    if(!c.length) return a.assigned_date||'';
+    return beFmtDT(new Date(Math.max.apply(null,c)).toISOString());
+  }
+  async function fetchAssignedWork(){
+    var d=db(); if(!d) return [];
+    var r=await d.from('assignments').select('id,topic,type,assigned_to,employee_email,assigned_by,assigned_date,date,status,priority,manager_approved,submitted_at,approved_at,reviewed_at,rejected_at,cancelled_at,cancellation_reason,asset_link,description,explanation').order('id',{ascending:false});
+    return r.data||[];
+  }
+  window.agwOnSearch=function(v){ _agwFilter.q=v||''; _agwFilter.page=1; agwRender(); };
+  window.agwSetFilter=function(k,v){ _agwFilter[k]=(k==='per'?parseInt(v,10)||10:v); if(k!=='per') _agwFilter.page=1; if(k==='date'){ var cr=document.getElementById('agw-custom-range'); if(cr) cr.classList.toggle('hidden', v!=='custom'); } agwRender(); };
+  window.agwGoPage=function(p){ _agwFilter.page=p; agwRender(); };
+  function agwPopulateOptions(){
+    var emps={}, types={};
+    _agwAll.forEach(function(a){ emps[waEmpName(a)]=1; if(a.type) types[a.type]=1; });
+    var eSel=document.getElementById('agw-f-emp'), tSel=document.getElementById('agw-f-type');
+    if(eSel){ var ev=_agwFilter.emp; eSel.innerHTML='<option value="all">All Employees</option>'+Object.keys(emps).sort().map(function(n){return '<option value="'+esc(n)+'">'+esc(n)+'</option>';}).join(''); eSel.value=ev; if(eSel.value!==ev){_agwFilter.emp='all';eSel.value='all';} }
+    if(tSel){ var tv=_agwFilter.type; tSel.innerHTML='<option value="all">All Types</option>'+Object.keys(types).sort().map(function(n){return '<option value="'+esc(n)+'">'+esc(n)+'</option>';}).join(''); tSel.value=tv; if(tSel.value!==tv){_agwFilter.type='all';tSel.value='all';} }
+  }
+  function agwFilteredSorted(){
+    var q=_agwFilter.q.trim().toLowerCase();
+    var r=beDateRange(_agwFilter.date,_agwFilter.from,_agwFilter.to);
+    var list=_agwAll.filter(function(a){
+      var st=agwState(a);
+      if(_agwFilter.status!=='all' && st.key!==_agwFilter.status) return false;
+      if(_agwFilter.emp!=='all' && waEmpName(a)!==_agwFilter.emp) return false;
+      if(_agwFilter.type!=='all' && (a.type||'')!==_agwFilter.type) return false;
+      if(_agwFilter.priority!=='all' && bePriorityOf(a)!==_agwFilter.priority) return false;
+      if(_agwFilter.date!=='all' && !beInRange((a.assigned_date?a.assigned_date+'T00:00:00':null),r)) return false;
+      if(q){ var hay=[a.topic,waEmpName(a),a.type,a.assigned_by].join(' ').toLowerCase(); if(hay.indexOf(q)===-1) return false; }
+      return true;
+    });
+    var s=_agwFilter.sort;
+    list.sort(function(x,y){
+      if(s==='assigned-new') return (y.id||0)-(x.id||0);
+      if(s==='assigned-old') return (x.id||0)-(y.id||0);
+      if(s==='deadline') return String(x.date||'~').localeCompare(String(y.date||'~'));
+      if(s==='priority'){ return bePriorityRank(x)-bePriorityRank(y); }
+      if(s==='emp-az') return waEmpName(x).localeCompare(waEmpName(y));
+      return 0;
+    });
+    return list;
+  }
+  function agwRender(){
+    var body=document.getElementById('agw-body'), pager=document.getElementById('agw-pager'); if(!body) return;
+    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:20px">Not authorized.</div>'; if(pager)pager.innerHTML=''; return; }
+    var all=agwFilteredSorted(), per=_agwFilter.per, total=all.length, pages=Math.max(1,Math.ceil(total/per));
+    if(_agwFilter.page>pages)_agwFilter.page=pages;
+    var rows=all.slice((_agwFilter.page-1)*per,(_agwFilter.page-1)*per+per);
+    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:26px;text-align:center;color:#6b74a0;font-size:13px">No assignments match these filters.</div>'; if(pager)pager.innerHTML=''; return; }
+    body.innerHTML=rows.map(function(a){
+      var st=agwState(a), hasDeliv=beParseDelivery(a.asset_link).length>0;
+      var chip='<span style="font-size:10px;font-weight:800;color:'+st.c+';background:'+st.c+'22;border:1px solid '+st.c+'55;padding:2px 8px;border-radius:999px">'+esc(st.t)+'</span>';
+      var canCancel = st.key==='Pending'||st.key==='In Progress'||st.key==='Rework Required'||st.key==='uploading'||st.key==='pendingreview';
+      var strong = st.key==='uploading'||st.key==='pendingreview';
+      var acts='';
+      if(hasDeliv) acts+='<button onclick="mhViewDelivery('+a.id+')" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>';
+      if(canCancel) acts+='<button onclick="agwCancel('+a.id+','+(strong?'true':'false')+')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Cancel</button>';
+      if(st.key==='cancelled' && a.cancellation_reason) acts+='<span style="font-size:10px;color:#8890b5;align-self:center">Reason: '+esc(a.cancellation_reason)+'</span>';
+      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:14px 16px;background:rgba(255,255,255,.02)">'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:230px;flex:1">'
+        +'<div style="font-weight:700;color:#fff;font-size:14px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> '+chip+' '+bePriorityBadge(a)+'</div>'
+        +'<div style="color:#8890b5;font-size:11px;margin-top:4px">'+esc(waEmpName(a))+' · by '+esc(a.assigned_by||'—')+' · Assigned '+esc(a.assigned_date||'—')+' · Target '+esc(a.date||'—')+'</div>'
+        +'<div style="color:#6b74a0;font-size:10px;margin-top:2px">Last updated '+esc(agwLastUpdated(a))+'</div></div>'
+        +'<div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">'+(acts||'<span style="font-size:10px;color:#4a5182;align-self:center">—</span>')+'</div>'
+        +'</div></div>';
+    }).join('');
+    if(pager){ if(pages<=1){pager.innerHTML='';} else {
+      var h='<button onclick="agwGoPage('+Math.max(1,_agwFilter.page-1)+')" '+(_agwFilter.page<=1?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_agwFilter.page<=1?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700">Prev</button>';
+      for(var p=1;p<=pages;p++){ if(pages>7&&p>2&&p<pages-1&&Math.abs(p-_agwFilter.page)>1){ if(p===3||p===pages-1) h+='<span style="color:#4a5182;font-size:12px;padding:0 4px">…</span>'; continue; } var on=p===_agwFilter.page; h+='<button onclick="agwGoPage('+p+')" style="min-width:32px;padding:6px 10px;border-radius:8px;background:'+(on?'linear-gradient(135deg,#ff6b06,#f9182f)':'rgba(255,255,255,.05)')+';border:1px solid '+(on?'transparent':'rgba(255,255,255,.1)')+';color:#fff;font-size:12px;font-weight:700">'+p+'</button>'; }
+      h+='<button onclick="agwGoPage('+Math.min(pages,_agwFilter.page+1)+')" '+(_agwFilter.page>=pages?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_agwFilter.page>=pages?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700">Next</button><span style="color:#6b74a0;font-size:11px;margin-left:8px">'+total+' · page '+_agwFilter.page+'/'+pages+'</span>';
+      pager.innerHTML=h; } }
+    if(window.lucide&&lucide.createIcons){ try{lucide.createIcons();}catch(e){} }
+  }
+  // Branded cancel modal — soft-delete (status='cancelled' + audit). Never a browser confirm().
+  window.agwCancel=function(id, strong){
+    if(!isMediaHead()){ toast('error','Not authorized.'); return; }
+    var a=_agwRowById[id]; if(!a) return;
+    var m=document.getElementById('agw-cancel-modal');
+    if(!m){ m=document.createElement('div'); m.id='agw-cancel-modal'; m.style.cssText='position:fixed;inset:0;z-index:9004;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(m); }
+    var warn = strong ? '<div style="font-size:12px;color:#fb923c;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.4);border-radius:10px;padding:9px 11px;margin-bottom:10px">This work is currently '+esc(agwState(a).t)+'. Cancelling now discards in-progress delivery activity.</div>' : '';
+    m.innerHTML='<div style="width:100%;max-width:460px;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px">'
+      +'<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px">Remove this assignment?</div>'
+      +'<div style="font-size:12px;color:#8890b5;margin-bottom:12px">"'+esc(a.topic||'Untitled')+'" will be removed from '+esc(waEmpName(a))+"'s active pipeline and will no longer appear as pending work. A cancelled-history record is kept for audit.</div>"
+      +warn
+      +'<label style="font-size:10px;font-weight:800;letter-spacing:.1em;color:#6b74a0">REASON (OPTIONAL)</label>'
+      +'<select id="agw-cancel-reason" style="width:100%;box-sizing:border-box;margin-top:4px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;padding:9px;font-size:13px"><option value="">— Select a reason —</option><option>Work no longer required</option><option>Campaign cancelled</option><option>Duplicate assignment</option><option>Assigned by mistake</option><option>Other</option></select>'
+      +'<div style="display:flex;gap:8px;margin-top:16px"><button onclick="document.getElementById(\'agw-cancel-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Cancel</button>'
+      +'<button id="agw-cancel-confirm" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#dc2626,#ef4444);border:none;color:#fff;font-weight:800;cursor:pointer">Remove Assignment</button></div></div>';
+    m.style.display='flex';
+    document.getElementById('agw-cancel-confirm').onclick=async function(){
+      var reason=(document.getElementById('agw-cancel-reason').value||'').trim();
+      var d=db(); if(!d) return; var nowIso=new Date().toISOString();
+      var {error}=await d.from('assignments').update({ status:'cancelled', cancelled_at:nowIso, cancelled_by:actor(), cancellation_reason:reason }).eq('id',id);
+      if(error){ toast('error','Cancel failed: '+error.message); return; }
+      m.style.display='none';
+      // patch local + re-render; realtime propagates to pipeline/team/counts (assignments channel).
+      a.status='cancelled'; a.cancelled_at=nowIso; a.cancelled_by=actor(); a.cancellation_reason=reason;
+      agwRender();
+      toast('success','Assignment cancelled.');
+      try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
+      try{ if(typeof syncLedgerEngine==='function') syncLedgerEngine(false); }catch(e){}
+    };
+  };
+  window.mhRenderAssignedWork=async function(){
+    var body=document.getElementById('agw-body'); if(!body) return;
+    if(!isMediaHead()){ body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:20px">Not authorized.</div>'; return; }
+    body.innerHTML='<div style="color:#6b74a0;font-size:13px;padding:20px">Loading assignments…</div>';
+    _agwAll=await fetchAssignedWork();
+    _agwRowById={}; _agwAll.forEach(function(a){ _agwRowById[a.id]=a; });
+    agwPopulateOptions();
+    agwRender();
+  };
+  // Live refresh reuses the shared assignments realtime event (no dup subscription).
+  window.mhAssignedWorkLiveRefresh=async function(){
+    var tab=document.getElementById('tab-content-work-assignment');
+    if(!tab || tab.classList.contains('hidden') || !isMediaHead()) return;
+    _agwAll=await fetchAssignedWork();
+    _agwRowById={}; _agwAll.forEach(function(a){ _agwRowById[a.id]=a; });
+    agwRender();
   };
 
   // Work Approvals nav / any legacy caller → open the tab (never a modal).
