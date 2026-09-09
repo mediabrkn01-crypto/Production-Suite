@@ -1640,6 +1640,61 @@
         </div>
     </div>
 
+    <!-- MANAGEMENT MEMBER — dedicated leadership form (NOT the employee form) -->
+    <div id="hr-mgmt-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:460px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="hr-mgmt-modal-title" class="text-lg font-bold text-white">Add Management Member</h3>
+                <button onclick="closeHRMgmtModal()" class="hr-icon-btn">✕</button>
+            </div>
+            <input type="hidden" id="hr-mgmt-id">
+            <div class="space-y-3">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div id="hr-mgmt-photo-preview"></div>
+                    <div style="flex:1">
+                        <label class="hr-field-label">Profile Photo (optional)</label>
+                        <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                            <button type="button" class="hr-icon-btn" onclick="document.getElementById('hr-mgmt-photo-file').click()">📷 Upload</button>
+                            <button type="button" id="hr-mgmt-photo-remove" class="hr-icon-btn hidden" style="color:#f87171" onclick="hrMgmtRemovePhoto()">Remove</button>
+                            <input type="file" id="hr-mgmt-photo-file" accept="image/*" style="display:none" onchange="hrMgmtPhotoUpload(event)">
+                        </div>
+                        <input type="hidden" id="hr-mgmt-photo-base64">
+                    </div>
+                </div>
+                <div><label class="hr-field-label">Full Name *</label><input id="hr-mgmt-name" class="hr-input w-full" oninput="hrMgmtPhotoPreview()"></div>
+                <div><label class="hr-field-label">Management Role *</label>
+                    <select id="hr-mgmt-role" class="hr-select w-full">
+                        <option value="founder">Founder</option>
+                        <option value="co_founder">Co-Founder</option>
+                        <option value="director">Director</option>
+                        <option value="managing_director">Managing Director</option>
+                        <option value="manager" selected>Manager</option>
+                    </select>
+                </div>
+                <div><label class="hr-field-label">Login Email *</label><input id="hr-mgmt-email" type="email" class="hr-input w-full" placeholder="used to sign in"></div>
+                <div><label class="hr-field-label">Password <span id="hr-mgmt-pass-hint" class="text-[10px] text-[#6b74a0]"></span></label><input id="hr-mgmt-pass" type="text" class="hr-input w-full" placeholder="set a password to create their login"></div>
+                <div><label class="hr-field-label">Phone (optional)</label><input id="hr-mgmt-phone" class="hr-input w-full"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <label style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 11px;cursor:pointer"><input type="checkbox" id="hr-mgmt-access" checked style="accent-color:#ff6b06"> <span class="text-xs text-white">Login access enabled</span></label>
+                    <div><select id="hr-mgmt-status" class="hr-select w-full"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+                </div>
+                <div style="font-size:11px;color:#4ade80;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:10px;padding:9px 11px"><b>Full Company Access</b> — Media · HR · Academics · Sales · Announcements · Notifications (automatic; one login → Manager Command Center).</div>
+                <div style="display:flex;gap:8px;margin-top:4px"><button onclick="closeHRMgmtModal()" class="hr-icon-btn" style="flex:1;justify-content:center">Cancel</button><button onclick="hrSaveManagement()" class="brand-gradient text-white text-sm font-bold px-4 py-2.5 rounded-xl" style="flex:1">Save</button></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MANAGEMENT PROFILE — compact leadership profile (NOT the employee profile) -->
+    <div id="hr-mgmt-profile-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:440px">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Management Profile</h3>
+                <button onclick="closeHRMgmtProfile()" class="hr-icon-btn">✕</button>
+            </div>
+            <div id="hr-mgmt-profile-body"></div>
+        </div>
+    </div>
+
     <div id="hr-employee-modal" class="hr-modal-overlay hidden">
         <div class="hr-modal">
             <div class="flex items-center justify-between mb-4">
@@ -3687,21 +3742,124 @@
                     <p class="text-[10px] text-[#6b74a0]">${e.portal_email || '—'}${e.phone ? (' · ' + e.phone) : ''}</p>
                     ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : `<p class="text-[10px] text-[#4a5182]">No login linked</p>`}
                     <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
-                        <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View</button>
-                        <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
+                        <button onclick="openHRManagementProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
+                        <button onclick="openHRManagementModal('${e.id}')" class="hr-icon-btn">Edit</button>
                         <button onclick="hrDeleteManagement('${e.id}')" class="hr-icon-btn" style="margin-left:auto;color:#f87171">Delete</button>
                     </div></div>`;
             }).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No management members yet. Use “+ Add Management Member”.</p>';
             if (window.lucide) lucide.createIcons();
         }
-        // Add Management Member = the same employee modal, but flagged so the saved account is
-        // classified as management (leadership), pre-set to a Manager system role.
-        function openHRManagementModal() {
-            openHREmployeeModal();
-            window._hrForceManagement = true;
-            var s = document.getElementById('hr-emp-system-role'); if (s && !s.value) s.value = 'manager';
-            var t = document.getElementById('hr-employee-modal-title'); if (t) t.textContent = 'Add Management Member';
-            if (typeof hrSysRoleHint === 'function') hrSysRoleHint();
+        // ── Dedicated Management Member workflow (NOT the employee form) ──
+        var _MGMT_ROLE_LABEL = { founder: 'Founder', co_founder: 'Co-Founder', director: 'Director', managing_director: 'Managing Director', manager: 'Manager' };
+        function hrMgmtAvatarPreview(name, photo) {
+            var el = document.getElementById('hr-mgmt-photo-preview'); if (!el) return;
+            var st = 'width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0';
+            el.innerHTML = photo
+                ? `<img src="${photo}" alt="${name || ''}" style="${st}">`
+                : `<div style="${st};display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:700">${((name || '?').trim().charAt(0) || '?').toUpperCase()}</div>`;
+        }
+        function hrMgmtPhotoPreview() { hrMgmtAvatarPreview(document.getElementById('hr-mgmt-name').value, document.getElementById('hr-mgmt-photo-base64').value); }
+        function hrMgmtPhotoUpload(ev) {
+            var f = ev.target.files && ev.target.files[0]; if (!f) return;
+            var r = new FileReader();
+            r.onload = function () { document.getElementById('hr-mgmt-photo-base64').value = r.result; document.getElementById('hr-mgmt-photo-remove').classList.remove('hidden'); hrMgmtPhotoPreview(); };
+            r.readAsDataURL(f);
+        }
+        function hrMgmtRemovePhoto() { document.getElementById('hr-mgmt-photo-base64').value = ''; document.getElementById('hr-mgmt-photo-remove').classList.add('hidden'); document.getElementById('hr-mgmt-photo-file').value = ''; hrMgmtPhotoPreview(); }
+        function closeHRMgmtModal() { document.getElementById('hr-mgmt-modal').classList.add('hidden'); }
+        function openHRManagementModal(id) {
+            var m = (id && typeof hrManagement !== 'undefined') ? (hrManagement || []).find(function (x) { return String(x.id) === String(id); }) : null;
+            document.getElementById('hr-mgmt-modal-title').textContent = m ? 'Edit Management Member' : 'Add Management Member';
+            document.getElementById('hr-mgmt-id').value = m ? m.id : '';
+            document.getElementById('hr-mgmt-name').value = m ? (m.full_name || '') : '';
+            document.getElementById('hr-mgmt-role').value = m ? ((m.system_role || 'manager').toLowerCase()) : 'manager';
+            document.getElementById('hr-mgmt-email').value = m ? (m.portal_email || '') : '';
+            document.getElementById('hr-mgmt-pass').value = '';
+            document.getElementById('hr-mgmt-pass-hint').textContent = m ? '— leave blank to keep current' : '';
+            document.getElementById('hr-mgmt-phone').value = m ? (m.phone || '') : '';
+            document.getElementById('hr-mgmt-access').checked = m ? (m.portal_access_enabled !== false) : true;
+            document.getElementById('hr-mgmt-status').value = m ? (m.employment_status || 'active') : 'active';
+            document.getElementById('hr-mgmt-photo-base64').value = m ? (m.photo_base64 || m.photo_url || '') : '';
+            document.getElementById('hr-mgmt-photo-remove').classList.toggle('hidden', !(m && (m.photo_base64 || m.photo_url)));
+            hrMgmtPhotoPreview();
+            document.getElementById('hr-mgmt-modal').classList.remove('hidden');
+        }
+        async function hrSaveManagement() {
+            var id = document.getElementById('hr-mgmt-id').value || null;
+            var name = document.getElementById('hr-mgmt-name').value.trim();
+            var role = document.getElementById('hr-mgmt-role').value;
+            var email = (document.getElementById('hr-mgmt-email').value || '').trim().toLowerCase();
+            var pass = document.getElementById('hr-mgmt-pass').value.trim();
+            var phone = document.getElementById('hr-mgmt-phone').value.trim();
+            var access = document.getElementById('hr-mgmt-access').checked;
+            var status = document.getElementById('hr-mgmt-status').value;
+            var photo = document.getElementById('hr-mgmt-photo-base64').value || '';
+            if (!name || !email) { hrShowToast('Full name and login email are required.', 'error'); return; }
+            if (!id && !pass) { hrShowToast('Set a password for the new login.', 'error'); return; }
+            // Block a duplicate account for this login (management OR employee).
+            var dupM = (typeof hrManagement !== 'undefined' ? (hrManagement || []) : []).find(function (e) { return (e.portal_email || '').toLowerCase() === email && String(e.id) !== String(id); });
+            if (dupM) { hrShowToast('Management account already exists.', 'error'); return; }
+            var dupE = (typeof hrEmployees !== 'undefined' ? (hrEmployees || []) : []).find(function (e) { return (e.portal_email || '').toLowerCase() === email; });
+            if (dupE) { hrShowToast('That login is already an employee account.', 'error'); return; }
+            var payload = {
+                full_name: name, system_role: role, account_type: 'management', division: 'other',
+                designation: _MGMT_ROLE_LABEL[role] || 'Management',
+                portal_email: email, phone: phone, employment_status: status,
+                portal_access_enabled: access,
+                photo_base64: /^data:/.test(photo) ? photo : null,
+                photo_url: (photo && !/^data:/.test(photo)) ? photo : null
+            };
+            try {
+                if (id) { var { error: uErr } = await dbInstance.from('hr_employees').update(payload).eq('id', id); if (uErr) throw uErr; }
+                else { var { error: iErr } = await dbInstance.from('hr_employees').insert([payload]); if (iErr) throw iErr; }
+                await hrCreateOrSyncLogin(email, name, 'manager', pass);  // shared auth (user_roster); role 'manager'
+            } catch (e) { hrShowToast('Save failed: ' + (e.message || e), 'error'); return; }
+            closeHRMgmtModal();
+            await loadHRData();
+            renderHRManagement();
+            hrShowToast(id ? 'Management member updated.' : 'Management member added.');
+        }
+        function closeHRMgmtProfile() { document.getElementById('hr-mgmt-profile-modal').classList.add('hidden'); }
+        function openHRManagementProfile(id) {
+            var m = (typeof hrManagement !== 'undefined') ? (hrManagement || []).find(function (x) { return String(x.id) === String(id); }) : null;
+            if (!m) return;
+            var lr = _MGMT_ROLE_LABEL[(m.system_role || '').toLowerCase()] || 'Management';
+            var photo = m.photo_base64 || m.photo_url || '';
+            var av = photo ? `<img src="${photo}" alt="${m.full_name || ''}" style="width:72px;height:72px;border-radius:50%;object-fit:cover">`
+                : `<div style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:800;font-size:26px">${((m.full_name || '?').trim().charAt(0) || '?').toUpperCase()}</div>`;
+            var chk = function (t) { return `<div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#c5cbe8"><span style="color:#22c55e">✓</span> ${t}</div>`; };
+            document.getElementById('hr-mgmt-profile-body').innerHTML =
+                `<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">${av}<div><div style="font-size:17px;font-weight:800;color:#fff">${m.full_name || ''}</div><div style="font-size:13px;color:#ff8a3d;font-weight:700">${lr}</div></div></div>
+                <div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:6px">ACCOUNT</div>
+                <div style="font-size:12px;color:#a5adcf;margin-bottom:2px">Login Email: <span style="color:#fff">${m.portal_email || '—'}</span></div>
+                <div style="font-size:12px;color:#a5adcf;margin-bottom:2px">Access: <span style="color:${m.portal_access_enabled === false ? '#f87171' : '#22c55e'}">${m.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</span></div>
+                <div style="font-size:12px;color:#a5adcf;margin-bottom:12px">Status: <span style="color:#fff;text-transform:capitalize">${m.employment_status || 'active'}</span></div>
+                <div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:6px">COMPANY ACCESS</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:6px">${chk('Media')}${chk('HR')}${chk('Academics')}${chk('Sales')}${chk('Announcements')}${chk('Notifications')}</div>
+                <div style="font-size:11px;color:#4ade80;margin-bottom:14px">Permission Level: <b>Full Company Access</b></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="hr-icon-btn" onclick="closeHRMgmtProfile();openHRManagementModal('${m.id}')">Edit Profile</button>
+                    <button class="hr-icon-btn" onclick="hrMgmtResetPassword('${m.id}')">Reset Password</button>
+                    <button class="hr-icon-btn" onclick="hrMgmtToggleLogin('${m.id}')">${m.portal_access_enabled === false ? 'Enable Login' : 'Disable Login'}</button>
+                    <button class="hr-icon-btn" style="margin-left:auto" onclick="closeHRMgmtProfile()">Close</button>
+                </div>`;
+            document.getElementById('hr-mgmt-profile-modal').classList.remove('hidden');
+        }
+        function hrMgmtResetPassword(id) {
+            // Reuse the Edit form's password field (no browser prompt) — leaving it blank keeps
+            // the current password; typing a new one resets it on Save.
+            closeHRMgmtProfile();
+            openHRManagementModal(id);
+            var p = document.getElementById('hr-mgmt-pass'); if (p) { p.placeholder = 'type a new password to reset'; setTimeout(function () { p.focus(); }, 60); }
+            hrShowToast('Enter a new password, then Save.');
+        }
+        async function hrMgmtToggleLogin(id) {
+            var m = (hrManagement || []).find(function (x) { return String(x.id) === String(id); }); if (!m) return;
+            var newVal = (m.portal_access_enabled === false); // currently disabled -> enable, else disable
+            var { error } = await dbInstance.from('hr_employees').update({ portal_access_enabled: newVal }).eq('id', id);
+            if (error) { hrShowToast('Failed: ' + error.message, 'error'); return; }
+            await loadHRData(); renderHRManagement(); closeHRMgmtProfile();
+            hrShowToast(newVal ? 'Login enabled.' : 'Login disabled.');
         }
         function hrShowToast(msg, kind) {
             var t = document.getElementById('hr-inline-toast');
@@ -3715,7 +3873,7 @@
             var m = (typeof hrManagement !== 'undefined' && hrManagement) ? hrManagement.find(function (x) { return String(x.id) === String(id); }) : null;
             var nm = (m && m.full_name) || 'this member';
             var ok = (typeof showConfirm === 'function')
-                ? await showConfirm('This will remove ' + nm + "'s management account and company-wide management access.", { title: 'Remove Management Member?', confirmLabel: 'Delete Management Member', danger: true })
+                ? await showConfirm(nm + ' will lose access to the Manager Command Center and all company modules.', { title: 'Delete Management Member?', confirmLabel: 'Delete Management Member', danger: true })
                 : true;
             if (!ok) return;
             var { error } = await dbInstance.from('hr_employees').delete().eq('id', id);
