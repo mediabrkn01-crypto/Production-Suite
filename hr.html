@@ -479,6 +479,7 @@
         .hr-att-cell-CL { color:#818cf8; font-weight:700; }
         .hr-att-cell-LOP { color:#f87171; font-weight:700; }
         .hr-att-cell-UL { color:#fb923c; font-weight:700; }
+        .hr-att-cell-ML { color:#e879f9; font-weight:700; }
         .hr-att-cell-WFH { color:#2dd4bf; font-weight:700; }
         .hr-att-cell-HD-M, .hr-att-cell-HD-A, .hr-att-cell-HD { color:#fde047; font-weight:700; }
         .hr-att-cell-OE { color:#f472b6; font-weight:700; }
@@ -1303,6 +1304,7 @@
                         <span><b class="text-yellow-300">HD-A</b> = Half Day (Afternoon)</span>
                         <span><b class="text-blue-400">PL</b> = Paid Leave</span>
                         <span><b class="text-orange-400">UL</b> = Unpaid Leave</span>
+                        <span><b class="text-fuchsia-400">ML</b> = Maternity Leave</span>
                         <span><b class="text-[#8890b5]">WO</b> = Weekly Off</span>
                         <span><b class="text-purple-400">H</b> = Holiday</span>
                         <span><b class="text-cyan-400">OE</b> = Official Event</span>
@@ -4541,7 +4543,7 @@
                 if (cursorY > doc.internal.pageSize.getHeight() - 60) { doc.addPage('a4', 'landscape'); cursorY = 40; }
                 doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.text('Legend', 40, cursorY);
                 doc.setFont(undefined, 'normal'); doc.setFontSize(8);
-                doc.text('P = Present   A = Absent   L = Late   AL = Afternoon Login   HD-M = Half Day (Morning)   HD-A = Half Day (Afternoon)   PL = Paid Leave   UL = Unpaid Leave   WO = Weekly Off   H = Holiday   OE = Official Event', 40, cursorY + 14, { maxWidth: pageWidth - 80 });
+                doc.text('P = Present   A = Absent   L = Late   AL = Afternoon Login   HD-M = Half Day (Morning)   HD-A = Half Day (Afternoon)   PL = Paid Leave   UL = Unpaid Leave   ML = Maternity Leave   WO = Weekly Off   H = Holiday   OE = Official Event', 40, cursorY + 14, { maxWidth: pageWidth - 80 });
 
                 // Filename per spec item 11 — e.g. Broken-English-Attendance-August-2026.pdf
                 const monthName = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long' });
@@ -4604,6 +4606,11 @@
                 const badgeKind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : 'pending';
                 const authName = r.reporting_authority_email ? (hrEmpNameByEmail ? hrEmpNameByEmail(r.reporting_authority_email) : r.reporting_authority_email) : 'HR only';
                 const needsException = r.status !== 'approved' && r.status !== 'rejected' && (r.adjacency_flag || (r.consecutive_days && r.consecutive_days > 2));
+                // §4/§6 — HR can change the leave type (e.g. Unpaid Leave → Maternity Leave),
+                // even after approval; re-resolves the report/payroll live (no page refresh).
+                const _types = (typeof HR_LEAVE_TYPES !== 'undefined' ? HR_LEAVE_TYPES.slice() : []);
+                if (r.leave_type && _types.indexOf(r.leave_type) === -1) _types.unshift(r.leave_type);
+                const typeOpts = _types.map(t => `<option value="${t}"${t===r.leave_type?' selected':''}>${t}</option>`).join('');
                 return `
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
                     <div style="display:flex;align-items:flex-start;gap:10px">
@@ -4620,6 +4627,7 @@
                     </div>
                     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
                         <span class="hr-badge hr-badge-${badgeKind}">${statusLabel}</span>
+                        <select onchange="hrChangeLeaveType('${r.id}', this.value)" class="hr-select" style="font-size:10.5px;padding:3px 6px;max-width:170px" title="Change leave type">${typeOpts}</select>
                         ${r.status !== 'approved' && r.status !== 'rejected' ? `
                             <div style="display:flex;gap:6px">
                             <button onclick="decideHRLeave('${r.id}','approved').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#4ade80">Approve</button>
@@ -4640,6 +4648,25 @@
             const e = hrEmployees.find(x => (x.portal_email || '').toLowerCase() === email.toLowerCase());
             return e ? e.full_name : email;
         }
+        // §4/§6/§10 — change an existing leave request's type (e.g. Unpaid Leave → Maternity
+        // Leave). Attendance/report/payroll all read the request's leave_type through the
+        // shared resolver, so updating it here re-resolves every screen without a page reload.
+        async function hrChangeLeaveType(id, newType) {
+            const r = hrLeaveRequests.find(x => x.id === id);
+            if (!r || !newType || r.leave_type === newType) return;
+            const prev = r.leave_type;
+            const { error } = await dbInstance.from('hr_leave_requests').update({ leave_type: newType }).eq('id', id);
+            if (error) {
+                if (window.showToast) showToast('error', 'Could not change leave type: ' + error.message); else alert('Could not change leave type: ' + error.message);
+                return;
+            }
+            r.leave_type = newType; // local mirror → instant re-resolve (§10, no full refresh)
+            renderHRLeaveRequests();
+            try { if (typeof renderHRMonthlyAttendance === 'function' && !document.getElementById('hr-sub-att-reports')?.classList.contains('hidden')) renderHRMonthlyAttendance(); } catch (e) {}
+            try { if (typeof renderHRDashboard === 'function' && !document.getElementById('hr-sub-dashboard')?.classList.contains('hidden')) renderHRDashboard(); } catch (e) {}
+            if (window.showToast) showToast('success', `Leave type changed: ${prev} → ${newType}.`);
+        }
+
         // Management Exception (§5/§8/§12): overrides the consecutive-days / week-off-holiday
         // adjacency policy block. Records approver + reason + timestamp (audited in decideHRLeave).
         async function hrGrantException(id) {
@@ -6133,7 +6160,7 @@ async function populateHRJobDeptOptions() {
             document.getElementById('hr-pr-basic').value = calc.earnedBasic;
             document.getElementById('hr-pr-leave-deduction').value = calc.leaveDeduction;
             document.getElementById('hr-pr-leave-breakdown').textContent =
-                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays}${(calc.slDays!=null||calc.clDays!=null) ? ` (SL ${calc.slDays||0} + CL ${calc.clDays||0})` : ''} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays}${calc.officialEventDays ? ` · Official Event: ${calc.officialEventDays}` : ''} · LOP: ${calc.lopDays} (Leave→LOP ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.doubleDeductionDays ? ` + Double ${calc.doubleDeductionDays}` : ''}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''}${calc.incidentDays ? ` + Late/Early incidents ${calc.incidentDays}` : ''})` +
+                `${calc.daysInMonth} days in month · Daily salary ₹${calc.dailySalary.toFixed(2)} · Present: ${calc.presentDays} · Paid Leave: ${calc.paidLeaveDays}${(calc.slDays!=null||calc.clDays!=null||calc.maternityLeaveDays) ? ` (SL ${calc.slDays||0} + CL ${calc.clDays||0}${calc.maternityLeaveDays ? ` + Maternity ${calc.maternityLeaveDays}` : ''})` : ''} · Weekly Off: ${calc.weeklyOffDays} · Holidays: ${calc.holidayDays}${calc.officialEventDays ? ` · Official Event: ${calc.officialEventDays}` : ''} · LOP: ${calc.lopDays} (Leave→LOP ${calc.unpaidLeaveDays} + Absent ${calc.absentDays}${calc.doubleDeductionDays ? ` + Double ${calc.doubleDeductionDays}` : ''}${calc.halfDayDays ? ` + ${calc.halfDayDays} half-day(s)` : ''}${calc.incidentDays ? ` + Late/Early incidents ${calc.incidentDays}` : ''})` +
                 `${calc.incidents && calc.incidents.count ? ` · ${calc.incidents.count} late-login/early-logout instance(s) this month` : ''}` +
                 `${calc.preJoiningDays ? ` · Before joining: ${calc.preJoiningDays} day(s) (also deducted — not yet employed, counted separately from LOP)` : ''}` +
                 ` — Full monthly salary ₹${calc.salary.toLocaleString('en-IN')}` +

@@ -108,8 +108,8 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
         // plain-text prefix on the PRIMARY role only (roles[0]), e.g. department =
         // "Senior Editor, Cinematographer, Designer". Additional roles never carry a level.
         const HR_LEVELS = ['Senior', 'Mid-Level', 'Junior'];
-        const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Unpaid Leave', 'Work From Home'];
-        const HR_UNLIMITED_LEAVE_TYPES = ['Unpaid Leave']; // these show "—" for Allocated/Remaining instead of a number
+        const HR_LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave', 'Maternity Leave', 'Unpaid Leave', 'Work From Home'];
+        const HR_UNLIMITED_LEAVE_TYPES = ['Maternity Leave', 'Unpaid Leave']; // these show "—" for Allocated/Remaining instead of a number
         // Company's standard/default leave policy — auto-assigned to every new employee so HR
         // never has to manually type a starting allocation per person. Edit these numbers to
         // change the company-wide policy; existing employees' allocations are untouched (they're
@@ -119,6 +119,7 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
             'Sick Leave': 1,
             'Annual Leave': 12,
             'Emergency Leave': 3,
+            'Maternity Leave': null, // no fixed allocation — paid, granted per approved request
             'Unpaid Leave': null, // no fixed allocation
             'Work From Home': 10
         };
@@ -1654,7 +1655,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     clLeft = ctx.clBuckets.filter(b => (b.expiry_date||'').slice(0,10) >= monthEndStr)
                         .reduce((s,b)=> s + Number(b.remaining_amount||0), 0);
                 } else { clLeft = LeavePolicy.P ? LeavePolicy.P.CL_PER_CYCLE : 6; }
-                let present=0, sl=0, cl=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
+                let present=0, sl=0, cl=0, ml=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
                 let leaveLop=0, absentLop=0, doubleExtra=0;
                 const lopReasons = []; // §6 — HR must see WHY each day became LOP
                 const addLop = (dateStr, reason, factor) => { lopReasons.push({ date: dateStr, reason, factor: factor||1 }); };
@@ -1678,6 +1679,7 @@ function hrOfficialEventFor(employee, dateStr) {
                             if (clLeft >= 1) { cl++; clLeft -= 1; }
                             else { leaveLop++; addLop(dateStr, 'Casual Leave balance exhausted'); }
                             break;
+                        case 'ML': ml++; break; // Maternity Leave — paid, no LOP deduction (§5)
                         case 'WO': wo++; break;
                         case 'H': holiday++; break;
                         case 'OE': oe++; break;
@@ -1695,7 +1697,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 const incidents = LeavePolicy.resolveIncidents(ctx, monthStr);
                 const incidentDays = incidents.deductionDays;
                 if (incidentDays > 0) addLop(monthStr, incidents.reason || 'Late-login/early-logout incidents', 1);
-                const paidLeaveDays = sl + cl;
+                const paidLeaveDays = sl + cl + ml;
                 const lopDays = leaveLop + absentLop + doubleExtra + half * 0.5 + incidentDays;
                 const payableDays = present + paidLeaveDays + oe + wo + holiday + half * 0.5;
                 const futureDays = daysInMonth - elapsedDays;
@@ -1709,7 +1711,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     preJoiningDays: preJoining, officialEventDays: oe,
                     elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
                     incidentDays, incidents, doubleDeductionDays: doubleExtra,
-                    slDays: sl, clDays: cl, lopReasons
+                    slDays: sl, clDays: cl, maternityLeaveDays: ml, lopReasons
                 };
             }
             // Fallback: engine unavailable → previous behavior (kept intact below).

@@ -31,7 +31,7 @@
   };
 
   // Canonical resolved attendance codes (§18). Keep existing valid codes.
-  var CODES = { P:'P', L:'L', WFH:'WFH', SL:'SL', CL:'CL', LOP:'LOP', WO:'WO', H:'H', OE:'OE' };
+  var CODES = { P:'P', L:'L', WFH:'WFH', SL:'SL', CL:'CL', ML:'ML', LOP:'LOP', WO:'WO', H:'H', OE:'OE' };
 
   // Leave-type normalisation — the PDF defines only Sick Leave + Casual Leave as paid
   // entitlements. Exceptional WFH is an attendance mode, not a paid balance. Everything
@@ -40,6 +40,7 @@
     t = (t || '').toLowerCase();
     if (t.indexOf('sick') >= 0) return 'SL';
     if (t.indexOf('casual') >= 0) return 'CL';
+    if (t.indexOf('maternity') >= 0) return 'ML';
     if (t.indexOf('home') >= 0 || t === 'wfh' || t.indexOf('wfh') >= 0) return 'WFH';
     return 'OTHER';
   }
@@ -231,6 +232,15 @@
       };
     }
 
+    // Maternity Leave — always PAID (§5). No fixed balance to exhaust, and exempt from the
+    // max-consecutive-days limit (a maternity leave is a long continuous block by nature).
+    // Approval workflow still applies; it simply never resolves to LOP.
+    if (kind === 'ML') {
+      return { eligible: true, treatment: 'paid', kind: 'ML', days: days, paidDays: days, lopDays: 0,
+        warnings: warnings, requiresException: false, adjacency: detectAdjacency(ctx, start, end),
+        consumeFrom: null, consecutiveDays: days };
+    }
+
     // §6 probation / §10 notice → no paid leave, absence = LOP.
     if (state.onProbation) { warnings.push('Employee is in probation (no paid leave) — this leave resolves as LOP.'); return finalize('lop'); }
     if (state.onNotice) { warnings.push('Employee is serving notice period — CL/SL not eligible, resolves as LOP.'); return finalize('lop'); }
@@ -329,7 +339,14 @@
       if (rec.status === 'holiday') return code(CODES.H, 'Holiday', { payable: true });
       if (rec.status === 'wfh') return code(CODES.WFH, 'WFH', { payable: true, worked: true });
       if (rec.status === 'half_day') return code('HD', 'Half Day', { payable: true, half: true });
-      if (rec.status === 'on_leave') return resolveLeaveDay(ctx, dateStr, req, state);
+      if (rec.status === 'on_leave') {
+        // §1 precedence: official-calendar days outrank ANY leave. A leave-sync writes an
+        // on_leave row for EVERY date in an approved range (weekends included), so without
+        // this a Weekly Off / Official Event inside a long leave wrongly became LOP/ML/PL.
+        if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
+        if (isWeeklyOff(ctx, dow) && state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
+        return resolveLeaveDay(ctx, dateStr, req, state);
+      }
       if (rec.status === 'absent') {
         // A paid Official Event created/edited after an Absent row was filed outranks it.
         if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
@@ -350,15 +367,15 @@
 
     // No attendance row — a real portal clock-in still counts as Present (sync lag safety).
     if (ctx.portalLog && ctx.portalLog(dateStr)) return code(CODES.P, 'Present (portal log)', { payable: true, worked: true });
-    // Approved leave still covers the day.
-    if (req) return resolveLeaveDay(ctx, dateStr, req, state);
-    // Paid Official Event day (no clock-in required).
+    // §1 precedence: Official Event + Weekly Off outrank approved leave, so a WO/OE inside an
+    // approved leave range stays WO/OE and never becomes LOP/ML/PL (checked BEFORE the leave).
     if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
-    // Weekly off (only when eligible).
     if (isWeeklyOff(ctx, dow)) {
       if (state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
       return code(CODES.LOP, 'Weekly Off not applicable (probation/notice)', { payable: false, lop: true });
     }
+    // Approved leave still covers the remaining working day.
+    if (req) return resolveLeaveDay(ctx, dateStr, req, state);
     // Nothing → unmarked working day = LOP.
     return code(CODES.LOP, 'Unmarked / Absent', { payable: false, lop: true });
   }
@@ -368,6 +385,9 @@
     if (state.onProbation) return code(CODES.LOP, 'Leave during probation → LOP', { payable: false, lop: true });
     if (state.onNotice) return code(CODES.LOP, 'Leave during notice → LOP', { payable: false, lop: true });
     var kind = req ? normType(req.leave_type) : 'OTHER';
+    // Maternity Leave — approved ML is always PAID / non-LOP (§5). Not subject to SL/CL
+    // balance caps, and NEVER auto-converts to LOP (checked before the final_treatment gate).
+    if (kind === 'ML') return code(CODES.ML, 'Maternity Leave', { payable: true, leave: true, maternity: true });
     var exception = req && (req.status === 'Exception Approved' || req.final_treatment === 'exception' || req.exception_by);
     // A valid APPROVED paid leave stays PAID. It becomes LOP ONLY when explicitly marked so:
     // final_treatment 'lop' (set when HR/policy resolved it as unpaid, or entitlement exhausted)
@@ -421,7 +441,7 @@
     var p = monthStr.split('-').map(Number), y = p[0], m = p[1];
     var daysInMonth = new Date(y, m, 0).getDate();
     var todayStr = ymd(ctx.now || new Date());
-    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0 };
+    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, ml: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0 };
     var lopDays = 0, breakdown = [];
     for (var d = 1; d <= daysInMonth; d++) {
       var dateStr = monthStr + '-' + String(d).padStart(2, '0');
@@ -434,6 +454,7 @@
         case CODES.WFH: buckets.wfh++; break;
         case CODES.SL: buckets.sl++; break;
         case CODES.CL: buckets.cl++; break;
+        case CODES.ML: buckets.ml++; break; // Maternity Leave — paid, no deduction (§5)
         case CODES.WO: buckets.wo++; break;
         case CODES.H: buckets.holiday++; break;
         case CODES.OE: buckets.oe++; break;
