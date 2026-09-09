@@ -1286,17 +1286,36 @@ details[open] .rawsum::before{content:'▾ '}
 
 <!-- Batch Details — read-only summary, opened from the Batches tab. Editing/students stay
      in their own dedicated places (Edit Batch modal, Students tab) per the ownership split. -->
-<div class="modal-bg" id="modalBatchDetails"><div class="modal" style="width:460px;max-height:88vh;overflow:auto">
-  <h3 id="bd_title">Batch Details</h3>
-  <div id="bd_body" class="stu-grid"></div>
-  <div id="bd_est" style="margin-top:10px"></div>
-  <div class="subhead" style="margin:14px 0 8px">Students <span id="bd_stu_count" class="tag">0</span></div>
-  <div id="bd_students" class="pick-list"></div>
-  <div class="subhead" style="margin:16px 0 8px">Class Timeline</div>
-  <div id="bd_timeline" style="max-height:220px;overflow:auto"></div>
-  <div class="subhead" style="margin:16px 0 8px">Session History</div>
-  <div id="bd_history" style="max-height:240px;overflow:auto"></div>
-  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchDetails')">Close</button><button class="btn-save" id="bd_att_btn">View Attendance</button></div>
+<div class="modal-bg" id="modalBatchDetails"><div class="modal" style="width:88vw;max-width:1500px;max-height:90vh;overflow:auto;padding:0">
+  <!-- HEADER -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.08);position:sticky;top:0;background:var(--bg2,#0d1119);z-index:2">
+    <div><h3 id="bd_title" style="margin:0">Batch Details</h3><div id="bd_subtitle" style="font-size:12px;color:var(--tx3);margin-top:3px"></div></div>
+    <button class="btn-cancel" onclick="closeModal('batchDetails')" style="flex-shrink:0">✕ Close</button>
+  </div>
+  <div style="padding:20px 22px">
+    <!-- SUMMARY CARDS -->
+    <div id="bd_cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px"></div>
+    <!-- CALENDAR -->
+    <div class="subhead" style="margin:20px 0 4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>Class Calendar</span>
+      <span style="font-size:10px;color:var(--tx3);font-weight:600;display:flex;gap:12px;flex-wrap:wrap">
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--green);vertical-align:0"></span> Completed</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--blue);vertical-align:0"></span> Scheduled</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.1);vertical-align:0"></span> No class</span>
+      </span></div>
+    <div id="bd_calendar" style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px"></div>
+    <!-- STUDENTS + HISTORY (two columns on desktop) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-top:20px">
+      <div>
+        <div class="subhead" style="margin:0 0 8px">Students <span id="bd_stu_count" class="tag">0</span></div>
+        <div id="bd_students" class="pick-list" style="max-height:360px;overflow:auto"></div>
+      </div>
+      <div>
+        <div class="subhead" style="margin:0 0 8px">Session History</div>
+        <div id="bd_history" style="max-height:360px;overflow:auto"></div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-actions" style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.08);position:sticky;bottom:0;background:var(--bg2,#0d1119)"><button class="btn-cancel" onclick="closeModal('batchDetails')">Close</button><button class="btn-save" id="bd_att_btn">Mark Attendance</button></div>
 </div></div>
 
 <!-- Manage Students — Academic Head only, active batches only (spec Issue 3). Focused on
@@ -6299,29 +6318,8 @@ async function openBatchDetails(id){
       if (occ.length){ const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const d=new Date(occ[0].date+'T00:00:00'); _bdNext = DOW[occ[0].dow]+', '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+(b.time_slot?' · '+b.time_slot:''); }
     }
   } catch(e){}
-  document.getElementById('bd_title').textContent = b.name;
-  document.getElementById('bd_body').innerHTML =
-    '<span class="k">Course</span><span class="v">'+esc(b.courses?.name||courseLabel(b.batch_type)||'—')+'</span>'
-    +'<span class="k">Type</span><span class="v">'+((b.capacity===1)?'1:1 / Individual':'Group')+'</span>'
-    +'<span class="k">Trainer</span><span class="v">'+esc(b.trainers?.name||'—')+'</span>'
-    +'<span class="k">Schedule</span><span class="v">'+esc(b.day_pattern||'—')+'</span>'
-    +'<span class="k">Time</span><span class="v">'+esc(b.time_slot||'—')+'</span>'
-    +'<span class="k">Class Duration</span><span class="v">'+(b.class_duration_minutes?b.class_duration_minutes+' min':'—')+'</span>'
-    +'<span class="k">Students</span><span class="v">'+rows.length+(b.capacity?' / '+b.capacity:'')+'</span>'
-    +'<span class="k">Status</span><span class="v">'+esc(b.status||'active')+'</span>'
-    +'<span class="k">Progress</span><span class="v">'+(_bdTotal?(_bdDone+' / '+_bdTotal+' · '+_bdPct+'%'):'—')+'</span>'
-    +'<span class="k">Remaining</span><span class="v">'+(_bdRemain!=null?(_bdRemain+' session'+(_bdRemain===1?'':'s')):'—')+'</span>'
-    +'<span class="k">Next Class</span><span class="v">'+esc(_bdNext)+'</span>'
-    +'<span class="k">Start Date</span><span class="v">'+(b.start_date||'—')+'</span>'
-    +'<span class="k">End Date</span><span class="v">'+(b.expected_completion_date||'—')+'</span>';
-  document.getElementById('bd_stu_count').textContent = rows.length;
-  document.getElementById('bd_students').innerHTML = rows.length
-    ? rows.map(s=>{const lc=_acadStudentLifecycleStatus(s);return '<div class="pick-row"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span><span class="badge '+(lc==='In Progress'?'b-active':(lc==='Dropped'?'b-inactive':''))+'">'+esc(lc)+'</span></div>';}).join('')
-    : '<div class="mhint" style="padding:8px">No students assigned to this batch yet — add them from the Students tab.</div>';
-  // ── Estimated completion + month timeline + session history (all from REAL data) ──
   const _DOWL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const _fmtD = iso => { const d=new Date(iso+'T00:00:00'); return isNaN(d)?iso:(_DOWL[d.getDay()]+', '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})); };
-  const _monthKey = iso => { const d=new Date(iso+'T00:00:00'); return isNaN(d)?'':d.toLocaleDateString('en-IN',{month:'long',year:'numeric'}); };
   // future occurrences (today..+1yr), capped to remaining sessions
   let _future = [];
   try {
@@ -6331,27 +6329,82 @@ async function openBatchDetails(id){
       _future = generateBatchOccurrences(b,_t,_es).filter(o=>o.date>=_t).sort((a,c)=>a.date.localeCompare(c.date)).slice(0,_bdRemain);
     }
   } catch(e){}
-  // estimated completion = date of the last needed future occurrence
-  let _est = 'Completion date not available';
-  if (_bdRemain===0 && _bdTotal) _est = 'Completed';
-  else if (_future.length && _future.length>=_bdRemain) _est = _fmtD(_future[_future.length-1].date);
-  document.getElementById('bd_est').innerHTML = '<span class="k">Est. Completion</span><span class="v">'+esc(_est)+'</span>';
-  // completed session dates (distinct) from attendance
   const _doneDates = [...new Set(_attRows.map(a=>a.session_date).filter(Boolean))].sort();
-  // month timeline: completed (past) + scheduled (future), grouped by month
-  const _tl = _doneDates.map(d=>({date:d,st:'Completed'})).concat(_future.map(o=>({date:o.date,st:'Scheduled'})));
-  _tl.sort((a,c)=>a.date.localeCompare(c.date));
-  const _byMonth = {};
-  _tl.forEach(x=>{ const k=_monthKey(x.date); (_byMonth[k]=_byMonth[k]||[]).push(x); });
-  const _stColor = s => s==='Completed'?'var(--green)':(s==='Cancelled'?'#f87171':'var(--blue)');
-  document.getElementById('bd_timeline').innerHTML = Object.keys(_byMonth).length
-    ? Object.keys(_byMonth).map(mk=>{
-        const done=_byMonth[mk].filter(x=>x.st==='Completed').length, sch=_byMonth[mk].filter(x=>x.st==='Scheduled').length;
-        return '<div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--tx3);margin:8px 0 4px">'+esc(mk.toUpperCase())+' <span style="color:var(--tx4);font-weight:600">· '+done+' completed · '+sch+' scheduled</span></div>'
-          + _byMonth[mk].map(x=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--tx2)"><span>'+esc(_fmtD(x.date))+'</span><span style="color:'+_stColor(x.st)+';font-weight:700">'+x.st+'</span></div>').join('');
-      }).join('')
+  const _futDates = _future.map(o=>o.date);
+  // estimated completion + approx remaining duration
+  let _est = 'Completion date not available', _estDur = '';
+  if (_bdRemain===0 && _bdTotal) _est = 'Completed';
+  else if (_future.length && _future.length>=_bdRemain) {
+    const _lastD = _future[_future.length-1].date; _est = _fmtD(_lastD);
+    const _days = Math.round((new Date(_lastD+'T00:00:00') - new Date()) / 86400000);
+    if (_days>0) _estDur = '~'+(_days>=14?(Math.round(_days/7)+' weeks'):(_days+' days'))+' left';
+  }
+  // ── HEADER + SUMMARY CARDS ──
+  const _statusBadge = (b.status==='active') ? '<span class="badge b-active">Active</span>' : '<span class="badge">'+esc(b.status||'—')+'</span>';
+  document.getElementById('bd_title').textContent = b.name;
+  document.getElementById('bd_subtitle').innerHTML = esc(b.courses?.name||courseLabel(b.batch_type)||'—')+' &nbsp;·&nbsp; '+_statusBadge;
+  const _cardKV = (k,v) => '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0"><span style="color:var(--tx3)">'+k+'</span><span style="color:var(--tx);font-weight:600;text-align:right">'+v+'</span></div>';
+  const _cardWrap = (title,inner) => '<div class="card" style="padding:14px 15px"><div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--tx3);margin-bottom:8px">'+title+'</div>'+inner+'</div>';
+  document.getElementById('bd_cards').innerHTML =
+    _cardWrap('BATCH OVERVIEW',
+      _cardKV('Course', esc(b.courses?.name||courseLabel(b.batch_type)||'—'))
+      +_cardKV('Type', (b.capacity===1)?'1:1 / Individual':'Group')
+      +_cardKV('Trainer', esc(b.trainers?.name||'—'))
+      +_cardKV('Class Duration', b.class_duration_minutes?(b.class_duration_minutes+' min'):'—')
+      +_cardKV('Students', rows.length+(b.capacity?(' / '+b.capacity):''))
+      +_cardKV('Status', esc(b.status||'active')))
+    + _cardWrap('SCHEDULE',
+      _cardKV('Class Days', esc(b.day_pattern||'—'))
+      +_cardKV('Class Time', esc(b.time_slot||'—'))
+      +_cardKV('Next Class', esc(_bdNext))
+      +_cardKV('Start Date', esc(b.start_date||'—'))
+      +_cardKV('End Date', esc(b.expected_completion_date||'—')))
+    + _cardWrap('PROGRESS',
+      _cardKV('Completed', _bdTotal?(_bdDone+' / '+_bdTotal):'—')
+      +_cardKV('Remaining', _bdRemain!=null?(_bdRemain+' session'+(_bdRemain===1?'':'s')):'—')
+      +'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--tx3)">Progress</span><span style="color:var(--brand-1);font-weight:800">'+_bdPct+'%</span></div><div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden"><div style="height:100%;width:'+_bdPct+'%;background:linear-gradient(90deg,var(--brand-2,#ff6b06),var(--brand-1,#f9182f));border-radius:99px"></div></div></div>')
+    + _cardWrap('ESTIMATED COMPLETION',
+      '<div style="font-size:18px;font-weight:800;color:var(--tx);margin-bottom:4px">'+esc(_est)+'</div>'
+      +_cardKV('Remaining', _bdRemain!=null?(_bdRemain+' session'+(_bdRemain===1?'':'s')):'—')
+      +(_estDur?_cardKV('Approx.', _estDur):''));
+  // ── CALENDAR (real month grids from completed + scheduled dates) ──
+  const _statByDate = {};
+  _doneDates.forEach(d=>{ _statByDate[d]='done'; });
+  _futDates.forEach(d=>{ if(!_statByDate[d]) _statByDate[d]='sched'; });
+  // months to show = distinct YYYY-MM across start_date + done + future
+  const _mset = new Set();
+  const _addM = iso => { if(!iso) return; const p=iso.slice(0,7); if(/^\d{4}-\d{2}$/.test(p)) _mset.add(p); };
+  if (b.start_date) _addM(b.start_date);
+  _doneDates.forEach(_addM); _futDates.forEach(_addM);
+  const _months = [..._mset].sort();
+  const _monthGrid = ym => {
+    const [Y,M] = ym.split('-').map(Number);
+    const first = new Date(Y, M-1, 1), lead = first.getDay(), days = new Date(Y, M, 0).getDate();
+    const label = first.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    let cells = '';
+    for (let i=0;i<lead;i++) cells += '<div></div>';
+    for (let d=1; d<=days; d++) {
+      const iso = Y+'-'+String(M).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const st = _statByDate[iso];
+      const bg = st==='done'?'var(--green)':(st==='sched'?'var(--blue)':'rgba(255,255,255,.05)');
+      const col = st?'#0a0d14':'var(--tx3)';
+      cells += '<div title="'+iso+(st?(' · '+(st==='done'?'Completed':'Scheduled')):'')+'" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:6px;background:'+bg+';color:'+col+';font-weight:'+(st?'800':'500')+'">'+d+'</div>';
+    }
+    const doneN = Object.keys(_statByDate).filter(x=>x.slice(0,7)===ym && _statByDate[x]==='done').length;
+    const schN = Object.keys(_statByDate).filter(x=>x.slice(0,7)===ym && _statByDate[x]==='sched').length;
+    return '<div style="flex:0 0 auto;width:250px"><div style="font-size:12px;font-weight:800;color:var(--tx);margin-bottom:6px">'+esc(label)+' <span style="font-size:10px;color:var(--tx3);font-weight:600">· '+doneN+'✓ '+schN+'●</span></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:9px;color:var(--tx3);text-align:center;margin-bottom:3px">'+['S','M','T','W','T','F','S'].map(x=>'<div>'+x+'</div>').join('')+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">'+cells+'</div></div>';
+  };
+  document.getElementById('bd_calendar').innerHTML = _months.length
+    ? _months.map(_monthGrid).join('')
     : '<div class="mhint" style="padding:8px">No scheduled or completed sessions yet.</div>';
-  // session history from attendance grouped by session_num
+  // ── STUDENTS ──
+  document.getElementById('bd_stu_count').textContent = rows.length;
+  document.getElementById('bd_students').innerHTML = rows.length
+    ? rows.map(s=>{const lc=_acadStudentLifecycleStatus(s);return '<div class="pick-row"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span><span class="badge '+(lc==='In Progress'?'b-active':(lc==='Dropped'?'b-inactive':''))+'">'+esc(lc)+'</span></div>';}).join('')
+    : '<div class="mhint" style="padding:8px">No students assigned to this batch yet — add them from the Students tab.</div>';
+  // ── SESSION HISTORY (from attendance grouped by session_num) ──
   const _sess = {};
   _attRows.forEach(a=>{ const k=a.session_num; if(!_sess[k]) _sess[k]={num:k,date:a.session_date,present:0,absent:0,markedBy:a.marked_by,markedAt:a.created_at};
     if((a.status||'').toLowerCase()==='present') _sess[k].present++; else if((a.status||'').toLowerCase()==='absent') _sess[k].absent++;
@@ -6359,8 +6412,10 @@ async function openBatchDetails(id){
   const _hist = Object.values(_sess).sort((a,c)=>(c.num||0)-(a.num||0));
   document.getElementById('bd_history').innerHTML = _hist.length
     ? _hist.map(s=>{ var mt=''; if(s.markedAt){ var d=new Date(s.markedAt); if(!isNaN(d)) mt=d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
-        return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:8px 10px;margin-bottom:6px">'
-          +'<div style="display:flex;justify-content:space-between;font-size:12px"><b style="color:var(--tx)">Session '+esc(s.num)+'</b><span style="color:var(--tx3)">'+esc(s.date?_fmtD(s.date):'—')+'</span></div>'
+        return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:rgba(16,185,129,.04)">'
+          +'<div style="display:flex;justify-content:space-between;font-size:12px"><b style="color:var(--tx)">Session '+esc(s.num)+'</b><span class="badge b-active" style="font-size:9px">Completed</span></div>'
+          +'<div style="font-size:11px;color:var(--tx2);margin-top:3px">'+esc(s.date?_fmtD(s.date):'—')+(b.time_slot?(' · '+esc(b.time_slot)):'')+'</div>'
+          +'<div style="font-size:11px;color:var(--tx3);margin-top:1px">Trainer: '+esc(b.trainers?.name||'—')+'</div>'
           +'<div style="font-size:11px;color:var(--tx3);margin-top:2px"><span style="color:var(--green)">'+s.present+' Present</span> · <span style="color:#f87171">'+s.absent+' Absent</span>'+(mt?(' · marked '+esc(mt)+(s.markedBy?(' by '+esc(s.markedBy)):'')):'')+'</div></div>';
       }).join('')
     : '<div class="mhint" style="padding:8px">No sessions marked yet.</div>';
