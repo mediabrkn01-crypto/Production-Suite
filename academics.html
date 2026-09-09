@@ -3903,11 +3903,9 @@ async function loadAcadDashboard(){
     // though the class genuinely runs today. Own-teaching scope for a Trainer; all for a Head/
     // delegated Head/Management (isHead already resolves delegation + global-manager bypass).
     try {
-      // Same scope as Today's Classes: own teaching for a Trainer AND for a delegated Head
-      // (dashboard card = "my classes today"); a real Head/Management sees all.
-      var _schedHead = (typeof _acadIsRealHeadForSchedule === 'function') ? _acadIsRealHeadForSchedule() : isHead;
-      let bq = sb.from('batches').select('*').eq('status','active');
-      if (!_schedHead) bq = bq.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
+      // Personal card = "my classes today" for EVERY role (same rule as the Classes tab);
+      // company-wide schedule lives in the Schedule tab. Scoped by trainer_id at the query.
+      let bq = sb.from('batches').select('*').eq('status','active').eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
       const { data: _tb } = await bq;
       let _trows = (_tb || []).filter(b => !_isBatchDeleted(b));
       // drop batches already at their real session total (same rule as Today's Classes)
@@ -3922,7 +3920,7 @@ async function loadAcadDashboard(){
       _occ = _occ.filter(o => o.date === today).sort((a,b)=>a.startTime-b.startTime);
       document.getElementById('dashToday').innerHTML = _occ.length
         ? _occ.slice(0, 8).map(o => `<div class="dash-row" style="cursor:pointer" onclick="openBatchDetails('${o.batch.id}')"><span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue);margin-right:8px"></span>${esc(o.batch.name)}${o.batch.programme?' · '+esc(o.batch.programme):''}</span><span style="color:var(--tx3)">${esc(o.batch.time_slot||'')}</span></div>`).join('')
-        : '<div class="empty">No classes scheduled today.</div>';
+        : '<div class="empty">No classes scheduled for you today.</div>';
     } catch (e) {
       // Fall back to the batch-list view if `sessions` isn't reachable for some reason —
       // still real data (active batches), just less specific than per-class scheduling.
@@ -5290,18 +5288,17 @@ function reassignFromOccupiedSlot(){
 // ============================================================================
 async function loadClassesTab(){
   try{
-    // Scoping fix — see _acadIsRealHeadForSchedule's own comment: this must stay the
-    // Trainer's own teaching list even during an active Head delegation, unlike most other
-    // isHead checks in this file (which correctly DO want delegation-aware access).
-    const isHead = _acadIsRealHeadForSchedule();
+    // PERSONAL VIEW: the Classes tab is always "my own teaching", for EVERY role — a normal
+    // Trainer, an Academic Head, a delegated Head and a Manager/Founder all see only the classes
+    // where THEY are the assigned trainer here. Company-wide visibility stays in Schedule/Batches/
+    // Coaches/Reports/Dashboard (unchanged). Filtered at the query by trainer_id (not name), so
+    // other trainers' rows never leave the database.
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const soon = new Date(now); soon.setDate(soon.getDate()+7);
     const soonStr = `${soon.getFullYear()}-${String(soon.getMonth()+1).padStart(2,'0')}-${String(soon.getDate()).padStart(2,'0')}`;
-    // Only active batches — same status='active' scoping My Calendar already uses, so a
-    // finished/closed batch never generates a "class" that no longer actually happens.
-    let query = sb.from('batches').select('*').eq('status','active');
-    if (!isHead) query = query.eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
+    // Only active batches assigned to the logged-in trainer.
+    let query = sb.from('batches').select('*').eq('status','active').eq('trainer_id', window._myTrainerId || '00000000-0000-0000-0000-000000000000');
     const { data: batches } = await query;
     let rows = (batches || []).filter(b => !_isBatchDeleted(b));
     // SESSION COMPLETION RULE: a batch that's reached its real session total (baseline +
@@ -5328,8 +5325,8 @@ async function loadClassesTab(){
     const todaysEl = document.getElementById('classesToday');
     const upcomingEl = document.getElementById('classesUpcoming');
     if (!rows.length) {
-      if (todaysEl) todaysEl.innerHTML = '<div class="empty">No classes scheduled today.</div>';
-      if (upcomingEl) upcomingEl.innerHTML = '<div class="empty">Nothing scheduled in the next 7 days.</div>';
+      if (todaysEl) todaysEl.innerHTML = '<div class="empty">No classes scheduled for you today.</div>';
+      if (upcomingEl) upcomingEl.innerHTML = '<div class="empty">No upcoming classes assigned to you.</div>';
       return;
     }
     let allOccurrences = [];
@@ -5346,8 +5343,8 @@ async function loadClassesTab(){
         <span style="color:var(--tx3)">${esc(b.time_slot||'')}</span>
       </div>`;
     };
-    if (todaysEl) todaysEl.innerHTML = todays.length ? todays.map(card).join('') : '<div class="empty">No classes scheduled today.</div>';
-    if (upcomingEl) upcomingEl.innerHTML = upcoming.length ? upcoming.map(card).join('') : '<div class="empty">Nothing scheduled in the next 7 days.</div>';
+    if (todaysEl) todaysEl.innerHTML = todays.length ? todays.map(card).join('') : '<div class="empty">No classes scheduled for you today.</div>';
+    if (upcomingEl) upcomingEl.innerHTML = upcoming.length ? upcoming.map(card).join('') : '<div class="empty">No upcoming classes assigned to you.</div>';
   }catch(e){ console.warn('Classes tab failed to load:', e.message); }
 }
 
