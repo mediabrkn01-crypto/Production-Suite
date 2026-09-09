@@ -2262,9 +2262,7 @@ function hrOfficialEventFor(employee, dateStr) {
             if (r.status === 'cancelled') return 'Cancelled';
             if (r.final_treatment === 'exception') return 'Exception Approved';
             if (r.status === 'approved') return (r.final_treatment === 'lop' || r.final_treatment === 'lop_double') ? 'Approved (LOP)' : 'Approved';
-            if (r.manager_status !== 'approved') return 'Pending Manager Approval';
-            if (r.hr_status !== 'approved') return 'Pending HR Approval';
-            return 'Pending';
+            return 'Pending HR Review';   // HR-only approval — no manager stage
         }
 
 // decideHRLeave — now STAGE-AWARE (Leave Policy v2 §6). The same Approve/Reject buttons on
@@ -2298,19 +2296,20 @@ function hrOfficialEventFor(employee, dateStr) {
                 return;
             }
 
-            const stage = hrActorStageFor(req) || 'hr';
+            // HR-ONLY approval (manager stage removed). HR's decision is FINAL and immediate:
+            // Approve → status 'approved' (manager_status forced 'approved' so nothing waits on a
+            // manager and every downstream mgrOK check still passes); Reject → 'rejected'. No
+            // 'Pending Manager Approval' stage is ever entered.
             const upd = {};
             if (decision === 'rejected') {
                 upd.status = 'rejected';
-                upd[stage + '_status'] = 'rejected';
-                upd[stage + '_by'] = actorName; upd[stage + '_at'] = nowIso; upd.decided_at = nowIso;
+                upd.hr_status = 'rejected';
+                upd.hr_by = actorName; upd.hr_at = nowIso; upd.decided_at = nowIso;
             } else {
-                upd[stage + '_status'] = 'approved';
-                upd[stage + '_by'] = actorName; upd[stage + '_at'] = nowIso;
-                const mgrOK = (stage === 'manager' ? true : req.manager_status === 'approved');
-                const hrOK = (stage === 'hr' ? true : req.hr_status === 'approved');
-                if (mgrOK && hrOK) { upd.status = 'approved'; upd.decided_at = nowIso; }
-                else { upd.status = 'pending'; }
+                upd.status = 'approved';
+                upd.hr_status = 'approved';
+                upd.manager_status = 'approved';   // auto-satisfied — HR is the sole approver
+                upd.hr_by = actorName; upd.hr_at = nowIso; upd.decided_at = nowIso;
             }
             const { error } = await dbInstance.from('hr_leave_requests').update(upd).eq('id', id);
             if (error) {
@@ -2325,8 +2324,7 @@ function hrOfficialEventFor(employee, dateStr) {
             await hrAuditLeave(req, actorEmail, actorName, decision === 'rejected' ? 'leave_reject' : 'leave_approve', prevLabel, hrLeaveStatusLabel(req), opts.reason);
             await hrReloadAfterLeave();
             if (typeof showToast === 'function') showToast('success',
-                decision === 'rejected' ? 'Leave rejected (' + stage + ' stage).'
-                : req.status === 'approved' ? 'Leave fully approved.' : 'Approved at ' + stage + ' stage — ' + hrLeaveStatusLabel(req) + '.');
+                decision === 'rejected' ? 'Leave rejected.' : 'Leave approved.');
         }
         async function hrReloadAfterLeave() {
             if (typeof loadHRData === 'function') await loadHRData();
@@ -2541,7 +2539,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 const rec = {
                     employee_id: me.id, leave_type, start_date, end_date, days, reason,
                     status: 'pending', requested_at: new Date().toISOString(),
-                    manager_status: auth ? 'pending' : 'approved', // no resolvable manager → HR-only
+                    manager_status: 'approved', // HR-only approval — manager stage removed (auto-satisfied)
                     hr_status: 'pending',
                     reporting_authority_email: auth ? auth.email : null,
                     emergency, proof_url: proof_url || null,
@@ -2549,7 +2547,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 };
                 if (isHalf) { const ht = document.getElementById('my-leave-half-type'); rec.half_day_type = ht ? ht.value : 'morning'; }
                 await dbInstance.from('hr_leave_requests').insert([rec]);
-                try { await dbInstance.from('hr_audit_log').insert([{ employee_id: me.id, actor_email: (activeEmail||null), actor_name: (activeUser||me.full_name), action: 'leave_request', entity: 'leave_request', new_status: 'Pending Manager Approval', reason, meta: { leave_type, start_date, end_date, days, emergency } }]); } catch(e){}
+                try { await dbInstance.from('hr_audit_log').insert([{ employee_id: me.id, actor_email: (activeEmail||null), actor_name: (activeUser||me.full_name), action: 'leave_request', entity: 'leave_request', new_status: 'Pending HR Review', reason, meta: { leave_type, start_date, end_date, days, emergency } }]); } catch(e){}
                 document.getElementById('my-leave-start').value = '';
                 document.getElementById('my-leave-end').value = '';
                 document.getElementById('my-leave-reason').value = '';
