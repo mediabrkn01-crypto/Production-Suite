@@ -1190,7 +1190,13 @@ details[open] .rawsum::before{content:'▾ '}
            here is stored separately from `batches` itself. -->
       <div class="acad-tab" id="tab-acad-schedule">
         <div class="section">
-          <h2><span id="tab-acad-schedule-label">Weekly Timetable</span></h2>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <h2><span id="tab-acad-schedule-label">Weekly Timetable</span></h2>
+            <div id="schedTrainerFilterWrap" style="display:none;align-items:center;gap:8px">
+              <span style="font-size:11px;color:var(--tx3);font-weight:700">Trainer</span>
+              <select id="schedTrainerFilter" onchange="loadScheduleTab()" class="acad-select" style="min-width:170px"><option value="">All Trainers</option></select>
+            </div>
+          </div>
           <div id="scheduleGrid" class="loading acad-calendar-desktop">Loading…</div>
           <div id="scheduleGridMobile" class="loading acad-calendar-mobile" style="display:none">Loading…</div>
         </div>
@@ -1283,8 +1289,13 @@ details[open] .rawsum::before{content:'▾ '}
 <div class="modal-bg" id="modalBatchDetails"><div class="modal" style="width:460px;max-height:88vh;overflow:auto">
   <h3 id="bd_title">Batch Details</h3>
   <div id="bd_body" class="stu-grid"></div>
+  <div id="bd_est" style="margin-top:10px"></div>
   <div class="subhead" style="margin:14px 0 8px">Students <span id="bd_stu_count" class="tag">0</span></div>
   <div id="bd_students" class="pick-list"></div>
+  <div class="subhead" style="margin:16px 0 8px">Class Timeline</div>
+  <div id="bd_timeline" style="max-height:220px;overflow:auto"></div>
+  <div class="subhead" style="margin:16px 0 8px">Session History</div>
+  <div id="bd_history" style="max-height:240px;overflow:auto"></div>
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchDetails')">Close</button><button class="btn-save" id="bd_att_btn">View Attendance</button></div>
 </div></div>
 
@@ -5634,6 +5645,19 @@ async function loadScheduleTab(){
         return !(total && done >= total);
       });
     }
+    // Trainer filter — Head / delegated Head / Management only. Populate from the batches shown
+    // (dynamic, never hardcoded), preserve the current selection, then filter locally. Trainer
+    // view has no filter (they only ever see their own).
+    const _schedWrap = document.getElementById('schedTrainerFilterWrap');
+    const _schedSel = document.getElementById('schedTrainerFilter');
+    if (isHead && _schedWrap && _schedSel) {
+      _schedWrap.style.display = 'flex';
+      const _tnames = [...new Set(rows.map(b=>b.trainer_name).filter(Boolean))].sort();
+      const _prev = _schedSel.value;
+      _schedSel.innerHTML = '<option value="">All Trainers</option>' + _tnames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      _schedSel.value = _prev;
+      if (_schedSel.value) rows = rows.filter(b => (b.trainer_name||'') === _schedSel.value);
+    } else if (_schedWrap) { _schedWrap.style.display = 'none'; }
     const desktopEl = document.getElementById('scheduleGrid');
     const mobileEl = document.getElementById('scheduleGridMobile');
     if (!rows.length) {
@@ -6256,10 +6280,11 @@ async function openBatchDetails(id){
   const { data: students } = await sb.from('students').select('id,name,uin,status,batch_id,batch_name').eq('batch_id', id).order('name');
   const rows = students||[];
   // Progress from REAL data: baseline + distinct marked attendance sessions vs sessions_total.
-  let _bdDone = 0, _bdTotal = b.sessions_total || 0;
+  let _bdDone = 0, _bdTotal = b.sessions_total || 0, _attRows = [];
   try {
-    const { data: att } = await sb.from('attendance').select('session_num').eq('batch_name', b.name);
-    const marked = new Set((att||[]).map(a=>a.session_num)).size;
+    const { data: att } = await sb.from('attendance').select('session_num,session_date,status,marked_by,created_at').eq('batch_name', b.name);
+    _attRows = att || [];
+    const marked = new Set(_attRows.map(a=>a.session_num)).size;
     _bdDone = Math.min(_bdTotal||Infinity, (b.baseline_sessions||0) + marked);
   } catch(e){}
   const _bdRemain = _bdTotal ? Math.max(0, _bdTotal - _bdDone) : null;
@@ -6293,6 +6318,52 @@ async function openBatchDetails(id){
   document.getElementById('bd_students').innerHTML = rows.length
     ? rows.map(s=>{const lc=_acadStudentLifecycleStatus(s);return '<div class="pick-row"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span><span class="badge '+(lc==='In Progress'?'b-active':(lc==='Dropped'?'b-inactive':''))+'">'+esc(lc)+'</span></div>';}).join('')
     : '<div class="mhint" style="padding:8px">No students assigned to this batch yet — add them from the Students tab.</div>';
+  // ── Estimated completion + month timeline + session history (all from REAL data) ──
+  const _DOWL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const _fmtD = iso => { const d=new Date(iso+'T00:00:00'); return isNaN(d)?iso:(_DOWL[d.getDay()]+', '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})); };
+  const _monthKey = iso => { const d=new Date(iso+'T00:00:00'); return isNaN(d)?'':d.toLocaleDateString('en-IN',{month:'long',year:'numeric'}); };
+  // future occurrences (today..+1yr), capped to remaining sessions
+  let _future = [];
+  try {
+    if (b.status==='active' && _bdRemain>0 && typeof generateBatchOccurrences==='function') {
+      const _n=new Date(); const _t=`${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
+      const _e=new Date(_n); _e.setDate(_e.getDate()+365); const _es=`${_e.getFullYear()}-${String(_e.getMonth()+1).padStart(2,'0')}-${String(_e.getDate()).padStart(2,'0')}`;
+      _future = generateBatchOccurrences(b,_t,_es).filter(o=>o.date>=_t).sort((a,c)=>a.date.localeCompare(c.date)).slice(0,_bdRemain);
+    }
+  } catch(e){}
+  // estimated completion = date of the last needed future occurrence
+  let _est = 'Completion date not available';
+  if (_bdRemain===0 && _bdTotal) _est = 'Completed';
+  else if (_future.length && _future.length>=_bdRemain) _est = _fmtD(_future[_future.length-1].date);
+  document.getElementById('bd_est').innerHTML = '<span class="k">Est. Completion</span><span class="v">'+esc(_est)+'</span>';
+  // completed session dates (distinct) from attendance
+  const _doneDates = [...new Set(_attRows.map(a=>a.session_date).filter(Boolean))].sort();
+  // month timeline: completed (past) + scheduled (future), grouped by month
+  const _tl = _doneDates.map(d=>({date:d,st:'Completed'})).concat(_future.map(o=>({date:o.date,st:'Scheduled'})));
+  _tl.sort((a,c)=>a.date.localeCompare(c.date));
+  const _byMonth = {};
+  _tl.forEach(x=>{ const k=_monthKey(x.date); (_byMonth[k]=_byMonth[k]||[]).push(x); });
+  const _stColor = s => s==='Completed'?'var(--green)':(s==='Cancelled'?'#f87171':'var(--blue)');
+  document.getElementById('bd_timeline').innerHTML = Object.keys(_byMonth).length
+    ? Object.keys(_byMonth).map(mk=>{
+        const done=_byMonth[mk].filter(x=>x.st==='Completed').length, sch=_byMonth[mk].filter(x=>x.st==='Scheduled').length;
+        return '<div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--tx3);margin:8px 0 4px">'+esc(mk.toUpperCase())+' <span style="color:var(--tx4);font-weight:600">· '+done+' completed · '+sch+' scheduled</span></div>'
+          + _byMonth[mk].map(x=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--tx2)"><span>'+esc(_fmtD(x.date))+'</span><span style="color:'+_stColor(x.st)+';font-weight:700">'+x.st+'</span></div>').join('');
+      }).join('')
+    : '<div class="mhint" style="padding:8px">No scheduled or completed sessions yet.</div>';
+  // session history from attendance grouped by session_num
+  const _sess = {};
+  _attRows.forEach(a=>{ const k=a.session_num; if(!_sess[k]) _sess[k]={num:k,date:a.session_date,present:0,absent:0,markedBy:a.marked_by,markedAt:a.created_at};
+    if((a.status||'').toLowerCase()==='present') _sess[k].present++; else if((a.status||'').toLowerCase()==='absent') _sess[k].absent++;
+    if(a.created_at && (!_sess[k].markedAt || a.created_at>_sess[k].markedAt)){ _sess[k].markedAt=a.created_at; _sess[k].markedBy=a.marked_by; } });
+  const _hist = Object.values(_sess).sort((a,c)=>(c.num||0)-(a.num||0));
+  document.getElementById('bd_history').innerHTML = _hist.length
+    ? _hist.map(s=>{ var mt=''; if(s.markedAt){ var d=new Date(s.markedAt); if(!isNaN(d)) mt=d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+        return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+          +'<div style="display:flex;justify-content:space-between;font-size:12px"><b style="color:var(--tx)">Session '+esc(s.num)+'</b><span style="color:var(--tx3)">'+esc(s.date?_fmtD(s.date):'—')+'</span></div>'
+          +'<div style="font-size:11px;color:var(--tx3);margin-top:2px"><span style="color:var(--green)">'+s.present+' Present</span> · <span style="color:#f87171">'+s.absent+' Absent</span>'+(mt?(' · marked '+esc(mt)+(s.markedBy?(' by '+esc(s.markedBy)):'')):'')+'</div></div>';
+      }).join('')
+    : '<div class="mhint" style="padding:8px">No sessions marked yet.</div>';
   const attBtn = document.getElementById('bd_att_btn');
   const liveIdx = (window._liveBatches||[]).findIndex(lb => lb.name === b.name);
   if (liveIdx >= 0) {
