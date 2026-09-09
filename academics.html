@@ -1896,11 +1896,22 @@ async function loadLive(){
   const {data:studs}=await studQuery;
   let rows=(studs||[]).filter(s=>s.name);
   const today=new Date().toISOString().slice(0,10);
+  // GROUP vs 1:1 is decided by the batch's real capacity (1 = individual/1:1, e.g. "Elite
+  // Course"; \u22652 = group), NOT by a programme-name regex \u2014 "Talk Club Elite" is a GROUP course
+  // (capacity 6) whose name merely contains "elite", which the old /elite/i test wrongly split
+  // into one card per student. Also cache each batch's schedule (day_pattern + time_slot) for
+  // the card. Lightweight name/capacity/schedule fetch, before grouping.
+  const _capByName={}; window._acadSchedByName={};
+  try{ const {data:_bc}=await sb.from('batches').select('name,capacity,day_pattern,time_slot');
+    (_bc||[]).forEach(x=>{ _capByName[x.name]=x.capacity; window._acadSchedByName[x.name]={days:x.day_pattern||'',time:x.time_slot||''}; }); }catch(e){}
   const map={};
   rows.forEach(s=>{
-    const elite=/elite/i.test(s.programme||'');
-    const key=elite?((s.batch_name||'Elite')+' \u00b7 '+s.name):(s.batch_name||'Unassigned');
-    if(!map[key])map[key]={name:key,raw:s.batch_name||'',trainer:s.trainer_name||'\u2014',prog:s.programme||'',elite:elite,end:null,students:[]};
+    // 1:1 only when the real batch capacity is exactly 1 (fallback: the actual "Elite Course"
+    // programme when no batches row is cached). Group courses always render ONE card per batch.
+    const cap=_capByName[s.batch_name];
+    const oneToOne=(cap===1)||(cap==null && /^elite course/i.test(s.programme||''));
+    const key=oneToOne?((s.batch_name||'Elite')+' \u00b7 '+s.name):(s.batch_name||'Unassigned');
+    if(!map[key])map[key]={name:key,raw:s.batch_name||'',trainer:s.trainer_name||'\u2014',prog:s.programme||'',elite:oneToOne,end:null,students:[]};
     // DROPPED WORKFLOW: a Dropped student keeps their batch_id/batch_name (preserves real
     // enrollment/attendance history \u2014 never nulled out), but must not count toward this batch's
     // active roster here \u2014 this is exactly the array Mark Attendance's checklist (openAtt) and
@@ -2290,9 +2301,10 @@ function card(b,i,isPrevious){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:15px;font-weight:700;color:var(--tx)">${nameHtml}</span>
           <span class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.28)">${esc(b.prog||'\u2014')}</span>
-          ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : ''}
+          ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : '<span class="badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28)">Group</span>'}
         </div>
         <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
+        ${(function(){ var sch=(window._acadSchedByName&&window._acadSchedByName[b.raw])||{}; return (sch.days||sch.time)?`<div style="font-size:11px;color:var(--tx3);margin-top:3px"><i data-lucide="calendar-clock" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> ${esc(sch.days||'Schedule')}${sch.time?(' \u00b7 '+esc(sch.time)):''}</div>`:''; })()}
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         ${isPrevious ? `<span class="badge b-active">Completed</span>
