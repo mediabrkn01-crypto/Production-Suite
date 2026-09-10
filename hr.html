@@ -502,10 +502,12 @@
         .hr-icon-btn { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); color:#a5adcf; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:11px; }
         .hr-icon-btn:hover { color:#fff; border-color:rgba(255,107,6,0.4); }
         /* ── Employee workspace modal (Add / Edit Employee) — wide tabbed panel ── */
-        .hr-modal.hr-modal-wide { max-width:min(1180px,94vw); width:min(1180px,94vw); max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden; }
-        .hr-emp-head { padding:18px 24px 12px; background:#0d1120; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:14px; }
+        .hr-modal.hr-modal-wide { max-width:min(1420px,90vw); width:min(1420px,90vw); max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden; }
+        /* head/tabs/foot must keep their natural height — default flex-shrink:1 let the tab row
+           collapse on a short viewport, dragging its text into the border (the overlap bug). */
+        .hr-emp-head { flex:0 0 auto; padding:18px 24px 12px; background:#0d1120; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:14px; }
         .hr-emp-head .hr-emp-head-av { flex-shrink:0; }
-        .hr-emp-tabs { display:flex; gap:2px; padding:0 24px; background:#0d1120; overflow-x:auto; border-bottom:1px solid rgba(255,255,255,0.08); scrollbar-width:thin; }
+        .hr-emp-tabs { flex:0 0 auto; display:flex; gap:2px; padding:0 24px; background:#0d1120; overflow-x:auto; border-bottom:1px solid rgba(255,255,255,0.08); scrollbar-width:thin; }
         .hr-emp-tab { padding:11px 15px; border:none; background:transparent; color:#8890b5; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px; }
         .hr-emp-tab:hover { color:#e6e9f5; }
         .hr-emp-tab.active { color:#fff; border-bottom-color:#ff6b06; }
@@ -519,11 +521,22 @@
         .hr-emp-grid3 .span3 { grid-column:1 / -1; }
         .hr-emp-block { grid-column:1 / -1; border:1px solid rgba(255,255,255,0.06); border-radius:12px; background:rgba(255,255,255,0.02); padding:14px; }
         .hr-emp-block-title { font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#a5adcf; font-weight:700; margin-bottom:12px; }
-        .hr-emp-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 24px; background:#0d1120; border-top:1px solid rgba(255,255,255,0.08); }
+        .hr-emp-foot { flex:0 0 auto; display:flex; justify-content:flex-end; gap:10px; padding:14px 24px; background:#0d1120; border-top:1px solid rgba(255,255,255,0.08); }
         .hr-emp-body input.hr-input, .hr-emp-body select.hr-select { height:38px; width:100%; }
         .hr-emp-body input.invalid, .hr-emp-body select.invalid { border-color:#ef4444 !important; box-shadow:0 0 0 1px rgba(239,68,68,0.4); }
         #hr-emp-coach-section:not(.hidden) { display:flex; }
         #hr-emp-coach-section.hidden { display:none; }
+        /* ── Profile-photo cropper (1:1, circular preview) ── */
+        .hr-crop-stage { position:relative; width:300px; height:300px; max-width:78vw; max-height:78vw; margin:0 auto; border-radius:14px; overflow:hidden; background:#05070e; touch-action:none; cursor:grab; }
+        .hr-crop-stage.dragging { cursor:grabbing; }
+        .hr-crop-stage canvas { display:block; width:100%; height:100%; }
+        /* circular mask ring drawn over the square canvas so HR frames the face inside the circle */
+        .hr-crop-mask { position:absolute; inset:0; pointer-events:none; border-radius:14px;
+            box-shadow:0 0 0 9999px rgba(5,7,14,0.55) inset; }
+        .hr-crop-mask::after { content:''; position:absolute; inset:0; border-radius:50%;
+            box-shadow:0 0 0 9999px rgba(5,7,14,0.55); border:2px solid rgba(255,107,6,0.9); }
+        .hr-crop-btn { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#e6e9f5; width:38px; height:38px; border-radius:10px; cursor:pointer; font-size:15px; display:inline-flex; align-items:center; justify-content:center; }
+        .hr-crop-btn:hover { border-color:rgba(255,107,6,0.5); color:#fff; }
         @media(max-width:900px){ .hr-emp-grid3 { grid-template-columns:repeat(2,minmax(0,1fr)); } .hr-emp-grid3 .span2{ grid-column:1 / -1; } }
         @media(max-width:560px){ .hr-modal.hr-modal-wide { max-width:100%; width:100%; height:100%; max-height:100%; border-radius:0; } .hr-emp-grid3 { grid-template-columns:1fr; } }
         /* Payroll row actions — compact, color-coded, tinted default → filled on hover. */
@@ -1963,6 +1976,36 @@
             <div class="hr-emp-foot">
                 <button onclick="closeHREmployeeModal()" class="hr-select" style="cursor:pointer;height:auto;padding:10px 22px">Cancel</button>
                 <button id="hr-emp-save-btn" onclick="saveHREmployee()" class="brand-gradient text-white font-bold rounded-xl uppercase tracking-wider text-xs" style="padding:10px 28px">Save Employee</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile-photo cropper: opens BEFORE the photo is committed (§1). 1:1 square, circular
+         preview, drag/zoom/rotate/reset. Apply → 512² optimized avatar into #hr-emp-photo-base64. -->
+    <div id="hr-crop-modal" class="hr-modal-overlay hidden" style="z-index:80">
+        <div class="hr-modal" style="max-width:420px">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-bold text-white">Position Photo</h3>
+                <button onclick="hrCropCancel()" class="hr-icon-btn">✕</button>
+            </div>
+            <p class="text-[11px] text-[#8890b5] mb-3">Drag to reposition · pinch/slider to zoom · rotate to straighten. The circle is what employees see.</p>
+            <div id="hr-crop-stage" class="hr-crop-stage">
+                <canvas id="hr-crop-canvas"></canvas>
+                <div class="hr-crop-mask"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+                <button type="button" class="hr-crop-btn" onclick="hrCropZoom(-1)" title="Zoom out">－</button>
+                <input id="hr-crop-zoom" type="range" min="1" max="4" step="0.01" value="1" oninput="hrCropSetZoom(this.value)" style="flex:1;accent-color:#ff6b06">
+                <button type="button" class="hr-crop-btn" onclick="hrCropZoom(1)" title="Zoom in">＋</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px">
+                <button type="button" class="hr-crop-btn" onclick="hrCropRotate(-90)" title="Rotate left">↺</button>
+                <button type="button" class="hr-crop-btn" onclick="hrCropRotate(90)" title="Rotate right">↻</button>
+                <button type="button" class="hr-crop-btn" onclick="hrCropReset()" title="Reset" style="width:auto;padding:0 12px;font-size:12px">Reset</button>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px">
+                <button type="button" onclick="hrCropCancel()" class="hr-select flex-1" style="cursor:pointer;text-align:center">Cancel</button>
+                <button type="button" onclick="hrCropApply()" class="brand-gradient text-white font-bold flex-1 rounded-xl uppercase tracking-wider text-xs" style="padding:10px">Apply Crop</button>
             </div>
         </div>
     </div>
@@ -3423,35 +3466,110 @@
         }
 
 // ── handleHREmpPhotoUpload (orig line 9120) ──
+        // Selecting a file no longer instantly downscales to a 400px/0.85 thumbnail (the old
+        // "low quality when enlarged" cause). It opens the cropper (§1); the crop is committed
+        // only on Apply, producing a 512² optimized avatar at 0.92 quality (§2/§9).
         function handleHREmpPhotoUpload(event) {
             const file = event.target.files && event.target.files[0];
             if (!file) return;
             if (!file.type.startsWith('image/')) { showToast('warning','Please choose an image file.'); return; }
             const statusEl = document.getElementById('hr-emp-photo-upload-status');
-            statusEl.textContent = 'Processing...';
+            statusEl.textContent = 'Preparing image…';
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
-                img.onload = () => {
-                    const maxDim = 400;
-                    let { width, height } = img;
-                    if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
-                    else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
-                    const canvas = document.createElement('canvas');
-                    canvas.width = width; canvas.height = height;
-                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                    document.getElementById('hr-emp-photo-base64').value = dataUrl;
-                    document.getElementById('hr-emp-photo-url').value = ''; // base64 takes priority over URL
-                    updateHREmpPhotoPreview();
-                    statusEl.textContent = `Ready (${Math.round(dataUrl.length / 1024)} KB)`;
-                };
+                img.onload = () => { statusEl.textContent = ''; hrCropOpen(img); };
                 img.onerror = () => { statusEl.textContent = 'Could not read that image.'; };
                 img.src = e.target.result;
             };
             reader.onerror = () => { statusEl.textContent = 'Could not read that file.'; };
             reader.readAsDataURL(file);
+            event.target.value = ''; // allow re-selecting the same file later
         }
+
+        // ── Profile-photo cropper (canvas). 1:1, circular preview. Fixed output 512² @0.92. ──
+        const HR_CROP_OUT = 512;         // avatar output size (crisp in the ≤520px enlarge frame)
+        let _hrCrop = null;              // { img, scale, minScale, rot, ox, oy, view }
+        function hrCropOpen(img) {
+            // Show the modal FIRST so the canvas has a measurable layout size (clientWidth is 0
+            // while .hidden). Then size the backing store and compute the cover-fit baseline.
+            const m = document.getElementById('hr-crop-modal');
+            m.classList.remove('hidden'); m.classList.add('flex');
+            const canvas = document.getElementById('hr-crop-canvas');
+            const view = canvas.clientWidth || document.getElementById('hr-crop-stage').clientWidth || 300;
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            canvas.width = view * dpr; canvas.height = view * dpr;
+            const base = view / Math.min(img.naturalWidth, img.naturalHeight); // cover the square
+            _hrCrop = { img, view, dpr, scale: base, minScale: base, rot: 0, ox: 0, oy: 0 };
+            document.getElementById('hr-crop-zoom').value = '1';
+            hrCropDraw();
+        }
+        function hrCropDraw() {
+            if (!_hrCrop) return;
+            const c = document.getElementById('hr-crop-canvas'), ctx = c.getContext('2d');
+            const { img, dpr, scale, rot, ox, oy } = _hrCrop;
+            ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,c.width,c.height);
+            ctx.save();
+            ctx.translate(c.width/2 + ox*dpr, c.height/2 + oy*dpr);
+            ctx.rotate(rot * Math.PI/180);
+            ctx.scale(scale*dpr, scale*dpr);
+            ctx.drawImage(img, -img.naturalWidth/2, -img.naturalHeight/2);
+            ctx.restore();
+        }
+        function hrCropSetZoom(v) { if (!_hrCrop) return; _hrCrop.scale = _hrCrop.minScale * Number(v); hrCropDraw(); }
+        function hrCropZoom(dir) {
+            const el = document.getElementById('hr-crop-zoom');
+            el.value = Math.min(4, Math.max(1, Number(el.value) + dir*0.25)); hrCropSetZoom(el.value);
+        }
+        function hrCropRotate(deg) { if (!_hrCrop) return; _hrCrop.rot = (_hrCrop.rot + deg) % 360; hrCropDraw(); }
+        function hrCropReset() {
+            if (!_hrCrop) return;
+            _hrCrop.scale = _hrCrop.minScale; _hrCrop.rot = 0; _hrCrop.ox = 0; _hrCrop.oy = 0;
+            document.getElementById('hr-crop-zoom').value = '1'; hrCropDraw();
+        }
+        function hrCropCancel() {
+            const m = document.getElementById('hr-crop-modal'); m.classList.add('hidden'); m.classList.remove('flex');
+            _hrCrop = null;
+            const s = document.getElementById('hr-emp-photo-upload-status'); if (s) s.textContent = '';
+        }
+        function hrCropApply() {
+            if (!_hrCrop) return;
+            const s = document.getElementById('hr-emp-photo-upload-status'); if (s) s.textContent = 'Saving…';
+            const { img, view, scale, rot, ox, oy } = _hrCrop;
+            const out = document.createElement('canvas'); out.width = HR_CROP_OUT; out.height = HR_CROP_OUT;
+            const octx = out.getContext('2d');
+            octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+            octx.fillStyle = '#0d1120'; octx.fillRect(0,0,HR_CROP_OUT,HR_CROP_OUT);
+            // map the on-screen transform (viewport `view`px) up to the 512 output canvas
+            const k = HR_CROP_OUT / view;
+            octx.translate(HR_CROP_OUT/2 + ox*k, HR_CROP_OUT/2 + oy*k);
+            octx.rotate(rot * Math.PI/180);
+            octx.scale(scale*k, scale*k);
+            octx.drawImage(img, -img.naturalWidth/2, -img.naturalHeight/2);
+            const dataUrl = out.toDataURL('image/jpeg', 0.92);
+            document.getElementById('hr-emp-photo-base64').value = dataUrl;
+            document.getElementById('hr-emp-photo-url').value = ''; // base64 takes priority over URL
+            updateHREmpPhotoPreview();
+            if (s) s.textContent = `Ready (${Math.round(dataUrl.length/1024)} KB)`;
+            hrCropCancel();
+        }
+        // drag-to-reposition (pointer events cover mouse + touch)
+        (function hrCropDragInit() {
+            const stage = document.getElementById('hr-crop-stage'); if (!stage) return;
+            let drag = null;
+            stage.addEventListener('pointerdown', (e) => {
+                if (!_hrCrop) return; drag = { x: e.clientX, y: e.clientY, ox: _hrCrop.ox, oy: _hrCrop.oy };
+                stage.classList.add('dragging'); stage.setPointerCapture(e.pointerId);
+            });
+            stage.addEventListener('pointermove', (e) => {
+                if (!drag || !_hrCrop) return;
+                _hrCrop.ox = drag.ox + (e.clientX - drag.x);
+                _hrCrop.oy = drag.oy + (e.clientY - drag.y);
+                hrCropDraw();
+            });
+            const end = () => { drag = null; stage.classList.remove('dragging'); };
+            stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+        })();
 
 // ── removeHREmpPhoto (orig line 9149) ──
         function removeHREmpPhoto() {

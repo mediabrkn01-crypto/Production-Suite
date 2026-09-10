@@ -1398,7 +1398,7 @@ async function acadSyncTrainersFromHR(){
             const initials = name.split(' ').filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
             const style = `width:${sizePx}px;height:${sizePx}px;border-radius:50%;flex-shrink:0;object-fit:cover;font-size:${Math.round(sizePx*0.38)}px`;
             return photoUrl
-                ? `<img src="${photoUrl}" alt="${name}" style="${style}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'hr-avatar-fallback',style:'${style};display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:700',textContent:'${initials}'}))">`
+                ? `<img src="${photoUrl}" alt="${name}" loading="lazy" decoding="async" style="${style}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'hr-avatar-fallback',style:'${style};display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:700',textContent:'${initials}'}))">`
                 : `<div style="${style};display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:700">${initials}</div>`;
         }
 
