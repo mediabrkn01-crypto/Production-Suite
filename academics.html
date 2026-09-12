@@ -317,6 +317,9 @@ details[open] .rawsum::before{content:'▾ '}
 <link rel="stylesheet" href="dashboard-metrics.css">
 <script src="dashboard-metrics.js"></script>
 <script src="shared-greeting.js"></script>
+<!-- Shared company leave-policy engine (single source of truth — same file index/hr/sales load).
+     Academic My Leave reads balances through this so its numbers match every other portal. -->
+<script src="leave-policy.js"></script>
 </head>
 <body>
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
@@ -915,6 +918,11 @@ details[open] .rawsum::before{content:'▾ '}
               <label class="lv-field" id="lv_to_wrap"><span>End Date</span><input id="lv_to" type="date"/></label>
               <label class="lv-field lv-grow"><span>Reason</span><input id="lv_reason" placeholder="Optional"/></label>
               <button class="lv-apply" onclick="saveLeave()">Submit Request</button>
+            </div>
+            <!-- §5: same fields as every other portal's leave form — supporting document + emergency flag. -->
+            <div class="lv-row" style="margin-top:10px">
+              <label class="lv-field lv-grow"><span>Supporting Document / Medical Certificate (link)</span><input id="lv_proof" placeholder="https://… (required for Exceptional WFH / emergency Sick Leave)"/></label>
+              <label class="lv-field" style="flex-direction:row;align-items:center;gap:8px;align-self:flex-end"><input id="lv_emergency" type="checkbox" style="width:16px;height:16px;accent-color:#ff6b06"/><span style="margin:0">Emergency request</span></label>
             </div>
             <div id="lv_no_hr_link" class="empty" style="display:none;margin-top:8px">No HR employee record is linked to your login yet — ask HR to link your portal email before applying for leave.</div>
           </div>
@@ -3214,7 +3222,9 @@ function runCelebrationQueue(me) {
   // addNotif() call here to skip.
   _acadCelebrationQueue = items.filter(it => it.popupEnabled && it.popupImage && !_acadHasSeenCelebrationPopup(it.key));
   showNextCelebrationPopup();
-  renderCelebrationBanners(items.filter(it => it.bannerEnabled && it.bannerImage && !_acadIsCelebrationBannerDismissed(it.key)));
+  // §12: company banners are mandatory while active — no localStorage dismissal gate. An active
+  // banner always shows; it disappears only when its date window closes (§13/§14).
+  renderCelebrationBanners(items.filter(it => it.bannerEnabled && it.bannerImage));
 }
 function showNextCelebrationPopup() {
   if (!_acadCelebrationQueue.length) return;
@@ -3255,12 +3265,16 @@ function closeCelebrationPopup() {
 }
 function renderCelebrationBanners(items) {
   const host = _acadEnsureCelebrationBannerHost();
-  host.innerHTML = items.map(it => `
-      <div id="celeb-banner-${it.key}" class="be-celeb-banner-item">
-          <img src="${it.bannerImage}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner image failed to load for event &quot;${it.key}&quot; (type: ${it.type}).');this.closest('.be-celeb-banner-item')?.remove()">
-          <button onclick="dismissCelebrationBanner('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button>
-      </div>
-  `).join('');
+  // §12: NO close button — company banners are mandatory. §10: media may be a video (mp4/webm,
+  // by mime in a data: URI or file extension) → responsive muted autoplay loop player.
+  host.innerHTML = items.map(it => {
+    const src = it.bannerImage;
+    const isVideo = /^data:video\//i.test(src) || /\.(mp4|webm)(\?|#|$)/i.test(src);
+    const media = isVideo
+      ? `<video src="${src}" autoplay muted playsinline loop preload="metadata" style="display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none"></video>`
+      : `<img src="${src}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner media failed for event &quot;${it.key}&quot;.');this.closest('.be-celeb-banner-item')?.remove()">`;
+    return `<div id="celeb-banner-${it.key}" class="be-celeb-banner-item">${media}</div>`;
+  }).join('');
 }
 
 function runAcadCelebrationCheck() {
@@ -7855,18 +7869,27 @@ async function loadLeaveBalances(){
   try {
     const me = await _acadGetMyHREmployeeRecord();
     if (!me) { el.innerHTML=''; return; }
-    const [{data:balances}, {data:myRequests}] = await Promise.all([
-      mediaHrDB.from('hr_leave_balances').select('*').eq('employee_id', me.id),
-      mediaHrDB.from('hr_leave_requests').select('*').eq('employee_id', me.id).eq('status','approved')
-    ]);
-    const rows = balances || [];
-    if (!rows.length) { el.innerHTML = '<div class="empty">No balances set by HR yet.</div>'; return; }
-    el.innerHTML = rows.map(b => {
-      const used = (myRequests||[]).filter(r=>r.leave_type===b.leave_type).reduce((s,r)=>s+(r.days||0),0);
-      const unlimited = b.leave_type === 'Unpaid Leave';
-      const remaining = unlimited ? '—' : Math.max(0, (b.allotted||0) - used);
-      return `<div class="acad-stat-card" style="cursor:default"><div><div class="val">${remaining}</div><div class="lbl">${esc(b.leave_type)}</div></div></div>`;
-    }).join('');
+    // SINGLE SOURCE OF TRUTH (§3/§6): read balances through the shared leave-policy engine —
+    // the SAME SL(this month)/CL(buckets)/LOP(this month) numbers Media + HR show for this
+    // employee — instead of the legacy hr_leave_balances allotment table (which drifted from
+    // policy). No hardcoded per-type cards; the policy engine is the one authoritative balance.
+    if (typeof LeavePolicy === 'undefined') { el.innerHTML = '<div class="empty">Leave policy engine unavailable.</div>'; return; }
+    if (!LeavePolicy.db) LeavePolicy.withClient(mediaHrDB);
+    el.innerHTML = '<div class="empty">Loading…</div>';
+    const today = new Date().toISOString().slice(0,10);
+    const ctx = await LeavePolicy.db.buildContext(me, { now: new Date(), date: today });
+    const bal = LeavePolicy.resolveLeaveBalance(ctx);
+    const st = LeavePolicy.getEmployeePolicyState(me, today);
+    const pay = LeavePolicy.resolvePayrollDeduction(ctx, today.slice(0,7));
+    const slR = (st.onProbation||st.onNotice) ? 0 : bal.sick.remaining;
+    const clR = (st.onProbation||st.onNotice) ? 0 : bal.casual.remaining;
+    const card = (val,lbl,color)=>`<div class="acad-stat-card" style="cursor:default"><div><div class="val"${color?` style="color:${color}"`:''}>${val}</div><div class="lbl">${lbl}</div></div></div>`;
+    el.innerHTML =
+      card(slR,'Sick Leave (this month)') +
+      card(clR,'Casual Leave'+(bal.casual.carriedForward?` (incl. ${bal.casual.carriedForward} carried)`:'')) +
+      card(pay.totalDeductionDays,'LOP days (this month)','#f87171') +
+      (st.onProbation ? `<div class="empty" style="color:#fb923c">Probation until ${st.confirmationDate||'—'} — leave is LOP, no weekly-off.</div>` : '') +
+      (st.onNotice ? `<div class="empty" style="color:#f87171">Notice period — CL/SL/weekly-off not applicable; absence is LOP.</div>` : '');
   } catch(e) { el.innerHTML = '<div class="empty">Could not load balances: '+esc(e.message)+'</div>'; }
 }
 // My Leave \u2014 personal leave only (see the HTML comment above tab-acad-leave). Used to also
@@ -7909,11 +7932,18 @@ async function saveLeave(){
   const days = isHalf?0.5:Math.round((new Date(t)-new Date(f))/86400000)+1;
   if(days<0.5){alert('End date must be on or after start date.');return;}
   const reason=document.getElementById('lv_reason').value.trim()||null;
-  const rec={employee_id:window._mediaEmployeeId,leave_type,start_date:f,end_date:t,days,reason,status:'pending',requested_at:new Date().toISOString()};
+  // §4 HR-only approval: manager stage auto-satisfied, request enters Pending HR Review — the
+  // SAME workflow fields common.js submitMyLeave sets, so an academic-submitted request shows
+  // and resolves identically in the HR queue, attendance, payroll and every My Leave view.
+  const proof_url=(document.getElementById('lv_proof')?.value||'').trim()||null;
+  const emergency=!!document.getElementById('lv_emergency')?.checked;
+  const rec={employee_id:window._mediaEmployeeId,leave_type,start_date:f,end_date:t,days,reason,proof_url,emergency,status:'pending',manager_status:'approved',hr_status:'pending',final_treatment:'pending',requested_at:new Date().toISOString()};
   if(isHalf)rec.half_day_type=document.getElementById('lv_half_type').value;
   const {error}=await mediaHrDB.from('hr_leave_requests').insert([rec]);
   if(error){alert('Save failed: '+error.message);return;}
   document.getElementById('lv_reason').value='';document.getElementById('lv_from').value='';document.getElementById('lv_to').value='';
+  if(document.getElementById('lv_proof'))document.getElementById('lv_proof').value='';
+  if(document.getElementById('lv_emergency'))document.getElementById('lv_emergency').checked=false;
   alert((isHalf?'Half-day':'Leave')+' request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
   loadLeave();
 }

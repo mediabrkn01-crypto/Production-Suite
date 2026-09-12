@@ -3206,7 +3206,9 @@ function hrOfficialEventFor(employee, dateStr) {
             _celebrationQueue = items.filter(it => it.popupEnabled && it.popupImage && !hasSeenCelebrationPopup(it.key));
             showNextCelebrationPopup();
             // Same rule for the banner — no bannerImage, no banner surface.
-            renderCelebrationBanners(items.filter(it => it.bannerEnabled && it.bannerImage && !isCelebrationBannerDismissed(it.key)));
+            // §12: company banners are mandatory while active — no localStorage dismissal gate;
+            // they disappear only when their date window closes (§13/§14).
+            renderCelebrationBanners(items.filter(it => it.bannerEnabled && it.bannerImage));
         }
 
         function showNextCelebrationPopup() {
@@ -3257,12 +3259,16 @@ function hrOfficialEventFor(employee, dateStr) {
 
         function renderCelebrationBanners(items) {
             const host = ensureCelebrationBannerHost();
-            host.innerHTML = items.map(it => `
-                <div id="celeb-banner-${it.key}" class="be-celeb-banner-item">
-                    <img src="${it.bannerImage}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner image failed to load for event &quot;${it.key}&quot; (type: ${it.type}).');this.closest('.be-celeb-banner-item')?.remove()">
-                    <button onclick="dismissCelebrationBanner('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button>
-                </div>
-            `).join('');
+            // §12: NO close button — company banners are mandatory. §10: media may be a video
+            // (mp4/webm, by mime in a data: URI or file extension) → muted autoplay loop player.
+            host.innerHTML = items.map(it => {
+                const src = it.bannerImage;
+                const isVideo = /^data:video\//i.test(src) || /\.(mp4|webm)(\?|#|$)/i.test(src);
+                const media = isVideo
+                    ? `<video src="${src}" autoplay muted playsinline loop preload="metadata" style="display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none"></video>`
+                    : `<img src="${src}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner media failed for event &quot;${it.key}&quot;.');this.closest('.be-celeb-banner-item')?.remove()">`;
+                return `<div id="celeb-banner-${it.key}" class="be-celeb-banner-item">${media}</div>`;
+            }).join('');
         }
 
 // ============================================================================
