@@ -2284,6 +2284,18 @@
                     <input type="hidden" id="hr-cel-banner-image">
                 </div>
 
+                <div>
+                    <label class="hr-field-label">Or a Video Banner <span style="color:#4a5182;text-transform:none;font-weight:400">— MP4 / WebM, up to 50 MB. Plays muted + autoplay + loop, aspect-preserving. A video, when set, is shown instead of the image banner.</span></label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;padding:8px 10px">
+                        <input type="file" id="hr-cel-banner-video-file" accept="video/mp4,video/webm" class="hidden" onchange="handleHRCelebrationVideoUpload(event)">
+                        <span style="font-size:11px;color:#a5adcf">Choose Video…</span>
+                        <span id="hr-cel-banner-video-status" style="font-size:10px;color:#6b74a0;margin-left:auto"></span>
+                    </label>
+                    <div id="hr-cel-banner-video-preview" style="margin-top:6px"></div>
+                    <input type="hidden" id="hr-cel-banner-video">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-top:8px"><input type="checkbox" id="hr-cel-banner-loop" checked style="accent-color:#ff6b06"> Loop video</label>
+                </div>
+
                 <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-cel-popup-enabled" checked style="accent-color:#ff6b06"> Popup Enabled</label>
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="hr-cel-banner-enabled" checked style="accent-color:#ff6b06"> Banner Enabled</label>
@@ -6035,6 +6047,11 @@ async function populateHRJobDeptOptions() {
             document.getElementById('hr-cel-banner-image').value = editing?.banner_image_base64 || '';
             hrRenderCelebrationImagePreview('hr-cel-popup-preview', editing?.popup_image_base64 || '', 'hr-cel-popup-image', 'hr-cel-popup-status');
             hrRenderCelebrationImagePreview('hr-cel-banner-preview', editing?.banner_image_base64 || '', 'hr-cel-banner-image', 'hr-cel-banner-status');
+            document.getElementById('hr-cel-banner-video').value = editing?.banner_video_url || '';
+            document.getElementById('hr-cel-banner-video-file').value = '';
+            document.getElementById('hr-cel-banner-video-status').textContent = '';
+            document.getElementById('hr-cel-banner-loop').checked = editing ? editing.banner_loop !== false : true;
+            hrRenderCelebrationVideoPreview(editing?.banner_video_url || '');
             document.getElementById('hr-cel-popup-status').textContent = '';
             document.getElementById('hr-cel-banner-status').textContent = '';
             document.getElementById('hr-cel-popup-file').value = '';
@@ -6118,6 +6135,47 @@ async function populateHRJobDeptOptions() {
             if (statusEl) statusEl.textContent = '';
         }
 
+// ── handleHRCelebrationVideoUpload — real Blob/File upload to Supabase Storage (§9/§10) ──
+        // Videos are NOT base64'd into the row (that would bloat every read of hr_celebration_events
+        // and blow past column limits). Uploaded to the public `celebration-media` bucket; only the
+        // resulting public URL is stored (banner_video_url). Render detects the .mp4/.webm URL and
+        // plays it as <video autoplay muted playsinline loop>.
+        const HR_CEL_MEDIA_BUCKET = 'celebration-media';
+        async function handleHRCelebrationVideoUpload(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            const statusEl = document.getElementById('hr-cel-banner-video-status');
+            if (!/^video\/(mp4|webm)$/.test(file.type)) { if (statusEl) statusEl.textContent = ''; showToast('warning','Please choose an MP4 or WebM video.'); return; }
+            if (file.size > 52428800) { showToast('warning','Video is larger than 50 MB — please compress it first.'); return; }
+            if (statusEl) statusEl.textContent = 'Uploading…';
+            try {
+                const ext = file.type === 'video/webm' ? 'webm' : 'mp4';
+                const path = `banners/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+                const { error: upErr } = await dbInstance.storage.from(HR_CEL_MEDIA_BUCKET).upload(path, file, { contentType: file.type, upsert: true });
+                if (upErr) { if (statusEl) statusEl.textContent = 'Upload failed'; showToast('error','Could not upload video: '+upErr.message); return; }
+                const { data: pub } = dbInstance.storage.from(HR_CEL_MEDIA_BUCKET).getPublicUrl(path);
+                const url = pub.publicUrl;
+                document.getElementById('hr-cel-banner-video').value = url;
+                hrRenderCelebrationVideoPreview(url);
+                if (statusEl) statusEl.textContent = `Ready (${Math.round(file.size/1024/1024*10)/10} MB)`;
+            } catch (e) { if (statusEl) statusEl.textContent = 'Upload failed'; showToast('error','Could not upload video: '+e.message); }
+        }
+        function hrRenderCelebrationVideoPreview(url) {
+            const el = document.getElementById('hr-cel-banner-video-preview');
+            if (!el) return;
+            if (!url) { el.innerHTML = ''; return; }
+            el.innerHTML = `
+                <div style="position:relative;display:inline-block;max-width:100%">
+                    <video src="${url}" muted playsinline loop autoplay style="max-width:100%;max-height:160px;border-radius:8px;display:block"></video>
+                    <button type="button" onclick="hrClearCelebrationVideo()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button>
+                </div>`;
+        }
+        function hrClearCelebrationVideo() {
+            document.getElementById('hr-cel-banner-video').value = '';
+            document.getElementById('hr-cel-banner-video-preview').innerHTML = '';
+            const s = document.getElementById('hr-cel-banner-video-status'); if (s) s.textContent = '';
+        }
+
 // ── saveHRCelebration ──
         // Writes a structured hr_celebration_events row — nothing here hardcodes a festival
         // date, an employee's wishes, or any artwork file path (spec item 19). The celebration
@@ -6141,6 +6199,8 @@ async function populateHRJobDeptOptions() {
             const icon = document.getElementById('hr-cel-icon').value.trim() || null;
             const popup_image_base64 = document.getElementById('hr-cel-popup-image').value || null;
             const banner_image_base64 = document.getElementById('hr-cel-banner-image').value || null;
+            const banner_video_url = document.getElementById('hr-cel-banner-video').value || null;
+            const banner_loop = document.getElementById('hr-cel-banner-loop').checked;
             const popup_enabled = document.getElementById('hr-cel-popup-enabled').checked;
             const banner_enabled = document.getElementById('hr-cel-banner-enabled').checked;
             if (!title) { alert('Event Name is required.'); return; }
@@ -6156,7 +6216,7 @@ async function populateHRJobDeptOptions() {
                     return;
                 }
             }
-            const payload = { title, event_date, event_end_date, advance_start_date, event_type, applies_to, icon, artwork_mode, popup_image_base64, banner_image_base64, popup_enabled, banner_enabled };
+            const payload = { title, event_date, event_end_date, advance_start_date, event_type, applies_to, icon, artwork_mode, popup_image_base64, banner_image_base64, banner_video_url, banner_loop, popup_enabled, banner_enabled };
             try {
                 if (editingId) {
                     await dbInstance.from('hr_celebration_events').update(payload).eq('id', editingId);
@@ -6192,7 +6252,7 @@ async function populateHRJobDeptOptions() {
                     <td data-label="Advance Start" class="py-2.5 px-4 text-[#a5adcf]">${ev.advance_start_date ? new Date(ev.advance_start_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—'}</td>
                     <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
                     <td data-label="Popup" class="py-2.5 px-4 text-[#a5adcf]">${ev.popup_enabled === false ? 'No' : (ev.popup_image_base64 ? 'Yes' : 'No image')}</td>
-                    <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : (ev.banner_image_base64 ? 'Yes' : 'No image')}</td>
+                    <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : (ev.banner_video_url ? '🎬 Video' : (ev.banner_image_base64 ? 'Yes' : 'No media'))}</td>
                     <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="openHRCelebrationModal('${ev.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="deleteHRCelebration('${ev.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="8" class="py-8 text-center text-[#4a5182] text-xs">No celebrations added yet.</td></tr>`;

@@ -661,18 +661,19 @@ async function salesLoadCelebrations(){
   const first=(ME.name||'there').trim().split(' ')[0];
   const findTpl=t=>events.find(ev=>ev.event_type===t)||null;
   const items=[];
-  if(_isSameMonthDay(rec.dob)){const tpl=findTpl('birthday');items.push({key:`birthday_${today}`,type:'birthday',title:`Happy Birthday, ${first}!`,captionName:first,popupImage:tpl?tpl.popup_image_base64:null,bannerImage:tpl?tpl.banner_image_base64:null,artworkMode:tpl?tpl.artwork_mode||'complete':'complete',popupEnabled:tpl?tpl.popup_enabled!==false:false,bannerEnabled:tpl?tpl.banner_enabled!==false:false});}
+  if(_isSameMonthDay(rec.dob)){const tpl=findTpl('birthday');items.push({key:`birthday_${today}`,type:'birthday',title:`Happy Birthday, ${first}!`,captionName:first,popupImage:tpl?tpl.popup_image_base64:null,bannerImage:tpl?((tpl.banner_video_url||tpl.banner_image_base64)):null,bannerLoop:tpl?tpl.banner_loop!==false:true,artworkMode:tpl?tpl.artwork_mode||'complete':'complete',popupEnabled:tpl?tpl.popup_enabled!==false:false,bannerEnabled:tpl?tpl.banner_enabled!==false:false});}
   const yrs=_annivYears(rec.joining_date);
-  if(yrs){const tpl=findTpl('work_anniversary');items.push({key:`anniversary_${today}`,type:'work_anniversary',title:`Happy Work Anniversary, ${first}!`,captionName:`${first} · ${yrs} Year${yrs===1?'':'s'}`,popupImage:tpl?tpl.popup_image_base64:null,bannerImage:tpl?tpl.banner_image_base64:null,artworkMode:tpl?tpl.artwork_mode||'complete':'complete',popupEnabled:tpl?tpl.popup_enabled!==false:false,bannerEnabled:tpl?tpl.banner_enabled!==false:false});}
+  if(yrs){const tpl=findTpl('work_anniversary');items.push({key:`anniversary_${today}`,type:'work_anniversary',title:`Happy Work Anniversary, ${first}!`,captionName:`${first} · ${yrs} Year${yrs===1?'':'s'}`,popupImage:tpl?tpl.popup_image_base64:null,bannerImage:tpl?((tpl.banner_video_url||tpl.banner_image_base64)):null,bannerLoop:tpl?tpl.banner_loop!==false:true,artworkMode:tpl?tpl.artwork_mode||'complete':'complete',popupEnabled:tpl?tpl.popup_enabled!==false:false,bannerEnabled:tpl?tpl.banner_enabled!==false:false});}
   events.forEach(ev=>{
     if(ev.event_type==='birthday'||ev.event_type==='work_anniversary')return; // templates, handled above
     if(!_celebStatusToday(ev)||!_celebApplies(ev))return;
-    items.push({key:`event_${ev.id}_${today}`,type:ev.event_type||'custom',title:`${ev.icon?ev.icon+' ':''}${ev.title}`,captionName:null,popupImage:ev.popup_image_base64||null,bannerImage:ev.banner_image_base64||null,artworkMode:'complete',popupEnabled:ev.popup_enabled!==false,bannerEnabled:ev.banner_enabled!==false});
+    items.push({key:`event_${ev.id}_${today}`,type:ev.event_type||'custom',title:`${ev.icon?ev.icon+' ':''}${ev.title}`,captionName:null,popupImage:ev.popup_image_base64||null,bannerImage:(ev.banner_video_url||ev.banner_image_base64)||null,bannerLoop:ev.banner_loop!==false,artworkMode:'complete',popupEnabled:ev.popup_enabled!==false,bannerEnabled:ev.banner_enabled!==false});
   });
-  // Banners — every active, not-dismissed-today item with banner art (object-fit:cover strip).
-  const banners=items.filter(it=>it.bannerEnabled&&it.bannerImage&&!_celebBannerDismissed(it.key));
+  // §12: company banners are mandatory while active — no localStorage dismissal gate.
+  const banners=items.filter(it=>it.bannerEnabled&&it.bannerImage);
   const host=document.getElementById('celebration-banner-slot');
-  if(host)host.innerHTML=banners.map(it=>`<div id="celeb-banner-${it.key}" class="be-celeb-banner-item"><img src="${it.bannerImage}" alt="${esc(it.title)}" loading="lazy" onerror="this.closest('.be-celeb-banner-item')?.remove()"><button onclick="salesDismissCeleb('${it.key}')" class="be-celeb-banner-close" aria-label="Dismiss">✕</button></div>`).join('');
+  // §10: video (mp4/webm) media → muted autoplay loop player; §12: NO close button.
+  if(host)host.innerHTML=banners.map(it=>{const src=it.bannerImage;const isVid=/^data:video\//i.test(src)||/\.(mp4|webm)(\?|#|$)/i.test(src);const loopAttr=it.bannerLoop===false?'':' loop';const media=isVid?`<video src="${src}" autoplay muted playsinline${loopAttr} preload="metadata" style="display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none"></video>`:`<img src="${src}" alt="${esc(it.title)}" loading="lazy" onerror="this.closest('.be-celeb-banner-item')?.remove()">`;return `<div id="celeb-banner-${it.key}" class="be-celeb-banner-item">${media}</div>`;}).join('');
   // Popup — first active item that has popup art and hasn't been seen today (one, contain).
   const pop=items.find(it=>it.popupEnabled&&it.popupImage&&!_celebPopupSeen(it.key));
   const overlay=document.getElementById('celebration-popup-overlay');
