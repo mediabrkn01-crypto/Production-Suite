@@ -1011,6 +1011,10 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="lv-note">The recurring hours you can teach — set once, applies every week until you edit or remove it. The Academic Head automatically sees which of these are currently free, based on your active batches — you never need to mark a slot free or busy yourself.</div>
           <div id="availMyList" class="loading" style="margin-top:12px">Loading…</div>
           <div class="subhead" style="margin:20px 0 10px">Add a Recurring Slot</div>
+          <div style="margin-bottom:10px">
+            <div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Weekdays this slot applies to</div>
+            <div id="myAvailDaysWrap"></div>
+          </div>
           <div class="mrow" style="align-items:flex-end">
             <!-- readonly, not type="time" — tapping opens the themed analog clock picker
                  (#modalClockPicker) instead of the browser's native square popup. The input
@@ -1099,6 +1103,10 @@ details[open] .rawsum::before{content:'▾ '}
             <label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:4px">End Time</label>
             <input id="editAvailEnd" readonly onclick="openClockPicker('editAvailEnd')" placeholder="End" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;cursor:pointer"/>
           </div>
+        </div>
+        <div style="margin-top:12px">
+          <label style="font-size:11px;color:var(--tx3);display:block;margin-bottom:6px">Weekdays</label>
+          <div id="editAvailDaysWrap"></div>
         </div>
         <div class="modal-actions">
           <button class="btn-cancel" onclick="document.getElementById('modalEditAvail').classList.remove('on')">Cancel</button>
@@ -4586,6 +4594,67 @@ function _availBatchDays(b){
   const days = raw.split(/[,·]/).map(s => s.trim().replace(/\s*MC.*$/i,'')).filter(d => DAYS.includes(d));
   return days.length ? days.join(', ') : '';
 }
+// ── Day-aware availability (§1-§4/§11) — trainer_availability.days is a "Mon, Tue" CSV, same
+//    weekday vocabulary as batches.day_pattern. Legacy rows have no days (null) → "Needs Days". ──
+function _acadParseDays(csv){ return String(csv||'').split(/[,·]/).map(s=>s.trim()).filter(d=>DAYS.includes(d)); }
+function _acadSlotDays(s){ return _acadParseDays(s && s.days); }
+function _acadDaysLabel(arr){ return (arr||[]).slice().sort((a,b)=>DAYS.indexOf(a)-DAYS.indexOf(b)).join(', '); }
+// Weekday multi-select + quick buttons. State lives on the .active class of each chip (read
+// straight from the DOM), so switching between Add and Edit never leaks selection.
+function _acadDayPickerHTML(wrapId){
+  const chips = DAYS.map(d=>`<button type="button" class="acad-day-chip" data-day="${d}" onclick="_acadToggleDay('${wrapId}','${d}')">${d}</button>`).join('');
+  const quick = [['Mon–Fri','wk'],['Mon–Sat','wk6'],['All Days','all'],['Clear','clr']]
+    .map(([lbl,k])=>`<button type="button" class="acad-day-quick" onclick="_acadQuickDays('${wrapId}','${k}')">${lbl}</button>`).join('');
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">${chips}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${quick}</div>`;
+}
+function _acadToggleDay(wrapId,d){ const b=document.querySelector('#'+wrapId+' .acad-day-chip[data-day="'+d+'"]'); if(b) b.classList.toggle('active'); }
+function _acadSetPickerDays(wrapId,arr){ document.querySelectorAll('#'+wrapId+' .acad-day-chip').forEach(b=>b.classList.toggle('active',(arr||[]).includes(b.dataset.day))); }
+function _acadReadPickerDays(wrapId){ return [...document.querySelectorAll('#'+wrapId+' .acad-day-chip.active')].map(b=>b.dataset.day).sort((a,b)=>DAYS.indexOf(a)-DAYS.indexOf(b)); }
+function _acadQuickDays(wrapId,k){ const m={wk:['Mon','Tue','Wed','Thu','Fri'],wk6:['Mon','Tue','Wed','Thu','Fri','Sat'],all:DAYS.slice(),clr:[]}; _acadSetPickerDays(wrapId,m[k]||[]); }
+// Populate the pickers' markup once (idempotent) and inject their styles.
+function _acadInitDayPickers(){
+  ['myAvailDaysWrap','editAvailDaysWrap'].forEach(id=>{ const w=document.getElementById(id); if(w && !w.dataset.built){ w.innerHTML=_acadDayPickerHTML(id); w.dataset.built='1'; } });
+}
+(function _acadDayPickerCSS(){
+  if(document.getElementById('acad-day-picker-css')) return;
+  const st=document.createElement('style'); st.id='acad-day-picker-css';
+  st.textContent='.acad-day-chip,.acad-day-quick{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--tx3);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s}.acad-day-chip:hover,.acad-day-quick:hover{border-color:rgba(16,185,129,.5);color:var(--tx)}.acad-day-chip.active{background:rgba(16,185,129,.18);border-color:var(--green);color:var(--green)}.acad-day-quick{font-size:11px;color:var(--tx3)}';
+  (document.head||document.documentElement).appendChild(st);
+})();
+// Which of `days` collide with one of trainerId's active batches at [start,end)? (§3/§4:
+// day AND time must both overlap.) Returns the conflicting weekday names.
+function _acadDayTimeConflicts(trainerId, days, start, end, batches){
+  const sMin=_timeToMinutes(start), eMin=_timeToMinutes(end), conf=new Set();
+  (batches||[]).forEach(b=>{
+    if(String(b.trainer_id)!==String(trainerId) || !isBatchCurrentlyActive(b)) return;
+    const bs=_batchStartMinutes(b); if(bs===null) return;
+    const be=bs+(b.class_duration_minutes||60);
+    if(!(bs<eMin && be>sMin)) return; // no time overlap
+    _acadParseDays(_availBatchDays(b)).forEach(d=>{ if(days.includes(d)) conf.add(d); });
+  });
+  return DAYS.filter(d=>conf.has(d));
+}
+// Continuous-teaching block a NEW class [ns,ne) on newDays would sit inside, per day, merging
+// adjoining/overlapping actual bookings (§6/§7). Returns the worst day's block {minutes,blocks}.
+function _acadContinuousBlock(trainerId, newDays, ns, ne, batches){
+  const active=(batches||[]).filter(b=>String(b.trainer_id)===String(trainerId)&&isBatchCurrentlyActive(b)&&_batchStartMinutes(b)!==null);
+  let best={minutes:0, blocks:''};
+  (newDays.length?newDays:DAYS).forEach(day=>{
+    const iv=[[ns,ne]];
+    active.forEach(b=>{ if(!_acadParseDays(_availBatchDays(b)).includes(day)) return; const bs=_batchStartMinutes(b); iv.push([bs,bs+(b.class_duration_minutes||60)]); });
+    iv.sort((a,b)=>a[0]-b[0]);
+    let cur=null; const merged=[];
+    iv.forEach(([s,e])=>{ if(cur && s<=cur[1]){ cur[1]=Math.max(cur[1],e); } else { if(cur) merged.push(cur); cur=[s,e]; } });
+    if(cur) merged.push(cur);
+    const host=merged.find(bl=>ns>=bl[0]&&ns<bl[1]);
+    if(host){ const mins=host[1]-host[0]; if(mins>best.minutes){
+      const items=iv.filter(([s,e])=>s<host[1]&&e>host[0]).sort((a,b)=>a[0]-b[0])
+        .map(([s,e])=>`${_formatTime12(_minutesToTime(s))} – ${_formatTime12(_minutesToTime(e))}`);
+      best={minutes:mins, blocks:items.join('\n'), day};
+    }}
+  });
+  return best;
+}
 // "Available again from" — the day after the occupying batch's own expected_completion_date,
 // or null if that batch has no end date set (indefinite — nothing to silently guess at).
 // Built from the Date's own LOCAL fields, not toISOString() — that converts to UTC first, and
@@ -4622,6 +4691,7 @@ function _availRowStyle(color){
 const _AVAIL_GREEN = '16,185,129', _AVAIL_RED = '255,5,82', _AVAIL_AMBER = '245,158,11';
 
 async function loadAvailabilityTab(){
+  _acadInitDayPickers();
   const isHead = isCurrentlyAcademicHead();
   // Independent of isHead — an Academic Head who ALSO teaches (role 'academic_head', same as
   // any trainer-capable login per applyAcadRoleGates' own isTrainerCapable check) still needs
@@ -4742,7 +4812,12 @@ function renderTrainerAvailabilityView(){
         return `<div style="${_availRowStyle(_AVAIL_AMBER)}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)" title="Overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})">Unavailable — overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${cHeadActions}</span></div>`;
       }
       // Free — assignable, plus Head-only Edit/Remove of the declared slot itself (spec #4/#6).
-      return `<div style="${_availRowStyle(_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
+      // Show the slot's OWN declared days (§2); legacy day-less rows flagged "Needs Days" (§11).
+      const _sd = _acadSlotDays(s), _sdLbl = _acadDaysLabel(_sd);
+      const _needsDays = !_sd.length;
+      const _dayPrefix = _sdLbl ? `<span style="color:var(--tx3)">${esc(_sdLbl)}</span> • ` : '';
+      const _legacyBadge = _needsDays ? `<span class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3)" title="This legacy slot has no weekdays — Edit to set them">Needs Days</span>` : '';
+      return `<div style="${_availRowStyle(_needsDays?'148,163,184':_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${_dayPrefix}${esc(label)}</span><span style="display:flex;align-items:center;gap:8px">${_legacyBadge}<span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
     }).join('') : '';
     // EVERY active booking is manageable, for EVERY trainer — not only those with a declared
     // availability slot behind it. A class assigned to a trainer who never declared recurring
@@ -4852,10 +4927,14 @@ function renderMyAvailabilityList(){
         <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
         <span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow)">Unavailable — overlaps ${esc(st.batch.name||'a class')} (${esc(realTime)})</span>${myHeadRemove}</span></div>`;
     }
-    return `<div style="${_availRowStyle(_AVAIL_GREEN)}">
-      <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
+    // Free — show this slot's OWN declared days (§2); legacy day-less rows flagged "Needs Days" (§11).
+    const _sd = _acadSlotDays(s), _sdLbl = _acadDaysLabel(_sd), _needsDays = !_sd.length;
+    const _dayPrefix = _sdLbl ? `<span style="color:var(--tx3)">${esc(_sdLbl)}</span> • ` : '';
+    const _legacyBadge = _needsDays ? `<span class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3)" title="This legacy slot has no weekdays — Edit to set them">Needs Days</span>` : '';
+    return `<div style="${_availRowStyle(_needsDays?'148,163,184':_AVAIL_GREEN)}">
+      <span style="font-size:12.5px;color:var(--tx)">${_dayPrefix}${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
       <span style="display:flex;align-items:center;gap:8px">
-        <span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span>
+        ${_legacyBadge}<span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span>
         <button class="act-btn" onclick="editAvailabilitySlot('${s.id}')">Edit</button>
         <button class="act-btn" onclick="removeAvailabilitySlot('${s.id}')">Remove</button>
       </span></div>`;
@@ -4873,20 +4952,38 @@ async function addMyAvailability(){
   const effFrom = document.getElementById('myAvailEffFrom').value || null;
   if (!start || !end) { showToast('warning','Set both a start and end time.'); return; }
   if (_timeToMinutes(end) <= _timeToMinutes(start)) { showToast('warning','End time must be after start time.'); return; }
+  // Every recurring slot must carry weekdays now (§1) — no more day-less "free every day" rows.
+  const chosen = _acadReadPickerDays('myAvailDaysWrap');
+  if (!chosen.length) { showToast('warning','Select at least one weekday for this slot.'); return; }
+  // Partial-day conflict (§3/§4): keep the days that don't collide with an existing class at
+  // this time; offer "Save Free Days Only" for the rest via the branded confirm.
+  const conflicts = _acadDayTimeConflicts(myId, chosen, start, end, _availBatchesForOccupancy);
+  let saveDays = chosen;
+  if (conflicts.length) {
+    const freeDays = chosen.filter(d => !conflicts.includes(d));
+    const win = `${_formatTime12(start)} – ${_formatTime12(end)}`;
+    if (!freeDays.length) { showToast('warning', `All selected days (${_acadDaysLabel(conflicts)}) overlap an existing class at ${win}.`, 8000); return; }
+    const ok = await _showSimpleConfirm(
+      `Conflicting: ${_acadDaysLabel(conflicts)}\n${win} overlaps an existing class.\n\nAvailable: ${_acadDaysLabel(freeDays)}\n${win}\n\nSave only the available days?`,
+      { title: 'Availability Conflict', confirmLabel: 'Save Free Days Only' });
+    if (!ok) return;
+    saveDays = freeDays;
+  }
   // Friendly duplicate guard (the DB now enforces this with a unique index too, but catch it
   // here first for a clean message instead of a raw constraint error) — the root cause of the
   // duplicate rows this whole change fixes was that nothing stopped a second identical declare.
-  const dup = (_myAvailability||[]).find(o => o.start_time===start && o.end_time===end && o.is_active!==false);
-  if (dup) { showToast('warning','You already have a declared slot at exactly that time.'); return; }
+  const dup = (_myAvailability||[]).find(o => o.start_time===start && o.end_time===end && o.is_active!==false && _acadDaysLabel(_acadSlotDays(o))===_acadDaysLabel(saveDays));
+  if (dup) { showToast('warning','You already have a declared slot at exactly that time and days.'); return; }
   try {
-    const payload = { trainer_id: myId, start_time: start, end_time: end, is_active: true };
+    const payload = { trainer_id: myId, start_time: start, end_time: end, is_active: true, days: saveDays.join(', ') };
     if (effFrom) payload.effective_from = effFrom;
     const { error } = await sb.from('trainer_availability').insert(payload);
     if (error) { showToast('error', /duplicate|unique/i.test(error.message) ? 'A slot at exactly that time already exists.' : 'Could not save availability: '+error.message); return; }
     startEl.value = ''; delete startEl.dataset.time24;
     endEl.value = ''; delete endEl.dataset.time24;
     document.getElementById('myAvailEffFrom').value = '';
-    showToast('success','Availability added');
+    _acadSetPickerDays('myAvailDaysWrap', []);
+    showToast('success', conflicts.length ? `Saved free days only: ${_acadDaysLabel(saveDays)}` : 'Availability added');
     await loadAvailabilityTab();
   } catch(e) { showToast('error','Could not save availability: '+e.message); }
 }
@@ -4945,6 +5042,8 @@ function editAvailabilitySlot(id){
   const startEl = document.getElementById('editAvailStart'), endEl = document.getElementById('editAvailEnd');
   startEl.dataset.time24 = slot.start_time; startEl.value = _formatTime12(slot.start_time);
   endEl.dataset.time24 = slot.end_time; endEl.value = _formatTime12(slot.end_time);
+  _acadInitDayPickers();
+  _acadSetPickerDays('editAvailDaysWrap', _acadSlotDays(slot));
   document.getElementById('editAvailTrainerName').textContent =
     (_availTrainers.find(t=>String(t.id)===String(slot.trainer_id))||{}).name
     || (String(slot.trainer_id)===String(window._myTrainerId) ? (currentUser.name||'You') : 'Trainer');
@@ -4966,9 +5065,11 @@ async function saveEditedAvailabilitySlot(){
     String(o.id)!==String(id) && String(o.trainer_id)===String(slot.trainer_id)
     && o.start_time===start && o.end_time===end && o.is_active!==false);
   if (dup) { showToast('warning','This trainer already has a declared slot at exactly that time.'); return; }
+  const editDays = _acadReadPickerDays('editAvailDaysWrap');
+  if (!editDays.length) { showToast('warning','Select at least one weekday for this slot.'); return; }
   const btn = document.getElementById('editAvailSaveBtn'); if (btn) btn.disabled = true;
   try {
-    const { error } = await sb.from('trainer_availability').update({ start_time: start, end_time: end }).eq('id', id);
+    const { error } = await sb.from('trainer_availability').update({ start_time: start, end_time: end, days: editDays.join(', ') }).eq('id', id);
     if (error) { showToast('error','Could not save slot: '+error.message); return; }
     document.getElementById('modalEditAvail').classList.remove('on');
     _editingAvailSlotId = null;
@@ -5229,6 +5330,21 @@ async function confirmAssignSlot(){
       loadAvailabilityTab();
       return;
     }
+    // §6/§7/§9 CONTINUOUS-WORKLOAD (fatigue) WARNING — a separate concern from a clash: the clash
+    // check above already blocked genuine overlaps. This only warns (never blocks) when the new
+    // class would extend a same-day, back-to-back teaching block to 3h+. Book Anyway proceeds.
+    try {
+      const bEndMin = bStart + (batchRow.class_duration_minutes||60);
+      const { data: loadBatches } = await sb.from('batches').select('*').eq('trainer_id', trainerId);
+      const cont = _acadContinuousBlock(trainerId, days, bStart, bEndMin, (loadBatches||[]).filter(b=>String(b.id)!==String(batchId)));
+      if (cont.minutes >= 180) {
+        const hrs = cont.minutes % 60 ? (cont.minutes/60).toFixed(1) : String(cont.minutes/60);
+        const ok = await _showSimpleConfirm(
+          `This booking will give ${trainerName} ${hrs} hours of continuous classes${cont.day?' on '+cont.day:''}:\n\n${cont.blocks}\n\nConsider a short break between classes.`,
+          { title: '⚠ Hectic Schedule', confirmLabel: 'Book Anyway' });
+        if (!ok) return; // "Cancel" here means Change Time — abort the booking, nothing written
+      }
+    } catch(e) { /* workload warning is advisory only — never block a booking on its failure */ }
     const { error } = await sb.from('batches').update({ trainer_id: trainerId, trainer_name: trainerName }).eq('id', batchId);
     if (error) { showToast('error','Unable to assign class. '+error.message); return; }
     // Propagate onto the batch's own students too — My Batches/attendance groups students by
