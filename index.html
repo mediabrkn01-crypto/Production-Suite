@@ -1652,11 +1652,28 @@
                             <h3 class="text-base md:text-lg font-bold flex items-center gap-2 text-white">
                                 <i data-lucide="list-todo" class="text-orange-500"></i> Active Pipeline Sheet
                             </h3>
-                            <!-- + button — only visible to admin/manager via JS role class -->
-                            <button id="btn-open-assign-panel" onclick="toggleAssignPanel()" class="admin-manager-only hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:rgba(255,107,6,0.12);border:1px solid rgba(255,107,6,0.25);color:#ff6b06" title="Create & Assign Work Task">
-                                <i data-lucide="plus" style="width:14px;height:14px"></i> Assign Work
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <!-- Kanban / Table view toggle (§12) — preference persisted per browser. -->
+                                <div class="flex items-center rounded-lg overflow-hidden border border-white/[0.08]" style="background:rgba(255,255,255,0.03)">
+                                    <button id="pipe-toggle-kanban" onclick="setPipeView('kanban')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all"><i data-lucide="layout-grid" style="width:13px;height:13px"></i> Kanban</button>
+                                    <button id="pipe-toggle-table" onclick="setPipeView('table')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all"><i data-lucide="table" style="width:13px;height:13px"></i> Table</button>
+                                </div>
+                                <!-- + button — only visible to admin/manager via JS role class -->
+                                <button id="btn-open-assign-panel" onclick="toggleAssignPanel()" class="admin-manager-only hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:rgba(255,107,6,0.12);border:1px solid rgba(255,107,6,0.25);color:#ff6b06" title="Create & Assign Work Task">
+                                    <i data-lucide="plus" style="width:14px;height:14px"></i> Assign Work
+                                </button>
+                            </div>
                         </div>
+
+                        <!-- KANBAN VIEW (§1-§18) — additive; reads the SAME in-memory assignmentsList
+                             the table uses, reuses the same transition/approval functions. Hidden by
+                             default so the existing Table stays the safe fallback until the user opts in. -->
+                        <div id="pipe-kanban-view" class="hidden">
+                            <div id="pipe-kanban-toolbar" class="flex flex-wrap items-center gap-2 mb-3"></div>
+                            <div id="pipe-kanban-board" class="flex gap-3 overflow-x-auto pb-3" style="scroll-snap-type:x proximity"></div>
+                        </div>
+
+                        <div id="pipe-table-view">
 
                         <div class="flex flex-wrap items-center gap-3 bg-transparent p-3 rounded-xl border border-white/[0.06] text-xs shadow-inner">
                             <div class="flex items-center gap-2">
@@ -1760,6 +1777,7 @@
                         <div id="pipeline-pagination" class="hidden items-center justify-center gap-1 flex-wrap pt-4 mt-2 border-t border-white/[0.06]/60" style="display:none">
                         </div>
                     </div>
+                        </div><!-- /pipe-table-view -->
 
 
                 </div>
@@ -3062,6 +3080,7 @@
                     renderCountersGrid();
                     // Skip table re-render during active upload to prevent status-cell flicker
                     if (!_deliveryUploadTaskId) renderTableRows();
+                    if (window._beRenderKanbanIfActive) window._beRenderKanbanIfActive(); // keep Kanban live off the same sync (§17)
                     renderHistoryTable();
                     if (editingRosterIndex === null) renderSettingsRoster(); // skip if user is mid-edit
                     renderLogFeed();
@@ -4452,6 +4471,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         // Progress/status changed for one job → repaint its dock card + modal (if viewing it).
         function _beOnJobProgress(job) {
             renderUploadDock();
+            if (window._beKanbanProgress) window._beKanbanProgress(job.taskId, job.progress); // per-card live % (§15), no full re-render
             if (_deliveryViewTaskId != null && job.taskId == _deliveryViewTaskId) {
                 const modal = document.getElementById('asset-delivery-modal');
                 if (modal && modal.style.display !== 'none' && !modal.classList.contains('hidden')) _beSyncModalToTask(job.taskId);
@@ -9986,6 +10006,267 @@ async function saveLeave(){
   window.initMediaHeadApprovals=function(){ if(!isMediaHead()) return; ensureUI(); };
   // if role resolved before this script ran
   if (isMediaHead()) ensureUI();
+})();
+</script>
+<script>
+/* ============================================================================
+   MEDIA PIPELINE — KANBAN VIEW (additive, §1-§21)
+   Reads the SAME in-memory `assignmentsList` the table uses (no new fetch, §16),
+   reuses the existing transition/approval fns (no duplicate workflow, §21). The
+   existing Table is untouched and is the default view.
+   ============================================================================ */
+(function(){
+  if (window._beKanbanInit) return; window._beKanbanInit = true;
+
+  // ---- one-time CSS (Broken English palette; no new design system) ----
+  var st = document.createElement('style');
+  st.textContent = [
+    '#pipe-kanban-board{min-height:200px}',
+    '.bek-col{flex:0 0 300px;max-width:300px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;display:flex;flex-direction:column;scroll-snap-align:start}',
+    '.bek-col.bek-over{border-color:rgba(255,107,6,0.55);background:rgba(255,107,6,0.05)}',
+    '.bek-col-head{display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:12px;font-weight:700;letter-spacing:.3px}',
+    '.bek-col-count{margin-left:auto;font-size:10px;background:rgba(255,255,255,0.08);color:#c9cef0;border-radius:999px;padding:1px 8px;font-weight:700}',
+    '.bek-col-body{padding:10px;display:flex;flex-direction:column;gap:9px;overflow-y:auto;max-height:62vh}',
+    '.bek-card{background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02));border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px;cursor:pointer;transition:border-color .12s,transform .12s}',
+    '.bek-card:hover{border-color:rgba(255,107,6,0.4)}',
+    '.bek-card.bek-drag{opacity:.5}',
+    '.bek-card-top{display:flex;align-items:flex-start;gap:8px}',
+    '.bek-thumb{width:40px;height:40px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(255,255,255,0.05);overflow:hidden}',
+    '.bek-thumb img{width:100%;height:100%;object-fit:cover}',
+    '.bek-title{font-size:12.5px;font-weight:700;color:#fff;line-height:1.25}',
+    '.bek-type{font-size:10.5px;color:#8890b5;margin-top:1px}',
+    '.bek-badge{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:6px;padding:2px 6px;display:inline-flex;align-items:center;gap:3px}',
+    '.bek-meta{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:10.5px;color:#a5adcf}',
+    '.bek-emp{display:flex;align-items:center;gap:5px}',
+    '.bek-emp img,.bek-emp .bek-ini{width:18px;height:18px;border-radius:50%;font-size:8px}',
+    '.bek-ini{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:700}',
+    '.bek-prog{height:5px;border-radius:3px;background:rgba(255,255,255,0.08);margin-top:8px;overflow:hidden}',
+    '.bek-prog > i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}',
+    '.bek-select{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);color:#e6e9f5;font-size:11px;border-radius:8px;padding:6px 8px;outline:none}',
+    '@media(max-width:640px){.bek-col{flex:0 0 82vw;max-width:82vw}}'
+  ].join('');
+  document.head.appendChild(st);
+
+  // ---- column model: maps EXISTING state → the 6 reference columns (§2) ----
+  // Approval is multi-flag (manager_approved → social_approved), not a status, so the
+  // post-delivery pool splits by those flags. Rejected surfaces in REVIEW for the Head.
+  var COLS = [
+    { id:'assigned',   label:'Assigned',    color:'#eab308', icon:'clipboard-list', match:function(t){ return t.status==='Pending'; } },
+    { id:'inprogress', label:'In Progress', color:'#3b82f6', icon:'loader',         match:function(t){ return t.status==='In Progress'; } },
+    { id:'submitted',  label:'Submitted',   color:'#06b6d4', icon:'send',           match:function(t){ return t.status==='Completed' && !t.managerApproved && !t.socialApproved; } },
+    { id:'review',     label:'Review',      color:'#f59e0b', icon:'search-check',    match:function(t){ return (t.status==='Completed' && t.managerApproved && !t.socialApproved) || t.status==='Rejected'; } },
+    { id:'rework',     label:'Rework',      color:'#ef4444', icon:'rotate-ccw',      match:function(t){ return t.status==='Rework Required'; } },
+    { id:'approved',   label:'Approved',    color:'#22c55e', icon:'check-circle-2',  match:function(t){ return t.status==='Completed' && t.socialApproved; } }
+  ];
+  var TYPE_ICON = { 'Video Editing':'🎬','Thumbnail':'🖼️','Poster Design':'🎨','Graphic Design':'🎨','Social Media':'📱' };
+  var PRIO = { high:{c:'#f9182f',bg:'rgba(249,24,47,0.14)',l:'High'}, medium:{c:'#f59e0b',bg:'rgba(245,158,11,0.14)',l:'Medium'}, low:{c:'#22c55e',bg:'rgba(34,197,94,0.14)',l:'Low'} };
+
+  function colOf(t){ for (var i=0;i<COLS.length;i++) if (COLS[i].match(t)) return COLS[i].id; return null; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function uploadFor(id){ var j=null; if (window._beUploads) window._beUploads.forEach(function(x){ if (x.taskId==id && (x.status==='uploading'||x.status==='queued')) j=x; }); return j; }
+
+  // ---- filters (client-side over the same list; counts follow, §11) ----
+  var F = { q:'', type:'all', member:'all', prio:'all', month:'all' };
+  function buildToolbar(){
+    var bar = document.getElementById('pipe-kanban-toolbar'); if (!bar) return;
+    var members = {};
+    (window.assignmentsList||[]).forEach(function(t){ if (t.assignedTo) members[t.assignedTo]=1; }); // only people with media tasks → no cross-dept leak (§13)
+    var memOpts = ['<option value="all">All Team Members</option>'].concat(Object.keys(members).sort().map(function(n){ return '<option value="'+esc(n)+'"'+(F.member===n?' selected':'')+'>'+esc(n)+'</option>'; })).join('');
+    var types = ['all','Video Editing','Thumbnail','Poster Design','Graphic Design','Social Media'];
+    var typeOpts = types.map(function(x){ return '<option value="'+x+'"'+(F.type===x?' selected':'')+'>'+(x==='all'?'All Types':x)+'</option>'; }).join('');
+    var prios = [['all','All Priorities'],['high','High'],['medium','Medium'],['low','Low']];
+    var prioOpts = prios.map(function(p){ return '<option value="'+p[0]+'"'+(F.prio===p[0]?' selected':'')+'>'+p[1]+'</option>'; }).join('');
+    var months = [['all','All Dates'],['01','Jan'],['02','Feb'],['03','Mar'],['04','Apr'],['05','May'],['06','Jun'],['07','Jul'],['08','Aug'],['09','Sep'],['10','Oct'],['11','Nov'],['12','Dec']];
+    var monthOpts = months.map(function(m){ return '<option value="'+m[0]+'"'+(F.month===m[0]?' selected':'')+'>'+m[1]+'</option>'; }).join('');
+    bar.innerHTML =
+      '<input id="bek-q" class="bek-select" style="min-width:220px" placeholder="Search task, campaign, employee…" value="'+esc(F.q)+'">'+
+      '<select id="bek-type" class="bek-select">'+typeOpts+'</select>'+
+      '<select id="bek-member" class="bek-select">'+memOpts+'</select>'+
+      '<select id="bek-prio" class="bek-select">'+prioOpts+'</select>'+
+      '<select id="bek-month" class="bek-select">'+monthOpts+'</select>';
+    var q=document.getElementById('bek-q'); q.oninput=function(){ F.q=this.value; var p=this.selectionStart; renderBoard(); var nq=document.getElementById('bek-q'); if(nq){ nq.focus(); try{nq.setSelectionRange(p,p);}catch(e){} } };
+    document.getElementById('bek-type').onchange=function(){ F.type=this.value; renderBoard(); };
+    document.getElementById('bek-member').onchange=function(){ F.member=this.value; renderBoard(); };
+    document.getElementById('bek-prio').onchange=function(){ F.prio=this.value; renderBoard(); };
+    document.getElementById('bek-month').onchange=function(){ F.month=this.value; renderBoard(); };
+  }
+
+  function visibleTasks(){
+    var list = (window.assignmentsList||[]).slice();
+    // Role visibility (§13): employee sees own; head/manager/admin see the whole media pipeline.
+    if (window.activeRole==='employee') list = list.filter(function(t){ return t.employeeEmail===window.activeEmail; });
+    var q = F.q.trim().toLowerCase();
+    return list.filter(function(t){
+      if (F.type!=='all' && !(t.type||'').includes(F.type)) return false;
+      if (F.member!=='all' && t.assignedTo!==F.member) return false;
+      if (F.prio!=='all' && (t.priority||'medium')!==F.prio) return false;
+      if (F.month!=='all'){ var d=t.assignedDate||t.date||''; if (!(d.split('-')[1]===F.month)) return false; }
+      if (q){ var hay=((t.topic||'')+' '+(t.type||'')+' '+(t.assignedTo||'')).toLowerCase(); if (hay.indexOf(q)<0) return false; }
+      return true;
+    });
+  }
+
+  function cardHtml(t){
+    var up = uploadFor(t.id);
+    var prio = PRIO[(t.priority||'medium').toLowerCase()] || PRIO.medium;
+    var today = new Date().toISOString().slice(0,10);
+    var due = t.date || '';
+    var overdue = due && due < today && t.status!=='Completed' && t.status!=='Rejected';
+    var dueToday = due===today;
+    var avatar = (typeof hrAvatarHTML==='function')
+      ? hrAvatarHTML({ full_name: t.assignedTo||'?' }, 18)
+      : '<span class="bek-ini">'+esc((t.assignedTo||'?').trim()[0]||'?').toUpperCase()+'</span>';
+    var badges = '<span class="bek-badge" style="color:'+prio.c+';background:'+prio.bg+'">'+prio.l+'</span>';
+    if (overdue) badges += ' <span class="bek-badge" style="color:#f9182f;background:rgba(249,24,47,.14)">Overdue</span>';
+    else if (dueToday) badges += ' <span class="bek-badge" style="color:#f59e0b;background:rgba(245,158,11,.14)">Due today</span>';
+    if (t.status==='Rework Required') badges += ' <span class="bek-badge" style="color:#ef4444;background:rgba(239,68,68,.14)">Needs Changes</span>';
+    if (t.status==='Rejected') badges += ' <span class="bek-badge" style="color:#ef4444;background:rgba(239,68,68,.14)">Rejected</span>';
+    if (t.status==='Completed' && t.socialApproved) badges += ' <span class="bek-badge" style="color:#22c55e;background:rgba(34,197,94,.14)">Approved</span>';
+    var thumb = TYPE_ICON[t.type]||'📄';
+    var prog = up ? '<div class="bek-prog"><i style="width:'+(up.progress||0)+'%"></i></div><div style="font-size:9.5px;color:#22c55e;font-weight:700;margin-top:3px">UPLOADING '+(up.progress||0)+'%</div>' : '';
+    return '<div class="bek-card" draggable="true" data-id="'+esc(t.id)+'" data-col="'+colOf(t)+'" onclick="_beKanbanOpen(\''+esc(t.id)+'\')">'+
+        '<div class="bek-card-top"><div class="bek-thumb">'+thumb+'</div>'+
+          '<div style="min-width:0;flex:1"><div class="bek-title">'+esc(t.topic||'Untitled')+'</div><div class="bek-type">'+esc(t.type||'')+'</div>'+
+          '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">'+badges+'</div></div></div>'+
+        prog+
+        '<div class="bek-meta"><span class="bek-emp">'+avatar+'<span>'+esc(t.assignedTo||'—')+'</span></span>'+(due?'<span style="margin-left:auto">📅 '+esc(due)+'</span>':'')+'</div>'+
+      '</div>';
+  }
+
+  function renderBoard(){
+    var board = document.getElementById('pipe-kanban-board'); if (!board) return;
+    var tasks = visibleTasks();
+    var byCol = {}; COLS.forEach(function(c){ byCol[c.id]=[]; });
+    tasks.forEach(function(t){ var c=colOf(t); if (c) byCol[c].push(t); });
+    var canAdd = (typeof isMediaHead==='function' && isMediaHead()) || window.activeRole==='admin' || window.activeRole==='manager';
+    board.innerHTML = COLS.map(function(c){
+      var items = byCol[c.id];
+      var addBtn = (canAdd && c.id==='assigned') ? '<button onclick="event.stopPropagation();_beKanbanCreate()" style="background:none;border:none;color:'+c.color+';cursor:pointer;font-size:15px;line-height:1" title="Assign Work">+</button>' : '';
+      return '<div class="bek-col" data-col="'+c.id+'">'+
+        '<div class="bek-col-head" style="color:'+c.color+'"><i data-lucide="'+c.icon+'" style="width:14px;height:14px"></i> '+c.label+
+          '<span class="bek-col-count">'+items.length+'</span>'+addBtn+'</div>'+
+        '<div class="bek-col-body" data-col="'+c.id+'">'+ (items.length ? items.map(cardHtml).join('') : '<div style="font-size:10.5px;color:#4a5182;text-align:center;padding:14px 0">No tasks</div>') +'</div>'+
+      '</div>';
+    }).join('');
+    if (window.lucide) try { lucide.createIcons(); } catch(e){}
+    wireDnD();
+  }
+
+  // ---- drag & drop: never blind-writes; routes through existing fns, gated by role (§6) ----
+  var dragId=null, dragFrom=null;
+  function wireDnD(){
+    var board=document.getElementById('pipe-kanban-board'); if(!board) return;
+    board.querySelectorAll('.bek-card').forEach(function(card){
+      card.addEventListener('dragstart',function(e){ dragId=card.dataset.id; dragFrom=card.dataset.col; card.classList.add('bek-drag'); try{e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';}catch(_){}} );
+      card.addEventListener('dragend',function(){ card.classList.remove('bek-drag'); board.querySelectorAll('.bek-col').forEach(function(c){c.classList.remove('bek-over');}); });
+    });
+    board.querySelectorAll('.bek-col').forEach(function(col){
+      col.addEventListener('dragover',function(e){ e.preventDefault(); col.classList.add('bek-over'); });
+      col.addEventListener('dragleave',function(){ col.classList.remove('bek-over'); });
+      col.addEventListener('drop',function(e){ e.preventDefault(); col.classList.remove('bek-over'); var to=col.dataset.col; if(dragId&&to&&to!==dragFrom) handleMove(dragId, dragFrom, to); dragId=null;dragFrom=null; });
+    });
+  }
+  // Allowed transitions → existing function. Anything else: reject + re-render (revert).
+  async function handleMove(id, from, to){
+    var isHead = (typeof isMediaHead==='function' && isMediaHead()) || window.activeRole==='admin' || window.activeRole==='manager';
+    try {
+      if (window.activeRole==='employee'){
+        if (from==='assigned' && to==='inprogress'){ await employeeHandleStatusChange(id,'In Progress'); }
+        else if (from==='inprogress' && to==='submitted'){ await employeeHandleStatusChange(id,'Completed'); /* opens delivery modal; submit finalizes */ }
+        else { toast('warning','Not allowed — move Assigned → In Progress, then submit your delivery to move to Submitted.'); }
+      } else if (isHead){
+        if ((from==='submitted') && to==='review'){ await confirmApprove(id); }
+        else if ((from==='submitted'||from==='review') && to==='approved'){ await confirmSocialPost(id); }
+        else if ((from==='submitted'||from==='review') && to==='rework'){ await reworkFromKanban(id); }
+        else if (to==='inprogress' || to==='assigned'){ toast('warning','Use Rework to send work back — not a direct drag.'); }
+        else { toast('warning','That move isn’t part of the review workflow.'); }
+      } else { toast('warning','You don’t have permission to move this task.'); }
+    } catch(e){ toast('error','Could not update: '+(e&&e.message||e)); }
+    renderBoard(); // source-of-truth re-render (also reverts a rejected/cancelled move)
+  }
+  // Rework auto-sets HIGH priority unless already set by Head (§5), reusing the existing eval fn.
+  async function reworkFromKanban(id){
+    await managerHandleWorkflowEvaluation(id,'Rework Required');
+    try {
+      var t=(window.assignmentsList||[]).find(function(x){return x.id==id;});
+      if (t && t.status==='Rework Required' && (t.priority||'medium')!=='high'){
+        await dbInstance.from('assignments').update({ priority:'high' }).eq('id', id);
+        t.priority='high';
+      }
+    } catch(e){}
+  }
+
+  // ---- click → detail drawer (lazy: parses delivery only on open, §7/§16) ----
+  window._beKanbanOpen = function(id){
+    var t=(window.assignmentsList||[]).find(function(x){return String(x.id)===String(id);}); if(!t) return;
+    var isHead = (typeof isMediaHead==='function' && isMediaHead()) || window.activeRole==='admin' || window.activeRole==='manager';
+    var ov=document.getElementById('bek-detail'); if(!ov){ ov=document.createElement('div'); ov.id='bek-detail'; document.body.appendChild(ov); }
+    ov.style.cssText='position:fixed;inset:0;z-index:99990;background:rgba(4,6,12,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    var prio=PRIO[(t.priority||'medium').toLowerCase()]||PRIO.medium;
+    var deliv=''; try{ if(typeof beParseDelivery==='function' && t.assetLink){ var parts=beParseDelivery(t.assetLink); deliv=(parts||[]).map(function(p){ return (typeof bePreviewMarkup==='function')?bePreviewMarkup(p):('<a href="'+esc(p.url)+'" target="_blank" style="color:#60a5fa">'+esc(p.name||'File')+'</a>'); }).join(''); } }catch(e){}
+    var kv=function(k,v){ return '<div style="margin-bottom:8px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b74a0;font-weight:700">'+k+'</div><div style="font-size:13px;color:#e6e9f5;white-space:pre-wrap">'+esc(v||'—')+'</div></div>'; };
+    var headActions = isHead ? (
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px">'+
+        (t.status==='Completed' && !t.managerApproved ? '<button onclick="confirmApprove(\''+esc(t.id)+'\').then(()=>document.getElementById(\'bek-detail\').remove())" class="brand-gradient text-white" style="border:none;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer">Approve → Review</button>' : '')+
+        (t.status==='Completed' && t.managerApproved && !t.socialApproved ? '<button onclick="confirmSocialPost(\''+esc(t.id)+'\').then(()=>document.getElementById(\'bek-detail\').remove())" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer">Mark Approved</button>' : '')+
+        (t.status==='Completed' ? '<button onclick="(async()=>{await window._beKanbanRework(\''+esc(t.id)+'\');document.getElementById(\'bek-detail\').remove();})()" style="background:#f59e0b;color:#111;border:none;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer">Send for Rework</button>' : '')+
+        (t.status!=='Rejected'&&t.status==='Completed' ? '<button onclick="(async()=>{await managerHandleWorkflowEvaluation(\''+esc(t.id)+'\',\'Rejected\');document.getElementById(\'bek-detail\').remove();})()" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.35);border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer">Reject</button>' : '')+
+        '</div>'
+      ) : '';
+    ov.innerHTML='<div onclick="event.stopPropagation()" style="background:#0d1120;border:1px solid rgba(255,255,255,.1);border-radius:18px;width:min(760px,94vw);max-height:88vh;overflow-y:auto;padding:22px">'+
+      '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px"><div class="bek-thumb" style="width:52px;height:52px;font-size:24px">'+(TYPE_ICON[t.type]||'📄')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:800;color:#fff">'+esc(t.topic||'Untitled')+'</div>'+
+        '<div style="font-size:12px;color:#8890b5;margin-top:2px">'+esc(t.type||'')+' · <span style="color:'+prio.c+';font-weight:700">'+prio.l+' priority</span> · '+esc(t.status||'')+'</div></div>'+
+        '<button onclick="document.getElementById(\'bek-detail\').remove()" class="hr-icon-btn" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;border-radius:9px;width:34px;height:34px;cursor:pointer">✕</button></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 18px">'+
+        kv('Assigned To', t.assignedTo)+kv('Assigned By', t.assignedBy)+
+        kv('Assigned Date', t.assignedDate)+kv('Target Date', t.date)+
+      '</div>'+
+      kv('Description / Instructions', t.description)+
+      (t.explanation && t.explanation!=='None' ? kv('Rework / Review Notes', t.explanation) : '')+
+      (t.referenceFile ? '<div style="margin:8px 0"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b74a0;font-weight:700;margin-bottom:4px">Reference</div><a href="'+esc(t.referenceFile)+'" target="_blank" style="color:#60a5fa;font-size:12px">Open reference file</a></div>' : '')+
+      (deliv ? '<div style="margin-top:10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b74a0;font-weight:700;margin-bottom:6px">Delivery</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+deliv+'</div></div>' : '')+
+      headActions+
+      '</div>';
+    if (window.lucide) try{ lucide.createIcons(); }catch(e){}
+  };
+  // Per-card upload % — update just this card's bar (§15: keyed by task id, never bleeds to others).
+  window._beKanbanProgress = function(taskId, pct){
+    var kv=document.getElementById('pipe-kanban-view'); if(!kv||kv.classList.contains('hidden')) return;
+    var card=document.querySelector('#pipe-kanban-board .bek-card[data-id="'+String(taskId).replace(/"/g,'')+'"]'); if(!card) return;
+    var bar=card.querySelector('.bek-prog > i');
+    if(bar) bar.style.width=(pct||0)+'%';
+    else renderBoard(); // card had no progress bar yet (upload just began) — rebuild once to show it
+  };
+  window._beKanbanRework = reworkFromKanban;
+  window._beKanbanCreate = function(){ if (typeof switchTab==='function') switchTab('work-assignment'); };
+
+  // ---- view toggle (§12) ----
+  function applyToggleStyle(mode){
+    var k=document.getElementById('pipe-toggle-kanban'), tb=document.getElementById('pipe-toggle-table'); if(!k||!tb) return;
+    var on='background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff', off='background:transparent;color:#8890b5';
+    k.setAttribute('style', mode==='kanban'?on:off); tb.setAttribute('style', mode==='table'?on:off);
+  }
+  window.setPipeView = function(mode){
+    mode = (mode==='kanban')?'kanban':'table';
+    try { localStorage.setItem('be_pipe_view', mode); } catch(e){}
+    var kv=document.getElementById('pipe-kanban-view'), tv=document.getElementById('pipe-table-view');
+    if (kv) kv.classList.toggle('hidden', mode!=='kanban');
+    if (tv) tv.classList.toggle('hidden', mode!=='table');
+    applyToggleStyle(mode);
+    if (mode==='kanban'){ buildToolbar(); renderBoard(); }
+  };
+  // Keep the board in sync with the same data the table renders from (§17 — piggybacks the
+  // existing sync loop / triggerPipelineMatrixUpdate, no new realtime subscription).
+  window._beRenderKanbanIfActive = function(){ var kv=document.getElementById('pipe-kanban-view'); if (kv && !kv.classList.contains('hidden')){ buildToolbar(); renderBoard(); } };
+
+  function init(){
+    if (!document.getElementById('pipe-kanban-view')) { setTimeout(init, 400); return; }
+    var saved='table'; try{ saved=localStorage.getItem('be_pipe_view')||'table'; }catch(e){}
+    window.setPipeView(saved);
+  }
+  if (document.readyState!=='loading') setTimeout(init, 600); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(init,600); });
 })();
 </script>
 </body>
