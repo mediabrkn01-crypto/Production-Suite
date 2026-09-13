@@ -10063,14 +10063,18 @@ async function saveLeave(){
 
   function colOf(t){ for (var i=0;i<COLS.length;i++) if (COLS[i].match(t)) return COLS[i].id; return null; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-  function uploadFor(id){ var j=null; if (window._beUploads) window._beUploads.forEach(function(x){ if (x.taskId==id && (x.status==='uploading'||x.status==='queued')) j=x; }); return j; }
+  // assignmentsList (let) and _beUploads (const) are LEXICAL globals — not properties of window,
+  // so a separate <script> must reference them by bare name, not window.X (the empty-board bug).
+  function AL(){ try { if (typeof assignmentsList!=='undefined' && assignmentsList) return assignmentsList; } catch(e){} try { return window.assignmentsList||[]; } catch(e){ return []; } }
+  function UPLOADS(){ try { if (typeof _beUploads!=='undefined' && _beUploads) return _beUploads; } catch(e){} return window._beUploads||null; }
+  function uploadFor(id){ var j=null, u=UPLOADS(); if (u) u.forEach(function(x){ if (x.taskId==id && (x.status==='uploading'||x.status==='queued')) j=x; }); return j; }
 
   // ---- filters (client-side over the same list; counts follow, §11) ----
   var F = { q:'', type:'all', member:'all', prio:'all', month:'all' };
   function buildToolbar(){
     var bar = document.getElementById('pipe-kanban-toolbar'); if (!bar) return;
     var members = {};
-    (window.assignmentsList||[]).forEach(function(t){ if (t.assignedTo) members[t.assignedTo]=1; }); // only people with media tasks → no cross-dept leak (§13)
+    AL().forEach(function(t){ if (t.assignedTo) members[t.assignedTo]=1; }); // only people with media tasks → no cross-dept leak (§13)
     var memOpts = ['<option value="all">All Team Members</option>'].concat(Object.keys(members).sort().map(function(n){ return '<option value="'+esc(n)+'"'+(F.member===n?' selected':'')+'>'+esc(n)+'</option>'; })).join('');
     var types = ['all','Video Editing','Thumbnail','Poster Design','Graphic Design','Social Media'];
     var typeOpts = types.map(function(x){ return '<option value="'+x+'"'+(F.type===x?' selected':'')+'>'+(x==='all'?'All Types':x)+'</option>'; }).join('');
@@ -10092,7 +10096,7 @@ async function saveLeave(){
   }
 
   function visibleTasks(){
-    var list = (window.assignmentsList||[]).slice();
+    var list = AL().slice();
     // Role visibility (§13): employee sees own; head/manager/admin see the whole media pipeline.
     if (window.activeRole==='employee') list = list.filter(function(t){ return t.employeeEmail===window.activeEmail; });
     var q = F.q.trim().toLowerCase();
@@ -10188,7 +10192,7 @@ async function saveLeave(){
   async function reworkFromKanban(id){
     await managerHandleWorkflowEvaluation(id,'Rework Required');
     try {
-      var t=(window.assignmentsList||[]).find(function(x){return x.id==id;});
+      var t=AL().find(function(x){return x.id==id;});
       if (t && t.status==='Rework Required' && (t.priority||'medium')!=='high'){
         await dbInstance.from('assignments').update({ priority:'high' }).eq('id', id);
         t.priority='high';
@@ -10198,7 +10202,7 @@ async function saveLeave(){
 
   // ---- click → detail drawer (lazy: parses delivery only on open, §7/§16) ----
   window._beKanbanOpen = function(id){
-    var t=(window.assignmentsList||[]).find(function(x){return String(x.id)===String(id);}); if(!t) return;
+    var t=AL().find(function(x){return String(x.id)===String(id);}); if(!t) return;
     var isHead = (typeof isMediaHead==='function' && isMediaHead()) || window.activeRole==='admin' || window.activeRole==='manager';
     var ov=document.getElementById('bek-detail'); if(!ov){ ov=document.createElement('div'); ov.id='bek-detail'; document.body.appendChild(ov); }
     ov.style.cssText='position:fixed;inset:0;z-index:99990;background:rgba(4,6,12,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:18px';
