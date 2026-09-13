@@ -10054,7 +10054,7 @@ async function saveLeave(){
     { id:'assigned',   label:'Assigned',    color:'#eab308', icon:'clipboard-list', match:function(t){ return t.status==='Pending'; } },
     { id:'inprogress', label:'In Progress', color:'#3b82f6', icon:'loader',         match:function(t){ return t.status==='In Progress'; } },
     { id:'submitted',  label:'Submitted',   color:'#06b6d4', icon:'send',           match:function(t){ return t.status==='Completed' && !t.managerApproved && !t.socialApproved; } },
-    { id:'review',     label:'Review',      color:'#f59e0b', icon:'search-check',    match:function(t){ return (t.status==='Completed' && t.managerApproved && !t.socialApproved) || t.status==='Rejected'; } },
+    { id:'review',     label:'Review',      color:'#f59e0b', icon:'search-check',    match:function(t){ return t.status==='Completed' && t.managerApproved && !t.socialApproved; } },
     { id:'rework',     label:'Rework',      color:'#ef4444', icon:'rotate-ccw',      match:function(t){ return t.status==='Rework Required'; } },
     { id:'approved',   label:'Approved',    color:'#22c55e', icon:'check-circle-2',  match:function(t){ return t.status==='Completed' && t.socialApproved; } }
   ];
@@ -10070,7 +10070,9 @@ async function saveLeave(){
   function uploadFor(id){ var j=null, u=UPLOADS(); if (u) u.forEach(function(x){ if (x.taskId==id && (x.status==='uploading'||x.status==='queued')) j=x; }); return j; }
 
   // ---- filters (client-side over the same list; counts follow, §11) ----
-  var F = { q:'', type:'all', member:'all', prio:'all', month:'all' };
+  // Default month = CURRENT month (§2/§14) so Review/Approved don't flood with old work.
+  var CUR_MONTH = new Date().toISOString().slice(0,7); // YYYY-MM
+  var F = { q:'', type:'all', member:'all', prio:'all', month:CUR_MONTH };
   function buildToolbar(){
     var bar = document.getElementById('pipe-kanban-toolbar'); if (!bar) return;
     var members = {};
@@ -10080,7 +10082,11 @@ async function saveLeave(){
     var typeOpts = types.map(function(x){ return '<option value="'+x+'"'+(F.type===x?' selected':'')+'>'+(x==='all'?'All Types':x)+'</option>'; }).join('');
     var prios = [['all','All Priorities'],['high','High'],['medium','Medium'],['low','Low']];
     var prioOpts = prios.map(function(p){ return '<option value="'+p[0]+'"'+(F.prio===p[0]?' selected':'')+'>'+p[1]+'</option>'; }).join('');
-    var months = [['all','All Dates'],['01','Jan'],['02','Feb'],['03','Mar'],['04','Apr'],['05','May'],['06','Jun'],['07','Jul'],['08','Aug'],['09','Sep'],['10','Oct'],['11','Nov'],['12','Dec']];
+    // Real YYYY-MM options: current month + previous 11, newest first, plus All. Current is default.
+    var months = [];
+    var d0 = new Date(); d0.setDate(1);
+    for (var mi=0; mi<12; mi++){ var dd=new Date(d0.getFullYear(), d0.getMonth()-mi, 1); var ym=dd.toISOString().slice(0,7); var lbl=dd.toLocaleDateString('en-US',{month:'short',year:'numeric'})+(mi===0?' (current)':''); months.push([ym,lbl]); }
+    months.push(['all','All Dates']);
     var monthOpts = months.map(function(m){ return '<option value="'+m[0]+'"'+(F.month===m[0]?' selected':'')+'>'+m[1]+'</option>'; }).join('');
     bar.innerHTML =
       '<input id="bek-q" class="bek-select" style="min-width:220px" placeholder="Search task, campaign, employee…" value="'+esc(F.q)+'">'+
@@ -10104,7 +10110,7 @@ async function saveLeave(){
       if (F.type!=='all' && !(t.type||'').includes(F.type)) return false;
       if (F.member!=='all' && t.assignedTo!==F.member) return false;
       if (F.prio!=='all' && (t.priority||'medium')!==F.prio) return false;
-      if (F.month!=='all'){ var d=t.assignedDate||t.date||''; if (!(d.split('-')[1]===F.month)) return false; }
+      if (F.month!=='all'){ var d=t.assignedDate||t.date||''; if (d.slice(0,7)!==F.month) return false; }
       if (q){ var hay=((t.topic||'')+' '+(t.type||'')+' '+(t.assignedTo||'')).toLowerCase(); if (hay.indexOf(q)<0) return false; }
       return true;
     });
@@ -10170,23 +10176,45 @@ async function saveLeave(){
       col.addEventListener('drop',function(e){ e.preventDefault(); col.classList.remove('bek-over'); var to=col.dataset.col; if(dragId&&to&&to!==dragFrom) handleMove(dragId, dragFrom, to); dragId=null;dragFrom=null; });
     });
   }
-  // Allowed transitions → existing function. Anything else: reject + re-render (revert).
+  // ---- centralized capability resolver (§17) — resolved from the app's real role model, not
+  //      a single string. Media Head (system_role media_head) + full-management (manager/founder/
+  //      co_founder/managing_director/director, via isMediaHead) + admin/social get review rights. ----
+  function canReviewMediaWork(){
+    if (typeof isMediaHead==='function' && isMediaHead()) return true;   // media_head + leadership set
+    return window.activeRole==='admin' || window.activeRole==='manager' || window.activeRole==='social_media';
+  }
+  // Returns {fn} to run, or {err} branded message. task = the record; from/to = column ids.
+  function resolveMove(task, from, to){
+    var reviewer = canReviewMediaWork();
+    var owner = task && (task.employeeEmail===window.activeEmail);
+    // Reviewer / management: full workflow control.
+    if (reviewer){
+      if (from==='assigned' && to==='inprogress') return { fn:function(){ return adminUpdateStatusDirectly(task.id,'In Progress'); } };
+      if (from==='submitted' && to==='review')    return { fn:function(){ return confirmApprove(task.id); } };
+      if ((from==='submitted'||from==='review') && to==='approved') return { fn:function(){ return confirmSocialPost(task.id); } };
+      if ((from==='submitted'||from==='review') && to==='rework')   return { fn:function(){ return reworkFromKanban(task.id); } };
+      if (from==='inprogress' && to==='submitted') return { err:'Submitted happens through the employee’s Submit Delivery upload — not a drag.' };
+      if (to==='assigned' || to==='inprogress')    return { err:'Send work back with Rework — not a backward drag.' };
+      return { err:'That move isn’t part of the review workflow.' };
+    }
+    // Normal employee: only their OWN task, and only forward the two allowed steps.
+    if (window.activeRole==='employee'){
+      if (!owner) return { err:'You can only update your own assigned work.' };
+      if (from==='assigned' && to==='inprogress') return { fn:function(){ return employeeHandleStatusChange(task.id,'In Progress'); } };
+      if (from==='inprogress' && to==='submitted') return { fn:function(){ return employeeHandleStatusChange(task.id,'Completed'); /* opens Submit Delivery */ } };
+      if (to==='review'||to==='approved') return { err:'Only Media Head can review or approve submitted work.' };
+      return { err:'Move Assigned → In Progress, then submit your delivery.' };
+    }
+    return { err:'You don’t have permission to move this task.' };
+  }
   async function handleMove(id, from, to){
-    var isHead = (typeof isMediaHead==='function' && isMediaHead()) || window.activeRole==='admin' || window.activeRole==='manager';
-    try {
-      if (window.activeRole==='employee'){
-        if (from==='assigned' && to==='inprogress'){ await employeeHandleStatusChange(id,'In Progress'); }
-        else if (from==='inprogress' && to==='submitted'){ await employeeHandleStatusChange(id,'Completed'); /* opens delivery modal; submit finalizes */ }
-        else { toast('warning','Not allowed — move Assigned → In Progress, then submit your delivery to move to Submitted.'); }
-      } else if (isHead){
-        if ((from==='submitted') && to==='review'){ await confirmApprove(id); }
-        else if ((from==='submitted'||from==='review') && to==='approved'){ await confirmSocialPost(id); }
-        else if ((from==='submitted'||from==='review') && to==='rework'){ await reworkFromKanban(id); }
-        else if (to==='inprogress' || to==='assigned'){ toast('warning','Use Rework to send work back — not a direct drag.'); }
-        else { toast('warning','That move isn’t part of the review workflow.'); }
-      } else { toast('warning','You don’t have permission to move this task.'); }
-    } catch(e){ toast('error','Could not update: '+(e&&e.message||e)); }
-    renderBoard(); // source-of-truth re-render (also reverts a rejected/cancelled move)
+    var task = AL().find(function(x){ return String(x.id)===String(id); });
+    if (!task){ renderBoard(); return; }
+    var r = resolveMove(task, from, to);
+    if (r.err){ toast('warning', r.err); renderBoard(); return; } // revert (§18)
+    try { await r.fn(); }
+    catch(e){ toast('error','Could not update: '+(e&&e.message||e)); }
+    renderBoard(); // source-of-truth re-render (also reverts a cancelled prompt / failed write, §18)
   }
   // Rework auto-sets HIGH priority unless already set by Head (§5), reusing the existing eval fn.
   async function reworkFromKanban(id){
@@ -10203,6 +10231,7 @@ async function saveLeave(){
   // ---- click → detail drawer (lazy: parses delivery only on open, §7/§16) ----
   window._beKanbanOpen = function(id){
     var t=AL().find(function(x){return String(x.id)===String(id);}); if(!t) return;
+    var col=colOf(t);
     var isHead = (typeof isMediaHead==='function' && isMediaHead()) || window.activeRole==='admin' || window.activeRole==='manager';
     var ov=document.getElementById('bek-detail'); if(!ov){ ov=document.createElement('div'); ov.id='bek-detail'; document.body.appendChild(ov); }
     ov.style.cssText='position:fixed;inset:0;z-index:99990;background:rgba(4,6,12,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:18px';
@@ -10230,7 +10259,8 @@ async function saveLeave(){
       kv('Description / Instructions', t.description)+
       (t.explanation && t.explanation!=='None' ? kv('Rework / Review Notes', t.explanation) : '')+
       (t.referenceFile ? '<div style="margin:8px 0"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b74a0;font-weight:700;margin-bottom:4px">Reference</div><a href="'+esc(t.referenceFile)+'" target="_blank" style="color:#60a5fa;font-size:12px">Open reference file</a></div>' : '')+
-      (deliv ? '<div style="margin-top:10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b74a0;font-weight:700;margin-bottom:6px">Delivery</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+deliv+'</div></div>' : '')+
+      (deliv ? '<div style="margin-top:10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#6b74a0;font-weight:700;margin-bottom:6px">Delivery</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+deliv+'</div></div>'
+             : ((col==='submitted'||col==='review'||col==='approved') ? '<div style="margin-top:10px;font-size:11.5px;color:#fb923c">No delivery file is attached to this record.</div>' : ''))+
       headActions+
       '</div>';
     if (window.lucide) try{ lucide.createIcons(); }catch(e){}
