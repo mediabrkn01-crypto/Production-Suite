@@ -10186,10 +10186,21 @@ async function saveLeave(){
     if (typeof isMediaHead==='function' && isMediaHead()) return true;   // media_head + leadership set
     return window.activeRole==='admin' || window.activeRole==='manager' || window.activeRole==='social_media';
   }
+  // Ownership by STABLE signals, not one display name (§1/§13): login email (case/space
+  // normalised) OR the assignee name matches the logged-in user. Either proves it's their task.
+  function _norm(s){ return String(s==null?'':s).trim().toLowerCase(); }
+  function isOwnTask(task){
+    if (!task) return false;
+    var email = _norm(window.activeEmail);
+    if (email && _norm(task.employeeEmail)===email) return true;
+    var me = _norm(typeof activeUser!=='undefined'?activeUser:window.activeUser);
+    if (me && _norm(task.assignedTo)===me) return true;
+    return false;
+  }
   // Returns {fn} to run, or {err} branded message. task = the record; from/to = column ids.
   function resolveMove(task, from, to){
     var reviewer = canReviewMediaWork();
-    var owner = task && (task.employeeEmail===window.activeEmail);
+    var owner = isOwnTask(task);
     // Reviewer / management: full workflow control.
     if (reviewer){
       if (from==='assigned' && to==='inprogress') return { fn:function(){ return adminUpdateStatusDirectly(task.id,'In Progress'); } };
@@ -10200,15 +10211,13 @@ async function saveLeave(){
       if (to==='assigned' || to==='inprogress')    return { err:'Send work back with Rework — not a backward drag.' };
       return { err:'That move isn’t part of the review workflow.' };
     }
-    // Normal employee: only their OWN task, and only forward the two allowed steps.
-    if (window.activeRole==='employee'){
-      if (!owner) return { err:'You can only update your own assigned work.' };
-      if (from==='assigned' && to==='inprogress') return { fn:function(){ return employeeHandleStatusChange(task.id,'In Progress'); } };
-      if (from==='inprogress' && to==='submitted') return { fn:function(){ return employeeHandleStatusChange(task.id,'Completed'); /* opens Submit Delivery */ } };
-      if (to==='review'||to==='approved') return { err:'Only Media Head can review or approve submitted work.' };
-      return { err:'Move Assigned → In Progress, then submit your delivery.' };
-    }
-    return { err:'You don’t have permission to move this task.' };
+    // Anyone who is NOT a reviewer is an employee-level actor (do NOT require the literal
+    // activeRole==='employee' — that string was the false-denial root cause). Gate by ownership.
+    if (!owner) return { err:'You can only update your own assigned work.' };
+    if (from==='assigned' && to==='inprogress') return { fn:function(){ return employeeHandleStatusChange(task.id,'In Progress'); } };
+    if (from==='inprogress' && to==='submitted') return { fn:function(){ return employeeHandleStatusChange(task.id,'Completed'); /* opens Submit Delivery */ } };
+    if (to==='review'||to==='approved') return { err:'Only Media Head can review or approve submitted work.' };
+    return { err:'Move Assigned → In Progress, then submit your delivery.' };
   }
   async function handleMove(id, from, to){
     var task = AL().find(function(x){ return String(x.id)===String(id); });
