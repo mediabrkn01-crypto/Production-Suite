@@ -1237,28 +1237,27 @@ details[open] .rawsum::before{content:'▾ '}
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:4px">
             <div><h2 style="margin-bottom:4px">Class &amp; Attendance Overview</h2>
               <div class="lv-note" id="ov-subtitle">Loading…</div></div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <!-- Mode toggle -->
-              <div style="display:flex;border:1px solid rgba(255,255,255,.12);border-radius:10px;overflow:hidden;background:rgba(255,255,255,.03)">
-                <button id="ov-btn-today" onclick="ovSetMode('today')" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer">Today</button>
-                <button id="ov-btn-monthly" onclick="ovSetMode('monthly')" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer">Monthly</button>
+              <div style="display:flex;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:3px;background:rgba(255,255,255,.03);gap:2px">
+                <button id="ov-btn-today" onclick="ovSetMode('today')">Today</button>
+                <button id="ov-btn-monthly" onclick="ovSetMode('monthly')">Monthly</button>
               </div>
               <!-- Daily nav -->
-              <div id="ov-day-nav" style="display:flex;align-items:center;gap:6px">
-                <button class="act-btn" onclick="ovShiftDay(-1)">‹</button>
-                <input id="ov-day" type="date" onchange="ovSetDay(this.value)" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 10px;color:var(--tx);font-size:12px;outline:none"/>
-                <button class="act-btn" onclick="ovShiftDay(1)">›</button>
-                <button class="act-btn" onclick="ovSetDay(new Date().toISOString().slice(0,10))" style="font-size:10.5px">Today</button>
+              <div id="ov-day-nav" style="display:flex;align-items:center;gap:5px">
+                <button class="act-btn" onclick="ovShiftDay(-1)" style="padding:5px 10px;font-size:14px;line-height:1">‹</button>
+                <input id="ov-day" type="date" onchange="ovSetDay(this.value)" style="background:rgba(10,14,23,.9);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:6px 10px;color:#f1f5f9;font-size:12px;outline:none"/>
+                <button class="act-btn" onclick="ovShiftDay(1)" style="padding:5px 10px;font-size:14px;line-height:1">›</button>
               </div>
               <!-- Monthly nav -->
-              <div id="ov-month-nav" style="display:none;align-items:center;gap:6px">
-                <button class="act-btn" onclick="ovShiftMonth(-1)">‹ Prev</button>
-                <input id="ov-month" type="month" onchange="ovSetMonth(this.value)" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 10px;color:var(--tx);font-size:12px;outline:none"/>
-                <button class="act-btn" onclick="ovShiftMonth(1)">Next ›</button>
+              <div id="ov-month-nav" style="display:none;align-items:center;gap:5px">
+                <button class="act-btn" onclick="ovShiftMonth(-1)">‹</button>
+                <input id="ov-month" type="month" onchange="ovSetMonth(this.value)" style="background:rgba(10,14,23,.9);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:6px 10px;color:#f1f5f9;font-size:12px;outline:none"/>
+                <button class="act-btn" onclick="ovShiftMonth(1)">›</button>
               </div>
             </div>
           </div>
-          <div id="ov-summary" class="acad-dash-tiles" style="margin-top:10px"></div>
+          <div id="ov-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px"></div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
             <input id="ov-search" placeholder="Search trainer, batch or course…" oninput="ovRender()" style="flex:1;min-width:180px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 12px;color:var(--tx);font-size:12px;outline:none"/>
             <select id="ov-f-emp" class="ov-sel" onchange="ovRender()"><option value="all">All Employment</option><option value="ft">Full-Time</option><option value="pt">Part-Time</option></select>
@@ -7169,21 +7168,41 @@ var _OV = {
   missing:{c:'#f87171',l:'Attendance Not Marked'}, absent:{c:'#fb923c',l:'All Absent'},
   leave:{c:'#a78bfa',l:'Trainer Leave'}, postponed:{c:'#8890b5',l:'Postponed / Not Held'}
 };
-// ── CSS injection (dark-safe: explicit bg, appearance:none) ───────────────────
+// ── CSS injection ─────────────────────────────────────────────────────────────
+// Uses only CSS variables that exist in academics.html + hardcoded fallbacks.
+// --bg2 = #0d1119  --tx = var(--text-main)=#f1f5f9  --tx3 = rgba(255,255,255,.28)
 function _ovInjectCSS(){
   if(document.getElementById('ov-css'))return;
   var s=document.createElement('style'); s.id='ov-css';
   s.textContent=
-    '.ov-sel{-webkit-appearance:none;appearance:none;background:var(--card);border:1px solid rgba(255,255,255,.13);'+
-    'border-radius:9px;padding:7px 28px 7px 10px;color:var(--tx);font-size:12px;outline:none;'+
-    'background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%23888\'/%3E%3C/svg%3E");'+
+    // Selects: dark bg, custom arrow, no native chrome
+    '.ov-sel{-webkit-appearance:none;appearance:none;'+
+    'background:rgba(10,14,23,.95);border:1px solid rgba(255,255,255,.12);'+
+    'border-radius:9px;padding:6px 28px 6px 10px;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer;'+
+    'background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%23666\'/%3E%3C/svg%3E");'+
     'background-repeat:no-repeat;background-position:right 9px center}'+
-    '.ov-sel option{background:var(--card,#1a1a2e);color:var(--tx,#e2e8f0)}'+
-    '.ov-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px}'+
+    '.ov-sel:hover{border-color:rgba(255,255,255,.22)}'+
+    '.ov-sel option{background:#0d1119;color:#f1f5f9}'+
+    // Status pills
+    '.ov-pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 8px;white-space:nowrap}'+
+    // Calendar cells for drill-down
     '.ov-cell{border:1px solid rgba(255,255,255,.06);border-radius:8px;min-height:52px;padding:5px 6px;font-size:11px}'+
-    '#ov-btn-today,#ov-btn-monthly{background:transparent;color:var(--tx3);transition:background .15s,color .15s;border:none;cursor:pointer}'+
-    '#ov-btn-today.ov-mode-active,#ov-btn-monthly.ov-mode-active{background:var(--accent,#6366f1);color:#fff;border-radius:9px}'+
-    '.ov-class-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}';
+    // Mode toggle buttons
+    '#ov-btn-today,#ov-btn-monthly{background:transparent;color:rgba(255,255,255,.4);transition:all .15s;border:none;cursor:pointer;font-size:12px;font-weight:700;padding:6px 14px}'+
+    '#ov-btn-today:hover,#ov-btn-monthly:hover{color:rgba(255,255,255,.75)}'+
+    '#ov-btn-today.ov-mode-active,#ov-btn-monthly.ov-mode-active{background:#ed1f51;color:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(237,31,81,.4)}'+
+    // Stat tiles (OV uses .ov-tile, not acad-stat-card, to avoid colliding with other tabs)
+    '.ov-tile{background:rgba(13,17,28,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px;backdrop-filter:blur(12px)}'+
+    '.ov-tile .ov-tv{font-size:26px;font-weight:800;color:#f1f5f9;line-height:1;margin-bottom:5px;font-variant-numeric:tabular-nums}'+
+    '.ov-tile .ov-tl{font-size:10px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.08em}'+
+    // Today\'s class cards
+    '.ov-class-card{background:rgba(13,17,28,.75);border:1px solid rgba(255,255,255,.07);border-radius:10px;'+
+    'padding:12px 16px;display:flex;gap:14px;align-items:flex-start;transition:border-color .15s}'+
+    '.ov-class-card:hover{border-color:rgba(255,255,255,.14)}'+
+    // Trainer table row hover (overrides inline border-bottom)
+    '#ov-body tr:hover td{background:rgba(255,255,255,.025)}'+
+    '#ov-body th{font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.08em;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.07)}'+
+    '#ov-body td{padding:9px 10px;font-size:12.5px}';
   document.head.appendChild(s);
 }
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -7296,8 +7315,8 @@ async function ovLoad(){
 }
 // ── Render ────────────────────────────────────────────────────────────────────
 function _ovTile(val,label,color,accent){
-  var bdr=accent?'border-left:3px solid '+accent+';':'';
-  return '<div class="acad-stat-card" style="cursor:default;'+bdr+'"><div><div class="val"'+(color?' style="color:'+color+'"':'')+'>'+val+'</div><div class="lbl">'+label+'</div></div></div>';
+  var bdr=accent?'border-left:3px solid '+accent+';':'border-left:3px solid rgba(255,255,255,.08);';
+  return '<div class="ov-tile" style="'+bdr+'"><div class="ov-tv"'+(color?' style="color:'+color+'"':'')+'>'+val+'</div><div class="ov-tl">'+label+'</div></div>';
 }
 window.ovRender=function(){
   if(!_ovData) return;
@@ -7350,22 +7369,25 @@ window.ovRender=function(){
       (_ovData.unassigned.length>8?'<span style="color:var(--tx3)"> +'+(_ovData.unassigned.length-8)+' more</span>':'')+'</div></div>';
   } else if(issuesEl){ issuesEl.innerHTML=''; }
   // Trainer table
-  var head='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--tx3);text-align:left">'+
-    ['Trainer','Type','Sched.','Done','Missing','Absent','Leave','Payroll','Hours',''].map(function(h){return '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">'+h+'</th>';}).join('')+'</tr></thead><tbody>';
+  var head='<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(255,255,255,.07);overflow:hidden">'+
+    '<table style="width:100%;border-collapse:collapse"><thead><tr>'+
+    ['Trainer','Type','Sched.','Done','Missing','Absent','Leave','Payroll Eligible','Hours',''].map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>';
   var trhtml=rows.length?rows.map(function(r){
-    var pill=function(n,k){return n>0?'<span class="ov-pill" style="background:'+_OV[k].c+'22;color:'+_OV[k].c+'">'+n+'</span>':'<span style="color:var(--tx3)">–</span>';};
-    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'+
-      '<td style="padding:8px 10px;color:var(--tx);font-weight:600">'+esc(r.name)+'</td>'+
-      '<td style="padding:8px 10px;color:var(--tx3)">'+(r.type==='pt'?'PT':r.type==='ft'?'FT':'—')+'</td>'+
-      '<td style="padding:8px 10px">'+r.scheduled+'</td>'+
-      '<td style="padding:8px 10px">'+pill(r.completed,'completed')+'</td>'+
-      '<td style="padding:8px 10px">'+pill(r.missing,'missing')+'</td>'+
-      '<td style="padding:8px 10px">'+pill(r.absent,'absent')+'</td>'+
-      '<td style="padding:8px 10px">'+pill(r.leave,'leave')+'</td>'+
-      '<td style="padding:8px 10px;color:#38bdf8;font-weight:700">'+r.payable+'</td>'+
-      '<td style="padding:8px 10px;color:var(--tx3)">'+(r.minutes/60).toFixed(1)+'h</td>'+
-      '<td style="padding:8px 10px"><button class="act-btn" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">View</button></td></tr>';
-  }).join(''):'<tr><td colspan="10" class="empty" style="padding:24px">No scheduled sessions for this period.</td></tr>';
+    var pill=function(n,k){return n>0?'<span class="ov-pill" style="background:'+_OV[k].c+'1a;color:'+_OV[k].c+'">'+n+'</span>':'<span style="color:rgba(255,255,255,.18)">–</span>';};
+    var typeBadge=r.type==='pt'?'<span style="font-size:9.5px;font-weight:700;background:rgba(99,102,241,.15);color:#818cf8;border-radius:5px;padding:2px 6px">PT</span>':
+      r.type==='ft'?'<span style="font-size:9.5px;font-weight:700;background:rgba(16,185,129,.12);color:#34d399;border-radius:5px;padding:2px 6px">FT</span>':'<span style="color:rgba(255,255,255,.18)">—</span>';
+    return '<tr>'+
+      '<td style="color:#f1f5f9;font-weight:600;padding:10px 12px">'+esc(r.name)+'</td>'+
+      '<td style="padding:10px 12px">'+typeBadge+'</td>'+
+      '<td style="padding:10px 12px;color:rgba(255,255,255,.55)">'+r.scheduled+'</td>'+
+      '<td style="padding:10px 12px">'+pill(r.completed,'completed')+'</td>'+
+      '<td style="padding:10px 12px">'+pill(r.missing,'missing')+'</td>'+
+      '<td style="padding:10px 12px">'+pill(r.absent,'absent')+'</td>'+
+      '<td style="padding:10px 12px">'+pill(r.leave,'leave')+'</td>'+
+      '<td style="padding:10px 12px;font-weight:700;font-size:13px;color:#38bdf8;font-variant-numeric:tabular-nums">'+r.payable+'</td>'+
+      '<td style="padding:10px 12px;color:rgba(255,255,255,.38);font-variant-numeric:tabular-nums">'+(r.minutes/60).toFixed(1)+'h</td>'+
+      '<td style="padding:10px 12px"><button class="act-btn" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">View →</button></td></tr>';
+  }).join(''):'<tr><td colspan="10" class="empty" style="padding:28px">No scheduled sessions for this period.</td></tr>';
   var bodyEl=document.getElementById('ov-body'); if(bodyEl) bodyEl.innerHTML=head+trhtml+'</tbody></table></div>';
   // Today's Classes: chronological list below trainer table (today mode only)
   var clEl=document.getElementById('ov-class-list'); if(clEl){
