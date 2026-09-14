@@ -65,12 +65,23 @@
   }
   function monthPeriod(dateStr) { return dateStr.slice(0, 7); } // YYYY-MM
   function monthEnd(period) { var p = period.split('-').map(Number); return ymd(new Date(p[0], p[1], 0)); }
-  // Calendar half-year cycle label + credit/expiry for a given date (CL anchor).
+  // §4: fixed rolling 6-month CL cycles anchored at the LEAVE-SYSTEM START month (not the
+  // calendar half-year). First cycle = 2026-09 → 2027-02; next = 2027-03 → 2027-08; etc.
+  // A date before the anchor clamps to cycle 0 (so pre-system credits count as CURRENT, never a
+  // fabricated prior carry-forward — §5). `index` is the stable cycle number for comparisons.
+  var LEAVE_SYSTEM_START = '2026-09-01';
   function clCycleFor(dateStr) {
-    var p = dateStr.slice(0, 7).split('-').map(Number), y = p[0], m = p[1];
-    var half = m <= 6 ? 1 : 2;
-    var credit = y + '-' + (half === 1 ? '01' : '07') + '-01';
-    return { label: y + '-H' + half, credit_date: credit, expiry_date: addMonths(credit, P.CL_VALIDITY_MONTHS) };
+    var start = new Date(LEAVE_SYSTEM_START.slice(0,10) + 'T00:00:00');
+    var d = new Date((dateStr || '').slice(0, 10) + 'T00:00:00');
+    if (isNaN(d)) d = new Date(start);
+    var monthsSince = (d.getFullYear() - start.getFullYear()) * 12 + (d.getMonth() - start.getMonth());
+    var idx = Math.floor(monthsSince / 6);
+    if (idx < 0) idx = 0; // pre-system dates → first cycle (no fabricated prior cycle)
+    var cs = new Date(start.getFullYear(), start.getMonth() + idx * 6, 1);
+    var ce = new Date(cs.getFullYear(), cs.getMonth() + 6, 0); // last day of the 6th month
+    var credit = ymd(cs);
+    return { label: ymd(cs).slice(0,7) + '..' + ymd(ce).slice(0,7), credit_date: credit,
+             expiry_date: addMonths(credit, P.CL_VALIDITY_MONTHS), index: idx };
   }
   // Extract local HH:MM from a timestamptz/ISO string.
   function hhmm(ts) {
@@ -190,11 +201,15 @@
       .map(function (b) { return { id: b.id, credit_date: (b.credit_date || '').slice(0, 10), cycle_label: b.cycle_label, original: Number(b.original_amount), remaining: Number(b.remaining_amount), expiry: (b.expiry_date || '').slice(0, 10), source: b.source }; })
       .filter(function (b) { return b.expiry >= dateStr; })
       .sort(function (a, b) { return a.credit_date < b.credit_date ? -1 : a.credit_date > b.credit_date ? 1 : 0; });
-    var curCycle = clCycleFor(dateStr).label;
+    var curInfo = clCycleFor(dateStr), curCycle = curInfo.label, curIdx = curInfo.index;
     var clRemaining = 0, clCarried = 0, clCurrent = 0, nextExpiry = null;
     buckets.forEach(function (b) {
       clRemaining += b.remaining;
-      if (b.cycle_label === curCycle) clCurrent += b.remaining; else clCarried += b.remaining;
+      // Carried only if this bucket belongs to an EARLIER completed system cycle (§5). A bucket
+      // credited in (or before) the current cycle — incl. pre-system credits, which clamp to
+      // cycle 0 — is CURRENT entitlement, never mislabeled as carry-forward.
+      var bIdx = clCycleFor(b.credit_date || dateStr).index;
+      if (bIdx < curIdx) clCarried += b.remaining; else clCurrent += b.remaining;
       if (b.remaining > 0 && (!nextExpiry || b.expiry < nextExpiry)) nextExpiry = b.expiry;
     });
     var casual = {
@@ -344,13 +359,13 @@
         // on_leave row for EVERY date in an approved range (weekends included), so without
         // this a Weekly Off / Official Event inside a long leave wrongly became LOP/ML/PL.
         if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
-        if (isWeeklyOff(ctx, dow) && state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
+        if (isWeeklyOff(ctx, dow)) return code(CODES.WO, 'Weekly Off', { payable: true }); // §2 always WO, even on probation/notice
         return resolveLeaveDay(ctx, dateStr, req, state);
       }
       if (rec.status === 'absent') {
         // A paid Official Event created/edited after an Absent row was filed outranks it.
         if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
-        if (isWeeklyOff(ctx, dow) && state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
+        if (isWeeklyOff(ctx, dow)) return code(CODES.WO, 'Weekly Off', { payable: true }); // §2 always WO
         return code(CODES.LOP, 'Absent', { payable: false, lop: true });
       }
       // present / late — decided against THIS employee's own schedule, never a global 9:00.
@@ -370,10 +385,9 @@
     // §1 precedence: Official Event + Weekly Off outrank approved leave, so a WO/OE inside an
     // approved leave range stays WO/OE and never becomes LOP/ML/PL (checked BEFORE the leave).
     if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
-    if (isWeeklyOff(ctx, dow)) {
-      if (state.weeklyOffEligible) return code(CODES.WO, 'Weekly Off', { payable: true });
-      return code(CODES.LOP, 'Weekly Off not applicable (probation/notice)', { payable: false, lop: true });
-    }
+    // §2: a company Weekly Off is ALWAYS WO — never LOP/absent — including for probation/notice
+    // employees. It never deducts salary or consumes leave.
+    if (isWeeklyOff(ctx, dow)) return code(CODES.WO, 'Weekly Off', { payable: true });
     // Approved leave still covers the remaining working day.
     if (req) return resolveLeaveDay(ctx, dateStr, req, state);
     // Nothing → unmarked working day = LOP.
