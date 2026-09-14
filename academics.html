@@ -1234,25 +1234,42 @@ details[open] .rawsum::before{content:'▾ '}
            trainer leave); no new attendance records. -->
       <div class="acad-tab" id="tab-acad-overview">
         <div class="section role-head-only hidden">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-            <div><h2>Class &amp; Attendance Overview</h2>
-              <div class="lv-note">Audit every trainer's scheduled classes and student-attendance marking for the selected month.</div></div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="act-btn" onclick="ovShiftMonth(-1)">‹ Prev</button>
-              <input id="ov-month" type="month" onchange="ovSetMonth(this.value)" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:8px 10px;color:var(--tx);font-size:13px;outline:none"/>
-              <button class="act-btn" onclick="ovShiftMonth(1)">Next ›</button>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:4px">
+            <div><h2 style="margin-bottom:4px">Class &amp; Attendance Overview</h2>
+              <div class="lv-note" id="ov-subtitle">Loading…</div></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <!-- Mode toggle -->
+              <div style="display:flex;border:1px solid rgba(255,255,255,.12);border-radius:10px;overflow:hidden;background:rgba(255,255,255,.03)">
+                <button id="ov-btn-today" onclick="ovSetMode('today')" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer">Today</button>
+                <button id="ov-btn-monthly" onclick="ovSetMode('monthly')" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer">Monthly</button>
+              </div>
+              <!-- Daily nav -->
+              <div id="ov-day-nav" style="display:flex;align-items:center;gap:6px">
+                <button class="act-btn" onclick="ovShiftDay(-1)">‹</button>
+                <input id="ov-day" type="date" onchange="ovSetDay(this.value)" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 10px;color:var(--tx);font-size:12px;outline:none"/>
+                <button class="act-btn" onclick="ovShiftDay(1)">›</button>
+                <button class="act-btn" onclick="ovSetDay(new Date().toISOString().slice(0,10))" style="font-size:10.5px">Today</button>
+              </div>
+              <!-- Monthly nav -->
+              <div id="ov-month-nav" style="display:none;align-items:center;gap:6px">
+                <button class="act-btn" onclick="ovShiftMonth(-1)">‹ Prev</button>
+                <input id="ov-month" type="month" onchange="ovSetMonth(this.value)" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 10px;color:var(--tx);font-size:12px;outline:none"/>
+                <button class="act-btn" onclick="ovShiftMonth(1)">Next ›</button>
+              </div>
             </div>
           </div>
-          <div id="ov-summary" class="acad-dash-tiles" style="margin-top:14px"></div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
-            <input id="ov-search" placeholder="Search trainer, batch, student or course…" oninput="ovRender()" style="flex:1;min-width:220px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:8px 12px;color:var(--tx);font-size:13px;outline:none"/>
+          <div id="ov-summary" class="acad-dash-tiles" style="margin-top:10px"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+            <input id="ov-search" placeholder="Search trainer, batch or course…" oninput="ovRender()" style="flex:1;min-width:180px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 12px;color:var(--tx);font-size:12px;outline:none"/>
             <select id="ov-f-emp" class="ov-sel" onchange="ovRender()"><option value="all">All Employment</option><option value="ft">Full-Time</option><option value="pt">Part-Time</option></select>
             <select id="ov-f-course" class="ov-sel" onchange="ovRender()"><option value="all">All Courses</option></select>
             <select id="ov-f-ctype" class="ov-sel" onchange="ovRender()"><option value="all">All Types</option><option value="1:1">1:1</option><option value="group">Group</option></select>
             <select id="ov-f-status" class="ov-sel" onchange="ovRender()"><option value="all">All Status</option><option value="completed">Completed</option><option value="missing">Attendance Not Marked</option><option value="absent">All Absent</option><option value="leave">Trainer Leave</option><option value="postponed">Postponed</option><option value="scheduled">Scheduled</option></select>
           </div>
-          <div id="ov-alerts" style="margin-top:14px"></div>
-          <div id="ov-body" class="loading" style="margin-top:14px">Loading…</div>
+          <div id="ov-alerts" style="margin-top:10px"></div>
+          <div id="ov-data-issues" style="margin-top:8px"></div>
+          <div id="ov-body" style="margin-top:12px">Loading…</div>
+          <div id="ov-class-list" style="margin-top:16px"></div>
         </div>
       </div>
 
@@ -7142,154 +7159,279 @@ function _acadEffectiveDayPattern(b){
 // CLASS & ATTENDANCE OVERVIEW (Academic Head audit) — overview of existing data:
 // batch recurrence (generateBatchOccurrences) × attendance × trainer leave. No new records.
 // ============================================================================
-var _ovMonth = new Date().toISOString().slice(0,7);   // YYYY-MM, default current (§3)
-var _ovData = null;
+// ── OV state ──────────────────────────────────────────────────────────────────
+var _ovMode  = 'today';   // 'today' | 'monthly'
+var _ovMonth = new Date().toISOString().slice(0,7);   // YYYY-MM
+var _ovDay   = new Date().toISOString().slice(0,10);  // YYYY-MM-DD
+var _ovData  = null;
 var _OV = {
   completed:{c:'#22c55e',l:'Completed'}, scheduled:{c:'#60a5fa',l:'Scheduled'},
-  missing:{c:'#f87171',l:'Attendance Not Marked'}, absent:{c:'#fb923c',l:'All Students Absent'},
+  missing:{c:'#f87171',l:'Attendance Not Marked'}, absent:{c:'#fb923c',l:'All Absent'},
   leave:{c:'#a78bfa',l:'Trainer Leave'}, postponed:{c:'#8890b5',l:'Postponed / Not Held'}
 };
-function _ovInjectCSS(){ if(document.getElementById('ov-css'))return; var s=document.createElement('style'); s.id='ov-css';
-  s.textContent='.ov-sel{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:8px 10px;color:var(--tx);font-size:12px;outline:none}'+
-  '.ov-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px}'+
-  '.ov-cell{border:1px solid rgba(255,255,255,.06);border-radius:8px;min-height:52px;padding:5px 6px;font-size:11px}';
-  document.head.appendChild(s); }
-function _ovMonthBounds(m){ var p=m.split('-').map(Number); var start=m+'-01'; var end=new Date(p[0],p[1],0); return { start:start, end:end.toISOString().slice(0,10), y:p[0], mo:p[1], days:end.getDate() }; }
-function _ovClassType(b){ return (Number(b.capacity)===1) ? '1:1' : 'group'; }
-function _ovDur(att, b){ var d = att && Number(att.duration_minutes); if(d>0) return d; d = Number(b&&b.class_duration_minutes); return d>0?d:60; }
-// ONE resolved operational status per scheduled session (§6/§19).
+// ── CSS injection (dark-safe: explicit bg, appearance:none) ───────────────────
+function _ovInjectCSS(){
+  if(document.getElementById('ov-css'))return;
+  var s=document.createElement('style'); s.id='ov-css';
+  s.textContent=
+    '.ov-sel{-webkit-appearance:none;appearance:none;background:var(--card);border:1px solid rgba(255,255,255,.13);'+
+    'border-radius:9px;padding:7px 28px 7px 10px;color:var(--tx);font-size:12px;outline:none;'+
+    'background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%23888\'/%3E%3C/svg%3E");'+
+    'background-repeat:no-repeat;background-position:right 9px center}'+
+    '.ov-sel option{background:var(--card,#1a1a2e);color:var(--tx,#e2e8f0)}'+
+    '.ov-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px}'+
+    '.ov-cell{border:1px solid rgba(255,255,255,.06);border-radius:8px;min-height:52px;padding:5px 6px;font-size:11px}'+
+    '#ov-btn-today,#ov-btn-monthly{background:transparent;color:var(--tx3);transition:background .15s,color .15s;border:none;cursor:pointer}'+
+    '#ov-btn-today.ov-mode-active,#ov-btn-monthly.ov-mode-active{background:var(--accent,#6366f1);color:#fff;border-radius:9px}'+
+    '.ov-class-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}';
+  document.head.appendChild(s);
+}
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function _ovMonthBounds(m){ var p=m.split('-').map(Number); var start=m+'-01'; var end=new Date(p[0],p[1],0); return {start:start,end:end.toISOString().slice(0,10),y:p[0],mo:p[1],days:end.getDate()}; }
+function _ovClassType(b){ return (Number(b.capacity)===1)?'1:1':'group'; }
+function _ovDur(b){ var d=Number(b&&b.class_duration_minutes); return d>0?d:60; } // duration from batch, never from attendance row
+function _ovFmt(min){ if(min==null)return ''; var h=Math.floor(min/60),m=min%60,ap=h<12?'AM':'PM',h12=((h+11)%12)+1; return h12+':'+String(m).padStart(2,'0')+ap; }
+function _ovFmtDT(iso){ if(!iso)return ''; var d=new Date(iso); if(isNaN(d))return ''; return d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+// ONE resolved status per session (priority: leave > completed > absent > scheduled > missing)
 function _ovResolve(dateISO, att, onLeave, todayISO){
-  if (onLeave) return 'leave';                       // A trainer leave
-  // B postponed/cancelled: no explicit not-held source in this schema → never fabricated.
-  if (att && att.p > 0) return 'completed';          // C
-  if (att && att.p === 0 && att.ab > 0) return 'absent'; // D all-absent
-  if (dateISO > todayISO) return 'scheduled';        // F future
-  return 'missing';                                  // E past, no attendance
+  if(onLeave) return 'leave';
+  if(att && att.p > 0) return 'completed';
+  if(att && att.p === 0 && att.ab > 0) return 'absent';
+  if(dateISO > todayISO) return 'scheduled';
+  return 'missing';
 }
-async function loadOverviewTab(){
-  _ovInjectCSS();
-  var el=document.getElementById('ov-month'); if(el && !el.value) el.value=_ovMonth;
-  await ovLoad();
-}
+// ── Mode / nav controls ───────────────────────────────────────────────────────
+window.ovSetMode=function(m){
+  _ovMode=m;
+  var dayNav=document.getElementById('ov-day-nav'), moNav=document.getElementById('ov-month-nav');
+  var bT=document.getElementById('ov-btn-today'), bM=document.getElementById('ov-btn-monthly');
+  if(dayNav) dayNav.style.display=m==='today'?'flex':'none';
+  if(moNav)  moNav.style.display=m==='monthly'?'flex':'none';
+  if(bT){ bT.classList.toggle('ov-mode-active',m==='today'); }
+  if(bM){ bM.classList.toggle('ov-mode-active',m==='monthly'); }
+  ovLoad();
+};
+window.ovSetDay=function(v){ if(!v)return; _ovDay=v; var el=document.getElementById('ov-day'); if(el)el.value=v; ovLoad(); };
+window.ovShiftDay=function(d){ var dt=new Date(_ovDay+'T00:00:00'); dt.setDate(dt.getDate()+d); _ovDay=dt.toISOString().slice(0,10); var el=document.getElementById('ov-day'); if(el)el.value=_ovDay; ovLoad(); };
 window.ovSetMonth=function(v){ if(!v)return; _ovMonth=v; ovLoad(); };
 window.ovShiftMonth=function(delta){ var p=_ovMonth.split('-').map(Number); var d=new Date(p[0],p[1]-1+delta,1); _ovMonth=d.toISOString().slice(0,7); var el=document.getElementById('ov-month'); if(el)el.value=_ovMonth; ovLoad(); };
-window._ovRefresh=function(){ var t=document.getElementById('tab-acad-overview'); if(t && t.classList.contains('on')) ovLoad(); }; // realtime hook (§16)
+window._ovRefresh=function(){ var t=document.getElementById('tab-acad-overview'); if(t&&t.classList.contains('on')) ovLoad(); };
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function loadOverviewTab(){
+  _ovInjectCSS();
+  var el=document.getElementById('ov-day'); if(el&&!el.value) el.value=_ovDay;
+  var em=document.getElementById('ov-month'); if(em&&!em.value) em.value=_ovMonth;
+  ovSetMode('today'); // sets button state + calls ovLoad
+}
+// ── Data load ─────────────────────────────────────────────────────────────────
 async function ovLoad(){
   var body=document.getElementById('ov-body'); if(!body) return;
   if(typeof isCurrentlyAcademicHead==='function' && !isCurrentlyAcademicHead()){ body.innerHTML='<div class="empty">Academic Head only.</div>'; return; }
-  body.innerHTML='<div class="loading">Loading '+esc(_ovMonth)+'…</div>';
-  var mb=_ovMonthBounds(_ovMonth), todayISO=new Date().toISOString().slice(0,10);
+  var todayISO=new Date().toISOString().slice(0,10);
+  var rangeStart, rangeEnd, label;
+  if(_ovMode==='today'){
+    rangeStart=rangeEnd=_ovDay;
+    var dn=new Date(_ovDay+'T00:00:00');
+    var dayLabel=dn.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    label=(_ovDay===todayISO?'Today — ':'')+dayLabel;
+  } else {
+    var mb=_ovMonthBounds(_ovMonth); rangeStart=mb.start; rangeEnd=mb.end;
+    label=new Date(_ovMonth+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  }
+  var sub=document.getElementById('ov-subtitle'); if(sub) sub.textContent=label;
+  body.innerHTML='<div class="loading">Loading…</div>';
+  var issuesEl=document.getElementById('ov-data-issues'); if(issuesEl) issuesEl.innerHTML='';
+  var clEl=document.getElementById('ov-class-list'); if(clEl) clEl.innerHTML='';
   try {
     var res=await Promise.all([
       sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at'),
       sb.from('trainers').select('id,name,type,hr_employee_id,status'),
-      sb.from('attendance').select('batch_name,session_date,status,marked_by,created_at,duration_minutes').gte('session_date',mb.start).lte('session_date',mb.end),
+      // Fix: removed duration_minutes (not in attendance schema) — duration comes from batch
+      sb.from('attendance').select('batch_name,session_date,session_num,status,marked_by,created_at').gte('session_date',rangeStart).lte('session_date',rangeEnd),
       mediaHrDB.from('hr_leave_requests').select('employee_id,start_date,end_date,status').eq('status','approved')
     ]);
+    if(res[0].error) throw new Error('batches: '+(res[0].error.message||JSON.stringify(res[0].error)));
+    if(res[2].error) throw new Error('attendance: '+(res[2].error.message||JSON.stringify(res[2].error)));
     var batches=(res[0].data||[]).filter(function(b){ return !b.deleted_at && b.status!=='cancelled'; });
-    var trainers=res[1].data||[], att=res[2].data||[], leaves=res[3].data||[];
+    var trainers=res[1].data||[], att=res[2].data||[], leaves=(res[3].data||[]);
+    // Build attendance map keyed batch_name|session_date
     var attByKey={};
-    att.forEach(function(a){ var k=a.batch_name+'|'+a.session_date; var o=attByKey[k]||(attByKey[k]={p:0,ab:0,markedBy:a.marked_by||'',markedAt:a.created_at||'',dur:a.duration_minutes});
-      var s=(a.status||'').toLowerCase(); if(s==='present')o.p++; else if(s==='absent')o.ab++;
+    att.forEach(function(a){
+      if(!a.session_date) return; // skip legacy null-date rows
+      var k=a.batch_name+'|'+a.session_date;
+      var o=attByKey[k]||(attByKey[k]={p:0,ab:0,markedBy:a.marked_by||'',markedAt:a.created_at||''});
+      var st=(a.status||'').toLowerCase();
+      if(st==='present') o.p++;
+      else if(st==='absent') o.ab++;
       if(a.created_at && (!o.markedAt || a.created_at<o.markedAt)) o.markedAt=a.created_at;
-      if(a.marked_by && !o.markedBy) o.markedBy=a.marked_by; });
+      if(a.marked_by && !o.markedBy) o.markedBy=a.marked_by;
+    });
     var trById={}; trainers.forEach(function(t){ trById[String(t.id)]=t; });
     var leaveByEmp={}; leaves.forEach(function(l){ (leaveByEmp[String(l.employee_id)]=leaveByEmp[String(l.employee_id)]||[]).push([l.start_date,l.end_date]); });
-    function onLeave(trainer,dateISO){ if(!trainer||!trainer.hr_employee_id)return false; var r=leaveByEmp[String(trainer.hr_employee_id)]; if(!r)return false; for(var i=0;i<r.length;i++){ if(r[i][0]<=dateISO && dateISO<=r[i][1]) return true; } return false; }
-    var stat={}, courses={}, sessions=[];
+    function onLeave(trainer,dateISO){ if(!trainer||!trainer.hr_employee_id)return false; var r=leaveByEmp[String(trainer.hr_employee_id)]; if(!r)return false; for(var i=0;i<r.length;i++){ if(r[i][0]<=dateISO&&dateISO<=r[i][1])return true; } return false; }
+    var sessions=[], unassigned=[], courses={};
     batches.forEach(function(b){
       if(b.programme) courses[b.programme]=1;
-      var occ=[]; try{ occ=generateBatchOccurrences(b, mb.start, mb.end)||[]; }catch(e){}
-      var tr=trById[String(b.trainer_id)]||{ id:b.trainer_id, name:b.trainer_name||'Unassigned', type:'', hr_employee_id:null };
-      var tk=String(tr.id||('name:'+tr.name));
-      var st=stat[tk]||(stat[tk]={ id:tr.id, name:tr.name, type:tr.type||'' });
+      var occ=[]; try{ occ=generateBatchOccurrences(b,rangeStart,rangeEnd)||[]; }catch(e){}
+      if(!occ.length) return;
+      var trRec=trById[String(b.trainer_id)];
+      // Separate unassigned (no matching trainer record)
+      if(!trRec){
+        occ.forEach(function(o){ unassigned.push({batch:b.name,course:b.programme||'—',date:o.date,startMin:o.startTime,ctype:_ovClassType(b),trainer_id:b.trainer_id,trainer_name:b.trainer_name||''}); });
+        return;
+      }
+      var tk=String(trRec.id);
       occ.forEach(function(o){
-        var a=attByKey[b.name+'|'+o.date]||null; var lv=onLeave(tr,o.date);
-        var status=_ovResolve(o.date, a, lv, todayISO);
-        sessions.push({ tk:tk, trainer:tr.name, empType:tr.type||'', batch:b.name, course:b.programme||'', ctype:_ovClassType(b), date:o.date,
-          startMin:o.startTime, dur:_ovDur(a,b), status:status, present:a?a.p:0, absent:a?a.ab:0, markedBy:a?a.markedBy:'', markedAt:a?a.markedAt:'' });
+        var a=attByKey[b.name+'|'+o.date]||null; var lv=onLeave(trRec,o.date);
+        var status=_ovResolve(o.date,a,lv,todayISO);
+        var dur=_ovDur(b);
+        sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:b.name,course:b.programme||'',ctype:_ovClassType(b),date:o.date,startMin:o.startTime,dur:dur,status:status,present:a?a.p:0,absent:a?a.ab:0,markedBy:a?a.markedBy:'',markedAt:a?a.markedAt:''});
       });
     });
-    _ovData={ sessions:sessions, courses:Object.keys(courses).sort(), trainerMeta:stat };
+    _ovData={ sessions:sessions, unassigned:unassigned, courses:Object.keys(courses).sort(), rangeStart:rangeStart, rangeEnd:rangeEnd };
+    // Populate course filter
     var cs=document.getElementById('ov-f-course'); if(cs){ var cv=cs.value; cs.innerHTML='<option value="all">All Courses</option>'+_ovData.courses.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join(''); cs.value=cv||'all'; }
     ovRender();
-  } catch(e){ body.innerHTML='<div class="empty">Could not load overview: '+esc(e.message)+'</div>'; }
+  } catch(e){ body.innerHTML='<div class="empty" style="padding:20px">Could not load: '+esc(e.message)+'</div>'; console.error('ovLoad error',e); }
 }
-function _ovTile(val,label,color){ return '<div class="acad-stat-card" style="cursor:default"><div><div class="val"'+(color?' style="color:'+color+'"':'')+'>'+val+'</div><div class="lbl">'+label+'</div></div></div>'; }
+// ── Render ────────────────────────────────────────────────────────────────────
+function _ovTile(val,label,color,accent){
+  var bdr=accent?'border-left:3px solid '+accent+';':'';
+  return '<div class="acad-stat-card" style="cursor:default;'+bdr+'"><div><div class="val"'+(color?' style="color:'+color+'"':'')+'>'+val+'</div><div class="lbl">'+label+'</div></div></div>';
+}
 window.ovRender=function(){
   if(!_ovData) return;
   var q=(document.getElementById('ov-search')?document.getElementById('ov-search').value:'').trim().toLowerCase();
   var g=function(id){var e=document.getElementById(id);return e?e.value:'all';};
   var fEmp=g('ov-f-emp'), fCourse=g('ov-f-course'), fType=g('ov-f-ctype'), fStatus=g('ov-f-status');
   var sess=_ovData.sessions.filter(function(s){
-    if(fEmp!=='all' && (s.empType||'')!==fEmp) return false;
-    if(fCourse!=='all' && s.course!==fCourse) return false;
-    if(fType!=='all' && s.ctype!==fType) return false;
-    if(fStatus!=='all' && s.status!==fStatus) return false;
-    if(q){ var hay=(s.trainer+' '+s.batch+' '+s.course).toLowerCase(); if(hay.indexOf(q)===-1) return false; }
+    if(fEmp!=='all'&&(s.empType||'')!==fEmp) return false;
+    if(fCourse!=='all'&&s.course!==fCourse) return false;
+    if(fType!=='all'&&s.ctype!==fType) return false;
+    if(fStatus!=='all'&&s.status!==fStatus) return false;
+    if(q){var hay=(s.trainer+' '+s.batch+' '+s.course).toLowerCase();if(hay.indexOf(q)===-1)return false;}
     return true;
   });
+  // Aggregate per trainer
   var agg={}, sum={scheduled:0,completed:0,missing:0,absent:0,leave:0,postponed:0,payable:0,minutes:0};
-  sess.forEach(function(s){ var r=agg[s.tk]||(agg[s.tk]={tk:s.tk,name:s.trainer,type:s.empType,scheduled:0,completed:0,missing:0,absent:0,leave:0,postponed:0,payable:0,minutes:0});
+  sess.forEach(function(s){
+    var r=agg[s.tk]||(agg[s.tk]={tk:s.tk,name:s.trainer,type:s.empType,scheduled:0,completed:0,missing:0,absent:0,leave:0,postponed:0,payable:0,minutes:0});
     r.scheduled++; sum.scheduled++;
-    if(s.status==='completed'){ r.completed++; r.payable++; r.minutes+=s.dur; sum.completed++; sum.payable++; sum.minutes+=s.dur; }
-    else if(s.status==='missing'){ r.missing++; sum.missing++; }
-    else if(s.status==='absent'){ r.absent++; sum.absent++; }
-    else if(s.status==='leave'){ r.leave++; sum.leave++; }
-    else if(s.status==='postponed'){ r.postponed++; sum.postponed++; }
+    if(s.status==='completed'){r.completed++;r.payable++;var d=_ovDur(s.trainerRec?null:null)||s.dur;r.minutes+=s.dur;sum.completed++;sum.payable++;sum.minutes+=s.dur;}
+    else if(s.status==='missing'){r.missing++;sum.missing++;}
+    else if(s.status==='absent'){r.absent++;sum.absent++;}
+    else if(s.status==='leave'){r.leave++;sum.leave++;}
+    else if(s.status==='postponed'){r.postponed++;sum.postponed++;}
   });
-  var rows=Object.keys(agg).map(function(k){return agg[k];}).sort(function(x,y){return y.scheduled-x.scheduled;});
-  var summaryEl=document.getElementById('ov-summary'); if(summaryEl) summaryEl.innerHTML =
-    _ovTile(sum.scheduled,'Scheduled')+_ovTile(sum.completed,'Completed','#22c55e')+_ovTile(sum.missing,'Attendance Missing','#f87171')+
-    _ovTile(sum.absent,'All Absent','#fb923c')+_ovTile(sum.leave,'Trainer Leave','#a78bfa')+_ovTile(sum.postponed,'Postponed','#8890b5')+
-    _ovTile(sum.payable,'Payroll Eligible','#38bdf8')+_ovTile((sum.minutes/60).toFixed(sum.minutes%60?1:0)+'h','Teaching Hours');
+  var rows=Object.keys(agg).map(function(k){return agg[k];}).sort(function(x,y){return y.missing-x.missing||y.scheduled-x.scheduled;});
+  // Summary tiles
+  var summaryEl=document.getElementById('ov-summary'); if(summaryEl) summaryEl.innerHTML=
+    _ovTile(sum.scheduled,'Scheduled',null)+
+    _ovTile(sum.completed,'Completed','#22c55e','#22c55e')+
+    _ovTile(sum.missing,'Attendance Missing','#f87171','#f87171')+
+    _ovTile(sum.absent,'All Absent','#fb923c','#fb923c')+
+    _ovTile(sum.leave,'Trainer Leave','#a78bfa','#a78bfa')+
+    _ovTile(sum.payable,'Payroll Eligible','#38bdf8','#38bdf8')+
+    _ovTile((sum.minutes/60).toFixed(1)+'h','Teaching Hours');
+  // Action Required: compact clickable trainer badges
   var miss=rows.filter(function(r){return r.missing>0;}).sort(function(x,y){return y.missing-x.missing;});
-  var alertsEl=document.getElementById('ov-alerts'); if(alertsEl) alertsEl.innerHTML = miss.length ?
-    '<div class="section" style="padding:12px 14px;border:1px solid rgba(248,113,113,.25);background:rgba(248,113,113,.06)"><div style="font-weight:700;color:#f87171;font-size:13px;margin-bottom:8px">⚠ Action Required — '+sum.missing+' session(s) with attendance not marked</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+
-    miss.map(function(r){return '<button class="act-btn" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">'+esc(r.name)+' · '+r.missing+'</button>';}).join('')+'</div></div>' : '';
+  var alertsEl=document.getElementById('ov-alerts'); if(alertsEl) alertsEl.innerHTML=miss.length?
+    '<div style="padding:10px 14px;border:1px solid rgba(248,113,113,.28);border-radius:10px;background:rgba(248,113,113,.06)">'+
+    '<div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:8px">⚠ Attendance not marked — '+sum.missing+' session(s)</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+miss.map(function(r){
+      return '<button class="act-btn" style="font-size:11.5px;padding:4px 10px" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">'+esc(r.name)+' <span style="background:rgba(248,113,113,.25);border-radius:4px;padding:1px 5px;color:#f87171;font-weight:800">'+r.missing+'</span></button>';
+    }).join('')+'</div></div>':'';
+  // Data issues: unassigned batches
+  var issuesEl=document.getElementById('ov-data-issues'); if(issuesEl&&_ovData.unassigned&&_ovData.unassigned.length){
+    issuesEl.innerHTML='<div style="padding:10px 14px;border:1px solid rgba(251,146,60,.25);border-radius:10px;background:rgba(251,146,60,.05);font-size:12px">'+
+      '<span style="font-weight:700;color:#fb923c">⚡ Data Issues — '+_ovData.unassigned.length+' session(s) with no trainer assigned</span>'+
+      '<div style="margin-top:6px;color:var(--tx3)">'+
+      _ovData.unassigned.slice(0,8).map(function(u){return '<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 4px 2px 0;background:rgba(255,255,255,.05);border-radius:6px;padding:2px 8px">'+esc(u.batch)+' · '+esc(u.date)+'</span>';}).join('')+
+      (_ovData.unassigned.length>8?'<span style="color:var(--tx3)"> +'+(_ovData.unassigned.length-8)+' more</span>':'')+'</div></div>';
+  } else if(issuesEl){ issuesEl.innerHTML=''; }
+  // Trainer table
   var head='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--tx3);text-align:left">'+
-    ['Trainer','Type','Scheduled','Completed','Missing','All Absent','Leave','Postponed','Payroll','Hours',''].map(function(h){return '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">'+h+'</th>';}).join('')+'</tr></thead><tbody>';
-  var trhtml = rows.length ? rows.map(function(r){
-    var pill=function(n,k){ return n>0?'<span class="ov-pill" style="background:'+_OV[k].c+'22;color:'+_OV[k].c+'">'+n+'</span>':'<span style="color:var(--tx3)">0</span>'; };
-    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:8px 10px;color:var(--tx);font-weight:600">'+esc(r.name)+'</td>'+
-      '<td style="padding:8px 10px;color:var(--tx3)">'+(r.type==='pt'?'Part-Time':r.type==='ft'?'Full-Time':'—')+'</td>'+
-      '<td style="padding:8px 10px">'+r.scheduled+'</td><td style="padding:8px 10px">'+pill(r.completed,'completed')+'</td>'+
-      '<td style="padding:8px 10px">'+pill(r.missing,'missing')+'</td><td style="padding:8px 10px">'+pill(r.absent,'absent')+'</td>'+
-      '<td style="padding:8px 10px">'+pill(r.leave,'leave')+'</td><td style="padding:8px 10px">'+pill(r.postponed,'postponed')+'</td>'+
-      '<td style="padding:8px 10px;color:#38bdf8;font-weight:700">'+r.payable+'</td><td style="padding:8px 10px;color:var(--tx3)">'+(r.minutes/60).toFixed(r.minutes%60?1:0)+'h</td>'+
+    ['Trainer','Type','Sched.','Done','Missing','Absent','Leave','Payroll','Hours',''].map(function(h){return '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">'+h+'</th>';}).join('')+'</tr></thead><tbody>';
+  var trhtml=rows.length?rows.map(function(r){
+    var pill=function(n,k){return n>0?'<span class="ov-pill" style="background:'+_OV[k].c+'22;color:'+_OV[k].c+'">'+n+'</span>':'<span style="color:var(--tx3)">–</span>';};
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'+
+      '<td style="padding:8px 10px;color:var(--tx);font-weight:600">'+esc(r.name)+'</td>'+
+      '<td style="padding:8px 10px;color:var(--tx3)">'+(r.type==='pt'?'PT':r.type==='ft'?'FT':'—')+'</td>'+
+      '<td style="padding:8px 10px">'+r.scheduled+'</td>'+
+      '<td style="padding:8px 10px">'+pill(r.completed,'completed')+'</td>'+
+      '<td style="padding:8px 10px">'+pill(r.missing,'missing')+'</td>'+
+      '<td style="padding:8px 10px">'+pill(r.absent,'absent')+'</td>'+
+      '<td style="padding:8px 10px">'+pill(r.leave,'leave')+'</td>'+
+      '<td style="padding:8px 10px;color:#38bdf8;font-weight:700">'+r.payable+'</td>'+
+      '<td style="padding:8px 10px;color:var(--tx3)">'+(r.minutes/60).toFixed(1)+'h</td>'+
       '<td style="padding:8px 10px"><button class="act-btn" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">View</button></td></tr>';
-  }).join('') : '<tr><td colspan="11" class="empty" style="padding:24px">No scheduled classes for '+esc(_ovMonth)+'.</td></tr>';
-  var bodyEl=document.getElementById('ov-body'); if(bodyEl) bodyEl.innerHTML = head+trhtml+'</tbody></table></div>';
+  }).join(''):'<tr><td colspan="10" class="empty" style="padding:24px">No scheduled sessions for this period.</td></tr>';
+  var bodyEl=document.getElementById('ov-body'); if(bodyEl) bodyEl.innerHTML=head+trhtml+'</tbody></table></div>';
+  // Today's Classes: chronological list below trainer table (today mode only)
+  var clEl=document.getElementById('ov-class-list'); if(clEl){
+    if(_ovMode==='today'){
+      var sorted=sess.slice().sort(function(a,b){return (a.startMin||0)-(b.startMin||0)||(a.batch.localeCompare(b.batch));});
+      if(sorted.length){
+        var clHtml='<div style="margin-top:4px"><div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:10px">Today\'s Classes <span style="font-size:11px;color:var(--tx3);font-weight:400">'+sorted.length+' session(s)</span></div>'+
+          '<div style="display:flex;flex-direction:column;gap:8px">'+sorted.map(function(s){
+            var st=_OV[s.status];
+            return '<div class="ov-class-card">'+
+              '<div style="min-width:54px;text-align:center;padding-top:2px"><div style="font-size:13px;font-weight:700;color:var(--tx)">'+_ovFmt(s.startMin)+'</div>'+
+              '<div style="font-size:10px;color:var(--tx3)">'+_ovFmt(s.startMin+s.dur)+'</div></div>'+
+              '<div style="flex:1">'+
+                '<div style="font-weight:600;color:var(--tx);font-size:13px">'+esc(s.batch)+'</div>'+
+                '<div style="font-size:11px;color:var(--tx3);margin-top:2px">'+esc(s.course||'—')+' · '+s.ctype+' · <b>'+esc(s.trainer)+'</b></div>'+
+              '</div>'+
+              '<div style="text-align:right">'+
+                '<span class="ov-pill" style="background:'+st.c+'22;color:'+st.c+'">'+st.l+'</span>'+
+                ((s.status==='completed'||s.status==='absent')?'<div style="font-size:10.5px;color:var(--tx3);margin-top:4px">'+s.present+' present / '+s.absent+' absent</div>':'')+
+              '</div></div>';
+          }).join('')+'</div></div>';
+        clEl.innerHTML=clHtml;
+      } else { clEl.innerHTML=''; }
+    } else { clEl.innerHTML=''; }
+  }
 };
+// ── Trainer drill-down modal ──────────────────────────────────────────────────
 window.ovOpenTrainer=function(tk){
   if(!_ovData) return;
-  var sess=_ovData.sessions.filter(function(s){return String(s.tk)===String(tk);}).sort(function(a,b){return a.date===b.date?a.startMin-b.startMin:a.date.localeCompare(b.date);});
-  if(!sess.length) return;
-  var name=sess[0].trainer;
-  document.getElementById('ov-dd-title').innerHTML='<h3>'+esc(name)+'</h3><div class="lv-note">'+esc(_ovMonth)+' · '+sess.length+' scheduled session(s)</div>';
-  var fmt=function(min){ if(min==null)return ''; var h=Math.floor(min/60),m=min%60,ap=h<12?'AM':'PM',h12=((h+11)%12)+1; return h12+':'+String(m).padStart(2,'0')+ap; };
-  var fmtDT=function(iso){ if(!iso)return ''; var d=new Date(iso); if(isNaN(d))return ''; return d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); };
-  var mb=_ovMonthBounds(_ovMonth); var byDate={}; sess.forEach(function(s){ (byDate[s.date]=byDate[s.date]||[]).push(s); });
+  // In today mode, we show all months data for this trainer — reload as monthly first
+  var allSess=_ovData.sessions.filter(function(s){return String(s.tk)===String(tk);}).sort(function(a,b){return a.date===b.date?a.startMin-b.startMin:a.date.localeCompare(b.date);});
+  if(!allSess.length) return;
+  var name=allSess[0].trainer;
+  // Use the data range for modal context label
+  var rangeLabel=_ovMode==='today'?_ovDay:_ovMonth;
+  document.getElementById('ov-dd-title').innerHTML='<h3>'+esc(name)+'</h3><div class="lv-note">'+esc(rangeLabel)+' · '+allSess.length+' session(s)</div>';
+  // Calendar: always show a monthly view anchored to first session's month
+  var firstMonth=allSess[0].date.slice(0,7);
+  var mb=_ovMonthBounds(firstMonth);
+  var byDate={}; allSess.forEach(function(s){(byDate[s.date]=byDate[s.date]||[]).push(s);});
   var first=new Date(mb.y,mb.mo-1,1).getDay(); var cells='';
   for(var i=0;i<first;i++) cells+='<div></div>';
   var pr={missing:6,absent:5,leave:4,scheduled:3,postponed:2,completed:1};
-  for(var d=1;d<=mb.days;d++){ var iso=_ovMonth+'-'+String(d).padStart(2,'0'); var list=byDate[iso]||[]; var col='transparent', lbl='';
+  for(var d=1;d<=mb.days;d++){
+    var iso=firstMonth+'-'+String(d).padStart(2,'0'); var list=byDate[iso]||[]; var col='transparent',lbl='';
     if(list.length){ var top=list.slice().sort(function(a,b){return (pr[b.status]||0)-(pr[a.status]||0);})[0]; col=_OV[top.status].c; lbl=list.length>1?(list.length+' classes'):_OV[top.status].l; }
-    cells+='<div class="ov-cell"'+(list.length?' style="border-color:'+col+'55;background:'+col+'14"':'')+'><div style="font-weight:700;color:var(--tx)">'+d+'</div>'+(lbl?'<div style="color:'+col+';font-size:9.5px;font-weight:700;margin-top:2px">'+esc(lbl)+'</div>':'')+'</div>';
+    cells+='<div class="ov-cell"'+(list.length?' style="border-color:'+col+'55;background:'+col+'14"':'')+'>'+
+      '<div style="font-weight:700;color:var(--tx)">'+d+'</div>'+
+      (lbl?'<div style="color:'+col+';font-size:9.5px;font-weight:700;margin-top:2px">'+esc(lbl)+'</div>':'')+'</div>';
   }
   var legend=Object.keys(_OV).map(function(k){return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--tx3)"><span style="width:9px;height:9px;border-radius:2px;background:'+_OV[k].c+'"></span>'+_OV[k].l+'</span>';}).join('');
-  var cal='<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">'+legend+'</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">'+
+  var cal='<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">'+legend+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">'+
     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(function(x){return '<div style="text-align:center;font-size:10px;color:var(--tx3);font-weight:700">'+x+'</div>';}).join('')+cells+'</div>';
   var listHtml='<div style="overflow-x:auto;margin-top:16px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--tx3);text-align:left">'+
-    ['Date','Time','Batch','Course','Type','Status','P / A','Marked'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08)">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
-    sess.map(function(s){ var st=_OV[s.status];
-      return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:6px 8px">'+s.date.slice(8)+' '+new Date(s.date+"T00:00:00").toLocaleDateString("en",{month:"short"})+'</td>'+
-      '<td style="padding:6px 8px;color:var(--tx3)">'+fmt(s.startMin)+' – '+fmt(s.startMin+s.dur)+'</td>'+
-      '<td style="padding:6px 8px">'+esc(s.batch)+'</td><td style="padding:6px 8px;color:var(--tx3)">'+esc(s.course||'—')+'</td>'+
-      '<td style="padding:6px 8px;color:var(--tx3)">'+s.ctype+'</td>'+
-      '<td style="padding:6px 8px"><span class="ov-pill" style="background:'+st.c+'22;color:'+st.c+'">'+st.l+'</span></td>'+
-      '<td style="padding:6px 8px">'+((s.status==='completed'||s.status==='absent')?(s.present+' / '+s.absent):'—')+'</td>'+
-      '<td style="padding:6px 8px;color:var(--tx3)">'+(s.markedAt?(esc(s.markedBy||'—')+' · '+fmtDT(s.markedAt)):'—')+'</td></tr>';
+    ['Date','Time','Batch','Course','Type','Status','P / A','Marked By / At'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08)">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
+    allSess.map(function(s){ var st=_OV[s.status];
+      return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)">'+
+        '<td style="padding:6px 8px">'+s.date.slice(8)+' '+new Date(s.date+'T00:00:00').toLocaleDateString('en',{month:'short'})+'</td>'+
+        '<td style="padding:6px 8px;color:var(--tx3)">'+_ovFmt(s.startMin)+' – '+_ovFmt(s.startMin+s.dur)+'</td>'+
+        '<td style="padding:6px 8px">'+esc(s.batch)+'</td>'+
+        '<td style="padding:6px 8px;color:var(--tx3)">'+esc(s.course||'—')+'</td>'+
+        '<td style="padding:6px 8px;color:var(--tx3)">'+s.ctype+'</td>'+
+        '<td style="padding:6px 8px"><span class="ov-pill" style="background:'+st.c+'22;color:'+st.c+'">'+st.l+'</span></td>'+
+        '<td style="padding:6px 8px">'+((s.status==='completed'||s.status==='absent')?(s.present+' / '+s.absent):'—')+'</td>'+
+        '<td style="padding:6px 8px;color:var(--tx3)">'+(s.markedAt?(esc(s.markedBy||'—')+' · '+_ovFmtDT(s.markedAt)):'—')+'</td></tr>';
     }).join('')+'</tbody></table></div>';
   document.getElementById('ov-dd-body').innerHTML=cal+listHtml;
   document.getElementById('modalOvTrainer').classList.add('on');
