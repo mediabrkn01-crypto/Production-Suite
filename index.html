@@ -3081,6 +3081,7 @@
                     // Skip table re-render during active upload to prevent status-cell flicker
                     if (!_deliveryUploadTaskId) renderTableRows();
                     if (window._beRenderKanbanIfActive) window._beRenderKanbanIfActive(); // keep Kanban live off the same sync (§17)
+                    if (typeof mhAssignedWorkLiveRefresh === 'function') mhAssignedWorkLiveRefresh(); // Assigned Work list stays live for an open Work Assignment tab (cross-tab/other-user sync)
                     renderHistoryTable();
                     if (editingRosterIndex === null) renderSettingsRoster(); // skip if user is mid-edit
                     renderLogFeed();
@@ -4335,6 +4336,11 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             await syncLedgerEngine(false);
             syncTasksToSheet();
             syncMonthlyReportToSheet();
+            // Instant UI (Issue 1): re-render the Assigned Work list + Kanban now — no page reload
+            // or tab switch. syncLedgerEngine already refetched assignmentsList; these refresh the
+            // two views that don't listen to it. Dedupe is inherent: both read fresh rows by id.
+            try { if (typeof mhAssignedWorkLiveRefresh==='function') mhAssignedWorkLiveRefresh(); } catch(e){}
+            try { if (typeof window._beRenderKanbanIfActive==='function') window._beRenderKanbanIfActive(); } catch(e){}
         }
 
         // ── MINIMIZE STATE ──
@@ -10203,7 +10209,7 @@ async function saveLeave(){
     var owner = isOwnTask(task);
     // Reviewer / management: full workflow control.
     if (reviewer){
-      if (from==='assigned' && to==='inprogress') return { fn:function(){ return adminUpdateStatusDirectly(task.id,'In Progress'); } };
+      if (from==='assigned' && to==='inprogress') return { fn:function(){ return adminUpdateStatusDirectly(task.id,'In Progress'); }, optimistic:true, next:'In Progress' };
       if (from==='submitted' && to==='review')    return { fn:function(){ return confirmApprove(task.id); } };
       if ((from==='submitted'||from==='review') && to==='approved') return { fn:function(){ return confirmSocialPost(task.id); } };
       if ((from==='submitted'||from==='review') && to==='rework')   return { fn:function(){ return reworkFromKanban(task.id); } };
@@ -10214,7 +10220,7 @@ async function saveLeave(){
     // Anyone who is NOT a reviewer is an employee-level actor (do NOT require the literal
     // activeRole==='employee' — that string was the false-denial root cause). Gate by ownership.
     if (!owner) return { err:'You can only update your own assigned work.' };
-    if (from==='assigned' && to==='inprogress') return { fn:function(){ return employeeHandleStatusChange(task.id,'In Progress'); } };
+    if (from==='assigned' && to==='inprogress') return { fn:function(){ return employeeHandleStatusChange(task.id,'In Progress'); }, optimistic:true, next:'In Progress' };
     if (from==='inprogress' && to==='submitted') return { fn:function(){ return employeeHandleStatusChange(task.id,'Completed'); /* opens Submit Delivery */ } };
     if (to==='review'||to==='approved') return { err:'Only Media Head can review or approve submitted work.' };
     return { err:'Move Assigned → In Progress, then submit your delivery.' };
@@ -10224,6 +10230,15 @@ async function saveLeave(){
     if (!task){ renderBoard(); return; }
     var r = resolveMove(task, from, to);
     if (r.err){ toast('warning', r.err); renderBoard(); return; } // revert (§18)
+    if (r.optimistic){
+      // Issue 2: move the card + counts INSTANTLY, persist in the background, roll back on failure.
+      var prev = task.status; task.status = r.next; renderBoard();
+      try { await r.fn(); }
+      catch(e){ task.status = prev; renderBoard(); toast('error','Could not update — moved back. '+(e&&e.message||e)); return; }
+      renderBoard(); // reconcile with server-confirmed state (the fn's own sync also re-renders)
+      return;
+    }
+    // Prompt/modal moves (approve/rework/submit-delivery) can't move before the user confirms.
     try { await r.fn(); }
     catch(e){ toast('error','Could not update: '+(e&&e.message||e)); }
     renderBoard(); // source-of-truth re-render (also reverts a cancelled prompt / failed write, §18)
