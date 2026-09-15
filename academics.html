@@ -1551,7 +1551,7 @@ details[open] .rawsum::before{content:'▾ '}
 <div class="modal-bg" id="modalAtt"><div class="modal" style="width:460px">
   <h3 id="att_title">Attendance</h3>
   <div class="mrow">
-    <div class="att-fld"><span class="att-lbl">Session #</span><input id="att_num" type="number" placeholder="Session #" value="1"/></div>
+    <div class="att-fld"><span class="att-lbl">Session #</span><input id="att_num" type="number" placeholder="Session #" value="1" readonly style="opacity:.75;cursor:default"/><span style="font-size:10px;color:var(--tx3);margin-left:5px">auto</span></div>
     <div class="att-fld"><span class="att-lbl">Class Date</span><input id="att_date" type="date" onchange="loadClassLogForAttDate()"/></div>
   </div>
   <div id="att_list" style="max-height:340px;overflow:auto;margin:10px 0"></div>
@@ -2061,9 +2061,11 @@ async function loadLive(){
   // Still fired alongside baseQuery below, not awaited one-after-the-other — same PERFORMANCE
   // reasoning as before, _acadFetchAllRows just replaces a single select() call with its own
   // (possibly multi-page) promise chain underneath.
+  // validCompletedSessions source: only rows where status='present'. All-absent sessions,
+  // missing attendance, and trainer leave do NOT advance the session counter.
   const attPromise = isHead
-    ? _acadFetchAllRows('attendance', 'batch_name,session_num')
-    : (myBatchNames.length ? _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.in('batch_name', myBatchNames)) : Promise.resolve([]));
+    ? _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.eq('status','present'))
+    : (myBatchNames.length ? _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.in('batch_name', myBatchNames).eq('status','present')) : Promise.resolve([]));
   // select('*') rather than naming columns explicitly — on a database where the deleted_at
   // migration hasn't been run yet, naming a column that doesn't exist errors the WHOLE query
   // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
@@ -2660,8 +2662,12 @@ async function openAtt(i){
   // searched for attendance rows that could never exist for any Elite batch — same class of
   // bug already fixed on loadLive()'s own read side two commits ago (doneMap[b.raw||b.name]),
   // just never applied to this modal or to saveAtt()'s own insert below.
-  try{const {data}=await sb.from('attendance').select('session_num').eq('batch_name',b.raw||b.name);
-    const nums=[...new Set((data||[]).map(r=>r.session_num))]; dn=nums.length; next=(nums.length?Math.max.apply(null,nums):0)+1;}catch(e){}
+  // validCompletedSessions = distinct session_nums where AT LEAST ONE student was Present.
+  // All-absent sessions, missing attendance, trainer leave do NOT count.
+  // nextSessionNumber = validCompleted + 1 — if last valid was session N, next is N+1.
+  // If the previous session was all-absent (no valid), its session_num is retried (same num again).
+  try{const {data}=await sb.from('attendance').select('session_num').eq('batch_name',b.raw||b.name).eq('status','present');
+    const validNums=[...new Set((data||[]).map(r=>r.session_num))]; dn=validNums.length; next=dn+1;}catch(e){}
   document.getElementById('att_num').value=next;
   document.getElementById('att_title').innerHTML=esc(b.name)+' <span style="font-weight:400;opacity:.6;font-size:13px">\u00b7 session '+next+' of '+total+' \u00b7 '+dn+' done</span>';
   document.getElementById('att_date').value=new Date().toISOString().slice(0,10);
@@ -2733,7 +2739,14 @@ async function saveAtt(){
   // batch's ASSIGNED trainer (not whoever marked). Idempotent by session_key so re-opening/
   // editing/re-saving never double-pays; a paid session is never modified. Full-time trainers
   // are skipped entirely (they keep the fixed-salary system). Never per-student.
-  try { await _acadRecordSessionEarning(window._attBatchId, realBatchName, num, date, currentUser.name); } catch(e){ console.warn('session earning:', e && e.message); }
+  // Session earning: only if class actually happened (≥1 present). All-absent = no pay.
+  const _presentCount = rows.filter(r => r.status === 'present').length;
+  if (_presentCount > 0) {
+    try { await _acadRecordSessionEarning(window._attBatchId, realBatchName, num, date, currentUser.name); } catch(e){ console.warn('session earning:', e && e.message); }
+  } else if (window._attBatchId) {
+    // All-absent: remove any unpaid pending earning for this session (class was not conducted)
+    try { await sb.from('trainer_session_earnings').delete().eq('session_key', window._attBatchId+'|'+num).neq('status','paid'); } catch(e){}
+  }
   showToast('success','Attendance saved: '+b.name+' \u00b7 session '+num);
   loadLive();
   document.getElementById('modalAtt').classList.remove('on');
@@ -3995,7 +4008,7 @@ async function loadAcadDashboard(){
       if (_trows.length) {
         const _nm = _trows.map(b=>b.name).filter(Boolean);
         const _done = {};
-        if (_nm.length) { try { const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', _nm); (att||[]).forEach(a=>{ (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(a.session_num); }); } catch(e){} }
+        if (_nm.length) { try { const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', _nm).eq('status','present'); (att||[]).forEach(a=>{ (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(a.session_num); }); } catch(e){} }
         _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,(b.baseline_sessions||0)+((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
       let _occ = [];
@@ -4041,7 +4054,8 @@ async function loadStats(){
     // Same 1000-row PostgREST cap fix as loadLive() (see _acadFetchAllRows) — this was
     // another plain, unfiltered whole-`attendance`-table select(), silently truncated the
     // same way, undercounting this tile once the real table passed 1000 rows.
-    const att = await _acadFetchAllRows('attendance', 'batch_name,session_num');
+    // Only present-attendance rows: validCompletedSessions across all batches
+    const att = await _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.eq('status','present'));
     sessionsCompleted = new Set(att.map(a => a.batch_name+'|'+a.session_num)).size;
   } catch (e) { console.warn('Could not load sessions-completed count:', e.message); }
   // Same compact radial metricStripHTML() component the Overview dashboard already uses (and
@@ -5503,7 +5517,7 @@ async function loadClassesTab(){
       const doneByBatch = {};
       if (names.length) {
         try {
-          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names);
+          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names).eq('status','present');
           (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
         } catch(e) {}
       }
@@ -5843,7 +5857,7 @@ async function loadScheduleTab(){
       const doneByBatch = {};
       if (names.length) {
         try {
-          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names);
+          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names).eq('status','present');
           (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
         } catch(e) {}
       }
@@ -6742,8 +6756,9 @@ async function saveManageStudents(){
 // attendance sessions) — same rule progressOf()/loadLive() use, just callable standalone for
 // a single batch (Edit Batch only needs this one batch's number, not the whole table).
 async function _acadRealDoneCount(realName, baselineSessions){
+  // validCompleted = session_nums where at least one student was Present
   try {
-    const { data } = await sb.from('attendance').select('session_num').eq('batch_name', realName);
+    const { data } = await sb.from('attendance').select('session_num').eq('batch_name', realName).eq('status','present');
     const marked = new Set((data||[]).map(r=>r.session_num)).size;
     return (+baselineSessions||0) + marked;
   } catch(e) { return +baselineSessions||0; }
@@ -7030,7 +7045,7 @@ async function saveBatchEdit(){
   const doneBefore = await _acadRealDoneCount(b.name, b.baseline_sessions);
   if (desiredDone !== doneBefore) {
     const realName = newName || b.name;
-    const { data: marked } = await sb.from('attendance').select('session_num').eq('batch_name', realName);
+    const { data: marked } = await sb.from('attendance').select('session_num').eq('batch_name', realName).eq('status','present');
     const markedCount = new Set((marked||[]).map(r=>r.session_num)).size;
     const newBaseline = Math.max(0, desiredDone - markedCount);
     await sb.from('batches').update({baseline_sessions:newBaseline}).eq('id',b.id);
