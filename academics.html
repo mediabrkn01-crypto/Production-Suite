@@ -2666,9 +2666,11 @@ async function openAtt(i){
   // bug already fixed on loadLive()'s own read side two commits ago (doneMap[b.raw||b.name]),
   // just never applied to this modal or to saveAtt()'s own insert below.
   // validCompletedSessions = distinct session_nums where AT LEAST ONE student was Present.
-  // All-absent sessions, missing attendance, trainer leave do NOT count.
-  // nextSessionNumber = validCompleted + 1 — if last valid was session N, next is N+1.
-  // If the previous session was all-absent (no valid), its session_num is retried (same num again).
+  // All-absent sessions, missing attendance, trainer leave do NOT count toward "done".
+  // nextSessionNumber = validCompleted + 1. NOTE: two dates can share the same session_num
+  // when an all-absent session is followed by a new session (both compute next=N because the
+  // absent session's num is excluded). This is intentional — saveAtt deletes by session_date
+  // (not session_num) to prevent the new session from wiping the absent session's record.
   try{const {data}=await sb.from('attendance').select('session_num').eq('batch_name',b.raw||b.name).eq('status','present');
     const validNums=[...new Set((data||[]).map(r=>r.session_num))]; dn=validNums.length; next=dn+1;}catch(e){}
   document.getElementById('att_num').value=next;
@@ -2756,9 +2758,11 @@ async function saveAtt(){
   // session_num via a Set, so progress itself stayed correct), it silently duplicated/
   // conflicted the underlying attendance records — Session History's present/absent counts
   // for that date would then double-count or show stale+new statuses together. Delete any
-  // existing rows for this exact (batch, session_num) first, so a re-save is a true edit —
-  // same one-session-one-set-of-rows invariant "Prevent Duplicate Session Counting" asks for.
-  const { error: delErr } = await sb.from('attendance').delete().eq('batch_name', realBatchName).eq('session_num', num);
+  // existing rows for this exact (batch, session_date) first, so a re-save is a true edit.
+  // IMPORTANT: delete by session_date (not session_num) — all-absent sessions are excluded
+  // from the present-only session_num count, so two different dates can share the same
+  // session_num. Deleting by session_num would silently wipe the other date's record.
+  const { error: delErr } = await sb.from('attendance').delete().eq('batch_name', realBatchName).eq('session_date', date);
   if (delErr) { showToast('error','Save failed: '+delErr.message); return; }
   const {error}=await sb.from('attendance').insert(rows);
   if(error){showToast('error','Save failed: '+error.message);return;}
