@@ -1554,8 +1554,9 @@ details[open] .rawsum::before{content:'▾ '}
   <h3 id="att_title">Attendance</h3>
   <div class="mrow">
     <div class="att-fld"><span class="att-lbl">Session #</span><input id="att_num" type="number" placeholder="Session #" value="1" readonly style="opacity:.75;cursor:default"/><span style="font-size:10px;color:var(--tx3);margin-left:5px">auto</span></div>
-    <div class="att-fld"><span class="att-lbl">Class Date</span><input id="att_date" type="date" onchange="loadClassLogForAttDate()"/></div>
+    <div class="att-fld"><span class="att-lbl">Class Date</span><input id="att_date" type="date" onchange="loadClassLogForAttDate();(function(){var t=new Date().toISOString().slice(0,10),v=document.getElementById('att_date').value,h=document.getElementById('att_date_hint');if(h){if(v&&v<t){h.innerHTML='⚠ Marking for past class date (<b>'+v+'</b>)';h.style.display='block';}else{h.innerHTML='';h.style.display='none';}}})()"/></div>
   </div>
+  <div id="att_date_hint" style="display:none;font-size:11px;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:7px;padding:6px 10px;margin:4px 0 8px"></div>
   <div id="att_list" style="max-height:340px;overflow:auto;margin:10px 0"></div>
   <!-- Class Log — merged directly into Mark Attendance (was a separate "Log a Session" tab/
        modal). One log per batch+date, not per student — the actual use case is "what did I
@@ -2672,7 +2673,43 @@ async function openAtt(i){
     const validNums=[...new Set((data||[]).map(r=>r.session_num))]; dn=validNums.length; next=dn+1;}catch(e){}
   document.getElementById('att_num').value=next;
   document.getElementById('att_title').innerHTML=esc(b.name)+' <span style="font-weight:400;opacity:.6;font-size:13px">\u00b7 session '+next+' of '+total+' \u00b7 '+dn+' done</span>';
-  document.getElementById('att_date').value=new Date().toISOString().slice(0,10);
+  // Pre-fill Class Date with the most recent scheduled class day ≤ today (not blindly today).
+  // Bug root cause: if this defaults to today and the trainer doesn't change it, a backdated
+  // session gets session_date = today rather than the actual class date. The Overview query
+  // filters by session_date, so it never finds the attendance for the real class date → "missing".
+  const _todayAttISO = new Date().toISOString().slice(0,10);
+  let _bestAttDate = _todayAttISO;
+  try {
+    const _sched = window._acadSchedByName && window._acadSchedByName[b.raw||b.name];
+    if (_sched && _sched.days) {
+      const _DAY_IDX = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+      const _toks = _sched.days.split(',').map(t=>t.trim()).filter(Boolean)
+        .map(t=>t.replace(/\s*·.*$/,'').trim()).filter(d=>_DAY_IDX.hasOwnProperty(d));
+      const _wantDows = new Set(_toks.map(d=>_DAY_IDX[d]));
+      if (_wantDows.size) {
+        const _cur = new Date();
+        for (let _di = 0; _di < 14; _di++) {
+          if (_wantDows.has(_cur.getDay())) {
+            _bestAttDate = _cur.toISOString().slice(0,10);
+            break;
+          }
+          _cur.setDate(_cur.getDate() - 1);
+        }
+      }
+    }
+  } catch(e) {}
+  document.getElementById('att_date').value = _bestAttDate;
+  // Show a hint when marking attendance for a past date (backdated) so the trainer notices
+  const _attDateHint = document.getElementById('att_date_hint');
+  if (_attDateHint) {
+    if (_bestAttDate < _todayAttISO) {
+      _attDateHint.innerHTML = '⚠ Marking for past class date (<b>'+_bestAttDate+'</b>) — change above if incorrect';
+      _attDateHint.style.display = 'block';
+    } else {
+      _attDateHint.innerHTML = '';
+      _attDateHint.style.display = 'none';
+    }
+  }
   document.getElementById('att_list').innerHTML=b.students.length?b.students.map(function(s,j){
     var ini=(s.name||'?').trim().split(/\s+/).map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
     return '<div class="att-row"><span class="att-ava">'+esc(ini)+'</span><span class="att-name">'+esc(s.name)+'</span><input type="checkbox" id="att_'+j+'" checked/><div class="att-seg"><button type="button" class="seg-p" onclick="setAtt('+j+',true)">Present</button><button type="button" class="seg-a" onclick="setAtt('+j+',false)">Absent</button></div></div>';
@@ -2751,6 +2788,10 @@ async function saveAtt(){
   }
   showToast('success','Attendance saved: '+b.name+' \u00b7 session '+num);
   loadLive();
+  // Refresh Class & Attendance Overview immediately \u2014 critical for backdated saves:
+  // if a trainer marks Sep 15 attendance on Sep 16, the overview for Sep 15 must
+  // stop showing "missing" and show the real status without requiring a page reload.
+  if (typeof window._ovRefresh === 'function') window._ovRefresh();
   document.getElementById('modalAtt').classList.remove('on');
 }
 async function _acadRecordSessionEarning(batchId, batchName, num, date, markedBy){
