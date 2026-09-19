@@ -3034,21 +3034,24 @@
 
         async function syncLedgerEngine(forcedByUser = false) {
             try {
-                const { data: users, error: errU } = await dbInstance.from('user_roster').select('*');
-                if (!errU && users) {
-                    userRoster = users;
-                    // Academic employees must never appear in Production's task-assignment
-                    // dropdown — refreshed (throttled) before the dropdown rebuilds so the
-                    // filter is never working off a stale/empty cache.
-                    if (typeof refreshAcademicEmailsCache === 'function') await refreshAcademicEmailsCache();
-                    if (typeof refreshProductionEmailsCache === 'function') await refreshProductionEmailsCache();
+                const [rUsers, rTasks, rLogs, rAtt] = await Promise.all([
+                    dbInstance.from('user_roster').select('*'),
+                    dbInstance.from('assignments').select('*'),
+                    dbInstance.from('system_logs').select('*').order('created_at', { ascending: false }).limit(40),
+                    dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false }).limit(500),
+                ]);
+
+                if (!rUsers.error && rUsers.data) {
+                    userRoster = rUsers.data;
+                    if (typeof refreshAcademicEmailsCache === 'function') refreshAcademicEmailsCache();
+                    if (typeof refreshProductionEmailsCache === 'function') refreshProductionEmailsCache();
                     populateDropdownSelectors();
-                } else if (errU) {
-                    console.error('[BE] user_roster fetch error:', errU);
+                } else if (rUsers.error) {
+                    console.error('[BE] user_roster fetch error:', rUsers.error);
                 }
 
-                const { data: tasks, error: errT } = await dbInstance.from('assignments').select('*');
-                if (!errT && tasks) {
+                if (!rTasks.error && rTasks.data) {
+                    const tasks = rTasks.data;
                     assignmentsList = tasks.filter(t => t.status !== 'cancelled').map(t => ({
                         id: t.id,
                         topic: t.topic,
@@ -3070,11 +3073,8 @@
                     }));
                 }
 
-                const { data: logs, error: errL } = await dbInstance.from('system_logs').select('*').order('created_at', { ascending: false }).limit(40);
-                if (!errL && logs) internalLogs = logs;
-
-                const { data: attendance, error: errA } = await dbInstance.from('attendance_logs').select('*').order('log_date', { ascending: false });
-                if (!errA && attendance) attendanceLogs = attendance;
+                if (!rLogs.error && rLogs.data) internalLogs = rLogs.data;
+                if (!rAtt.error && rAtt.data) attendanceLogs = rAtt.data;
 
                 if (activeUser) {
                     renderCountersGrid();
@@ -3260,6 +3260,7 @@
                     _showPortalLoginError("Network error — could not reach the account registry. Please try again.");
                     return;
                 }
+                userRoster = matchedUsers;
 
                 const foundUser = matchedUsers.find(u =>
                     u.email.trim().toLowerCase() === userInput ||
@@ -3319,7 +3320,7 @@
                 localStorage.setItem('be_active_email', activeEmail);
                 saveAccountForSwitching(activeUser, activeRole, activeEmail, pwdInput);
 
-                await pushLogEntry(`${activeUser} (${activeRole}) authenticated into system framework session.`);
+                pushLogEntry(`${activeUser} (${activeRole}) authenticated into system framework session.`);
                 cancelAddAccountFlow();
                 launchSession();
             } finally {
@@ -3331,122 +3332,86 @@
         async function launchSession() {
             if (!activeUser) return;
 
-            // ── AUTHORITATIVE ROLE ROUTING (System Role wins over department/designation/login
-            //    role). Company Manager/Founder have ONE entry point: manager.html. Runs BEFORE
-            //    any Media Suite render so a manager never lands here first. Skipped when index
-            //    is embedded as manager.html's own Media view (iframe) to avoid a redirect loop.
-            if (typeof dbInstance !== 'undefined' && dbInstance && activeEmail && !/manager\.html$/.test(location.pathname)) {
+            // ── FAST ROUTE: determine where this user belongs FIRST, before loading any
+            //    pipeline/media data. One loadCurrentUserProfile() call (cached) gives us
+            //    system_role + division + employment_status — enough to redirect managers,
+            //    academics, and sales users immediately without waiting for syncLedgerEngine.
+            const deepLinkTab = new URLSearchParams(location.search).get('tab');
+            const _embedded = (window.self !== window.top);
+            const _MGMT_SET = ['manager','founder','co_founder','managing_director','director'];
+
+            if (typeof dbInstance !== 'undefined' && dbInstance && activeEmail) {
                 try {
-                    // Fetch ALL rows for this login (not maybeSingle — a duplicate row would make
-                    // it return null and silently skip management routing). Management/leadership
-                    // is the source of truth, so pick that row first if any exists.
-                    const _MGMT_SET = ['manager','founder','co_founder','managing_director','director'];
-                    const _rr = await dbInstance.from('hr_employees').select('system_role,employment_status,account_type').eq('portal_email', String(activeEmail).toLowerCase());
-                    const _rows = (_rr && _rr.data) || [];
-                    const _e = _rows.find(r => (r.account_type||'')==='management' || _MGMT_SET.indexOf((r.system_role||'').toLowerCase())>-1) || _rows[0];
-                    if (_e) {
-                        const _sr = (_e.system_role || '').toLowerCase(), _st = (_e.employment_status || '').toLowerCase();
+                    const _profile = await loadCurrentUserProfile();
+                    if (_profile && _profile.raw) {
+                        const rec = _profile.raw;
+                        const _sr = (rec.system_role || '').toLowerCase();
+                        const _st = (rec.employment_status || '').toLowerCase();
                         const _active = _st !== 'inactive' && _st !== 'exited';
-                        const _embedded = (window.self !== window.top);
+                        const _div = (rec.division || '').toLowerCase();
                         window._systemRole = _sr;
-                        // Direct login: Manager/Founder's home is manager.html. Embedded (manager.html's
-                        // Media view iframe): DON'T redirect (loop) — instead grant Media-Head-level UI
-                        // (assign + approvals) so the Manager sees the full Media management view.
-                        if (['manager','founder','co_founder','managing_director','director'].indexOf(_sr) > -1 && _active) {
-                            if (!_embedded) { location.href = 'manager.html'; return; }
+
+                        if (_MGMT_SET.indexOf(_sr) > -1 && _active) {
+                            if (!_embedded && !/manager\.html$/.test(location.pathname)) {
+                                location.href = 'manager.html'; return;
+                            }
                             document.body.classList.add('role-mediahead');
                             if (typeof window.initMediaHeadApprovals === 'function') window.initMediaHeadApprovals();
                         } else if (_sr === 'media_head' && _active) {
                             document.body.classList.add('role-mediahead');
                             if (typeof window.initMediaHeadApprovals === 'function') window.initMediaHeadApprovals();
                         }
+
+                        if (_div === 'sales' && !deepLinkTab) {
+                            window.location.href = 'sales.html?e=' + encodeURIComponent(activeEmail) + '&n=' + encodeURIComponent(activeUser);
+                            return;
+                        }
+                        if (_div === 'education' && !deepLinkTab) {
+                            window.location.href = 'academics.html?e=' + encodeURIComponent(activeEmail) + '&n=' + encodeURIComponent(activeUser);
+                            return;
+                        }
+
+                        applyCurrentUserProfileToDOM(_profile);
                     }
                 } catch (_) {}
             }
 
-            await syncLedgerEngine(false);
-            // Realtime replaces the old 4s polling loop — subscribed once per login, right
-            // after the initial sync above so it never delays first render.
-            if (typeof _beInitRealtime === 'function') _beInitRealtime();
+            // ── If still here, user stays on index.html (Pipeline / Media Suite).
+            //    Show the UI shell IMMEDIATELY — data loads in background below.
 
-            // Always refresh the active role from the live roster (fixes stale cached roles)
-            const liveMe = userRoster.find(u => u.email === activeEmail || u.name === activeUser);
-            if (liveMe && liveMe.role && liveMe.role !== activeRole) {
-                activeRole = liveMe.role;
-                localStorage.setItem('be_active_role', activeRole);
-            }
+            // Generic role labels (overwritten once profile DOM apply resolves above)
+            const genericRoleLabel = activeRole === 'admin' ? 'HR' : activeRole === 'manager' ? 'Manager' : 'Employee';
+            const userRoleEl = document.getElementById('sidebar-user-role');
+            if (userRoleEl && !userRoleEl.textContent.trim()) userRoleEl.textContent = genericRoleLabel;
+            const userRoleElMobile = document.getElementById('sidebar-user-role-mobile');
+            if (userRoleElMobile && !userRoleElMobile.textContent.trim()) userRoleElMobile.textContent = genericRoleLabel;
+            const userRoleBadgeEl = document.getElementById('user-role-badge');
+            if (userRoleBadgeEl && !userRoleBadgeEl.textContent.trim()) userRoleBadgeEl.textContent = genericRoleLabel;
 
-            // Initials shown immediately — safe, synchronous, always correct. The actual
-            // photo is set ONLY by hrFetchAndApplyMyPhoto() below (the one profile source of
-            // truth — hr_employees.photo_base64/photo_url), not from here.
-            //
-            // This used to also set img.src straight from liveMe.avatar (a legacy chat-avatar
-            // field on user_roster) with NO error handling at all — if that value was ever
-            // invalid/corrupted, the browser's broken-image icon would show and nothing would
-            // catch it until the HR photo below finished loading a moment later (or stay
-            // broken indefinitely for an employee with no HR photo at all). Removed rather
-            // than patched with an onerror, since keeping it around as a second, separate
-            // photo source is exactly the "avatar depends on separate rendering/state logic
-            // instead of one shared source" problem this was already meant to fix.
-            if (liveMe) {
-                const initials = activeUser.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
-                const ini = document.getElementById('my-avatar-initials');
-                if (ini) ini.textContent = initials;
-            }
+            // Initials + photo
+            const initials = activeUser.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+            const ini = document.getElementById('my-avatar-initials');
+            if (ini) ini.textContent = initials;
             hrFetchAndApplyMyPhoto();
-            // Live greeting (shared-greeting.js) — activeUser is real now, refresh immediately
-            // rather than waiting for its own once-a-minute tick to pick up the name.
             if (typeof window._beRefreshGreeting === 'function') window._beRefreshGreeting();
 
-            // Not awaited — the Pipeline table (from syncLedgerEngine above) already rendered
-            // with whatever was in hrEmployees at that moment; re-render once the self/team HR
-            // records actually arrive so the Assigned Creator column's designation line fills
-            // in shortly after, without delaying the Pipeline's own first paint.
-            ensureHRDataLoaded().then(() => { if (typeof renderTableRows === 'function') renderTableRows(); }).catch(() => {});
-
-            // Captured ONCE, before any async work below, and threaded through explicitly
-            // rather than re-reading location.search later — checkAcademicAccess() is async
-            // and un-awaited-by-callers elsewhere, so a second read after an await could see
-            // a URL that's already been scrubbed by the deep-link handler further down,
-            // wrongly concluding no deep link was requested and redirecting away regardless.
-            const deepLinkTab = new URLSearchParams(location.search).get('tab');
-
-            // Sidebar role label — set to the generic system-role label FIRST, as a fallback
-            // for accounts with no linked HR record at all. checkAcademicAccess() below (which
-            // runs after this and IS awaited) overwrites this with the employee's real HR
-            // title (e.g. "Video Editor", "Academic Head") whenever one is on file — this
-            // ordering must stay generic-first/real-title-second, or the real title gets
-            // silently stomped back to the generic label right after it's set (that was the
-            // actual bug: this same assignment used to run AFTER checkAcademicAccess()).
-            const userRoleEl = document.getElementById('sidebar-user-role');
-            const genericRoleLabel = activeRole === 'admin' ? 'HR' : activeRole === 'manager' ? 'Manager' : activeRole === 'social_media' ? 'Employee' : 'Employee';
-            if (userRoleEl) userRoleEl.textContent = genericRoleLabel;
-            // Same profile summary, mirrored onto the mobile "who am I" strip — visible
-            // immediately without opening any menu, same as the desktop sidebar.
-            const userRoleElMobile = document.getElementById('sidebar-user-role-mobile');
-            if (userRoleElMobile) userRoleElMobile.textContent = genericRoleLabel;
-            // Top sidebar identity block ("BROKEN ENGLISH / Media Suite / …") — same
-            // generic-first/real-designation-second pattern as sidebar-user-role above, for
-            // the same reason: this runs before checkAcademicAccess() (which calls the shared
-            // applyCurrentUserProfileToDOM()) resolves. Matches the Academic module's own
-            // sidebar header style. Used to show `${activeRole} scope` ("employee scope")
-            // permanently instead — removed below, not just overwritten, since HR's real
-            // designation write happens via that same shared function now.
-            const userRoleBadgeEl = document.getElementById('user-role-badge');
-            if (userRoleBadgeEl) userRoleBadgeEl.textContent = genericRoleLabel;
-
-            // Reveals the Academic Module sidebar link if — and only if — HR has this
-            // employee's record set to the Education division. Awaited (unlike the old
-            // fire-and-forget call) so its redirect-or-not decision is fully resolved before
-            // anything below touches the URL or reveals the app frame. Also applies the
-            // employee's real HR title to the sidebar role label above, when one is on file.
-            await checkAcademicAccess(deepLinkTab);
-
+            // ── REVEAL UI NOW — before any heavy data loading ──
             document.getElementById('auth-loading-screen')?.classList.add('hidden');
             const loginScreen = document.getElementById('portal-login-screen');
             loginScreen.classList.add('hidden');
-            loginScreen.style.display = ''; // reset any forced display
+            loginScreen.style.display = '';
             document.getElementById('main-application-frame').classList.remove('opacity-0', 'pointer-events-none');
+
+            // ── Background data loading (not blocking UI) ──
+            syncLedgerEngine(false).then(() => {
+                if (typeof _beInitRealtime === 'function') _beInitRealtime();
+                const liveMe = userRoster.find(u => u.email === activeEmail || u.name === activeUser);
+                if (liveMe && liveMe.role && liveMe.role !== activeRole) {
+                    activeRole = liveMe.role;
+                    localStorage.setItem('be_active_role', activeRole);
+                }
+            }).catch(() => {});
+            ensureHRDataLoaded().then(() => { if (typeof renderTableRows === 'function') renderTableRows(); }).catch(() => {});
 
             // Deep-link support — lets other pages in the same app (academics.html's My
             // Workspace links, for example) land the user on a specific tab here instead of
@@ -9089,6 +9054,7 @@ async function saveLeave(){
     if (typeof dbInstance === 'undefined' || !dbInstance) { showLoginNow(); return; }
     const { data: users, error } = await dbInstance.from('user_roster').select('*');
     if (error || !users) { showLoginNow(); return; }
+    userRoster = users;
     const found = users.find(u => (u.email || '').trim().toLowerCase() === e.trim().toLowerCase());
     if (!found) { showLoginNow(); return; } // not a Media Suite login — sign in manually as usual
     activeUser = found.name;
@@ -9098,7 +9064,7 @@ async function saveLeave(){
     localStorage.setItem('be_active_role', activeRole);
     localStorage.setItem('be_active_email', activeEmail);
     saveAccountForSwitching(activeUser, activeRole, activeEmail, found.pass || '');
-    await launchSession(); // also runs checkAcademicAccess() and the ?tab= deep-link handler; hides #auth-loading-screen itself
+    await launchSession();
   } catch (_) { showLoginNow(); /* fall through to the normal login screen on any failure */ }
 })();
 </script>
