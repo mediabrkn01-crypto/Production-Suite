@@ -2066,9 +2066,12 @@ async function loadLive(){
   // (possibly multi-page) promise chain underneath.
   // validCompletedSessions source: only rows where status='present'. All-absent sessions,
   // missing attendance, and trainer leave do NOT advance the session counter.
+  // Count by session_date (not session_num) — a date can have multiple session_nums if
+  // attendance was re-saved under a different computed num (delete-by-session_num bug created
+  // duplicate nums for the same date). Counting distinct dates is the canonical class identity.
   const attPromise = isHead
-    ? _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.eq('status','present'))
-    : (myBatchNames.length ? _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.in('batch_name', myBatchNames).eq('status','present')) : Promise.resolve([]));
+    ? _acadFetchAllRows('attendance', 'batch_name,session_date,session_num', q => q.eq('status','present'))
+    : (myBatchNames.length ? _acadFetchAllRows('attendance', 'batch_name,session_date,session_num', q => q.in('batch_name', myBatchNames).eq('status','present')) : Promise.resolve([]));
   // select('*') rather than naming columns explicitly — on a database where the deleted_at
   // migration hasn't been run yet, naming a column that doesn't exist errors the WHOLE query
   // out (PGRST 42703) instead of just omitting that field; select('*') degrades gracefully.
@@ -2092,7 +2095,7 @@ async function loadLive(){
   (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; });
   window._acadBatchIdByName = batchIdByName;
   try{
-    attRows.forEach(a=>{(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_num);});
+    attRows.forEach(a=>{const _k=a.session_date!=null?a.session_date:('num_'+a.session_num);(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(_k);});
   }catch(e){}
   try{
     (baseResult.data||[]).forEach(function(b){
@@ -2167,7 +2170,11 @@ async function loadLive(){
   // close" (see the progress line in card()) until the Head actually confirms.
   const isBatchCardFinished = b => {
     const status = statusMap[b.raw||b.name];
-    return status === 'completed' || status === 'finished';
+    if (status !== 'completed' && status !== 'finished') return false;
+    // Guard: a stale "completed" status from a legacy import or premature click must not
+    // override the real session count. Require delivered >= required when total is configured.
+    const { dn, total } = progressOf(b);
+    return !total || dn >= total;
   };
   // Soft-deleted batches (deleteBatch()) never appear in My Batches/Live Batches/Finished
   // Batches — deletedNames comes from the same batches fetch just above (keyed by real batch
@@ -2791,6 +2798,19 @@ async function saveAtt(){
     try { await sb.from('trainer_session_earnings').delete().eq('session_key', window._attBatchId+'|'+num).neq('status','paid'); } catch(e){}
   }
   showToast('success','Attendance saved: '+b.name+' \u00b7 session '+num);
+  // Auto-complete batch when the final required session is delivered.
+  // Uses the same canonical count (_acadRealDoneCount = baseline + distinct dates with \u22651 present).
+  try {
+    const _autoTotal = window._acadTotalMap && window._acadTotalMap[realBatchName];
+    const _autoBid   = window._attBatchId || (window._acadBatchIdByName && window._acadBatchIdByName[realBatchName]);
+    if (_autoTotal && _autoBid) {
+      const _autoDone = await _acadRealDoneCount(realBatchName, b.baseline_sessions||0);
+      if (_autoDone >= _autoTotal) {
+        await sb.from('batches').update({status:'completed', completed_at: new Date().toISOString()})
+          .eq('id', _autoBid).not('status','in','("completed","finished")');
+      }
+    }
+  } catch(e){}
   loadLive();
   // Refresh Class & Attendance Overview immediately \u2014 critical for backdated saves:
   // if a trainer marks Sep 15 attendance on Sep 16, the overview for Sep 15 must
@@ -4055,7 +4075,7 @@ async function loadAcadDashboard(){
       if (_trows.length) {
         const _nm = _trows.map(b=>b.name).filter(Boolean);
         const _done = {};
-        if (_nm.length) { try { const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', _nm).eq('status','present'); (att||[]).forEach(a=>{ (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(a.session_num); }); } catch(e){} }
+        if (_nm.length) { try { const { data: att } = await sb.from('attendance').select('batch_name,session_date,session_num').in('batch_name', _nm).eq('status','present'); (att||[]).forEach(a=>{ const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(_k); }); } catch(e){} }
         _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,(b.baseline_sessions||0)+((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
       let _occ = [];
@@ -4102,8 +4122,8 @@ async function loadStats(){
     // another plain, unfiltered whole-`attendance`-table select(), silently truncated the
     // same way, undercounting this tile once the real table passed 1000 rows.
     // Only present-attendance rows: validCompletedSessions across all batches
-    const att = await _acadFetchAllRows('attendance', 'batch_name,session_num', q => q.eq('status','present'));
-    sessionsCompleted = new Set(att.map(a => a.batch_name+'|'+a.session_num)).size;
+    const att = await _acadFetchAllRows('attendance', 'batch_name,session_date,session_num', q => q.eq('status','present'));
+    sessionsCompleted = new Set(att.map(a => a.batch_name+'|'+(a.session_date!=null?a.session_date:('num_'+a.session_num)))).size;
   } catch (e) { console.warn('Could not load sessions-completed count:', e.message); }
   // Same compact radial metricStripHTML() component the Overview dashboard already uses (and
   // index.html/hr.html's own dashboards) — this grid was still the old acadStatTile()
@@ -5564,8 +5584,8 @@ async function loadClassesTab(){
       const doneByBatch = {};
       if (names.length) {
         try {
-          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names).eq('status','present');
-          (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
+          const { data: att } = await sb.from('attendance').select('batch_name,session_date,session_num').in('batch_name', names).eq('status','present');
+          (att||[]).forEach(a => { const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(_k); });
         } catch(e) {}
       }
       rows = rows.filter(b => {
@@ -5904,8 +5924,8 @@ async function loadScheduleTab(){
       const doneByBatch = {};
       if (names.length) {
         try {
-          const { data: att } = await sb.from('attendance').select('batch_name,session_num').in('batch_name', names).eq('status','present');
-          (att||[]).forEach(a => { (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(a.session_num); });
+          const { data: att } = await sb.from('attendance').select('batch_name,session_date,session_num').in('batch_name', names).eq('status','present');
+          (att||[]).forEach(a => { const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(_k); });
         } catch(e) {}
       }
       rows = rows.filter(b => {
@@ -6614,8 +6634,11 @@ async function openBatchDetails(id){
   const _doneDates   = Object.keys(_byDate).filter(d=>_byDate[d].p>0).sort();          // ≥1 present
   const _absentDates = Object.keys(_byDate).filter(d=>_byDate[d].p===0 && _byDate[d].ab>0).sort(); // marked, all absent
   const _doneSet = new Set(_doneDates), _absSet = new Set(_absentDates);
-  const _completed = _bdTotal ? Math.min(_bdTotal, _doneSet.size) : _doneSet.size;
   const _allAbsent = _absSet.size;
+  // Canonical delivered count: baseline (pre-logged legacy) + distinct dated sessions with ≥1 present.
+  // Must match loadLive()/progressOf() exactly — one shared definition, no divergence.
+  const _legacy = Math.max(0, (b.baseline_sessions||0));
+  const _completed = _bdTotal ? Math.min(_bdTotal, _legacy + _doneSet.size) : (_legacy + _doneSet.size);
   // Generate the real recurrence across the batch's whole span, assign each occurrence a status.
   const _startISO = b.start_date || _doneDates[0] || _absentDates[0] || _todayISO;
   const _farD = new Date(_now); _farD.setMonth(_farD.getMonth()+18);
@@ -6651,7 +6674,6 @@ async function openBatchDetails(id){
   _absentDates.forEach(d => { if (!_statByDate[d]) _statByDate[d]='absent'; });
   const _bdRemain = _sched;                                   // future successful sessions still to run
   const _bdPct = _bdTotal ? Math.round(_completed/_bdTotal*100) : 0;
-  const _legacy = Math.max(0, (b.baseline_sessions||0));      // imported progress with no dated records
   // next class = first future scheduled occurrence
   let _bdNext = '—';
   if (_schedOcc.length) { const o=_schedOcc[0]; _bdNext = _DOWL[o.dow]+', '+new Date(o.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+(b.time_slot?' · '+b.time_slot:''); }
@@ -6684,14 +6706,13 @@ async function openBatchDetails(id){
       +_cardKV('Start Date', esc(b.start_date||'—'))
       +_cardKV('End Date', _calcEndISO ? '<span style="color:var(--blue)">'+esc(_fmtD(_calcEndISO))+'</span>' : esc(b.expected_completion_date||'—')))
     + _cardWrap('PROGRESS',
-      _cardKV('Completed', _bdTotal?(_completed+' / '+_bdTotal):String(_completed))
+      _cardKV('Completed', (_bdTotal?(_completed+' / '+_bdTotal):String(_completed))+(_legacy&&_doneSet.size?' <span style="font-weight:400;color:var(--tx3);font-size:10px">('+_legacy+' pre-logged + '+_doneSet.size+' marked)</span>':''))
       +(_allAbsent?_cardKV('All Students Absent', '<span style="color:#f59e0b">'+_allAbsent+'</span>'):'')
       +(_holCount?_cardKV('Company / Public Holidays', '<span style="color:#06b6d4">'+_holCount+'</span>'):'')
       +(_evCount?_cardKV('Official No-Class Events', '<span style="color:#ec4899">'+_evCount+'</span>'):'')
       +(_leaveCount?_cardKV('Trainer Leave', '<span style="color:#c084fc">'+_leaveCount+'</span>'):'')
       +_cardKV('Attendance Missing', '<span style="color:'+(_missing?'#f87171':'var(--tx)')+'">'+_missing+'</span>')
       +_cardKV('Remaining', _bdRemain+' session'+(_bdRemain===1?'':'s'))
-      +(_legacy?_cardKV('Legacy (imported)', _legacy):'')
       +'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--tx3)">Progress</span><span style="color:var(--brand-1);font-weight:800">'+_bdPct+'%</span></div><div style="height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden"><div style="height:100%;width:'+_bdPct+'%;background:linear-gradient(90deg,var(--brand-2,#ff6b06),var(--brand-1,#f9182f));border-radius:99px"></div></div></div>')
     + _cardWrap('ESTIMATED COMPLETION',
       '<div style="font-size:18px;font-weight:800;color:var(--tx);margin-bottom:4px">'+esc(_est)+'</div>'
@@ -6852,10 +6873,12 @@ async function saveManageStudents(){
 // attendance sessions) — same rule progressOf()/loadLive() use, just callable standalone for
 // a single batch (Edit Batch only needs this one batch's number, not the whole table).
 async function _acadRealDoneCount(realName, baselineSessions){
-  // validCompleted = session_nums where at least one student was Present
+  // validCompleted = distinct session_dates with ≥1 present student
+  // Count by date (not session_num) — duplicate session_nums for the same date (re-save artifact)
+  // must not inflate the count. Same rule as loadLive()/progressOf().
   try {
-    const { data } = await sb.from('attendance').select('session_num').eq('batch_name', realName).eq('status','present');
-    const marked = new Set((data||[]).map(r=>r.session_num)).size;
+    const { data } = await sb.from('attendance').select('session_date,session_num').eq('batch_name', realName).eq('status','present');
+    const marked = new Set((data||[]).map(r=>r.session_date!=null?r.session_date:('num_'+r.session_num))).size;
     return (+baselineSessions||0) + marked;
   } catch(e) { return +baselineSessions||0; }
 }
