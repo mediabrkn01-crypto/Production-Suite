@@ -307,8 +307,9 @@ tr.clickable{cursor:pointer}
 .ub-date-btn,.ub-time-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;cursor:pointer;transition:border-color .15s;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ub-date-btn:hover,.ub-time-btn:hover{border-color:rgba(237,31,81,.5)}
 .ub-date-btn.has-val,.ub-time-btn.has-val{color:var(--tx)}
-.ub-cal-pop,.ub-time-pop{display:none;position:absolute;top:100%;left:0;z-index:300;background:rgba(15,17,33,.97);border:1px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);backdrop-filter:blur(16px);padding:12px;min-width:280px}
+.ub-cal-pop,.ub-time-pop{display:none;position:fixed;z-index:9999;background:rgba(15,17,33,.98);border:1px solid rgba(255,255,255,.14);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.7);backdrop-filter:blur(18px);padding:14px;min-width:280px}
 .ub-cal-pop.open,.ub-time-pop.open{display:block}
+.ub-time-pop{min-width:260px;padding:16px}
 .ub-cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .ub-cal-nav button{background:none;border:none;color:var(--tx);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:6px}
 .ub-cal-nav button:hover{background:rgba(255,255,255,.08)}
@@ -929,10 +930,11 @@ details[open] .rawsum::before{content:'▾ '}
               <label class="lv-field" style="flex:1"><span>Max Capacity</span><input id="ub_cap" type="number" min="1"/></label>
             </div>
             <div style="display:flex;gap:8px">
-              <label class="lv-field" style="flex:1;position:relative"><span>Planned Start Date</span><div class="ub-date-btn" id="ub_start_date_btn" onclick="ubToggleDatePicker('ub_start_date')">Select date…</div><input type="hidden" id="ub_start_date"/><div class="ub-cal-pop" id="ub_start_date_cal"></div></label>
+              <label class="lv-field" style="flex:1"><span>Planned Start Date</span><div class="ub-date-btn" id="ub_start_date_btn" onclick="ubToggleDatePicker('ub_start_date')">Select date…</div><input type="hidden" id="ub_start_date"/></label>
               <label class="lv-field" style="flex:1"><span>Total Sessions</span><input id="ub_sessions" type="number" min="1"/></label>
             </div>
-            <label class="lv-field lv-grow" style="position:relative"><span>Enrollment Deadline (optional)</span><div class="ub-date-btn" id="ub_deadline_btn" onclick="ubToggleDatePicker('ub_deadline')">Select date…</div><input type="hidden" id="ub_deadline"/><div class="ub-cal-pop" id="ub_deadline_cal"></div></label>
+            <label class="lv-field lv-grow"><span>Enrollment Deadline (optional)</span><div class="ub-date-btn" id="ub_deadline_btn" onclick="ubToggleDatePicker('ub_deadline')">Select date…</div><input type="hidden" id="ub_deadline"/></label>
+            <div id="ub_date_validation" style="display:none;font-size:11px;color:#f87171;margin-top:-4px"></div>
             <label class="lv-field lv-grow"><span>Notes for Sales Team</span><textarea id="ub_notes" rows="2" placeholder="Any details Sales should know…"></textarea></label>
           </div>
           <!-- RIGHT: Trainer & Schedule -->
@@ -941,8 +943,8 @@ details[open] .rawsum::before{content:'▾ '}
             <label class="lv-field lv-grow"><span>Class Days</span></label>
             <div class="daychips" id="ub_days" style="margin-top:-6px"></div>
             <div style="display:flex;gap:8px">
-              <label class="lv-field" style="flex:1;position:relative"><span>Start Time</span><div class="ub-time-btn" id="ub_start_time_btn" onclick="ubToggleTimePicker('ub_start_time')">Select…</div><input type="hidden" id="ub_start_time"/><div class="ub-time-pop" id="ub_start_time_pop"></div></label>
-              <label class="lv-field" style="flex:1;position:relative"><span>End Time</span><div class="ub-time-btn" id="ub_end_time_btn" onclick="ubToggleTimePicker('ub_end_time')">Select…</div><input type="hidden" id="ub_end_time"/><div class="ub-time-pop" id="ub_end_time_pop"></div></label>
+              <label class="lv-field" style="flex:1"><span>Start Time</span><div class="ub-time-btn" id="ub_start_time_btn" onclick="ubToggleTimePicker('ub_start_time')">Select…</div><input type="hidden" id="ub_start_time"/></label>
+              <label class="lv-field" style="flex:1"><span>End Time</span><div class="ub-time-btn" id="ub_end_time_btn" onclick="ubToggleTimePicker('ub_end_time')">Select…</div><input type="hidden" id="ub_end_time"/></label>
             </div>
             <div class="ub-section-label" style="margin-top:10px">Trainer Selection</div>
             <div id="ub_trainer_cards" class="ub-trainer-cards"><div style="color:var(--tx3);font-size:12px;padding:10px">Select a course first to see eligible trainers.</div></div>
@@ -959,6 +961,11 @@ details[open] .rawsum::before{content:'▾ '}
           <button class="btn-save" id="ub_save_draft" onclick="saveUpcomingBatch('draft')">Save as Draft</button>
           <button class="btn-save" style="background:var(--green)" id="ub_publish" onclick="saveUpcomingBatch('open')">Publish to Sales</button>
         </div>
+        <!-- Portaled popover containers (outside scroll) -->
+        <div class="ub-cal-pop" id="ub_start_date_cal"></div>
+        <div class="ub-cal-pop" id="ub_deadline_cal"></div>
+        <div class="ub-time-pop" id="ub_start_time_pop"></div>
+        <div class="ub-time-pop" id="ub_end_time_pop"></div>
       </div></div>
 
       <!-- Upcoming Batch Detail / Enrollment Tracker Modal -->
@@ -8954,6 +8961,22 @@ function renderUpcomingBatches() {
 
 /* === Upcoming Batch date/time pickers + trainer availability === */
 let _ubCalState = {};
+
+function _ubPositionPop(btnId, popId) {
+  const btn = document.getElementById(btnId);
+  const pop = document.getElementById(popId);
+  if (!btn || !pop) return;
+  const r = btn.getBoundingClientRect();
+  let top = r.bottom + 4;
+  let left = r.left;
+  if (top + 340 > window.innerHeight) top = r.top - 340;
+  if (left + 290 > window.innerWidth) left = window.innerWidth - 300;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+
 function ubToggleDatePicker(fieldId) {
   const cal = document.getElementById(fieldId + '_cal');
   if (!cal) return;
@@ -8963,8 +8986,10 @@ function ubToggleDatePicker(fieldId) {
   const d = cur ? new Date(cur + 'T00:00:00') : new Date();
   _ubCalState[fieldId] = { year: d.getFullYear(), month: d.getMonth() };
   _ubRenderCal(fieldId);
+  _ubPositionPop(fieldId + '_btn', fieldId + '_cal');
   cal.classList.add('open');
 }
+
 function _ubRenderCal(fieldId) {
   const cal = document.getElementById(fieldId + '_cal');
   if (!cal) return;
@@ -8977,64 +9002,124 @@ function _ubRenderCal(fieldId) {
   const startDay = first.getDay() || 7;
   const daysInMonth = new Date(yr, mo + 1, 0).getDate();
   const prevDays = new Date(yr, mo, 0).getDate();
-  let html = '<div class="ub-cal-nav"><button onclick="_ubCalNav(\'' + fieldId + '\',-1)">&lsaquo;</button><span>' + months[mo] + ' ' + yr + '</span><button onclick="_ubCalNav(\'' + fieldId + '\',1)">&rsaquo;</button></div>';
+  let html = '<div class="ub-cal-nav"><button onclick="event.stopPropagation();_ubCalNav(\'' + fieldId + '\',-1)">&lsaquo;</button><span>' + months[mo] + ' ' + yr + '</span><button onclick="event.stopPropagation();_ubCalNav(\'' + fieldId + '\',1)">&rsaquo;</button></div>';
   html += '<div class="ub-cal-grid">';
   ['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(d => { html += '<div class="ub-cal-hdr">' + d + '</div>'; });
-  for (let i = 1; i < startDay; i++) {
-    html += '<div class="ub-cal-day other">' + (prevDays - startDay + 1 + i) + '</div>';
-  }
+  for (let i = 1; i < startDay; i++) { html += '<div class="ub-cal-day other">' + (prevDays - startDay + 1 + i) + '</div>'; }
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = yr + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
     const cls = (iso === sel ? ' sel' : '') + (iso === today ? ' today' : '');
-    html += '<div class="ub-cal-day' + cls + '" onclick="_ubCalPick(\'' + fieldId + '\',\'' + iso + '\')">' + d + '</div>';
+    html += '<div class="ub-cal-day' + cls + '" onclick="event.stopPropagation();_ubCalPick(\'' + fieldId + '\',\'' + iso + '\')">' + d + '</div>';
   }
   const totalCells = (startDay - 1) + daysInMonth;
-  for (let i = totalCells; i < 42; i++) {
-    html += '<div class="ub-cal-day other">' + (i - totalCells + 1) + '</div>';
-  }
+  for (let i = totalCells; i < 42; i++) { html += '<div class="ub-cal-day other">' + (i - totalCells + 1) + '</div>'; }
   html += '</div>';
   cal.innerHTML = html;
 }
+
 function _ubCalNav(fieldId, dir) {
   const st = _ubCalState[fieldId];
   st.month += dir;
   if (st.month > 11) { st.month = 0; st.year++; } else if (st.month < 0) { st.month = 11; st.year--; }
   _ubRenderCal(fieldId);
 }
+
 function _ubCalPick(fieldId, iso) {
   document.getElementById(fieldId).value = iso;
   const btn = document.getElementById(fieldId + '_btn');
   if (btn) { const d = new Date(iso + 'T00:00:00'); btn.textContent = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); btn.classList.add('has-val'); }
   document.getElementById(fieldId + '_cal').classList.remove('open');
+  _ubValidateDates();
   ubUpdateSummary();
   if (fieldId === 'ub_start_date') ubRefreshTrainerCards();
 }
+
+function _ubValidateDates() {
+  const el = document.getElementById('ub_date_validation');
+  if (!el) return;
+  const start = document.getElementById('ub_start_date').value;
+  const deadline = document.getElementById('ub_deadline').value;
+  if (start && deadline && deadline > start) {
+    el.textContent = 'Enrollment deadline should be on or before the start date.';
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function _ubSetDateField(fieldId, iso) {
   document.getElementById(fieldId).value = iso || '';
   const btn = document.getElementById(fieldId + '_btn');
-  if (btn) { if (iso) { const d = new Date(iso + 'T00:00:00'); btn.textContent = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); btn.classList.add('has-val'); } else { btn.textContent = 'Select date…'; btn.classList.remove('has-val'); } }
+  if (btn) {
+    if (iso) { const d = new Date(iso + 'T00:00:00'); btn.textContent = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); btn.classList.add('has-val'); }
+    else { btn.textContent = 'Select date…'; btn.classList.remove('has-val'); }
+  }
 }
 
-/* Time picker — 30-min slots */
+/* Time picker — hour/minute/AM-PM selector */
+let _ubTimePickerState = {};
+
 function ubToggleTimePicker(fieldId) {
   const pop = document.getElementById(fieldId + '_pop');
   if (!pop) return;
   document.querySelectorAll('.ub-cal-pop.open,.ub-time-pop.open').forEach(p => { if (p !== pop) p.classList.remove('open'); });
   if (pop.classList.contains('open')) { pop.classList.remove('open'); return; }
   const cur = document.getElementById(fieldId).value;
-  let html = '<div class="ub-time-grid">';
-  for (let h = 6; h <= 22; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      const hhmm = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-      const label = _formatTime12(hhmm);
-      html += '<div class="ub-time-slot' + (cur === hhmm ? ' sel' : '') + '" onclick="_ubTimePick(\'' + fieldId + '\',\'' + hhmm + '\')">' + label + '</div>';
-    }
+  let h = 9, m = 0, ap = 'AM';
+  if (cur) {
+    const [hh, mm] = cur.split(':').map(Number);
+    h = ((hh + 11) % 12) + 1;
+    m = mm;
+    ap = hh < 12 ? 'AM' : 'PM';
   }
-  html += '</div>';
-  pop.innerHTML = html;
+  _ubTimePickerState[fieldId] = { h, m, ap };
+  _ubRenderTimePicker(fieldId);
+  _ubPositionPop(fieldId + '_btn', fieldId + '_pop');
   pop.classList.add('open');
 }
-function _ubTimePick(fieldId, hhmm) {
+
+function _ubRenderTimePicker(fieldId) {
+  const pop = document.getElementById(fieldId + '_pop');
+  if (!pop) return;
+  const st = _ubTimePickerState[fieldId];
+  const fmtPreview = st.h + ':' + String(st.m).padStart(2, '0') + ' ' + st.ap;
+  let html = '<div style="text-align:center;font-size:20px;font-weight:800;color:var(--tx);margin-bottom:12px;font-variant-numeric:tabular-nums">' + fmtPreview + '</div>';
+  html += '<div style="display:flex;gap:10px;align-items:flex-start">';
+  // Hours
+  html += '<div style="flex:1"><div style="font-size:9px;text-transform:uppercase;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-bottom:4px;text-align:center">Hour</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px">';
+  for (let i = 1; i <= 12; i++) {
+    html += '<div class="ub-time-slot' + (st.h === i ? ' sel' : '') + '" onclick="event.stopPropagation();_ubTimeSet(\'' + fieldId + '\',\'h\',' + i + ')" style="padding:6px 2px">' + i + '</div>';
+  }
+  html += '</div></div>';
+  // Minutes
+  html += '<div style="flex:1"><div style="font-size:9px;text-transform:uppercase;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-bottom:4px;text-align:center">Min</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px">';
+  [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].forEach(mm => {
+    html += '<div class="ub-time-slot' + (st.m === mm ? ' sel' : '') + '" onclick="event.stopPropagation();_ubTimeSet(\'' + fieldId + '\',\'m\',' + mm + ')" style="padding:6px 2px">' + String(mm).padStart(2, '0') + '</div>';
+  });
+  html += '</div></div>';
+  // AM/PM
+  html += '<div style="display:flex;flex-direction:column;gap:4px;padding-top:16px">';
+  html += '<div class="ub-time-slot' + (st.ap === 'AM' ? ' sel' : '') + '" onclick="event.stopPropagation();_ubTimeSet(\'' + fieldId + '\',\'ap\',\'AM\')" style="padding:8px 10px;font-weight:700">AM</div>';
+  html += '<div class="ub-time-slot' + (st.ap === 'PM' ? ' sel' : '') + '" onclick="event.stopPropagation();_ubTimeSet(\'' + fieldId + '\',\'ap\',\'PM\')" style="padding:8px 10px;font-weight:700">PM</div>';
+  html += '</div></div>';
+  // Confirm button
+  html += '<div style="margin-top:10px;text-align:center"><button onclick="event.stopPropagation();_ubTimeConfirm(\'' + fieldId + '\')" style="background:var(--gk);color:#fff;border:none;border-radius:8px;padding:8px 28px;font-size:12px;font-weight:700;cursor:pointer">Set Time</button></div>';
+  pop.innerHTML = html;
+}
+
+function _ubTimeSet(fieldId, part, val) {
+  const st = _ubTimePickerState[fieldId];
+  if (part === 'h') st.h = val;
+  else if (part === 'm') st.m = val;
+  else if (part === 'ap') st.ap = val;
+  _ubRenderTimePicker(fieldId);
+}
+
+function _ubTimeConfirm(fieldId) {
+  const st = _ubTimePickerState[fieldId];
+  let h24 = st.h % 12;
+  if (st.ap === 'PM') h24 += 12;
+  const hhmm = String(h24).padStart(2, '0') + ':' + String(st.m).padStart(2, '0');
   document.getElementById(fieldId).value = hhmm;
   const btn = document.getElementById(fieldId + '_btn');
   if (btn) { btn.textContent = _formatTime12(hhmm); btn.classList.add('has-val'); }
@@ -9042,10 +9127,14 @@ function _ubTimePick(fieldId, hhmm) {
   ubUpdateSummary();
   ubRefreshTrainerCards();
 }
+
 function _ubSetTimeField(fieldId, hhmm) {
   document.getElementById(fieldId).value = hhmm || '';
   const btn = document.getElementById(fieldId + '_btn');
-  if (btn) { if (hhmm) { btn.textContent = _formatTime12(hhmm); btn.classList.add('has-val'); } else { btn.textContent = 'Select…'; btn.classList.remove('has-val'); } }
+  if (btn) {
+    if (hhmm) { btn.textContent = _formatTime12(hhmm); btn.classList.add('has-val'); }
+    else { btn.textContent = 'Select…'; btn.classList.remove('has-val'); }
+  }
 }
 
 /* Close pickers on outside click */
@@ -9069,18 +9158,20 @@ async function _ubLoadAvailData() {
 
 function _ubGetFreeSlots(trainerId, selectedDays) {
   const trainerAvail = _ubAvailData.filter(a => String(a.trainer_id) === String(trainerId));
-  if (!trainerAvail.length) return { days: [], slots: [] };
+  if (!trainerAvail.length) return { declaredDays: [], slots: [], hasAvailConfig: false };
   const daySet = new Set(selectedDays || []);
   const activeBatches = _ubAllBatchesForConflict.filter(b =>
     String(b.trainer_id) === String(trainerId) && isBatchCurrentlyActive(b) && !(_ubEditId && String(b.id) === String(_ubEditId))
   );
   const results = [];
+  const allDeclaredDays = new Set();
   trainerAvail.forEach(avRow => {
     const rowDays = (avRow.days || '').split(/[,]/).map(s => s.trim()).filter(Boolean);
     const aStart = _timeToMinutes(avRow.start_time);
     const aEnd = _timeToMinutes(avRow.end_time);
     if (aStart === null || aEnd === null || aEnd <= aStart) return;
     rowDays.forEach(day => {
+      allDeclaredDays.add(day);
       if (daySet.size && !daySet.has(day)) return;
       const occupations = [];
       activeBatches.forEach(b => {
@@ -9089,21 +9180,35 @@ function _ubGetFreeSlots(trainerId, selectedDays) {
         const bs = _batchStartMinutes(b);
         if (bs === null) return;
         const be = bs + (b.class_duration_minutes || 60);
-        if (bs < aEnd && be > aStart) occupations.push([Math.max(bs, aStart), Math.min(be, aEnd), b.name]);
+        if (bs < aEnd && be > aStart) occupations.push({ start: Math.max(bs, aStart), end: Math.min(be, aEnd), name: b.name });
       });
-      occupations.sort((a, b) => a[0] - b[0]);
+      occupations.sort((a, b) => a.start - b.start);
       const freeSlots = [];
       let cursor = aStart;
-      occupations.forEach(([os, oe]) => {
-        if (cursor < os) freeSlots.push({ start: cursor, end: os });
-        cursor = Math.max(cursor, oe);
+      occupations.forEach(o => {
+        if (cursor < o.start) freeSlots.push({ start: cursor, end: o.start });
+        cursor = Math.max(cursor, o.end);
       });
       if (cursor < aEnd) freeSlots.push({ start: cursor, end: aEnd });
       results.push({ day, availStart: aStart, availEnd: aEnd, free: freeSlots, busy: occupations });
     });
   });
-  const allDays = [...new Set(results.map(r => r.day))];
-  return { days: allDays, slots: results };
+  return { declaredDays: [...allDeclaredDays], slots: results, hasAvailConfig: true };
+}
+
+function _ubSlotClick(trainerId, day, startMin, endMin, evt) {
+  if (evt) evt.stopPropagation();
+  document.getElementById('ub_trainer').value = trainerId;
+  // Set time from clicked slot
+  const hhmm_s = _minutesToTime(startMin);
+  const hhmm_e = _minutesToTime(endMin);
+  _ubSetTimeField('ub_start_time', hhmm_s);
+  _ubSetTimeField('ub_end_time', hhmm_e);
+  // Ensure day is selected
+  const chip = document.querySelector('#ub_days .dchip[data-d="' + day + '"]');
+  if (chip && !chip.classList.contains('on')) chip.classList.add('on');
+  ubRefreshTrainerCards();
+  ubUpdateSummary();
 }
 
 async function ubRefreshTrainerCards() {
@@ -9119,35 +9224,66 @@ async function ubRefreshTrainerCards() {
   if (!_ubAvailData.length) await _ubLoadAvailData();
   const selDays = [...document.querySelectorAll('#ub_days .dchip.on')].map(x => x.dataset.d);
   const curTrainerId = document.getElementById('ub_trainer').value;
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
   container.innerHTML = eligible.map(t => {
     const info = _ubGetFreeSlots(t.id, selDays);
     const isSel = String(t.id) === String(curTrainerId);
     const typeLabel = (t.type || 'ft').toUpperCase() === 'PT' ? 'Part-Time' : 'Full-Time';
+
+    if (!info.hasAvailConfig) {
+      return '<div class="ub-tcard' + (isSel ? ' sel' : '') + '" onclick="ubSelectTrainer(\'' + t.id + '\')">' +
+        '<div><span class="ub-tname">' + esc(t.name) + '</span><span class="ub-ttype">' + typeLabel + '</span></div>' +
+        '<div style="font-size:11px;color:#f59e0b;margin-top:4px">Availability not configured</div>' +
+      '</div>';
+    }
+
     let slotsHtml = '';
-    if (info.slots.length) {
+    if (!selDays.length) {
+      const freeDays = info.declaredDays.filter(d => {
+        const daySlots = info.slots.filter(s => s.day === d);
+        return daySlots.some(s => s.free.length > 0);
+      });
+      const busyDays = info.declaredDays.filter(d => !freeDays.includes(d));
+      if (freeDays.length) {
+        slotsHtml = '<div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:3px">Days with free slots: <span style="color:#10b981;font-weight:600">' + freeDays.join(', ') + '</span></div>';
+      }
+      if (busyDays.length) {
+        slotsHtml += '<div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:2px">Fully booked: <span style="color:#f87171">' + busyDays.join(', ') + '</span></div>';
+      }
+      slotsHtml += '<div style="font-size:10px;color:var(--tx3);margin-top:3px;font-style:italic">Select class days to see time slots</div>';
+    } else {
       const byDay = {};
-      info.slots.forEach(s => { if (!byDay[s.day]) byDay[s.day] = []; s.free.forEach(f => byDay[s.day].push(f)); });
-      const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      info.slots.forEach(s => { if (!byDay[s.day]) byDay[s.day] = { free: [], busy: [] }; s.free.forEach(f => byDay[s.day].free.push(f)); s.busy.forEach(b => byDay[s.day].busy.push(b)); });
+
+      let hasFreeSlot = false;
       dayOrder.forEach(d => {
-        if (!byDay[d]) return;
-        const slots = byDay[d];
-        if (slots.length) {
-          slotsHtml += '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:3px">' + d + ':</div><div class="ub-tslots">';
-          slots.forEach(sl => { slotsHtml += '<span class="ub-tslot">' + _formatTime12(_minutesToTime(sl.start)) + ' – ' + _formatTime12(_minutesToTime(sl.end)) + '</span>'; });
+        if (!selDays.includes(d)) return;
+        if (!byDay[d]) {
+          slotsHtml += '<div style="font-size:10.5px;margin-top:4px"><span style="color:rgba(255,255,255,.4);font-weight:600">' + d + ':</span> <span style="color:var(--tx3);font-style:italic">No availability declared</span></div>';
+          return;
+        }
+        const ds = byDay[d];
+        slotsHtml += '<div style="font-size:10.5px;margin-top:4px"><span style="color:rgba(255,255,255,.4);font-weight:600">' + d + ':</span></div>';
+        if (ds.free.length) {
+          hasFreeSlot = true;
+          slotsHtml += '<div class="ub-tslots">';
+          ds.free.forEach(sl => {
+            slotsHtml += '<span class="ub-tslot" onclick="_ubSlotClick(\'' + t.id + '\',\'' + d + '\',' + sl.start + ',' + sl.end + ',event)" title="Click to use this slot" style="cursor:pointer">' + _formatTime12(_minutesToTime(sl.start)) + ' – ' + _formatTime12(_minutesToTime(sl.end)) + '</span>';
+          });
           slotsHtml += '</div>';
         } else {
-          slotsHtml += '<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:3px">' + d + ': <span style="color:#f87171">Fully booked</span></div>';
+          slotsHtml += '<div style="font-size:10px;color:#f87171;padding-left:4px">Fully booked</div>';
         }
       });
-    } else if (selDays.length) {
-      slotsHtml = '<div class="ub-tslots"><span class="ub-tslot no-slot">No availability declared for selected days</span></div>';
-    } else {
-      slotsHtml = '<div style="font-size:10px;color:var(--tx3);margin-top:3px">Select class days to see free slots</div>';
+
+      if (!hasFreeSlot && selDays.length) {
+        slotsHtml += '<div style="font-size:11px;color:#f59e0b;margin-top:5px;font-style:italic">No available slots for the selected schedule.</div>';
+      }
     }
-    const availDaysList = info.days.length ? info.days.join(', ') : 'No days configured';
+
     return '<div class="ub-tcard' + (isSel ? ' sel' : '') + '" onclick="ubSelectTrainer(\'' + t.id + '\')">' +
       '<div><span class="ub-tname">' + esc(t.name) + '</span><span class="ub-ttype">' + typeLabel + '</span></div>' +
-      '<div class="ub-tdays">Available: ' + esc(availDaysList) + '</div>' +
       slotsHtml +
     '</div>';
   }).join('');
@@ -9155,7 +9291,6 @@ async function ubRefreshTrainerCards() {
 
 function ubSelectTrainer(trainerId) {
   document.getElementById('ub_trainer').value = trainerId;
-  document.querySelectorAll('.ub-tcard').forEach(c => c.classList.toggle('sel', c.querySelector('[onclick]') === null && false));
   document.querySelectorAll('.ub-tcard').forEach(c => {
     const onclick = c.getAttribute('onclick') || '';
     c.classList.toggle('sel', onclick.includes("'" + trainerId + "'"));
@@ -9181,16 +9316,21 @@ function ubUpdateSummary() {
   if (!courseId && !name && !trainerId) { el.style.display = 'none'; return; }
   const timeStr = startTime && endTime ? _formatTime12(startTime) + ' – ' + _formatTime12(endTime) : '—';
   const dateStr = startDate ? new Date(startDate + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  let conflictMsg = '';
   let hasConflict = false;
   if (trainerId && startTime && endTime && days.length) {
     const sMin = _timeToMinutes(startTime), eMin = _timeToMinutes(endTime);
     if (sMin !== null && eMin !== null && eMin > sMin) {
       const conflict = findExactRangeConflict(trainerId, sMin, eMin, (_ubAllBatchesForConflict || []).filter(b => !_ubEditId || String(b.id) !== String(_ubEditId)), startDate, null, days);
-      if (conflict) hasConflict = true;
+      if (conflict) { hasConflict = true; conflictMsg = 'Conflicts with ' + (conflict.name || 'another batch'); }
+    } else if (sMin !== null && eMin !== null && eMin <= sMin) {
+      hasConflict = true; conflictMsg = 'End time must be after start time';
     }
   }
   el.className = 'ub-summary' + (hasConflict ? ' conflict' : '');
   el.style.display = 'block';
+  const statusColor = hasConflict ? '#f87171' : (trainerId ? '#10b981' : 'var(--tx3)');
+  const statusText = hasConflict ? conflictMsg : (trainerId ? 'Available' : 'Select trainer');
   el.innerHTML = '<div class="ub-summary-title">Schedule Summary</div>' +
     '<div class="ub-summary-grid">' +
       '<div class="ub-summary-item">Course: <b>' + esc(course ? course.name : '—') + '</b></div>' +
@@ -9201,7 +9341,7 @@ function ubUpdateSummary() {
       '<div class="ub-summary-item">Time: <b>' + timeStr + '</b></div>' +
       '<div class="ub-summary-item">Start: <b>' + dateStr + '</b></div>' +
       '<div class="ub-summary-item">Capacity: <b>' + (cap || '—') + '</b></div>' +
-      '<div class="ub-summary-item">Status: <b style="color:' + (hasConflict ? '#f87171' : '#10b981') + '">' + (hasConflict ? 'Conflict detected' : (trainerId ? 'Available' : 'Select trainer')) + '</b></div>' +
+      '<div class="ub-summary-item">Status: <b style="color:' + statusColor + '">' + statusText + '</b></div>' +
     '</div>';
 }
 
