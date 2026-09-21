@@ -842,14 +842,17 @@ details[open] .rawsum::before{content:'▾ '}
 
       <div class="acad-tab" id="tab-acad-upcoming">
         <div class="section role-head-only hidden">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-            <h2 style="margin:0">Upcoming Batches</h2>
-            <button class="btn-save" onclick="openCreateUpcoming()">+ New Upcoming Batch</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+            <div>
+              <h2 style="margin:0">Upcoming Batches</h2>
+              <div style="font-size:12px;color:rgba(255,255,255,.38);margin-top:2px">Publish to Sales for enrollment — activate when filled.</div>
+            </div>
+            <button onclick="openCreateUpcoming()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:linear-gradient(135deg,#ed1f51,#f43f5e);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 12px rgba(237,31,81,.35);transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 16px rgba(237,31,81,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(237,31,81,.35)'"><i data-lucide="plus" style="width:14px;height:14px"></i> New Upcoming Batch</button>
           </div>
-          <div class="mhint" style="margin-bottom:12px">Publish batch opportunities to Sales for enrollment. Once filled, activate to start teaching.</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-            <input id="ub-search" placeholder="Search batch, course, trainer…" style="flex:1;min-width:200px" oninput="renderUpcomingBatches()"/>
-            <select id="ub-f-status" onchange="renderUpcomingBatches()" style="min-width:130px">
+          <div id="ub-tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+            <input id="ub-search" placeholder="Search batch, course, trainer…" oninput="renderUpcomingBatches()" style="flex:1;min-width:180px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 12px;color:var(--tx);font-size:12px;outline:none"/>
+            <select id="ub-f-status" onchange="renderUpcomingBatches()" style="min-width:140px;-webkit-appearance:none;appearance:none;color-scheme:dark;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:7px 12px;color:var(--tx);font-size:12px;cursor:pointer;outline:none">
               <option value="all">All Status</option>
               <option value="draft">Draft</option>
               <option value="open">Enrollment Open</option>
@@ -8805,9 +8808,31 @@ async function loadUpcomingTab() {
   }
 }
 
+function _ubTile(val, label, color, accent) {
+  const bdr = accent ? 'border-left:3px solid ' + accent + ';' : 'border-left:3px solid rgba(255,255,255,.08);';
+  return '<div style="background:rgba(13,17,28,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px;backdrop-filter:blur(12px);' + bdr + '">' +
+    '<div style="font-size:26px;font-weight:800;color:' + (color || '#f1f5f9') + ';line-height:1;margin-bottom:5px;font-variant-numeric:tabular-nums">' + val + '</div>' +
+    '<div style="font-size:10px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.08em">' + label + '</div></div>';
+}
+
 function renderUpcomingBatches() {
   const el = document.getElementById('ub-list');
   if (!el) return;
+  // Stat tiles
+  const tilesEl = document.getElementById('ub-tiles');
+  if (tilesEl) {
+    const total = _ubBatches.length;
+    const draft = _ubBatches.filter(b => b.enrollment_status === 'draft').length;
+    const open = _ubBatches.filter(b => b.enrollment_status === 'open').length;
+    const full = _ubBatches.filter(b => b.enrollment_status === 'full').length;
+    const totalEnrolled = _ubBatches.reduce((s, b) => s + (b._enrolled || 0), 0);
+    tilesEl.innerHTML =
+      _ubTile(total, 'Total', '#f1f5f9') +
+      _ubTile(draft, 'Draft', '#94a3b8', '#94a3b8') +
+      _ubTile(open, 'Enrollment Open', '#10b981', '#10b981') +
+      _ubTile(full, 'Full', '#f59e0b', '#f59e0b') +
+      _ubTile(totalEnrolled, 'Students Enrolled', '#38bdf8', '#38bdf8');
+  }
   const q = (document.getElementById('ub-search')?.value || '').trim().toLowerCase();
   const fs = document.getElementById('ub-f-status')?.value || 'all';
   let rows = _ubBatches.filter(b => {
@@ -8815,34 +8840,53 @@ function renderUpcomingBatches() {
     if (q && !(b.name || '').toLowerCase().includes(q) && !(b.programme || '').toLowerCase().includes(q) && !(b.trainer_name || '').toLowerCase().includes(q)) return false;
     return true;
   });
-  if (!rows.length) { el.innerHTML = '<div class="empty">No upcoming batches' + (fs !== 'all' ? ' with status "' + esc(fs) + '"' : '') + '.</div>'; return; }
+  if (!rows.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px">' +
+      '<div style="font-size:40px;opacity:.2;margin-bottom:10px"><i data-lucide="inbox" style="width:48px;height:48px"></i></div>' +
+      '<div style="color:rgba(255,255,255,.35);font-size:13px">No upcoming batches' + (fs !== 'all' ? ' with status "' + esc(fs) + '"' : '') + '</div>' +
+      '<button onclick="openCreateUpcoming()" style="margin-top:12px;padding:6px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--tx);font-size:12px;cursor:pointer">Create your first upcoming batch</button>' +
+    '</div>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
   const statusBadge = s => {
     const m = { draft: '#94a3b8', open: '#10b981', full: '#f59e0b', closed: '#6366f1', cancelled: '#ef4444' };
-    return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:' + (m[s] || '#64748b') + '22;color:' + (m[s] || '#64748b') + '">' + esc(s || 'draft') + '</span>';
+    const c = m[s] || '#64748b';
+    const labels = { draft: 'Draft', open: 'Open', full: 'Full', closed: 'Closed', cancelled: 'Cancelled' };
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;font-size:10.5px;font-weight:700;background:' + c + '18;color:' + c + ';border:1px solid ' + c + '33"><span style="width:6px;height:6px;border-radius:50%;background:' + c + '"></span>' + (labels[s] || s || 'draft') + '</span>';
   };
   el.innerHTML = rows.map(b => {
     const enrolled = b._enrolled || 0;
-    const cap = b.capacity || '∞';
-    const remaining = b.capacity ? Math.max(0, b.capacity - enrolled) : '∞';
-    return '<div style="background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;margin-bottom:10px;cursor:pointer" onclick="openUbDetail(\'' + b.id + '\')">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
-        '<div><b style="color:var(--tx)">' + esc(b.name) + '</b> <span style="color:var(--tx3);font-size:12px">' + esc(b.programme || '') + '</span></div>' +
-        statusBadge(b.enrollment_status) +
+    const cap = b.capacity || 0;
+    const remaining = cap ? Math.max(0, cap - enrolled) : '∞';
+    const pct = cap > 0 ? Math.min(100, Math.round(enrolled / cap * 100)) : 0;
+    const barColor = b.enrollment_status === 'full' ? '#f59e0b' : '#10b981';
+    return '<div style="background:rgba(13,17,28,.75);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px 18px;margin-bottom:10px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(255,255,255,.18)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.07)\'" onclick="openUbDetail(\'' + b.id + '\')">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
+        '<div style="flex:1;min-width:200px">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<span style="font-size:15px;font-weight:700;color:#f1f5f9">' + esc(b.name) + '</span>' +
+            statusBadge(b.enrollment_status) +
+          '</div>' +
+          '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:3px">' + esc(b.programme || '') + (b.capacity === 1 ? ' · 1:1' : ' · Group') + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;min-width:90px">' +
+          '<div style="font-size:20px;font-weight:800;color:#f1f5f9;font-variant-numeric:tabular-nums">' + enrolled + '<span style="font-size:13px;font-weight:400;color:rgba(255,255,255,.3)">/' + (cap || '∞') + '</span></div>' +
+          '<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em">enrolled</div>' +
+        '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--tx3)">' +
-        '<span>Trainer: <b style="color:var(--tx)">' + esc(b.trainer_name || '—') + '</b></span>' +
-        '<span>' + esc(b.day_pattern || '') + '</span>' +
-        '<span>' + esc(b.time_slot || '') + '</span>' +
+      (cap > 0 ? '<div style="margin:10px 0 8px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width .3s"></div></div>' : '') +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:rgba(255,255,255,.45)">' +
+        '<span><i data-lucide="user" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.trainer_name || '—') + '</span>' +
+        '<span><i data-lucide="calendar" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.day_pattern || '') + '</span>' +
+        '<span><i data-lucide="clock" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.time_slot || '') + '</span>' +
         '<span>Start: ' + esc(b.start_date || '—') + '</span>' +
-      '</div>' +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;font-size:12px">' +
-        '<span style="color:var(--green)">Enrolled: <b>' + enrolled + '</b></span>' +
-        '<span style="color:var(--tx3)">Capacity: <b>' + cap + '</b></span>' +
-        '<span style="color:' + (remaining === 0 ? '#f59e0b' : 'var(--blue)') + '">Remaining: <b>' + remaining + '</b></span>' +
-        (b.enrollment_deadline ? '<span style="color:var(--tx3)">Deadline: ' + esc(b.enrollment_deadline) + '</span>' : '') +
+        (remaining !== '∞' ? '<span style="color:' + (remaining === 0 ? '#f59e0b' : '#38bdf8') + '">Remaining: <b>' + remaining + '</b></span>' : '') +
+        (b.enrollment_deadline ? '<span>Deadline: ' + esc(b.enrollment_deadline) + '</span>' : '') +
       '</div>' +
     '</div>';
   }).join('');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 async function openCreateUpcoming() {
