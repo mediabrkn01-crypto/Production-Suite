@@ -335,7 +335,9 @@ tr.clickable{cursor:pointer}
 .ub-tcard .ub-ttype{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-left:6px}
 .ub-tcard .ub-tdays{font-size:11px;color:rgba(255,255,255,.45);margin-top:4px}
 .ub-tcard .ub-tslots{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
-.ub-tcard .ub-tslot{font-size:10px;padding:3px 8px;border-radius:5px;background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.2)}
+.ub-tcard .ub-tslot{font-size:10px;padding:3px 8px;border-radius:5px;background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.2);cursor:pointer;transition:all .15s}
+.ub-tcard .ub-tslot:hover{background:rgba(16,185,129,.2);border-color:rgba(16,185,129,.4)}
+.ub-tcard .ub-tslot.active{background:rgba(16,185,129,.25);border-color:#10b981;box-shadow:0 0 0 1px rgba(16,185,129,.3)}
 .ub-tcard .ub-tslot.busy{background:rgba(248,113,113,.08);color:#f87171;border-color:rgba(248,113,113,.2);text-decoration:line-through;cursor:not-allowed}
 .ub-tcard .ub-tslot.no-slot{background:rgba(255,255,255,.03);color:var(--tx3);border-color:rgba(255,255,255,.06)}
 .ub-tcard-leave{font-size:10px;color:#f59e0b;margin-top:3px}
@@ -9196,17 +9198,48 @@ function _ubGetFreeSlots(trainerId, selectedDays) {
   return { declaredDays: [...allDeclaredDays], slots: results, hasAvailConfig: true };
 }
 
-function _ubSlotClick(trainerId, day, startMin, endMin, evt) {
+let _ubActiveSlotKey = '';
+
+function _ubGroupSlots(info) {
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const byDay = {};
+  info.slots.forEach(s => { if (!byDay[s.day]) byDay[s.day] = []; s.free.forEach(f => byDay[s.day].push(f)); });
+  const slotMap = {};
+  dayOrder.forEach(d => {
+    if (!byDay[d]) return;
+    byDay[d].forEach(f => {
+      const key = f.start + '-' + f.end;
+      if (!slotMap[key]) slotMap[key] = { start: f.start, end: f.end, days: [] };
+      slotMap[key].days.push(d);
+    });
+  });
+  return Object.values(slotMap).sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function _ubFormatDayRange(days) {
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const sorted = days.slice().sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+  if (sorted.length <= 2) return sorted.join(', ');
+  let consecutive = true;
+  for (let i = 1; i < sorted.length; i++) {
+    if (dayOrder.indexOf(sorted[i]) !== dayOrder.indexOf(sorted[i - 1]) + 1) { consecutive = false; break; }
+  }
+  if (consecutive) return sorted[0] + '–' + sorted[sorted.length - 1];
+  return sorted.join(', ');
+}
+
+function _ubGroupedSlotClick(trainerId, daysJson, startMin, endMin, evt) {
   if (evt) evt.stopPropagation();
+  const days = JSON.parse(daysJson);
   document.getElementById('ub_trainer').value = trainerId;
-  // Set time from clicked slot
-  const hhmm_s = _minutesToTime(startMin);
-  const hhmm_e = _minutesToTime(endMin);
-  _ubSetTimeField('ub_start_time', hhmm_s);
-  _ubSetTimeField('ub_end_time', hhmm_e);
-  // Ensure day is selected
-  const chip = document.querySelector('#ub_days .dchip[data-d="' + day + '"]');
-  if (chip && !chip.classList.contains('on')) chip.classList.add('on');
+  _ubSetTimeField('ub_start_time', _minutesToTime(startMin));
+  _ubSetTimeField('ub_end_time', _minutesToTime(endMin));
+  document.querySelectorAll('#ub_days .dchip').forEach(c => c.classList.remove('on'));
+  days.forEach(d => {
+    const chip = document.querySelector('#ub_days .dchip[data-d="' + d + '"]');
+    if (chip) chip.classList.add('on');
+  });
+  _ubActiveSlotKey = trainerId + ':' + startMin + '-' + endMin;
   ubRefreshTrainerCards();
   ubUpdateSummary();
 }
@@ -9224,14 +9257,37 @@ async function ubRefreshTrainerCards() {
   if (!_ubAvailData.length) await _ubLoadAvailData();
   const selDays = [...document.querySelectorAll('#ub_days .dchip.on')].map(x => x.dataset.d);
   const curTrainerId = document.getElementById('ub_trainer').value;
-  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const curStartTime = document.getElementById('ub_start_time').value;
+  const curEndTime = document.getElementById('ub_end_time').value;
+  const curStartMin = curStartTime ? _timeToMinutes(curStartTime) : null;
+  const curEndMin = curEndTime ? _timeToMinutes(curEndTime) : null;
 
-  container.innerHTML = eligible.map(t => {
-    const info = _ubGetFreeSlots(t.id, selDays);
+  const scored = eligible.map(t => {
+    const infoAll = _ubGetFreeSlots(t.id, []);
+    const infoSel = selDays.length ? _ubGetFreeSlots(t.id, selDays) : infoAll;
+    const grouped = _ubGroupSlots(infoSel);
+    let matchScore = 0;
+    if (grouped.length > 0) matchScore = 1;
+    if (selDays.length && curStartMin !== null && curEndMin !== null) {
+      grouped.forEach(g => {
+        const daysMatch = selDays.every(d => g.days.includes(d));
+        const timeMatch = g.start <= curStartMin && g.end >= curEndMin;
+        if (daysMatch && timeMatch) matchScore = 3;
+        else if (daysMatch) matchScore = Math.max(matchScore, 2);
+      });
+    }
+    return { t, infoAll, infoSel, grouped, matchScore };
+  });
+  scored.sort((a, b) => b.matchScore - a.matchScore);
+
+  const hasScheduleSet = selDays.length && curStartMin !== null && curEndMin !== null;
+  let anyMatch = false;
+
+  container.innerHTML = scored.map(({ t, infoAll, infoSel, grouped, matchScore }) => {
     const isSel = String(t.id) === String(curTrainerId);
     const typeLabel = (t.type || 'ft').toUpperCase() === 'PT' ? 'Part-Time' : 'Full-Time';
 
-    if (!info.hasAvailConfig) {
+    if (!infoAll.hasAvailConfig) {
       return '<div class="ub-tcard' + (isSel ? ' sel' : '') + '" onclick="ubSelectTrainer(\'' + t.id + '\')">' +
         '<div><span class="ub-tname">' + esc(t.name) + '</span><span class="ub-ttype">' + typeLabel + '</span></div>' +
         '<div style="font-size:11px;color:#f59e0b;margin-top:4px">Availability not configured</div>' +
@@ -9239,47 +9295,40 @@ async function ubRefreshTrainerCards() {
     }
 
     let slotsHtml = '';
-    if (!selDays.length) {
-      const freeDays = info.declaredDays.filter(d => {
-        const daySlots = info.slots.filter(s => s.day === d);
-        return daySlots.some(s => s.free.length > 0);
-      });
-      const busyDays = info.declaredDays.filter(d => !freeDays.includes(d));
-      if (freeDays.length) {
-        slotsHtml = '<div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:3px">Days with free slots: <span style="color:#10b981;font-weight:600">' + freeDays.join(', ') + '</span></div>';
-      }
-      if (busyDays.length) {
-        slotsHtml += '<div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:2px">Fully booked: <span style="color:#f87171">' + busyDays.join(', ') + '</span></div>';
-      }
-      slotsHtml += '<div style="font-size:10px;color:var(--tx3);margin-top:3px;font-style:italic">Select class days to see time slots</div>';
-    } else {
-      const byDay = {};
-      info.slots.forEach(s => { if (!byDay[s.day]) byDay[s.day] = { free: [], busy: [] }; s.free.forEach(f => byDay[s.day].free.push(f)); s.busy.forEach(b => byDay[s.day].busy.push(b)); });
-
-      let hasFreeSlot = false;
-      dayOrder.forEach(d => {
-        if (!selDays.includes(d)) return;
-        if (!byDay[d]) {
-          slotsHtml += '<div style="font-size:10.5px;margin-top:4px"><span style="color:rgba(255,255,255,.4);font-weight:600">' + d + ':</span> <span style="color:var(--tx3);font-style:italic">No availability declared</span></div>';
-          return;
-        }
-        const ds = byDay[d];
-        slotsHtml += '<div style="font-size:10.5px;margin-top:4px"><span style="color:rgba(255,255,255,.4);font-weight:600">' + d + ':</span></div>';
-        if (ds.free.length) {
-          hasFreeSlot = true;
-          slotsHtml += '<div class="ub-tslots">';
-          ds.free.forEach(sl => {
-            slotsHtml += '<span class="ub-tslot" onclick="_ubSlotClick(\'' + t.id + '\',\'' + d + '\',' + sl.start + ',' + sl.end + ',event)" title="Click to use this slot" style="cursor:pointer">' + _formatTime12(_minutesToTime(sl.start)) + ' – ' + _formatTime12(_minutesToTime(sl.end)) + '</span>';
+    if (!grouped.length) {
+      if (selDays.length) {
+        const allGrouped = _ubGroupSlots(infoAll);
+        if (allGrouped.length) {
+          slotsHtml = '<div style="font-size:10.5px;color:#f87171;margin-top:4px">Fully booked on selected days</div>';
+          slotsHtml += '<div style="font-size:10px;color:var(--tx3);margin-top:2px;font-style:italic">Other available slots:</div>';
+          slotsHtml += '<div class="ub-tslots" style="margin-top:3px">';
+          allGrouped.slice(0, 3).forEach(g => {
+            const dayLabel = _ubFormatDayRange(g.days);
+            const timeLabel = _formatTime12(_minutesToTime(g.start)) + ' – ' + _formatTime12(_minutesToTime(g.end));
+            const daysJson = JSON.stringify(g.days).replace(/'/g, '&#39;');
+            slotsHtml += '<span class="ub-tslot" style="opacity:.6" onclick="_ubGroupedSlotClick(\'' + t.id + '\',\'' + daysJson + '\',' + g.start + ',' + g.end + ',event)" title="Click to use this slot">' + dayLabel + ' · ' + timeLabel + '</span>';
           });
           slotsHtml += '</div>';
         } else {
-          slotsHtml += '<div style="font-size:10px;color:#f87171;padding-left:4px">Fully booked</div>';
+          slotsHtml = '<div style="font-size:10.5px;color:#f87171;margin-top:4px">Fully booked — no free slots</div>';
         }
-      });
-
-      if (!hasFreeSlot && selDays.length) {
-        slotsHtml += '<div style="font-size:11px;color:#f59e0b;margin-top:5px;font-style:italic">No available slots for the selected schedule.</div>';
+      } else {
+        slotsHtml = '<div style="font-size:10.5px;color:#f87171;margin-top:4px">Fully booked — no free slots</div>';
       }
+    } else {
+      if (matchScore >= 2) anyMatch = true;
+      slotsHtml = '<div class="ub-tslots" style="margin-top:5px">';
+      grouped.forEach(g => {
+        const dayLabel = _ubFormatDayRange(g.days);
+        const timeLabel = _formatTime12(_minutesToTime(g.start)) + ' – ' + _formatTime12(_minutesToTime(g.end));
+        const slotKey = t.id + ':' + g.start + '-' + g.end;
+        const isActive = _ubActiveSlotKey === slotKey;
+        const isExactMatch = hasScheduleSet && selDays.every(d => g.days.includes(d)) && g.start <= curStartMin && g.end >= curEndMin;
+        const cls = isActive ? ' active' : (isExactMatch ? ' active' : '');
+        const daysJson = JSON.stringify(g.days).replace(/'/g, '&#39;');
+        slotsHtml += '<span class="ub-tslot' + cls + '" onclick="_ubGroupedSlotClick(\'' + t.id + '\',\'' + daysJson + '\',' + g.start + ',' + g.end + ',event)" title="Click to use this slot">' + dayLabel + ' · ' + timeLabel + '</span>';
+      });
+      slotsHtml += '</div>';
     }
 
     return '<div class="ub-tcard' + (isSel ? ' sel' : '') + '" onclick="ubSelectTrainer(\'' + t.id + '\')">' +
@@ -9287,6 +9336,10 @@ async function ubRefreshTrainerCards() {
       slotsHtml +
     '</div>';
   }).join('');
+
+  if (hasScheduleSet && !anyMatch && scored.some(s => s.infoAll.hasAvailConfig)) {
+    container.innerHTML += '<div style="font-size:11px;color:#f59e0b;padding:10px;text-align:center;font-style:italic">No trainers are available for the selected days and time. Try another time slot or adjust the class days.</div>';
+  }
 }
 
 function ubSelectTrainer(trainerId) {
