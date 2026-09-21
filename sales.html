@@ -280,6 +280,7 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <button class="sidebar-link" data-tab="leads" onclick="switchTab('leads')"><i data-lucide="users" style="width:15px;height:15px"></i> <span class="be-nav-label">Leads</span></button>
     <button class="sidebar-link" data-tab="tasks" onclick="switchTab('tasks')"><i data-lucide="check-square" style="width:15px;height:15px"></i> <span class="be-nav-label">Tasks</span></button>
     <button class="sidebar-link" data-tab="enrol" onclick="switchTab('enrol')"><i data-lucide="graduation-cap" style="width:15px;height:15px"></i> <span class="be-nav-label">Enrolments</span></button>
+    <button class="sidebar-link" data-tab="avail-batches" onclick="switchTab('avail-batches')"><i data-lucide="rocket" style="width:15px;height:15px"></i> <span class="be-nav-label">Available Batches</span></button>
     <div class="nav-section-title head-only hidden">Management</div>
     <button class="sidebar-link head-only hidden" data-tab="team" onclick="switchTab('team')"><i data-lucide="bar-chart-3" style="width:15px;height:15px"></i> <span class="be-nav-label">Team Overview</span></button>
     <button class="sidebar-link head-only hidden" data-tab="routing" onclick="switchTab('routing')"><i data-lucide="git-branch" style="width:15px;height:15px"></i> <span class="be-nav-label">Routing Rules</span></button>
@@ -464,6 +465,20 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     <div class="tab" id="tab-team-members">
       <div class="section"><h2>Team Members · Sales</h2><div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>Designation</th><th>Contact</th></tr></thead><tbody id="teamMemRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody></table></div></div>
     </div>
+
+    <div class="tab" id="tab-avail-batches">
+      <div class="section">
+        <h2>Available Batches</h2>
+        <div class="sub" style="margin-bottom:12px">Upcoming batches published by Academic Head — enroll students to fill seats.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <input id="ab-search" placeholder="Search batch, course, trainer…" style="flex:1;min-width:200px" oninput="renderAvailBatches()"/>
+          <select id="ab-f-course" onchange="renderAvailBatches()" style="min-width:120px"><option value="all">All Courses</option></select>
+          <select id="ab-f-type" onchange="renderAvailBatches()" style="min-width:100px"><option value="all">All Types</option><option value="1:1">1:1</option><option value="group">Group</option></select>
+          <select id="ab-f-status" onchange="renderAvailBatches()" style="min-width:130px"><option value="all">All Status</option><option value="open">Open</option><option value="full">Full</option><option value="closed">Closed</option></select>
+        </div>
+        <div id="ab-list"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -505,6 +520,23 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     </label>
   </div>
   <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mEnrol')">Cancel</button><button class="btn" id="en_save" onclick="saveEnrol()">Enrol & hand off to Academics</button></div>
+</div></div>
+
+<!-- Batch Enrollment Modal (Available Batches → enroll existing student) -->
+<div class="modal-bg" id="mBatchEnrol"><div class="modal" style="max-width:550px">
+  <h3 id="be_title">Enroll Student</h3>
+  <div class="sub" id="be_batch_info"></div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+    <label class="fld">Search existing student<input id="be_student_search" placeholder="Name, UIN, or contact…" oninput="beSearchStudents()"/></label>
+    <div id="be_student_results" style="max-height:180px;overflow-y:auto;font-size:12px"></div>
+    <input type="hidden" id="be_student_id"/>
+    <div id="be_selected_student" style="display:none;padding:8px 12px;background:var(--card);border:1px solid var(--green);border-radius:6px;font-size:13px"></div>
+  </div>
+  <div id="be_enrolled_list" style="margin-top:12px"></div>
+  <div class="modal-actions">
+    <button class="btn-ghost" onclick="closeModal('mBatchEnrol')">Close</button>
+    <button class="btn" id="be_enrol_btn" onclick="batchEnrolStudent()" disabled>Enroll Selected Student</button>
+  </div>
 </div></div>
 
 <div class="modal-bg" id="mRule"><div class="modal"><h3>Routing Rule</h3>
@@ -1116,6 +1148,8 @@ function subscribeRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'follow_ups'},()=>loadLeads())
     .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>renderTasks())
     .on('postgres_changes',{event:'*',schema:'public',table:'hr_employees'},()=>loadCounsellors().then(populateStaticSelects))
+    .on('postgres_changes',{event:'*',schema:'public',table:'batches'},()=>{ if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
+    .on('postgres_changes',{event:'*',schema:'public',table:'students'},()=>{ if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
     .subscribe();
 }
 
@@ -1133,6 +1167,7 @@ function switchTab(tab){
   if(tab==='payslips')loadPayslips();
   if(tab==='team-members')loadTeamMembers();
   if(tab==='availability')loadAvailability();
+  if(tab==='avail-batches')loadAvailBatches();
   if(typeof lucide!=='undefined')lucide.createIcons();
 }
 
@@ -1316,6 +1351,181 @@ function loadTeamMembers(){
 }
 function openModal(id){document.getElementById(id).classList.add('on');}
 function closeModal(id){document.getElementById(id).classList.remove('on');}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AVAILABLE BATCHES — Sales tab for viewing upcoming batches & enrolling students
+// ═══════════════════════════════════════════════════════════════════════════════
+let _abBatches = [];
+let _abEnrolBatchId = null;
+
+async function loadAvailBatches() {
+  try {
+    const { data, error } = await sb.from('batches')
+      .select('id,name,programme,batch_type,trainer_id,trainer_name,day_pattern,time_slot,capacity,start_date,enrollment_status,enrollment_deadline,sales_notes,published_at')
+      .eq('status', 'upcoming')
+      .in('enrollment_status', ['open', 'full', 'closed'])
+      .is('deleted_at', null)
+      .order('published_at', { ascending: false });
+    if (error) throw error;
+    _abBatches = data || [];
+    // Fetch enrolled counts
+    if (_abBatches.length) {
+      const ids = _abBatches.map(b => b.id);
+      const { data: stCounts } = await sb.from('students').select('batch_id').in('batch_id', ids);
+      const countMap = {};
+      (stCounts || []).forEach(s => { countMap[s.batch_id] = (countMap[s.batch_id] || 0) + 1; });
+      _abBatches.forEach(b => { b._enrolled = countMap[b.id] || 0; });
+    }
+    // Populate course filter
+    const courses = [...new Set(_abBatches.map(b => b.programme).filter(Boolean))].sort();
+    const cf = document.getElementById('ab-f-course');
+    if (cf) {
+      const cv = cf.value;
+      cf.innerHTML = '<option value="all">All Courses</option>' + courses.map(c => '<option>' + esc(c) + '</option>').join('');
+      cf.value = cv || 'all';
+    }
+    renderAvailBatches();
+  } catch (e) {
+    const el = document.getElementById('ab-list');
+    if (el) el.innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderAvailBatches() {
+  const el = document.getElementById('ab-list');
+  if (!el) return;
+  const q = (document.getElementById('ab-search')?.value || '').trim().toLowerCase();
+  const fc = document.getElementById('ab-f-course')?.value || 'all';
+  const ft = document.getElementById('ab-f-type')?.value || 'all';
+  const fs = document.getElementById('ab-f-status')?.value || 'all';
+  let rows = _abBatches.filter(b => {
+    if (fc !== 'all' && b.programme !== fc) return false;
+    if (ft !== 'all') {
+      const is11 = b.capacity === 1;
+      if (ft === '1:1' && !is11) return false;
+      if (ft === 'group' && is11) return false;
+    }
+    if (fs !== 'all' && b.enrollment_status !== fs) return false;
+    if (q && !(b.name || '').toLowerCase().includes(q) && !(b.programme || '').toLowerCase().includes(q) && !(b.trainer_name || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!rows.length) { el.innerHTML = '<div class="empty">No available batches found.</div>'; return; }
+  const statusBadge = s => {
+    const m = { open: '#10b981', full: '#f59e0b', closed: '#6366f1' };
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:' + (m[s] || '#64748b') + '22;color:' + (m[s] || '#64748b') + '">' + esc(s || '—') + '</span>';
+  };
+  el.innerHTML = rows.map(b => {
+    const enrolled = b._enrolled || 0;
+    const cap = b.capacity || '∞';
+    const remaining = b.capacity ? Math.max(0, b.capacity - enrolled) : '∞';
+    const typeLabel = b.capacity === 1 ? '1:1 / Individual' : 'Group';
+    const canEnrol = b.enrollment_status === 'open';
+    return '<div style="background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
+        '<div><b style="color:var(--tx);font-size:15px">' + esc(b.name) + '</b></div>' +
+        '<div style="display:flex;gap:6px;align-items:center">' + statusBadge(b.enrollment_status) +
+          (canEnrol ? ' <button class="btn" style="font-size:12px;padding:4px 12px" onclick="openBatchEnrol(\'' + b.id + '\')">Enroll Student</button>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:4px;font-size:12px;color:var(--tx3)">' + esc(b.programme || '') + ' · ' + esc(typeLabel) + '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--tx3)">' +
+        '<span>Trainer: <b style="color:var(--tx)">' + esc(b.trainer_name || '—') + '</b></span>' +
+        '<span>' + esc(b.day_pattern || '') + '</span>' +
+        '<span>' + esc(b.time_slot || '') + '</span>' +
+        '<span>Start: ' + esc(b.start_date || '—') + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;font-size:13px">' +
+        '<span style="color:var(--green)">Enrolled: <b>' + enrolled + '</b></span>' +
+        '<span style="color:var(--tx3)">Capacity: <b>' + cap + '</b></span>' +
+        '<span style="color:' + (remaining === 0 ? '#f59e0b' : '#38bdf8') + '">Remaining: <b>' + remaining + '</b></span>' +
+        (b.enrollment_deadline ? '<span style="color:var(--tx3)">Deadline: ' + esc(b.enrollment_deadline) + '</span>' : '') +
+      '</div>' +
+      (b.sales_notes ? '<div style="font-size:11px;color:var(--tx3);margin-top:6px;font-style:italic">Notes: ' + esc(b.sales_notes) + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+async function openBatchEnrol(batchId) {
+  const b = _abBatches.find(x => String(x.id) === String(batchId));
+  if (!b) return;
+  _abEnrolBatchId = batchId;
+  document.getElementById('be_title').textContent = 'Enroll Student — ' + b.name;
+  const enrolled = b._enrolled || 0;
+  const cap = b.capacity || '∞';
+  const remaining = b.capacity ? Math.max(0, b.capacity - enrolled) : '∞';
+  document.getElementById('be_batch_info').innerHTML =
+    esc(b.programme || '') + ' · ' + esc(b.trainer_name || '') + ' · ' + esc(b.time_slot || '') +
+    '<br>Enrolled: <b>' + enrolled + '</b> / Capacity: <b>' + cap + '</b> — Remaining: <b>' + remaining + '</b>';
+  document.getElementById('be_student_search').value = '';
+  document.getElementById('be_student_results').innerHTML = '';
+  document.getElementById('be_student_id').value = '';
+  document.getElementById('be_selected_student').style.display = 'none';
+  document.getElementById('be_enrol_btn').disabled = true;
+  // Load already-enrolled students
+  const { data: enrolled_st } = await sb.from('students').select('id,uin,name,contact').eq('batch_id', batchId);
+  const el = document.getElementById('be_enrolled_list');
+  if (enrolled_st && enrolled_st.length) {
+    el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:4px;color:var(--tx3)">Already Enrolled (' + enrolled_st.length + ')</div>' +
+      enrolled_st.map(s => '<div style="font-size:12px;padding:3px 0;color:var(--tx)">' + esc(s.uin || '—') + ' — ' + esc(s.name) + '</div>').join('');
+  } else {
+    el.innerHTML = '<div style="font-size:12px;color:var(--tx3)">No students enrolled yet.</div>';
+  }
+  openModal('mBatchEnrol');
+}
+
+let _beSearchTimeout;
+async function beSearchStudents() {
+  clearTimeout(_beSearchTimeout);
+  const q = (document.getElementById('be_student_search')?.value || '').trim();
+  const el = document.getElementById('be_student_results');
+  if (q.length < 2) { el.innerHTML = '<div style="color:var(--tx3);padding:4px">Type at least 2 characters…</div>'; return; }
+  _beSearchTimeout = setTimeout(async () => {
+    const { data } = await sb.from('students').select('id,uin,name,contact,programme,batch_id,batch_name').or('name.ilike.%' + q + '%,uin.ilike.%' + q + '%,contact.ilike.%' + q + '%').limit(20);
+    if (!data || !data.length) { el.innerHTML = '<div style="color:var(--tx3);padding:4px">No students found.</div>'; return; }
+    el.innerHTML = data.map(s => {
+      const alreadyInBatch = s.batch_id === _abEnrolBatchId;
+      const inOtherBatch = s.batch_id && !alreadyInBatch;
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bd);cursor:' + (alreadyInBatch ? 'default' : 'pointer') + '"' +
+        (alreadyInBatch ? '' : ' onclick="beSelectStudent(\'' + s.id + '\',\'' + esc(s.uin || '') + '\',\'' + esc(s.name) + '\')"') + '>' +
+        '<div><b>' + esc(s.name) + '</b> <span style="color:var(--tx3)">' + esc(s.uin || '') + '</span>' +
+          (s.contact ? ' · ' + esc(s.contact) : '') +
+          (inOtherBatch ? ' <span style="color:#f59e0b;font-size:11px">(in ' + esc(s.batch_name || 'another batch') + ')</span>' : '') +
+        '</div>' +
+        (alreadyInBatch ? '<span style="color:var(--green);font-size:11px;font-weight:700">Already enrolled</span>' : '<span style="color:var(--blue);font-size:11px">Select</span>') +
+      '</div>';
+    }).join('');
+  }, 300);
+}
+
+function beSelectStudent(id, uin, name) {
+  document.getElementById('be_student_id').value = id;
+  document.getElementById('be_selected_student').innerHTML = 'Selected: <b>' + esc(name) + '</b> (' + esc(uin) + ')';
+  document.getElementById('be_selected_student').style.display = 'block';
+  document.getElementById('be_enrol_btn').disabled = false;
+}
+
+async function batchEnrolStudent() {
+  const studentId = document.getElementById('be_student_id').value;
+  if (!studentId || !_abEnrolBatchId) return;
+  const btn = document.getElementById('be_enrol_btn');
+  btn.disabled = true;
+  btn.textContent = 'Enrolling…';
+  try {
+    const res = await sb.rpc('enroll_student_in_batch', { p_batch_id: _abEnrolBatchId, p_student_id: studentId });
+    if (res.error) { showToast('error', res.error.message); return; }
+    const result = res.data;
+    if (result && !result.ok) { showToast('error', result.error); return; }
+    showToast('success', 'Student enrolled!' + (result && result.full ? ' Batch is now full.' : ''));
+    closeModal('mBatchEnrol');
+    loadAvailBatches();
+  } catch (e) {
+    showToast('error', 'Enrollment failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enroll Selected Student';
+  }
+}
+
 </script>
 </body>
 </html>
