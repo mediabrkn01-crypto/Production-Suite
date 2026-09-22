@@ -1599,7 +1599,7 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="subhead" style="margin:12px 0 8px">Progress / session correction</div>
   <div class="mrow" style="align-items:center;gap:8px">
     <span style="font-size:12.5px;color:var(--tx3)">Total Sessions: <b id="be_total_sessions" style="color:var(--tx)">—</b></span>
-    <label class="lv-field" style="margin:0;flex:1"><span>Completed Sessions</span><input id="be_sessions_done" type="number" min="0" oninput="_beRecalcProgress()"/></label>
+    <label class="lv-field" style="margin:0;flex:1"><span>Completed Sessions</span><input id="be_sessions_done" type="number" min="0" disabled title="Based on actual attendance records" oninput="_beRecalcProgress()"/></label>
   </div>
   <div class="mhint">Calculated Progress: <b id="be_calc_pct" style="color:var(--tx)">—</b> — use this only to correct imported/legacy/missing session data. It sets the batch's baseline; going forward, Mark Attendance still adds on top of it. Reaching the total automatically completes the batch everywhere.</div>
   <div class="subhead" style="margin:12px 0 8px">Students in this batch</div>
@@ -2252,9 +2252,6 @@ async function loadLive(){
   const myBatchNames=[...new Set(Object.values(map).map(b=>b.raw).filter(Boolean))];
   // sessions done per batch (by attendance)
   const doneMap={};
-  // manual baseline progress (sessions already done before tracking started) + the batch's own
-  // status, for the legacy-completion check below.
-  const baseMap={};window._baseMap=baseMap;
   const statusMap={};
   const totalMap={};window._acadTotalMap=totalMap; // real sessions_total per batch — see progressOf()
   const deletedNames=new Set();
@@ -2326,11 +2323,11 @@ async function loadLive(){
     if (bid) _otoStudentCountByBatchId[bid] = b.students.length;
   });
   try{
-    attRows.forEach(a=>{const _k=a.session_date!=null?a.session_date:('num_'+a.session_num);(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(_k);});
+    attRows.forEach(a=>{if(a.status!=='present'||!a.session_date)return;(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(a.session_date);});
   }catch(e){}
   try{
     (baseResult.data||[]).forEach(function(b){
-      baseMap[b.name]=+b.baseline_sessions||0; statusMap[b.name]=b.status||null;
+      statusMap[b.name]=b.status||null;
       // BUG FIX (rule: "do not hardcode progress percentages" — confirmed live, root cause of
       // a batch reading FINISHED in one place while genuinely still active): progressOf() used
       // to guess each batch's required session count as b.elite?20:32, a hardcoded stand-in for
@@ -2365,16 +2362,9 @@ async function loadLive(){
     // batches row (rare — myBatchNames/baseQuery already scope to real batches.name values).
     const total=(totalMap[b.raw||b.name])||(b.elite?20:32);
     // BUG FIX: this used to read doneMap[b.name] \u2014 for an Elite (1:1) card, b.name is the
-    // COMBINED "Elite \u2014 Kiran \u00b7 Kiran" display key (batch + student), which never matches any
-    // real attendance.batch_name row ("Elite \u2014 Kiran"). Every Elite batch's actually-marked
-    // attendance sessions were silently counted as zero, so a genuinely 100%-complete 1:1
-    // batch could never cross the finished threshold through marked sessions \u2014 only through
-    // baseline_sessions alone. b.raw (the real batch_name, already used correctly for `base`
-    // right below) fixes this for group AND Elite batches alike.
     const marked=(doneMap[b.raw||b.name]||new Set()).size;
-    const base=(baseMap[b.raw||b.name])||0;
-    const dn=Math.min(total,base+marked);
-    return { total, dn, base, marked, pct: Math.min(100,Math.round(dn/total*100)) };
+    const dn=Math.min(total,marked);
+    return { total, dn, base:0, marked, pct: Math.min(100,Math.round(dn/total*100)) };
   };
   // isBatchFinished (progress-inclusive) stays exactly as it was -- it's what feeds
   // window._acadFinishedBatchNames just below, which the trainer-availability engine
@@ -2698,7 +2688,7 @@ function card(b,i,isPrevious){
     <div style="margin-top:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
         <span style="font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em">Progress</span>
-        <span style="font-size:11px;color:var(--tx2);font-weight:600">${dn} / ${total} done${base?` (${base} pre-logged + ${marked} marked)`:''} \u00b7 ${pct}%${!isPrevious?(dn<total?` \u00b7 ${total-dn} session${total-dn===1?'':'s'} remaining`:' \u00b7 ready to close'):''}</span>
+        <span style="font-size:11px;color:var(--tx2);font-weight:600">${dn} / ${total} done \u00b7 ${pct}%${!isPrevious?(dn<total?` \u00b7 ${total-dn} session${total-dn===1?'':'s'} remaining`:' \u00b7 ready to close'):''}</span>
       </div>
       <div style="height:8px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:var(--gk);border-radius:99px"></div>
@@ -3132,7 +3122,7 @@ async function saveAtt(){
     const _autoTotal = window._acadTotalMap && window._acadTotalMap[realBatchName];
     const _autoBid   = window._attBatchId || (window._acadBatchIdByName && window._acadBatchIdByName[realBatchName]);
     if (_autoTotal && _autoBid) {
-      const _autoDone = await _acadRealDoneCount(realBatchName, b.baseline_sessions||0);
+      const _autoDone = await _acadRealDoneCount(realBatchName);
       if (_autoDone >= _autoTotal) {
         const otoOk = await _acadCheckOTOComplete(_autoBid);
         if (otoOk) {
@@ -4407,7 +4397,7 @@ async function loadAcadDashboard(){
         const _nm = _trows.map(b=>b.name).filter(Boolean);
         const _done = {};
         if (_nm.length) { try { const att = await _acadFetchAllRows('attendance','batch_name,session_date,session_num',q=>q.in('batch_name',_nm).eq('status','present')); (att||[]).forEach(a=>{ const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(_k); }); } catch(e){} }
-        _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,(b.baseline_sessions||0)+((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
+        _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
       let _occ = [];
       _trows.forEach(b => { _occ = _occ.concat(generateBatchOccurrences(b, today, today)); });
@@ -5921,7 +5911,7 @@ async function loadClassesTab(){
       }
       rows = rows.filter(b => {
         const total = b.sessions_total || 0;
-        const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
+        const done = Math.min(total || Infinity, (doneByBatch[b.name]?.size||0));
         return !(total && done >= total);
       });
     }
@@ -6261,7 +6251,7 @@ async function loadScheduleTab(){
       }
       rows = rows.filter(b => {
         const total = b.sessions_total || 0;
-        const done = Math.min(total || Infinity, (b.baseline_sessions||0) + (doneByBatch[b.name]?.size||0));
+        const done = Math.min(total || Infinity, (doneByBatch[b.name]?.size||0));
         return !(total && done >= total);
       });
     }
@@ -6970,10 +6960,7 @@ async function openBatchDetails(id){
   const _absentDates = Object.keys(_byDate).filter(d=>_byDate[d].p===0 && _byDate[d].ab>0).sort(); // marked, all absent
   const _doneSet = new Set(_doneDates), _absSet = new Set(_absentDates);
   const _allAbsent = _absSet.size;
-  // Canonical delivered count: baseline (pre-logged legacy) + distinct dated sessions with ≥1 present.
-  // Must match loadLive()/progressOf() exactly — one shared definition, no divergence.
-  const _legacy = Math.max(0, (b.baseline_sessions||0));
-  const _completed = _bdTotal ? Math.min(_bdTotal, _legacy + _doneSet.size) : (_legacy + _doneSet.size);
+  const _completed = _bdTotal ? Math.min(_bdTotal, _doneSet.size) : _doneSet.size;
   // Generate the real recurrence across the batch's whole span, assign each occurrence a status.
   const _startISO = b.start_date || _doneDates[0] || _absentDates[0] || _todayISO;
   const _farD = new Date(_now); _farD.setMonth(_farD.getMonth()+18);
@@ -7041,7 +7028,7 @@ async function openBatchDetails(id){
       +_cardKV('Start Date', esc(b.start_date||'—'))
       +_cardKV('End Date', _calcEndISO ? '<span style="color:var(--blue)">'+esc(_fmtD(_calcEndISO))+'</span>' : esc(b.expected_completion_date||'—')))
     + _cardWrap('PROGRESS',
-      _cardKV('Completed', (_bdTotal?(_completed+' / '+_bdTotal):String(_completed))+(_legacy&&_doneSet.size?' <span style="font-weight:400;color:var(--tx3);font-size:10px">('+_legacy+' pre-logged + '+_doneSet.size+' marked)</span>':''))
+      _cardKV('Completed', (_bdTotal?(_completed+' / '+_bdTotal):String(_completed)))
       +(_allAbsent?_cardKV('All Students Absent', '<span style="color:#f59e0b">'+_allAbsent+'</span>'):'')
       +(_holCount?_cardKV('Company / Public Holidays', '<span style="color:#06b6d4">'+_holCount+'</span>'):'')
       +(_evCount?_cardKV('Official No-Class Events', '<span style="color:#ec4899">'+_evCount+'</span>'):'')
@@ -7251,15 +7238,11 @@ async function saveManageStudents(){
 // Real completed-session count for a batch by its actual name (baseline + distinct marked
 // attendance sessions) — same rule progressOf()/loadLive() use, just callable standalone for
 // a single batch (Edit Batch only needs this one batch's number, not the whole table).
-async function _acadRealDoneCount(realName, baselineSessions){
-  // validCompleted = distinct session_dates with ≥1 present student
-  // Count by date (not session_num) — duplicate session_nums for the same date (re-save artifact)
-  // must not inflate the count. Same rule as loadLive()/progressOf().
+async function _acadRealDoneCount(realName){
   try {
-    const { data } = await sb.from('attendance').select('session_date,session_num').eq('batch_name', realName).eq('status','present');
-    const marked = new Set((data||[]).map(r=>r.session_date!=null?r.session_date:('num_'+r.session_num))).size;
-    return (+baselineSessions||0) + marked;
-  } catch(e) { return +baselineSessions||0; }
+    const { data } = await sb.from('attendance').select('session_date').eq('batch_name', realName).eq('status','present').not('session_date','is',null);
+    return new Set((data||[]).map(r=>r.session_date)).size;
+  } catch(e) { return 0; }
 }
 async function _acadCheckOTOComplete(batchId) {
   try {
@@ -7439,7 +7422,7 @@ async function openBatchEdit(id){
   const total = +b.sessions_total || 0;
   document.getElementById('be_total_sessions').dataset.val = total;
   document.getElementById('be_total_sessions').textContent = total || '—';
-  const doneNow = await _acadRealDoneCount(b.name, b.baseline_sessions);
+  const doneNow = await _acadRealDoneCount(b.name);
   document.getElementById('be_sessions_done').value = doneNow;
   document.getElementById('be_sessions_done').max = total || '';
   _beRecalcProgress();
@@ -7548,22 +7531,6 @@ async function saveBatchEdit(){
   if(removeIds.length)await sb.from('students').update({batch_id:null,batch_name:'Unassigned'}).in('id',removeIds);
   if(addIds.length)await assignStudents(addIds,{id:b.id,name:newName||b.name,trainer_name});
   await sb.from('students').update({trainer_name}).eq('batch_id',b.id);
-  // PROGRESS / SESSION CORRECTION (spec Part 4) — only writes when the Head actually changed
-  // the value from what openBatchEdit pre-filled (the real current done count), so opening and
-  // closing this modal without touching the field never overwrites baseline_sessions with a
-  // redundant identical write. Stored as baseline_sessions, same field Mark Attendance already
-  // adds on top of — desired total done minus already-marked sessions, clamped to zero, so this
-  // is a correction to the STARTING point, never a value that fights with real attendance rows.
-  const total = +document.getElementById('be_total_sessions').dataset.val || 0;
-  const desiredDone = Math.max(0, Math.min(total||9999, parseInt(document.getElementById('be_sessions_done').value)||0));
-  const doneBefore = await _acadRealDoneCount(b.name, b.baseline_sessions);
-  if (desiredDone !== doneBefore) {
-    const realName = newName || b.name;
-    const { data: marked } = await sb.from('attendance').select('session_num').eq('batch_name', realName).eq('status','present');
-    const markedCount = new Set((marked||[]).map(r=>r.session_num)).size;
-    const newBaseline = Math.max(0, desiredDone - markedCount);
-    await sb.from('batches').update({baseline_sessions:newBaseline}).eq('id',b.id);
-  }
   closeModal('batchEdit');
   // If completed sessions reached the total, the standard completion workflow (spec Part 4's
   // own "automatically trigger the standard batch completion workflow") isn't a separate step
