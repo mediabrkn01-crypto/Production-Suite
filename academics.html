@@ -5239,17 +5239,18 @@ function _availHostSlotKeyForBatch(b, slots){
     return ss < bEnd && se > bStart;
   });
   if (!overlapping.length) return null;
-  // 1) exact start match wins; 2) else the overlapping slot whose window CONTAINS the batch's
-  // start (latest such start); 3) else the earliest overlapping slot (class starts before all
-  // its declared slots — still needs one home).
-  let host = overlapping.find(s => _timeToMinutes(s.start_time) === bStart);
+  // 1) exact start match wins (prefer slot with days configured over day-less); 2) else the
+  // overlapping slot whose window CONTAINS the batch's start (latest such start); 3) else the
+  // earliest overlapping slot.
+  const exactStarts = overlapping.filter(s => _timeToMinutes(s.start_time) === bStart);
+  let host = exactStarts.find(s => s.days && s.days.trim()) || exactStarts[0];
   if (!host) {
     host = overlapping
       .filter(s => { const ss=_timeToMinutes(s.start_time), se=_timeToMinutes(s.end_time); return bStart >= ss && bStart < se; })
       .sort((a,b) => _timeToMinutes(b.start_time) - _timeToMinutes(a.start_time))[0];
   }
   if (!host) host = overlapping.slice().sort((a,b) => _timeToMinutes(a.start_time) - _timeToMinutes(b.start_time))[0];
-  return host ? host.start_time + '|' + host.end_time : null;
+  return host ? (host.id || host.start_time + '|' + host.end_time) : null;
 }
 function computeAvailSlotStates(trainerId, slots, batches){
   const active = (batches||[]).filter(b =>
@@ -5257,7 +5258,7 @@ function computeAvailSlotStates(trainerId, slots, batches){
   const hostByBatch = new Map();
   active.forEach(b => hostByBatch.set(b, _availHostSlotKeyForBatch(b, slots)));
   return (slots||[]).map(s => {
-    const key = s.start_time + '|' + s.end_time;
+    const key = s.id || (s.start_time + '|' + s.end_time);
     const hosted = active.find(b => hostByBatch.get(b) === key);
     if (hosted) return { state: 'occupied', batch: hosted };
     // BUG FIX (spec: overlap must consider DAY + time, not time alone): the old code marked a
