@@ -1700,6 +1700,13 @@ details[open] .rawsum::before{content:'▾ '}
 
 <div class="modal-bg" id="modalAtt"><div class="modal" style="width:460px">
   <h3 id="att_title">Attendance</h3>
+  <div id="att_oto_toggle" style="display:none;margin-bottom:10px">
+    <div style="display:inline-flex;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.12)">
+      <button id="att_mode_group" onclick="_attSetMode('group')" style="padding:6px 14px;font-size:11.5px;font-weight:600;border:none;cursor:pointer;background:var(--gk);color:#fff">Group Class</button>
+      <button id="att_mode_oto" onclick="_attSetMode('oto')" style="padding:6px 14px;font-size:11.5px;font-weight:600;border:none;cursor:pointer;background:rgba(255,255,255,.05);color:var(--tx3)">One-on-One Session</button>
+    </div>
+  </div>
+  <div id="att_group_section">
   <div class="mrow">
     <div class="att-fld"><span class="att-lbl">Session #</span><input id="att_num" type="number" placeholder="Session #" value="1" readonly style="opacity:.75;cursor:default"/><span style="font-size:10px;color:var(--tx3);margin-left:5px">auto</span></div>
     <div class="att-fld"><span class="att-lbl">Class Date</span><input id="att_date" type="date" onchange="loadClassLogForAttDate();(function(){var t=new Date().toISOString().slice(0,10),v=document.getElementById('att_date').value,h=document.getElementById('att_date_hint');if(h){if(v&&v<t){h.innerHTML='⚠ Marking for past class date (<b>'+v+'</b>)';h.style.display='block';}else{h.innerHTML='';h.style.display='none';}}})()"/></div>
@@ -1714,9 +1721,14 @@ details[open] .rawsum::before{content:'▾ '}
        Session feature are untouched and still readable in Session History below. -->
   <div class="subhead" style="margin:14px 0 8px">Class Log / Today's Class Notes</div>
   <textarea id="att_class_log" placeholder="What was taught in today's class? (topics covered, activities, homework, notes...)" style="min-height:80px;width:100%"></textarea>
+  </div>
+  <div id="att_oto_section" style="display:none">
+    <div id="att_oto_summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div id="att_oto_students" style="max-height:400px;overflow-y:auto"></div>
+  </div>
   <div class="modal-actions">
     <button class="btn-cancel" onclick="closeModal('att')">Cancel</button>
-    <button class="btn-save" onclick="saveAtt()">Save Attendance &amp; Class Log</button>
+    <button class="btn-save" id="att_save_btn" onclick="saveAtt()">Save Attendance &amp; Class Log</button>
   </div>
   <div style="text-align:center;margin-top:10px"><span style="color:var(--k2);cursor:pointer;font-size:12.5px" onclick="openSessionHistory()">View Session History for this batch</span></div>
 </div></div>
@@ -2962,6 +2974,26 @@ async function openAtt(i){
     window._attBatchId = batchRow ? batchRow.id : null;
   } catch(e) { window._attBatchId = null; }
   await loadClassLogForAttDate();
+  // Show OTO toggle for group batches with oto_sessions_required > 0
+  const _attOtoToggle = document.getElementById('att_oto_toggle');
+  window._attIsGroupOTO = false;
+  if (!b.elite && b._otoRequired > 0 && window._attBatchId) {
+    _attOtoToggle.style.display = '';
+    window._attIsGroupOTO = true;
+    _attSetMode('group');
+    // Pre-load OTO data
+    try {
+      const [{ data: otoSess }, { data: stuRows }] = await Promise.all([
+        sb.from('oto_sessions').select('*').eq('batch_id', window._attBatchId).order('session_number'),
+        sb.from('students').select('id,uin,name,status').eq('batch_id', window._attBatchId).neq('status','Dropped')
+      ]);
+      window._attOTOSessions = otoSess || [];
+      window._attOTOStudents = stuRows || [];
+      window._attOTOReq = b._otoRequired;
+    } catch(e) { window._attOTOSessions = []; window._attOTOStudents = []; window._attOTOReq = 0; }
+  } else {
+    _attOtoToggle.style.display = 'none';
+  }
   document.getElementById('modalAtt').classList.add('on');
 }
 // Loads any already-saved class log for this batch on the currently-selected date (student_id
@@ -2977,6 +3009,62 @@ async function loadClassLogForAttDate(){
     const { data } = await sb.from('sessions').select('notes').eq('batch_id', window._attBatchId).eq('session_date', date).is('student_id', null).order('created_at',{ascending:false}).limit(1).maybeSingle();
     el.value = data ? (data.notes || '') : '';
   } catch(e) { el.value=''; }
+}
+function _attSetMode(mode) {
+  const groupSec = document.getElementById('att_group_section');
+  const otoSec = document.getElementById('att_oto_section');
+  const saveBtn = document.getElementById('att_save_btn');
+  const groupBtn = document.getElementById('att_mode_group');
+  const otoBtn = document.getElementById('att_mode_oto');
+  if (mode === 'oto') {
+    groupSec.style.display = 'none';
+    otoSec.style.display = '';
+    saveBtn.style.display = 'none';
+    groupBtn.style.background = 'rgba(255,255,255,.05)'; groupBtn.style.color = 'var(--tx3)';
+    otoBtn.style.background = '#a78bfa'; otoBtn.style.color = '#fff';
+    _attRenderOTO();
+  } else {
+    groupSec.style.display = '';
+    otoSec.style.display = 'none';
+    saveBtn.style.display = '';
+    groupBtn.style.background = 'var(--gk)'; groupBtn.style.color = '#fff';
+    otoBtn.style.background = 'rgba(255,255,255,.05)'; otoBtn.style.color = 'var(--tx3)';
+  }
+}
+function _attRenderOTO() {
+  const students = window._attOTOStudents || [];
+  const sessions = window._attOTOSessions || [];
+  const otoReq = window._attOTOReq || 0;
+  const summaryEl = document.getElementById('att_oto_summary');
+  const listEl = document.getElementById('att_oto_students');
+  if (!otoReq || !students.length) { listEl.innerHTML = '<div class="att-empty">No OTO sessions configured or no students.</div>'; summaryEl.innerHTML = ''; return; }
+  const totalReq = students.length * otoReq;
+  const completed = sessions.filter(s => s.status === 'completed').length;
+  const pending = Math.max(0, totalReq - completed);
+  summaryEl.innerHTML =
+    '<div style="flex:1;min-width:100px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:8px;padding:6px 10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#10b981">' + completed + '/' + totalReq + '</div><div style="font-size:9px;color:var(--tx3)">COMPLETED</div></div>' +
+    '<div style="flex:1;min-width:100px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:6px 10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">' + pending + '</div><div style="font-size:9px;color:var(--tx3)">PENDING</div></div>' +
+    '<div style="flex:1;min-width:100px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:6px 10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#a78bfa">' + otoReq + '</div><div style="font-size:9px;color:var(--tx3)">PER STUDENT</div></div>';
+  listEl.innerHTML = students.map(st => {
+    const stSess = sessions.filter(s => s.student_id === st.id);
+    const stDone = stSess.filter(s => s.status === 'completed').length;
+    const stPct = Math.round((stDone / otoReq) * 100);
+    const rows = [];
+    for (let n = 1; n <= otoReq; n++) {
+      const sess = stSess.find(s => s.session_number === n);
+      if (!sess || sess.status === 'pending') {
+        rows.push('<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.05)"><span style="font-size:11px;color:var(--tx3)">Session ' + n + '</span><button class="act-btn" onclick="_otoOpenRecord(\'' + st.id + '\',' + n + ')" style="font-size:10px;padding:3px 10px">Record</button></div>');
+      } else {
+        const clrs = { completed: '#10b981', absent: '#f87171', trainer_leave: '#f59e0b', postponed: '#94a3b8' };
+        const lbls = { completed: 'Completed', absent: 'Absent', trainer_leave: 'Trainer Leave', postponed: 'Postponed' };
+        const c = clrs[sess.status] || 'var(--tx3)';
+        const dStr = sess.session_date ? new Date(sess.session_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
+        const tStr = sess.start_time ? sess.start_time.slice(0, 5) : '';
+        rows.push('<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap;gap:4px"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--tx3)">Session ' + n + '</span><span style="font-size:10px;padding:1px 6px;border-radius:3px;background:' + c + '22;color:' + c + '">' + (lbls[sess.status] || sess.status) + '</span></div><div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--tx3)">' + esc(dStr) + (tStr ? ' · ' + tStr : '') + '</span><button class="act-btn" onclick="_otoOpenRecord(\'' + st.id + '\',' + n + ')" style="font-size:10px;padding:3px 10px">' + (sess.status === 'completed' ? 'View' : 'Edit') + '</button></div></div>');
+      }
+    }
+    return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:8px 10px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:600;color:var(--tx)">' + esc(st.name) + '<span style="font-size:10px;color:var(--tx3);margin-left:4px">' + esc(st.uin || '') + '</span></span><span style="font-size:10.5px;font-weight:600;color:' + (stDone >= otoReq ? '#10b981' : '#fbbf24') + '">' + stDone + '/' + otoReq + '</span></div><div style="height:3px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:' + stPct + '%;background:' + (stDone >= otoReq ? '#10b981' : 'var(--gk)') + ';border-radius:99px"></div></div>' + rows.join('') + '</div>';
+  }).join('');
 }
 async function saveAtt(){
   const b=window._attBatch; if(!b)return;
@@ -9254,9 +9342,19 @@ function _otoSessionRow(student, num, sess) {
 }
 
 async function _otoOpenRecord(studentId, sessionNum) {
-  const student = _otoCurrentStudents.find(s => s.id === studentId);
+  // Support both standalone OTO modal and Mark Attendance inline OTO
+  const students = (_otoCurrentStudents && _otoCurrentStudents.length) ? _otoCurrentStudents : (window._attOTOStudents || []);
+  const sessions = (_otoCurrentSessions && _otoCurrentSessions.length) ? _otoCurrentSessions : (window._attOTOSessions || []);
+  const student = students.find(s => s.id === studentId);
   if (!student) return;
-  const existing = _otoCurrentSessions.find(s => s.student_id === studentId && s.session_number === sessionNum);
+  const existing = sessions.find(s => s.student_id === studentId && s.session_number === sessionNum);
+  // If opened from Mark Attendance and standalone OTO context not set, init it
+  if (!_otoCurrentBatchId && window._attBatchId) {
+    _otoCurrentBatchId = window._attBatchId;
+    _otoCurrentStudents = window._attOTOStudents || [];
+    _otoCurrentSessions = window._attOTOSessions || [];
+    try { const { data: b } = await sb.from('batches').select('*, courses(name, oto_sessions_required, type)').eq('id', window._attBatchId).maybeSingle(); _otoCurrentBatch = b || {}; } catch(e) { _otoCurrentBatch = {}; }
+  }
   _otoRecordCtx = { studentId, sessionNum, existingId: existing ? existing.id : null };
 
   document.getElementById('oto_rec_title').textContent = 'One-on-One Session ' + sessionNum + ' — ' + (student.name || '');
@@ -9265,7 +9363,7 @@ async function _otoOpenRecord(studentId, sessionNum) {
 
   const trainerSel = document.getElementById('oto_rec_trainer');
   if (!_allActiveTrainers.length && typeof populateTrainerSelects === 'function') await populateTrainerSelects();
-  const batchTrainerId = _otoCurrentBatch.trainer_id;
+  const batchTrainerId = _otoCurrentBatch ? _otoCurrentBatch.trainer_id : null;
   trainerSel.innerHTML = _allActiveTrainers.map(t =>
     `<option value="${t.id}"${String(t.id) === String(batchTrainerId) ? ' selected' : ''}>${esc(t.name)}${t.type === 'pt' ? ' (PT)' : ''}</option>`
   ).join('');
@@ -9356,6 +9454,12 @@ async function saveOTOSession() {
   const { data: refreshed } = await sb.from('oto_sessions').select('*').eq('batch_id', _otoCurrentBatchId).order('session_number');
   _otoCurrentSessions = refreshed || [];
   _otoRender();
+
+  // Also refresh Mark Attendance inline OTO view if open
+  if (window._attIsGroupOTO && window._attBatchId === _otoCurrentBatchId) {
+    window._attOTOSessions = refreshed || [];
+    _attRenderOTO();
+  }
 
   if (typeof loadLive === 'function') loadLive();
   if (typeof window._ovRefresh === 'function') window._ovRefresh();
