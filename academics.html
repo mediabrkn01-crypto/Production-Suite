@@ -3187,8 +3187,8 @@ async function openSessionHistoryFor(batchName){
   try {
     const { data: batchRow } = await sb.from('batches').select('id').eq('name', batchName).maybeSingle();
     const batchId = batchRow ? batchRow.id : null;
-    const [{data:attRows},{data:logRows}] = await Promise.all([
-      sb.from('attendance').select('session_date,status,marked_by').eq('batch_name', batchName),
+    const [attRows,{data:logRows}] = await Promise.all([
+      _acadFetchAllRows('attendance','session_date,status,marked_by',q=>q.eq('batch_name',batchName)),
       batchId ? sb.from('sessions').select('session_date,notes,logged_by').eq('batch_id', batchId).order('session_date',{ascending:false}) : Promise.resolve({data:[]})
     ]);
     const byDate = {};
@@ -4397,7 +4397,7 @@ async function loadAcadDashboard(){
       if (_trows.length) {
         const _nm = _trows.map(b=>b.name).filter(Boolean);
         const _done = {};
-        if (_nm.length) { try { const { data: att } = await sb.from('attendance').select('batch_name,session_date,session_num').in('batch_name', _nm).eq('status','present'); (att||[]).forEach(a=>{ const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(_k); }); } catch(e){} }
+        if (_nm.length) { try { const att = await _acadFetchAllRows('attendance','batch_name,session_date,session_num',q=>q.in('batch_name',_nm).eq('status','present')); (att||[]).forEach(a=>{ const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (_done[a.batch_name]=_done[a.batch_name]||new Set()).add(_k); }); } catch(e){} }
         _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,(b.baseline_sessions||0)+((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
       let _occ = [];
@@ -5906,7 +5906,7 @@ async function loadClassesTab(){
       const doneByBatch = {};
       if (names.length) {
         try {
-          const { data: att } = await sb.from('attendance').select('batch_name,session_date,session_num').in('batch_name', names).eq('status','present');
+          const att = await _acadFetchAllRows('attendance','batch_name,session_date,session_num',q=>q.in('batch_name',names).eq('status','present'));
           (att||[]).forEach(a => { const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(_k); });
         } catch(e) {}
       }
@@ -6246,7 +6246,7 @@ async function loadScheduleTab(){
       const doneByBatch = {};
       if (names.length) {
         try {
-          const { data: att } = await sb.from('attendance').select('batch_name,session_date,session_num').in('batch_name', names).eq('status','present');
+          const att = await _acadFetchAllRows('attendance','batch_name,session_date,session_num',q=>q.in('batch_name',names).eq('status','present'));
           (att||[]).forEach(a => { const _k=a.session_date!=null?a.session_date:('num_'+a.session_num); (doneByBatch[a.batch_name] = doneByBatch[a.batch_name] || new Set()).add(_k); });
         } catch(e) {}
       }
@@ -6900,8 +6900,7 @@ async function openBatchDetails(id){
   //    disagree. Legacy imported baseline is shown separately, never faked as green dates. ──
   let _bdTotal = b.sessions_total || 0, _attRows = [];
   try {
-    const { data: att } = await sb.from('attendance').select('session_num,session_date,status,marked_by,created_at').eq('batch_name', b.name);
-    _attRows = att || [];
+    _attRows = await _acadFetchAllRows('attendance','session_num,session_date,status,marked_by,created_at',q=>q.eq('batch_name',b.name));
   } catch(e){}
   // Trainer leave dates — expand approved leave ranges into a Set of ISO date strings.
   // Only non-WFH leave matters (WFH = trainer is present, class runs normally).
