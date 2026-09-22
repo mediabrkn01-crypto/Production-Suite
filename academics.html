@@ -7926,14 +7926,12 @@ async function ovLoad(){
     var res=await Promise.all([
       sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at'),
       sb.from('trainers').select('id,name,type,hr_employee_id,status'),
-      // Fix: removed duration_minutes (not in attendance schema) — duration comes from batch
-      sb.from('attendance').select('batch_name,session_date,session_num,status,marked_by,created_at').gte('session_date',rangeStart).lte('session_date',rangeEnd),
+      _acadFetchAllRows('attendance','batch_name,session_date,session_num,status,marked_by,created_at',q=>q.gte('session_date',rangeStart).lte('session_date',rangeEnd)),
       mediaHrDB.from('hr_leave_requests').select('employee_id,start_date,end_date,status').eq('status','approved')
     ]);
     if(res[0].error) throw new Error('batches: '+(res[0].error.message||JSON.stringify(res[0].error)));
-    if(res[2].error) throw new Error('attendance: '+(res[2].error.message||JSON.stringify(res[2].error)));
     var batches=(res[0].data||[]).filter(function(b){ return !b.deleted_at && b.status!=='cancelled' && b.status!=='completed'; });
-    var trainers=res[1].data||[], att=res[2].data||[], leaves=(res[3].data||[]);
+    var trainers=res[1].data||[], att=res[2]||[], leaves=(res[3].data||[]);
     // Build attendance map keyed batch_name|session_date
     var attByKey={};
     att.forEach(function(a){
