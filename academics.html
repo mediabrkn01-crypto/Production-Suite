@@ -1527,6 +1527,12 @@ details[open] .rawsum::before{content:'▾ '}
         <div id="bd_history" style="max-height:360px;overflow:auto"></div>
       </div>
     </div>
+    <!-- ONE-ON-ONE SESSIONS SECTION (group batches with oto_sessions_required > 0) -->
+    <div id="bd_oto_section" style="display:none;margin-top:20px">
+      <div class="subhead" style="margin:0 0 8px">One-on-One Sessions</div>
+      <div id="bd_oto_summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="bd_oto_list" style="max-height:360px;overflow:auto"></div>
+    </div>
   </div>
   <div class="modal-actions" style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.08);position:sticky;bottom:0;background:var(--bg2,#0d1119)"><button class="btn-cancel" onclick="closeModal('batchDetails')">Close</button><button class="btn-save" id="bd_att_btn">Mark Attendance</button></div>
 </div></div>
@@ -1611,6 +1617,10 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="mrow">
     <input id="c_cap" type="number" placeholder="Max students (group)"/>
     <input id="c_fee" type="number" placeholder="Fee ₹"/>
+  </div>
+  <div class="mrow" id="c_oto_row">
+    <input id="c_oto" type="number" min="0" placeholder="One-on-One sessions per student (0 = none)"/>
+    <div class="mhint" style="font-size:10px;color:var(--tx3);margin:auto 0">Individual 30-min sessions each student must complete</div>
   </div>
   <div class="subhead" style="margin:10px 0 8px">Default class days</div>
   <div class="daychips" id="c_days"></div>
@@ -1709,6 +1719,52 @@ details[open] .rawsum::before{content:'▾ '}
     <button class="btn-save" onclick="saveAtt()">Save Attendance &amp; Class Log</button>
   </div>
   <div style="text-align:center;margin-top:10px"><span style="color:var(--k2);cursor:pointer;font-size:12.5px" onclick="openSessionHistory()">View Session History for this batch</span></div>
+</div></div>
+
+<!-- One-on-One Sessions modal for group batches -->
+<div class="modal-bg" id="modalOTO"><div class="modal" style="width:620px;max-width:95vw">
+  <h3 id="oto_title">One-on-One Sessions</h3>
+  <div id="oto_summary" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"></div>
+  <div id="oto_student_list" style="max-height:calc(100vh - 320px);overflow-y:auto"></div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('oto')">Close</button>
+  </div>
+</div></div>
+
+<!-- OTO Record Session sub-modal -->
+<div class="modal-bg" id="modalOTORecord" style="z-index:1002"><div class="modal" style="width:420px">
+  <h3 id="oto_rec_title">Record One-on-One Session</h3>
+  <div class="mrow">
+    <div class="att-fld"><span class="att-lbl">Student</span><div id="oto_rec_student" style="font-weight:600;color:var(--tx);padding:6px 0"></div></div>
+    <div class="att-fld"><span class="att-lbl">Session #</span><div id="oto_rec_num" style="font-weight:600;color:var(--tx);padding:6px 0"></div></div>
+  </div>
+  <div class="mrow">
+    <div class="att-fld" style="flex:1"><span class="att-lbl">Trainer</span><select id="oto_rec_trainer" style="width:100%"></select></div>
+  </div>
+  <div class="mrow">
+    <div class="att-fld"><span class="att-lbl">Session Date</span><input id="oto_rec_date" type="date"/></div>
+    <div class="att-fld"><span class="att-lbl">Duration</span><div style="font-weight:600;color:var(--tx);padding:6px 0">30 minutes</div></div>
+  </div>
+  <div class="mrow">
+    <div class="att-fld"><span class="att-lbl">Start Time</span><input id="oto_rec_start" type="time" onchange="otoAutoEndTime()"/></div>
+    <div class="att-fld"><span class="att-lbl">End Time</span><input id="oto_rec_end" type="time" readonly style="opacity:.7"/></div>
+  </div>
+  <div class="mrow">
+    <div class="att-fld" style="flex:1"><span class="att-lbl">Status</span>
+      <select id="oto_rec_status" style="width:100%">
+        <option value="completed">Present / Session Completed</option>
+        <option value="absent">Student Absent</option>
+        <option value="trainer_leave">Trainer Leave / Not Held</option>
+        <option value="postponed">Postponed</option>
+      </select>
+    </div>
+  </div>
+  <div class="att-fld" style="margin-top:8px"><span class="att-lbl">Notes (optional)</span><textarea id="oto_rec_notes" rows="2" style="width:100%" placeholder="Session notes..."></textarea></div>
+  <div id="oto_rec_conflict" style="display:none;font-size:11px;color:#f87171;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:7px;padding:6px 10px;margin-top:8px"></div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('otoRecord')">Cancel</button>
+    <button class="btn-save" id="oto_rec_save" onclick="saveOTOSession()">Save Session</button>
+  </div>
 </div></div>
 
 <!-- Session History — past sessions for one batch: date, trainer, attendance summary, class
@@ -2220,10 +2276,12 @@ async function loadLive(){
   // spec part 1/6/7). Small, dedicated query, same pattern as the rest of this file's
   // lightweight lookups — not derived from a full HR fetch this file doesn't otherwise need.
   const trainerStatusPromise = sb.from('trainers').select('id,status').then(r=>r).catch(()=>({data:[]}));
-  const [attRows, baseResult, trainerStatusResult] = await Promise.all([
+  const otoCompletionPromise = sb.from('oto_sessions').select('batch_id,student_id,status').then(r=>r).catch(()=>({data:[]}));
+  const [attRows, baseResult, trainerStatusResult, otoCompResult] = await Promise.all([
     attPromise.catch(()=>[]),
     baseQuery ? baseQuery.then(r=>r).catch(()=>({data:null})) : Promise.resolve({data:null}),
     trainerStatusPromise,
+    otoCompletionPromise,
   ]);
   // Matched by trainer_id, not name — students.trainer_name is a denormalized cache that can
   // genuinely drift from trainers.name (confirmed live: one real batch had "Laura" cached on its
@@ -2232,6 +2290,20 @@ async function loadLive(){
   const batchIdByName = {}, batchTrainerIdByName = {}, batchCourseIdByName = {};
   (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; });
   window._acadBatchIdByName = batchIdByName;
+  // OTO completion map: batchId → completed count. Used by isBatchFinished to block
+  // auto-completion until all OTO sessions are done.
+  const _otoCompByBatch = {};
+  try { (otoCompResult.data||[]).forEach(o => {
+    if (!_otoCompByBatch[o.batch_id]) _otoCompByBatch[o.batch_id] = { completed: 0, total: 0 };
+    _otoCompByBatch[o.batch_id].total++;
+    if (o.status === 'completed') _otoCompByBatch[o.batch_id].completed++;
+  }); } catch(e){}
+  // Count enrolled (non-Dropped) students per batch for OTO requirement calc
+  const _otoStudentCountByBatchId = {};
+  Object.values(map).forEach(b => {
+    const bid = batchIdByName[b.raw || b.name];
+    if (bid) _otoStudentCountByBatchId[bid] = b.students.length;
+  });
   try{
     attRows.forEach(a=>{const _k=a.session_date!=null?a.session_date:('num_'+a.session_num);(doneMap[a.batch_name]=doneMap[a.batch_name]||new Set()).add(_k);});
   }catch(e){}
@@ -2290,7 +2362,20 @@ async function loadLive(){
   const isBatchFinished = b => {
     const status = statusMap[b.raw||b.name];
     const { dn, total } = progressOf(b);
-    return _acadIsFinishedByStatusOrProgress(status, dn, total);
+    if (!_acadIsFinishedByStatusOrProgress(status, dn, total)) return false;
+    // Block finished if OTO sessions required but not all completed
+    const bid = batchIdByName[b.raw||b.name];
+    const cid = batchCourseIdByName[b.raw||b.name];
+    const crs = cid && courseById[cid];
+    if (crs && !b.elite && crs.type === 'group' && (+crs.oto_sessions_required||0) > 0) {
+      const otoReq = +crs.oto_sessions_required;
+      const stuCount = _otoStudentCountByBatchId[bid] || 0;
+      const totalNeeded = stuCount * otoReq;
+      const otoData = _otoCompByBatch[bid];
+      const otoDone = otoData ? otoData.completed : 0;
+      if (totalNeeded > 0 && otoDone < totalNeeded) return false;
+    }
+    return true;
   };
   // BUG FIX, CONFIRMED LIVE -- "Complete Batch" button silently unreachable once a batch hit
   // 100% session progress. isBatchFinished (above) was ALSO being reused to decide the Live
@@ -2355,7 +2440,7 @@ async function loadLive(){
   // split Student Attendance into "My Assigned Batches" / "Other Trainers' Batches" for an
   // Academic Head, who is also a working Trainer with their own teaching load (spec: keep
   // that split ID-based, never by trainer name text).
-  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); });
+  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); const _crs = b._courseId && courseById[b._courseId]; b._otoRequired = (_crs && !b.elite && _crs.type === 'group') ? (+_crs.oto_sessions_required || 0) : 0; if (b._otoRequired > 0 && b._batchId) { const _od = _otoCompByBatch[b._batchId]; b._otoDone = _od ? _od.completed : 0; b._otoTotal = b.students.length * b._otoRequired; } });
   previous.forEach(b => b._progress = progressOf(b));
   window._liveActiveBatches = active;
   window._livePreviousBatches = previous;
@@ -2570,6 +2655,7 @@ function card(b,i,isPrevious){
         ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
+        ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
         ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
         `}
@@ -2596,6 +2682,13 @@ function card(b,i,isPrevious){
       <div style="height:8px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:var(--gk);border-radius:99px"></div>
       </div>
+      ${(b._otoRequired>0&&b._otoTotal>0)?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+        <span style="font-size:10px;color:var(--purple)">1:1 Sessions</span>
+        <span style="font-size:10.5px;font-weight:600;color:${b._otoDone>=b._otoTotal?'#10b981':'#a78bfa'}">${b._otoDone||0}/${b._otoTotal} · ${b._otoTotal?Math.round((b._otoDone||0)/b._otoTotal*100):0}%</span>
+      </div>
+      <div style="height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-top:2px">
+        <div style="height:100%;width:${b._otoTotal?Math.round((b._otoDone||0)/b._otoTotal*100):0}%;background:#a78bfa;border-radius:99px"></div>
+      </div>`:''}
     </div>
   </div>`;
 }
@@ -2944,8 +3037,11 @@ async function saveAtt(){
     if (_autoTotal && _autoBid) {
       const _autoDone = await _acadRealDoneCount(realBatchName, b.baseline_sessions||0);
       if (_autoDone >= _autoTotal) {
-        await sb.from('batches').update({status:'completed', completed_at: new Date().toISOString()})
-          .eq('id', _autoBid).not('status','in','("completed","finished")');
+        const otoOk = await _acadCheckOTOComplete(_autoBid);
+        if (otoOk) {
+          await sb.from('batches').update({status:'completed', completed_at: new Date().toISOString()})
+            .eq('id', _autoBid).not('status','in','("completed","finished")');
+        }
       }
     }
   } catch(e){}
@@ -6485,6 +6581,7 @@ function renderCourseTable(){
     <td data-label="Sessions">${c.type==='recorded'?'—':(c.sessions_total||'—')}</td>
     <td data-label="Duration">${c.duration_days?c.duration_days+'d'+(c.type==='recorded'?' validity':''):'—'}</td>
     <td data-label="Capacity">${c.type==='recorded'?'—':(c.type==='one-on-one'?'1':(c.max_students||'—'))}</td>
+    <td data-label="1:1 Sessions">${c.type==='group'&&c.oto_sessions_required?c.oto_sessions_required+'/student':'—'}</td>
     <td data-label="Default Days">${esc(c.default_days||'—')}${c.mc_day?' · MC '+esc(c.mc_day):''}</td>
     <td data-label="Status"><span class="badge ${c.active===false?'b-inactive':'b-active'}">${c.active===false?'Legacy':'Active'}</span></td>
     <td data-label="Actions"><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
@@ -6508,6 +6605,8 @@ function courseTypeChanged(){
   days.style.opacity=dim; days.style.pointerEvents=rec?'none':'';
   mc.disabled=rec; mc.style.opacity=dim;
   document.getElementById('c_rec_hint').style.display=rec?'block':'none';
+  const otoRow=document.getElementById('c_oto_row');
+  if(otoRow){otoRow.style.display=(t==='group')?'flex':'none';}
 }
 let _editCourse=null;
 function openCourse(id){
@@ -6521,6 +6620,7 @@ function openCourse(id){
   document.getElementById('c_duration').value=c.duration_days||'';
   document.getElementById('c_cap').value=(c.type==='one-on-one')?'':(c.max_students||'');
   document.getElementById('c_fee').value=c.fee||'';
+  document.getElementById('c_oto').value=c.oto_sessions_required||'';
   document.getElementById('c_mc').value=(c.mc_day!=null)?c.mc_day:'Sat';
   const box=document.getElementById('c_days');
   if(!box.children.length)box.innerHTML=DAYS.map(d=>`<span class="dchip" data-d="${d}" onclick="this.classList.toggle('on')">${d}</span>`).join('');
@@ -6543,8 +6643,9 @@ async function saveCourse(){
     max_students:type==='one-on-one'?1:(parseInt(document.getElementById('c_cap').value)||null),
     fee:parseFloat(document.getElementById('c_fee').value)||null,
     default_days:days||null,
-    mc_day:document.getElementById('c_mc').value||null};
-  if(type==='recorded'){rec.sessions_total=null;rec.max_students=null;rec.default_days=null;rec.mc_day=null;}
+    mc_day:document.getElementById('c_mc').value||null,
+    oto_sessions_required:type==='group'?(parseInt(document.getElementById('c_oto').value)||0):0};
+  if(type==='recorded'){rec.sessions_total=null;rec.max_students=null;rec.default_days=null;rec.mc_day=null;rec.oto_sessions_required=0;}
   let error; const oldName = (_editCourse && _editCourse.name) || null;
   if(_editCourse&&_editCourse.id){({error}=await sb.from('courses').update(rec).eq('id',_editCourse.id));}
   else{rec.active=true;({error}=await sb.from('courses').insert(rec));}
@@ -6934,6 +7035,50 @@ async function openBatchDetails(id){
   } else {
     attBtn.style.display = 'none';
   }
+  // ── ONE-ON-ONE SESSIONS section (group courses with oto_sessions_required > 0) ──
+  const _bdOtoSec = document.getElementById('bd_oto_section');
+  const _bdCrs = b.course_id && courseById[b.course_id];
+  const _bdOtoReq = (_bdCrs && b.capacity !== 1 && _bdCrs.type === 'group') ? (+_bdCrs.oto_sessions_required || 0) : 0;
+  if (_bdOtoReq > 0) {
+    _bdOtoSec.style.display = '';
+    let _otoRows = [];
+    try { const { data } = await sb.from('oto_sessions').select('*').eq('batch_id', id); _otoRows = data || []; } catch(e){}
+    const _otoCompleted = _otoRows.filter(s => s.status === 'completed');
+    const _otoTotalReq = rows.filter(s=>s.status!=='Dropped').length * _bdOtoReq;
+    const _otoDone = _otoCompleted.length;
+    const _otoPending = Math.max(0, _otoTotalReq - _otoDone);
+    const _otoByStudent = {};
+    _otoRows.forEach(s => { if (!_otoByStudent[s.student_id]) _otoByStudent[s.student_id] = []; _otoByStudent[s.student_id].push(s); });
+    document.getElementById('bd_oto_summary').innerHTML =
+      '<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:#a78bfa">' + _otoDone + '/' + _otoTotalReq + '</div><div style="font-size:9px;color:var(--tx3)">COMPLETED</div></div>' +
+      '<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">' + _otoPending + '</div><div style="font-size:9px;color:var(--tx3)">PENDING</div></div>' +
+      '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--tx)">' + _bdOtoReq + '</div><div style="font-size:9px;color:var(--tx3)">PER STUDENT</div></div>';
+    const _activeStudents = rows.filter(s => s.status !== 'Dropped');
+    document.getElementById('bd_oto_list').innerHTML = _activeStudents.length ? _activeStudents.map(st => {
+      const stSess = _otoByStudent[st.id] || [];
+      const stDone = stSess.filter(s => s.status === 'completed').length;
+      const stPct = Math.round((stDone / _bdOtoReq) * 100);
+      const sessRows = [];
+      for (let n = 1; n <= _bdOtoReq; n++) {
+        const s = stSess.find(x => x.session_number === n);
+        const statusColors = { completed: '#10b981', absent: '#f87171', trainer_leave: '#f59e0b', postponed: '#94a3b8', scheduled: '#3b82f6', pending: 'var(--tx3)' };
+        const statusLabels = { completed: 'Completed', absent: 'Student Absent', trainer_leave: 'Trainer Leave', postponed: 'Postponed', scheduled: 'Scheduled', pending: 'Pending' };
+        if (!s || s.status === 'pending') {
+          sessRows.push('<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;color:var(--tx3);border-top:1px solid rgba(255,255,255,.04)">Session ' + n + ' <span style="color:var(--tx3)">Pending</span></div>');
+        } else {
+          const clr = statusColors[s.status] || 'var(--tx3)';
+          const dateStr = s.session_date ? new Date(s.session_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
+          const timeStr = s.start_time ? s.start_time.slice(0, 5) : '';
+          const tName = s.trainer_id ? ((_allActiveTrainers || []).find(t => String(t.id) === String(s.trainer_id)) || {}).name || '' : '';
+          sessRows.push('<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;border-top:1px solid rgba(255,255,255,.04)"><span style="color:var(--tx3)">Session ' + n + '</span><span style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;padding:1px 6px;border-radius:3px;background:' + clr + '22;color:' + clr + ';border:1px solid ' + clr + '44">' + (statusLabels[s.status] || s.status) + '</span><span style="color:var(--tx3);font-size:10px">' + esc(dateStr) + (timeStr ? ' · ' + timeStr : '') + (tName ? ' · ' + esc(tName) : '') + '</span></span></div>');
+        }
+      }
+      return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px;margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:600;color:var(--tx)">' + esc(st.name) + '</span><span style="font-size:10px;font-weight:600;color:' + (stDone >= _bdOtoReq ? '#10b981' : '#fbbf24') + '">' + stDone + '/' + _bdOtoReq + '</span></div><div style="height:3px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:' + stPct + '%;background:' + (stDone >= _bdOtoReq ? '#10b981' : 'var(--gk)') + ';border-radius:99px"></div></div>' + sessRows.join('') + '</div>';
+    }).join('') : '<div class="mhint" style="padding:8px">No active students.</div>';
+  } else {
+    _bdOtoSec.style.display = 'none';
+  }
+
   document.getElementById('modalBatchDetails').classList.add('on');
 }
 
@@ -7020,6 +7165,22 @@ async function _acadRealDoneCount(realName, baselineSessions){
     return (+baselineSessions||0) + marked;
   } catch(e) { return +baselineSessions||0; }
 }
+async function _acadCheckOTOComplete(batchId) {
+  try {
+    const { data: batch } = await sb.from('batches').select('course_id').eq('id', batchId).maybeSingle();
+    if (!batch || !batch.course_id) return true;
+    const course = courseById[batch.course_id];
+    if (!course || !course.oto_sessions_required || course.type !== 'group') return true;
+    const otoReq = course.oto_sessions_required;
+    const { data: students } = await sb.from('students').select('id').eq('batch_id', batchId).neq('status', 'Dropped');
+    if (!students || !students.length) return true;
+    const { data: completed } = await sb.from('oto_sessions').select('student_id').eq('batch_id', batchId).eq('status', 'completed');
+    const byStudent = {};
+    (completed || []).forEach(s => { byStudent[s.student_id] = (byStudent[s.student_id] || 0) + 1; });
+    return students.every(st => (byStudent[st.id] || 0) >= otoReq);
+  } catch (e) { return true; }
+}
+
 function _beRecalcProgress(){
   const total = +(document.getElementById('be_total_sessions').dataset.val)||0;
   const done = Math.max(0, parseInt(document.getElementById('be_sessions_done').value)||0);
@@ -7719,6 +7880,22 @@ async function ovLoad(){
         sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:b.name,course:b.programme||'',ctype:_ovClassType(b),date:o.date,startMin:o.startTime,dur:dur,att:a,lv:lv,present:a?a.p:0,absent:a?a.ab:0,markedBy:a?a.markedBy:'',markedAt:a?a.markedAt:''});
       });
     });
+    // Include completed OTO sessions in teaching hours/payroll
+    try {
+      const { data: otoRows } = await sb.from('oto_sessions').select('trainer_id,session_date,start_time,duration_minutes,status,batch_id').eq('status','completed').gte('session_date',rangeStart).lte('session_date',rangeEnd);
+      (otoRows||[]).forEach(function(o){
+        var trRec = trById[String(o.trainer_id)];
+        if(!trRec) return;
+        var batchRec = batches.find(function(b){return b.id===o.batch_id;});
+        var bName = batchRec ? batchRec.name : 'OTO Session';
+        var cName = batchRec ? (batchRec.programme||'') : '';
+        var sMin = 0;
+        if(o.start_time){ var pts=o.start_time.split(':'); sMin=parseInt(pts[0])*60+parseInt(pts[1]||0); }
+        var dur = o.duration_minutes || 30;
+        var tk = String(trRec.id);
+        sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:bName+' (1:1)',course:cName,ctype:'1:1 session',date:o.session_date,startMin:sMin,dur:dur,att:{p:1,ab:0,markedBy:'',markedAt:''},lv:false,present:1,absent:0,markedBy:'',markedAt:'',_isOTO:true});
+      });
+    } catch(e){ console.warn('OTO overview:', e); }
     _ovData={ sessions:sessions, unassigned:unassigned, courses:Object.keys(courses).sort(), rangeStart:rangeStart, rangeEnd:rangeEnd };
     // Populate course filter
     var cs=document.getElementById('ov-f-course'); if(cs){ var cv=cs.value; cs.innerHTML='<option value="all">All Courses</option>'+_ovData.courses.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join(''); cs.value=cv||'all'; }
@@ -8959,6 +9136,265 @@ function renderUpcomingBatches() {
     '</div>';
   }).join('');
   if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/* === One-on-One (OTO) Sessions for Group Courses === */
+let _otoCurrentBatchId = null;
+let _otoCurrentBatch = null;
+let _otoCurrentStudents = [];
+let _otoCurrentSessions = [];
+let _otoRecordCtx = {};
+
+async function openOTOSessions(batchId) {
+  _otoCurrentBatchId = batchId;
+  const container = document.getElementById('oto_student_list');
+  const summary = document.getElementById('oto_summary');
+  container.innerHTML = '<div class="loading">Loading…</div>';
+  summary.innerHTML = '';
+  document.getElementById('modalOTO').classList.add('on');
+
+  const [{ data: batch }, { data: students }, { data: sessions }] = await Promise.all([
+    sb.from('batches').select('*, courses(name, oto_sessions_required, type, sessions_total)').eq('id', batchId).maybeSingle(),
+    sb.from('students').select('id,uin,name,status').eq('batch_id', batchId).neq('status', 'Dropped'),
+    sb.from('oto_sessions').select('*').eq('batch_id', batchId).order('session_number')
+  ]);
+  if (!batch) { container.innerHTML = '<div class="empty">Batch not found.</div>'; return; }
+  _otoCurrentBatch = batch;
+  _otoCurrentStudents = students || [];
+  _otoCurrentSessions = sessions || [];
+
+  const course = batch.courses || {};
+  const otoReq = course.oto_sessions_required || 0;
+  if (!otoReq) { container.innerHTML = '<div class="empty">This course has no One-on-One sessions configured. Edit the course to add them.</div>'; return; }
+
+  document.getElementById('oto_title').textContent = 'One-on-One Sessions — ' + (batch.name || '');
+  _otoRender();
+}
+
+function _otoRender() {
+  const batch = _otoCurrentBatch;
+  const course = batch.courses || {};
+  const otoReq = course.oto_sessions_required || 0;
+  const students = _otoCurrentStudents;
+  const sessions = _otoCurrentSessions;
+  const summary = document.getElementById('oto_summary');
+  const container = document.getElementById('oto_student_list');
+
+  const totalRequired = students.length * otoReq;
+  const completedSessions = sessions.filter(s => s.status === 'completed');
+  const totalCompleted = completedSessions.length;
+  const totalPending = totalRequired - totalCompleted;
+
+  summary.innerHTML = `
+    <div style="flex:1;min-width:140px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:10px 14px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#10b981">${totalCompleted}/${totalRequired}</div>
+      <div style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em">Completed</div>
+    </div>
+    <div style="flex:1;min-width:140px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:10px 14px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#fbbf24">${totalPending > 0 ? totalPending : 0}</div>
+      <div style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em">Pending</div>
+    </div>
+    <div style="flex:1;min-width:140px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:var(--tx)">${students.length}</div>
+      <div style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em">Students</div>
+    </div>
+    <div style="flex:1;min-width:140px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:10px;padding:10px 14px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:var(--purple)">${otoReq}</div>
+      <div style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em">Sessions / Student</div>
+    </div>`;
+
+  if (!students.length) { container.innerHTML = '<div class="empty">No active students in this batch.</div>'; return; }
+
+  container.innerHTML = students.map(st => {
+    const stSessions = sessions.filter(s => s.student_id === st.id);
+    const completed = stSessions.filter(s => s.status === 'completed').length;
+    const pct = Math.round((completed / otoReq) * 100);
+    const rows = [];
+    for (let n = 1; n <= otoReq; n++) {
+      const sess = stSessions.find(s => s.session_number === n);
+      rows.push(_otoSessionRow(st, n, sess));
+    }
+    return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <span style="font-size:13px;font-weight:700;color:var(--tx)">${esc(st.name)}</span>
+          <span style="font-size:10px;color:var(--tx3);margin-left:6px">${esc(st.uin || '')}</span>
+        </div>
+        <div style="font-size:11px;font-weight:600;color:${completed >= otoReq ? '#10b981' : '#fbbf24'}">${completed}/${otoReq} done</div>
+      </div>
+      <div style="height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-bottom:8px">
+        <div style="height:100%;width:${pct}%;background:${completed >= otoReq ? 'var(--green)' : 'var(--gk)'};border-radius:99px"></div>
+      </div>
+      ${rows.join('')}
+    </div>`;
+  }).join('');
+}
+
+function _otoSessionRow(student, num, sess) {
+  if (!sess || sess.status === 'pending') {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;color:var(--tx3)">Session ${num}</span>
+      <button class="act-btn" onclick="_otoOpenRecord('${student.id}',${num})" style="font-size:10px;padding:3px 10px">Record Session</button>
+    </div>`;
+  }
+  const statusColors = { completed: '#10b981', absent: '#f87171', trainer_leave: '#f59e0b', postponed: '#94a3b8' };
+  const statusLabels = { completed: 'Completed', absent: 'Student Absent', trainer_leave: 'Trainer Leave', postponed: 'Postponed' };
+  const clr = statusColors[sess.status] || 'var(--tx3)';
+  const dateStr = sess.session_date ? new Date(sess.session_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—';
+  const timeStr = sess.start_time ? sess.start_time.slice(0, 5) : '';
+  const trainerName = sess.trainer_id ? ((_allActiveTrainers || []).find(t => String(t.id) === String(sess.trainer_id)) || {}).name || '' : '';
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid rgba(255,255,255,.05);gap:8px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;color:var(--tx3)">Session ${num}</span>
+      <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${clr}22;color:${clr};border:1px solid ${clr}44">${statusLabels[sess.status] || sess.status}</span>
+    </div>
+    <div style="font-size:10px;color:var(--tx3)">${dateStr}${timeStr ? ' · ' + timeStr : ''}${trainerName ? ' · ' + esc(trainerName) : ''}</div>
+    <button class="act-btn" onclick="_otoOpenRecord('${student.id}',${num})" style="font-size:10px;padding:3px 10px">${sess.status === 'completed' ? 'View' : 'Edit'}</button>
+  </div>`;
+}
+
+async function _otoOpenRecord(studentId, sessionNum) {
+  const student = _otoCurrentStudents.find(s => s.id === studentId);
+  if (!student) return;
+  const existing = _otoCurrentSessions.find(s => s.student_id === studentId && s.session_number === sessionNum);
+  _otoRecordCtx = { studentId, sessionNum, existingId: existing ? existing.id : null };
+
+  document.getElementById('oto_rec_title').textContent = 'One-on-One Session ' + sessionNum + ' — ' + (student.name || '');
+  document.getElementById('oto_rec_student').textContent = student.name || '';
+  document.getElementById('oto_rec_num').textContent = 'Session ' + sessionNum;
+
+  const trainerSel = document.getElementById('oto_rec_trainer');
+  if (!_allActiveTrainers.length && typeof populateTrainerSelects === 'function') await populateTrainerSelects();
+  const batchTrainerId = _otoCurrentBatch.trainer_id;
+  trainerSel.innerHTML = _allActiveTrainers.map(t =>
+    `<option value="${t.id}"${String(t.id) === String(batchTrainerId) ? ' selected' : ''}>${esc(t.name)}${t.type === 'pt' ? ' (PT)' : ''}</option>`
+  ).join('');
+
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('oto_rec_date').value = existing ? (existing.session_date || today) : today;
+  document.getElementById('oto_rec_start').value = existing ? (existing.start_time || '').slice(0, 5) : '';
+  document.getElementById('oto_rec_end').value = existing ? (existing.end_time || '').slice(0, 5) : '';
+  document.getElementById('oto_rec_status').value = existing ? existing.status : 'completed';
+  document.getElementById('oto_rec_notes').value = existing ? (existing.notes || '') : '';
+  if (existing && existing.trainer_id) trainerSel.value = existing.trainer_id;
+  document.getElementById('oto_rec_conflict').style.display = 'none';
+
+  const saveBtn = document.getElementById('oto_rec_save');
+  saveBtn.textContent = existing && existing.status !== 'pending' ? 'Update Session' : 'Save Session';
+
+  document.getElementById('modalOTORecord').classList.add('on');
+}
+
+function otoAutoEndTime() {
+  const start = document.getElementById('oto_rec_start').value;
+  if (!start) return;
+  const [h, m] = start.split(':').map(Number);
+  const endMin = h * 60 + m + 30;
+  const eh = Math.floor(endMin / 60) % 24;
+  const em = endMin % 60;
+  document.getElementById('oto_rec_end').value = String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+}
+
+async function saveOTOSession() {
+  const ctx = _otoRecordCtx;
+  if (!ctx.studentId || !_otoCurrentBatchId) return;
+  const trainerId = document.getElementById('oto_rec_trainer').value;
+  const date = document.getElementById('oto_rec_date').value;
+  const startTime = document.getElementById('oto_rec_start').value;
+  const endTime = document.getElementById('oto_rec_end').value;
+  const status = document.getElementById('oto_rec_status').value;
+  const notes = document.getElementById('oto_rec_notes').value.trim();
+
+  if (!date) { showToast('error', 'Session date required'); return; }
+  if (status === 'completed' && !startTime) { showToast('error', 'Start time required for completed session'); return; }
+
+  if (status === 'completed' && trainerId && startTime) {
+    const sMin = _timeToMinutes(startTime);
+    const eMin = endTime ? _timeToMinutes(endTime) : sMin + 30;
+    const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(date + 'T00:00:00').getDay()];
+    const conflict = findExactRangeConflict(trainerId, sMin, eMin,
+      (_ubAllBatchesForConflict || []).filter(b => isBatchCurrentlyActive(b)),
+      date, date, [dayName]);
+    if (conflict) {
+      document.getElementById('oto_rec_conflict').textContent = 'Scheduling conflict: ' + (conflict.name || 'another batch') + ' overlaps this time.';
+      document.getElementById('oto_rec_conflict').style.display = 'block';
+    } else {
+      document.getElementById('oto_rec_conflict').style.display = 'none';
+    }
+  }
+
+  const row = {
+    batch_id: _otoCurrentBatchId,
+    student_id: ctx.studentId,
+    session_number: ctx.sessionNum,
+    trainer_id: trainerId || null,
+    session_date: date || null,
+    start_time: startTime ? startTime + ':00' : null,
+    end_time: endTime ? endTime + ':00' : null,
+    duration_minutes: 30,
+    status,
+    notes: notes || null,
+    marked_by: currentUser.name,
+    marked_at: new Date().toISOString()
+  };
+
+  let error;
+  if (ctx.existingId) {
+    ({ error } = await sb.from('oto_sessions').update(row).eq('id', ctx.existingId));
+  } else {
+    ({ error } = await sb.from('oto_sessions').upsert(row, { onConflict: 'batch_id,student_id,session_number' }));
+  }
+  if (error) { showToast('error', 'Save failed: ' + error.message); return; }
+
+  if (status === 'completed' && trainerId) {
+    try { await _otoRecordEarning(trainerId, date, startTime, endTime); } catch (e) { console.warn('OTO earning:', e.message); }
+  }
+
+  showToast('success', 'One-on-One session saved');
+  document.getElementById('modalOTORecord').classList.remove('on');
+
+  const { data: refreshed } = await sb.from('oto_sessions').select('*').eq('batch_id', _otoCurrentBatchId).order('session_number');
+  _otoCurrentSessions = refreshed || [];
+  _otoRender();
+
+  if (typeof loadLive === 'function') loadLive();
+  if (typeof window._ovRefresh === 'function') window._ovRefresh();
+}
+
+async function _otoRecordEarning(trainerId, date, startTime, endTime) {
+  const { data: tr } = await sb.from('trainers').select('id,name,type,hr_employee_id').eq('id', trainerId).maybeSingle();
+  if (!tr) return;
+  let emp = null;
+  if (tr.hr_employee_id) { const { data } = await sb.from('hr_employees').select('id,employment_type,hourly_rate').eq('id', tr.hr_employee_id).maybeSingle(); emp = data; }
+  const isPT = (tr.type === 'pt') || (emp && /part.?time/i.test(emp.employment_type || ''));
+  if (!isPT) return;
+  const rate = (emp && emp.hourly_rate != null) ? Number(emp.hourly_rate) : null;
+  const dur = 30;
+  const amount = rate != null ? Math.round(rate * (dur / 60) * 100) / 100 : null;
+  const sessionKey = _otoCurrentBatchId + '|oto_' + _otoRecordCtx.studentId.slice(0, 8) + '_' + _otoRecordCtx.sessionNum;
+  const { data: existing } = await sb.from('trainer_session_earnings').select('id,status').eq('session_key', sessionKey).maybeSingle();
+  if (existing && existing.status === 'paid') return;
+  const row = {
+    session_key: sessionKey,
+    batch_id: _otoCurrentBatchId,
+    batch_name: _otoCurrentBatch.name,
+    course: (_otoCurrentBatch.courses || {}).name || _otoCurrentBatch.programme || null,
+    trainer_id: tr.id,
+    trainer_name: tr.name,
+    hr_employee_id: tr.hr_employee_id || null,
+    session_num: _otoRecordCtx.sessionNum,
+    session_date: date,
+    start_time: startTime || null,
+    end_time: endTime || null,
+    duration_minutes: dur,
+    hourly_rate: rate,
+    amount: amount,
+    attendance_marked_by: currentUser.name,
+    attendance_marked_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  if (!existing) row.status = 'pending';
+  await sb.from('trainer_session_earnings').upsert(row, { onConflict: 'session_key' });
 }
 
 /* === Upcoming Batch date/time pickers + trainer availability === */
