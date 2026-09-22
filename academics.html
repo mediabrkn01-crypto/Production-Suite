@@ -205,7 +205,7 @@ tr.clickable{cursor:pointer}
 .crumb .here{color:var(--text-main);font-weight:600}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(6px);}
 .modal-bg.on{display:flex;}
-.modal{background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(237,31,81,.2);border-radius:18px;padding:26px;width:400px;box-shadow:0 30px 80px rgba(0,0,0,.9);}
+.modal{background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(237,31,81,.2);border-radius:18px;padding:26px;width:400px;box-shadow:0 30px 80px rgba(0,0,0,.9);max-height:90vh;overflow-y:auto;}
 .modal h3{font-family:Rajdhani,sans-serif;margin-bottom:18px;font-size:18px;font-weight:700;}
 .modal input,.modal select,.modal textarea{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:11px 13px;color:var(--tx);margin-bottom:11px;font-size:13px;outline:none;font-family:inherit;resize:vertical;}
 .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(237,31,81,.5);}
@@ -1412,12 +1412,17 @@ details[open] .rawsum::before{content:'▾ '}
       </div>
 
       <!-- Trainer drill-down (wide, like Batch View) — calendar + session list for one trainer/month. -->
-      <div class="modal-bg" id="modalOvTrainer"><div class="modal" style="max-width:min(1400px,94vw);width:min(1400px,94vw)">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px">
-          <div id="ov-dd-title"><h3>Trainer</h3></div>
-          <button class="btn-cancel" onclick="document.getElementById('modalOvTrainer').classList.remove('on')" style="flex-shrink:0">✕ Close</button>
+      <div class="modal-bg" id="modalOvTrainer"><div class="modal" style="max-width:min(1400px,94vw);width:min(1400px,94vw);display:flex;flex-direction:column;padding:0;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:20px 26px 12px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+          <div id="ov-dd-title" style="min-width:0;flex:1"><h3>Trainer</h3></div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <button class="act-btn" id="ov-dd-prev" style="padding:4px 10px;font-size:12px" onclick="_ovDDNav(-1)">‹ Prev</button>
+            <span id="ov-dd-month" style="font-size:12px;color:rgba(255,255,255,.5);min-width:90px;text-align:center"></span>
+            <button class="act-btn" id="ov-dd-next" style="padding:4px 10px;font-size:12px" onclick="_ovDDNav(1)">Next ›</button>
+            <button class="btn-cancel" onclick="document.getElementById('modalOvTrainer').classList.remove('on')" style="margin-left:8px">✕ Close</button>
+          </div>
         </div>
-        <div id="ov-dd-body"></div>
+        <div id="ov-dd-body" style="padding:16px 26px 26px;overflow-y:auto;flex:1;min-height:0"></div>
       </div></div>
 
       <!-- Delegate Academic Head — real-Head-only, see the sidebar nav item's own comment.
@@ -8116,33 +8121,45 @@ window.ovRender=function(){
   }
 };
 // ── Trainer drill-down modal ──────────────────────────────────────────────────
-window.ovOpenTrainer=function(tk){
-  if(!_ovData) return;
-  // Re-resolve status at open time using current time
+var _ovDDTrainerKey=null, _ovDDMonth=null;
+window._ovDDNav=async function(dir){
+  if(!_ovDDMonth||!_ovDDTrainerKey) return;
+  var p=_ovDDMonth.split('-'), y=+p[0], m=+p[1]+dir;
+  if(m>12){y++;m=1;} if(m<1){y--;m=12;}
+  _ovDDMonth=y+'-'+String(m).padStart(2,'0');
+  _ovMode='monthly'; _ovMonth=_ovDDMonth;
+  var em=document.getElementById('ov-month'); if(em) em.value=_ovMonth;
+  document.getElementById('ov-dd-body').innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">Loading…</div>';
+  await ovLoad();
+  _ovRenderDD();
+};
+function _ovRenderDD(){
+  if(!_ovData||!_ovDDTrainerKey) return;
+  var tk=_ovDDTrainerKey, month=_ovDDMonth;
   var todayISO=new Date().toISOString().slice(0,10);
   var now=new Date(); var nowMin=now.getHours()*60+now.getMinutes();
   var allSess=_ovData.sessions.filter(function(s){return String(s.tk)===String(tk);})
     .map(function(s){ var st=_ovResolve(s.date,s.att,s.lv,todayISO,nowMin,s.startMin,s.dur); return Object.assign({},s,{status:st}); })
+    .filter(function(s){ return s.date.slice(0,7)===month; })
     .sort(function(a,b){return a.date===b.date?a.startMin-b.startMin:a.date.localeCompare(b.date);});
-  if(!allSess.length) return;
-  var name=allSess[0].trainer;
-  var rangeLabel=_ovMode==='today'?_ovDay:_ovMonth;
-  // Count for modal subtitle
+  var name=allSess.length?allSess[0].trainer:(_ovData.sessions.find(function(s){return String(s.tk)===String(tk);})||{}).trainer||'Trainer';
   var mc={completed:0,inprogress:0,missing:0,absent:0,leave:0};
   allSess.forEach(function(s){if(mc[s.status]!==undefined)mc[s.status]++;});
-  var subtitle=rangeLabel+' · '+allSess.length+' session(s)';
+  var mLabel=new Date(month+'-15').toLocaleDateString('en',{month:'long',year:'numeric'});
+  var subtitle=allSess.length+' session(s)';
   if(mc.missing>0) subtitle+=' · <span style="color:#f87171;font-weight:700">'+mc.missing+' missing</span>';
+  if(mc.absent>0) subtitle+=' · <span style="color:#fb923c">'+mc.absent+' absent</span>';
+  if(mc.completed>0) subtitle+=' · <span style="color:#22c55e">'+mc.completed+' done</span>';
   if(mc.inprogress>0) subtitle+=' · <span style="color:#06b6d4">'+mc.inprogress+' in progress</span>';
-  document.getElementById('ov-dd-title').innerHTML='<h3>'+esc(name)+'</h3><div class="lv-note">'+subtitle+'</div>';
-  // Calendar anchored to first session month
-  var firstMonth=allSess[0].date.slice(0,7);
-  var mb=_ovMonthBounds(firstMonth);
+  document.getElementById('ov-dd-title').innerHTML='<h3 style="margin:0">'+esc(name)+'</h3><div class="lv-note" style="margin-top:2px">'+subtitle+'</div>';
+  document.getElementById('ov-dd-month').textContent=mLabel;
+  var mb=_ovMonthBounds(month);
   var byDate={}; allSess.forEach(function(s){(byDate[s.date]=byDate[s.date]||[]).push(s);});
   var first=new Date(mb.y,mb.mo-1,1).getDay(); var cells='';
   for(var i=0;i<first;i++) cells+='<div></div>';
   var pr={missing:7,absent:6,leave:5,inprogress:4,scheduled:3,postponed:2,completed:1};
   for(var d=1;d<=mb.days;d++){
-    var iso=firstMonth+'-'+String(d).padStart(2,'0'); var list=byDate[iso]||[]; var col='transparent',lbl='';
+    var iso=month+'-'+String(d).padStart(2,'0'); var list=byDate[iso]||[]; var col='transparent',lbl='';
     if(list.length){ var top=list.slice().sort(function(a,b){return (pr[b.status]||0)-(pr[a.status]||0);})[0]; col=_OV[top.status].c; lbl=list.length>1?(list.length+' classes'):_OV[top.status].l; }
     cells+='<div class="ov-cell"'+(list.length?' style="border-color:'+col+'55;background:'+col+'14"':'')+'>'+
       '<div style="font-weight:700;color:#f1f5f9">'+d+'</div>'+
@@ -8152,21 +8169,41 @@ window.ovOpenTrainer=function(tk){
   var cal='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">'+legend+'</div>'+
     '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">'+
     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(function(x){return '<div style="text-align:center;font-size:10px;color:rgba(255,255,255,.35);font-weight:700">'+x+'</div>';}).join('')+cells+'</div>';
-  var listHtml='<div style="overflow-x:auto;margin-top:16px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:rgba(255,255,255,.35);text-align:left">'+
-    ['Date','Time','Batch','Course','Type','Status','P / A','Marked By / At'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08)">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
+  var listHtml=allSess.length?'<div style="overflow-x:auto;margin-top:16px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:rgba(255,255,255,.35);text-align:left">'+
+    ['Date','Time','Batch','Course','Type','Status','P / A','Marked By / At'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
     allSess.map(function(s){ var st=_OV[s.status]||_OV.scheduled;
       var paStr=(s.status==='completed'||s.status==='absent'||s.status==='inprogress')&&(s.present+s.absent>0)?(s.present+' / '+s.absent):'—';
       return '<tr style="border-bottom:1px solid rgba(255,255,255,.04)">'+
-        '<td style="padding:7px 8px;color:rgba(255,255,255,.7)">'+s.date.slice(8)+' '+new Date(s.date+'T00:00:00').toLocaleDateString('en',{month:'short'})+'</td>'+
-        '<td style="padding:7px 8px;color:rgba(255,255,255,.45)">'+_ovFmt(s.startMin)+' – '+_ovFmt(s.startMin+s.dur)+'</td>'+
+        '<td style="padding:7px 8px;color:rgba(255,255,255,.7);white-space:nowrap">'+s.date.slice(8)+' '+new Date(s.date+'T00:00:00').toLocaleDateString('en',{month:'short'})+'</td>'+
+        '<td style="padding:7px 8px;color:rgba(255,255,255,.45);white-space:nowrap">'+_ovFmt(s.startMin)+' – '+_ovFmt(s.startMin+s.dur)+'</td>'+
         '<td style="padding:7px 8px;color:#f1f5f9">'+esc(s.batch)+'</td>'+
         '<td style="padding:7px 8px;color:rgba(255,255,255,.45)">'+esc(s.course||'—')+'</td>'+
-        '<td style="padding:7px 8px;color:rgba(255,255,255,.45)">'+s.ctype+'</td>'+
+        '<td style="padding:7px 8px;color:rgba(255,255,255,.45);white-space:nowrap">'+s.ctype+'</td>'+
         '<td style="padding:7px 8px"><span class="ov-pill" style="background:'+st.c+'22;color:'+st.c+'">'+st.l+'</span></td>'+
         '<td style="padding:7px 8px;color:rgba(255,255,255,.55)">'+paStr+'</td>'+
-        '<td style="padding:7px 8px;color:rgba(255,255,255,.4)">'+(s.markedAt?(esc(s.markedBy||'—')+' · '+_ovFmtDT(s.markedAt)):'—')+'</td></tr>';
-    }).join('')+'</tbody></table></div>';
+        '<td style="padding:7px 8px;color:rgba(255,255,255,.4);white-space:nowrap">'+(s.markedAt?(esc(s.markedBy||'—')+' · '+_ovFmtDT(s.markedAt)):'—')+'</td></tr>';
+    }).join('')+'</tbody></table></div>':'<div style="text-align:center;padding:40px 20px;color:rgba(255,255,255,.3)">No sessions in '+mLabel+'</div>';
   document.getElementById('ov-dd-body').innerHTML=cal+listHtml;
+  document.getElementById('ov-dd-body').scrollTop=0;
+}
+window.ovOpenTrainer=async function(tk){
+  if(!_ovData) return;
+  _ovDDTrainerKey=tk;
+  if(_ovMode==='today'){
+    _ovDDMonth=_ovDay.slice(0,7);
+    _ovMode='monthly'; _ovMonth=_ovDDMonth;
+    var em=document.getElementById('ov-month'); if(em) em.value=_ovMonth;
+    var dayNav=document.getElementById('ov-day-nav'); if(dayNav) dayNav.style.display='none';
+    var moNav=document.getElementById('ov-month-nav'); if(moNav) moNav.style.display='flex';
+    var bT=document.getElementById('ov-btn-today'); if(bT) bT.classList.remove('ov-mode-active');
+    var bM=document.getElementById('ov-btn-monthly'); if(bM) bM.classList.add('ov-mode-active');
+    document.getElementById('modalOvTrainer').classList.add('on');
+    document.getElementById('ov-dd-body').innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">Loading month…</div>';
+    await ovLoad();
+  } else {
+    _ovDDMonth=_ovMonth;
+  }
+  _ovRenderDD();
   document.getElementById('modalOvTrainer').classList.add('on');
 };
 
