@@ -5462,7 +5462,7 @@ function renderTrainerAvailabilityView(){
     // One pass through the host/conflict resolver (see computeAvailSlotStates) instead of a
     // per-slot findOccupyingBatch that couldn't tell a real booking from an overlap spillover.
     const states = computeAvailSlotStates(t.id, mySlots, _availBatchesForOccupancy);
-    const freeCount = states.filter(x => x.state === 'free').length;
+    const freeCount = states.filter((x,i) => x.state === 'free' && _acadSlotDays(mySlots[i]).length > 0).length;
     const tNameJs = esc(t.name).replace(/'/g,"\\'");
     const rows = mySlots.length ? mySlots.map((s, idx) => {
       const label = `${_formatTime12(s.start_time)} – ${_formatTime12(s.end_time)}`;
@@ -5501,7 +5501,9 @@ function renderTrainerAvailabilityView(){
       const _needsDays = !_sd.length;
       const _dayPrefix = _sdLbl ? `<span style="color:var(--tx3)">${esc(_sdLbl)}</span> • ` : '';
       const _legacyBadge = _needsDays ? `<span class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3)" title="This legacy slot has no weekdays — Edit to set them">Needs Days</span>` : '';
-      return `<div style="${_availRowStyle(_needsDays?'148,163,184':_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${_dayPrefix}${esc(label)}</span><span style="display:flex;align-items:center;gap:8px">${_legacyBadge}<span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
+      return _needsDays
+        ? `<div style="${_availRowStyle('148,163,184')}"><span style="font-size:12.5px;color:var(--tx)">${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3)" title="This slot has no weekdays configured — Edit to set them">Needs Days</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`
+        : `<div style="${_availRowStyle(_AVAIL_GREEN)}"><span style="font-size:12.5px;color:var(--tx);cursor:pointer;flex:1" onclick="openAssignSlot('${t.id}','${tNameJs}','${s.start_time}','${s.end_time}')">${_dayPrefix}${esc(label)}</span><span style="display:flex;align-items:center;gap:8px"><span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span><button class="act-btn" onclick="event.stopPropagation();editAvailabilitySlot('${s.id}')">Edit</button><button class="act-btn" onclick="event.stopPropagation();removeAvailabilitySlot('${s.id}')">Remove</button></span></div>`;
     }).join('') : '';
     // EVERY active booking is manageable, for EVERY trainer — not only those with a declared
     // availability slot behind it. A class assigned to a trainer who never declared recurring
@@ -5614,11 +5616,17 @@ function renderMyAvailabilityList(){
     // Free — show this slot's OWN declared days (§2); legacy day-less rows flagged "Needs Days" (§11).
     const _sd = _acadSlotDays(s), _sdLbl = _acadDaysLabel(_sd), _needsDays = !_sd.length;
     const _dayPrefix = _sdLbl ? `<span style="color:var(--tx3)">${esc(_sdLbl)}</span> • ` : '';
-    const _legacyBadge = _needsDays ? `<span class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3)" title="This legacy slot has no weekdays — Edit to set them">Needs Days</span>` : '';
-    return `<div style="${_availRowStyle(_needsDays?'148,163,184':_AVAIL_GREEN)}">
+    if (_needsDays) return `<div style="${_availRowStyle('148,163,184')}">
+      <span style="font-size:12.5px;color:var(--tx)">${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="badge" style="background:rgba(255,255,255,.06);color:var(--tx3)" title="This slot has no weekdays configured — Edit to set them">Needs Days</span>
+        <button class="act-btn" onclick="editAvailabilitySlot('${s.id}')">Edit</button>
+        <button class="act-btn" onclick="removeAvailabilitySlot('${s.id}')">Remove</button>
+      </span></div>`;
+    return `<div style="${_availRowStyle(_AVAIL_GREEN)}">
       <span style="font-size:12.5px;color:var(--tx)">${_dayPrefix}${esc(label)}${s.effective_until?` · until ${esc(s.effective_until)}`:''}</span>
       <span style="display:flex;align-items:center;gap:8px">
-        ${_legacyBadge}<span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span>
+        <span class="badge" style="background:rgba(16,185,129,.15);color:var(--green)">Free</span>
         <button class="act-btn" onclick="editAvailabilitySlot('${s.id}')">Edit</button>
         <button class="act-btn" onclick="removeAvailabilitySlot('${s.id}')">Remove</button>
       </span></div>`;
@@ -7558,11 +7566,52 @@ function _beOnScheduleFieldChanged(){
   _beRefreshAvailableTrainers(prevTrainer);
   _autoCalcBatchEndDate('be');
 }
-// Canonical, backend-driven trainer list for the schedule currently set in the form — same RPC
-// Create Batch's refreshAvailableTrainersForTime() calls, just with p_exclude_batch_id so this
-// batch's own active row is never counted as a conflict against itself. Keeps the previously
-// selected trainer if they're still valid for the edited schedule; clears and warns if not
-// (spec part 6: "Current trainer is unavailable for the updated schedule.").
+async function _beDiagnoseNoTrainers(hour, duration, days, courseName){
+  const reasons = [];
+  try {
+    const hourMin = (parseInt(hour.split(':')[0])*60 + parseInt(hour.split(':')[1]||0));
+    const endMin = hourMin + (duration||60);
+    const qualified = trainersQualifiedFor(courseName, null);
+    const allQualIds = new Set(qualified.map(t=>String(t.id)));
+    const allActive = _allActiveTrainers || [];
+    const notQualified = allActive.filter(t => !allQualIds.has(String(t.id)));
+    if (courseName && allActive.length && !qualified.length) {
+      reasons.push('No trainers are qualified for course "'+esc(courseName)+'". Update teachable courses in trainer profiles.');
+    } else if (courseName && notQualified.length) {
+      const names = notQualified.slice(0,3).map(t=>t.name).join(', ');
+      reasons.push((notQualified.length>3?names+' + '+(notQualified.length-3)+' more':names)+': not qualified for "'+esc(courseName)+'".');
+    }
+    let availRows = _allAvailability || [];
+    if (!availRows.length) {
+      try { const {data}=await sb.from('trainer_availability').select('*').eq('is_active',true); availRows=data||[]; } catch(e){}
+    }
+    qualified.forEach(t => {
+      const tid = String(t.id);
+      const mySlots = availRows.filter(a => String(a.trainer_id)===tid && a.is_active!==false);
+      const coveringSlots = mySlots.filter(s => {
+        const sMin = parseInt(s.start_time.split(':')[0])*60 + parseInt(s.start_time.split(':')[1]||0);
+        const eMin = parseInt(s.end_time.split(':')[0])*60 + parseInt(s.end_time.split(':')[1]||0);
+        return sMin <= hourMin && eMin >= endMin;
+      });
+      if (!coveringSlots.length) {
+        reasons.push(esc(t.name)+': no availability slot covering this time.');
+        return;
+      }
+      const withDays = coveringSlots.filter(s => s.days && s.days.trim());
+      if (!withDays.length) {
+        reasons.push(esc(t.name)+': has '+_formatTime12(hour)+' slot but weekdays not configured — edit in Coach Availability.');
+        return;
+      }
+      if (days && days.length) {
+        const missingDays = days.filter(d => !withDays.some(s => s.days && s.days.toLowerCase().includes(d.toLowerCase())));
+        if (missingDays.length) {
+          reasons.push(esc(t.name)+': not available on '+missingDays.join(', ')+' at this time.');
+        }
+      }
+    });
+  } catch(e) { console.warn('diagnose:', e); }
+  return reasons.length ? reasons.map(r => '<div style="margin-bottom:2px">'+r+'</div>').join('') : 'No trainers available for this schedule.';
+}
 async function _beRefreshAvailableTrainers(preferTrainerId){
   const sel = document.getElementById('be_trainer');
   if (!sel || !_editBatch) return;
@@ -7593,13 +7642,13 @@ async function _beRefreshAvailableTrainers(preferTrainerId){
   renderTrainerOptions(sel, available, stillValid ? preferTrainerId : null);
   sel.disabled = !available.length;
   const conflictEl = document.getElementById('be_conflict');
-  if (preferTrainerId && !stillValid) {
+  if (preferTrainerId && !stillValid && available.length) {
     sel.value = '';
     conflictEl.style.display = ''; conflictEl.style.color = 'var(--yellow)';
     conflictEl.textContent = 'Current trainer is unavailable for the updated schedule. Pick another trainer below.';
   } else if (!available.length) {
     conflictEl.style.display = ''; conflictEl.style.color = 'var(--yellow)';
-    conflictEl.textContent = 'No trainers available for this schedule.';
+    conflictEl.innerHTML = await _beDiagnoseNoTrainers(hour, duration, days, courseName);
   } else {
     conflictEl.style.display = 'none';
   }
