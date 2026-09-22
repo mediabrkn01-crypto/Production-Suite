@@ -2316,6 +2316,7 @@ async function loadLive(){
     _otoCompByBatch[o.batch_id].total++;
     if (o.status === 'completed') _otoCompByBatch[o.batch_id].completed++;
   }); } catch(e){}
+  window._acadOtoCompByBatch = _otoCompByBatch;
   // Count enrolled (non-Dropped) students per batch for OTO requirement calc
   const _otoStudentCountByBatchId = {};
   Object.values(map).forEach(b => {
@@ -2461,6 +2462,20 @@ async function loadLive(){
   // without a page refresh, per the spec's real-time requirement.
   if (typeof _acadPopulateLiveFilters === 'function') _acadPopulateLiveFilters();
   renderLiveBatchCards();
+}
+function _acadRecalcOtoFields(){
+  const batches = window._liveActiveBatches;
+  if (!batches || typeof courseById === 'undefined') return;
+  const ocomp = window._acadOtoCompByBatch || {};
+  batches.forEach(b => {
+    const _crs = b._courseId && courseById[b._courseId];
+    b._otoRequired = (_crs && !b.elite && _crs.type === 'group') ? (+_crs.oto_sessions_required || 0) : 0;
+    if (b._otoRequired > 0 && b._batchId) {
+      const _od = ocomp[b._batchId];
+      b._otoDone = _od ? _od.completed : 0;
+      b._otoTotal = b.students.length * b._otoRequired;
+    }
+  });
 }
 // LIVE BATCH FILTERS (Trainer/Batch/Course) \u2014 options are always real backend data, never
 // hardcoded: Trainer from the trainers table (active only), Course from the courses table
@@ -3462,6 +3477,7 @@ async function boot(){
   // real Academic Head until something else happened to re-render later. Re-running it here,
   // once both are guaranteed done, makes the split correct on first paint every time,
   // regardless of which loader actually won the race.
+  _acadRecalcOtoFields();
   if (typeof _acadPopulateLiveFilters === 'function') _acadPopulateLiveFilters();
   if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
   if (isHead) { buildDayChips(); typeChanged(); } // prime the Create Batch tab so it's ready on first visit
@@ -4051,6 +4067,7 @@ async function _acadRealtimeRefresh(){
   // Same race/fix as boot()'s own identical Promise.all (see the comment there) — loadLive()
   // can render its cards before loadTrainerView() has set window._myTrainerId, which the My
   // Assigned Batches / Other Trainers' Batches split needs.
+  _acadRecalcOtoFields();
   if (typeof _acadPopulateLiveFilters === 'function') _acadPopulateLiveFilters();
   if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
   await loadAcadDashboard();
