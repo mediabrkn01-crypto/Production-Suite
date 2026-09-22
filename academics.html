@@ -5182,7 +5182,11 @@ function isBatchCurrentlyActive(b){
   // findOccupyingBatchInRange/get_available_trainers path; the recurring grid deliberately
   // shows the slot as spoken-for whenever ANY committed active batch occupies that weekday-
   // agnostic time window, which is the safe direction to err for a planning view.
-  if (b.expected_completion_date && todayStr > b.expected_completion_date) return false; // ended -> auto free
+  // Auto-free past expected_completion_date ONLY for non-active statuses. A batch still
+  // explicitly status='active' keeps occupying its slot even if the estimated end date passed
+  // (the date was an estimate; the batch is delayed, not finished). Truly finished batches are
+  // already caught above by status/completed_at/_acadFinishedBatchNames checks.
+  if (b.expected_completion_date && todayStr > b.expected_completion_date && _st !== 'active') return false;
   return true;
 }
 // Does trainerId have a currently-active batch whose real [start, start+duration) window
