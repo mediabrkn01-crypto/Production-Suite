@@ -809,6 +809,7 @@ details[open] .rawsum::before{content:'▾ '}
             <select id="live_filter_trainer" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Trainers</option></select>
             <select id="live_filter_batch" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Batches</option></select>
             <select id="live_filter_course" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Courses</option></select>
+            <select id="live_filter_status" style="flex:1;min-width:120px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="renderLiveBatchCards()"><option value="">All Statuses</option><option value="active">Active</option><option value="frozen">Frozen</option></select>
           </div>
           <div id="liveBatches" class="loading">Loading…</div>
           <div id="liveBatchPager" style="margin-top:14px"></div>
@@ -1813,6 +1814,35 @@ details[open] .rawsum::before{content:'▾ '}
   </div>
 </div></div>
 
+<!-- Freeze Batch modal (standalone 1:1 only, Head only) -->
+<div class="modal-bg" id="modalFreezeBatch"><div class="modal" style="width:460px">
+  <h3 style="display:flex;align-items:center;gap:8px"><span style="color:#f59e0b">&#10052;</span> Freeze Batch</h3>
+  <div id="fb_info" style="margin-bottom:12px"></div>
+  <div class="att-fld"><span class="att-lbl">Freeze Start Date</span><input id="fb_start" type="date"/></div>
+  <div class="att-fld"><span class="att-lbl">Expected Resume Date</span><input id="fb_resume" type="date"/></div>
+  <div class="att-fld"><span class="att-lbl">Reason (optional)</span><textarea id="fb_reason" rows="2" style="width:100%" placeholder="e.g. Student traveling, exam preparation…"></textarea></div>
+  <div id="fb_error" style="display:none;font-size:11px;color:#f87171;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:7px;padding:6px 10px;margin-top:8px"></div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('freezeBatch')">Cancel</button>
+    <button class="btn-save" onclick="confirmFreezeBatch()" style="background:linear-gradient(135deg,#f59e0b,#d97706)">Confirm Freeze</button>
+  </div>
+</div></div>
+
+<!-- Resume Batch modal (frozen 1:1 only, Head only) -->
+<div class="modal-bg" id="modalResumeBatch"><div class="modal" style="width:480px">
+  <h3 style="display:flex;align-items:center;gap:8px"><span style="color:#10b981">&#9654;</span> Resume Batch</h3>
+  <div id="rb_info" style="margin-bottom:12px"></div>
+  <div id="rb_freeze_details" style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#fbbf24"></div>
+  <div class="att-fld"><span class="att-lbl">Resume Date</span><input id="rb_date" type="date"/></div>
+  <div class="att-fld"><span class="att-lbl">Trainer</span><select id="rb_trainer" style="width:100%" onchange="_rbCheckAvailability()"><option value="">Loading…</option></select></div>
+  <div id="rb_avail" style="display:none;font-size:11px;border-radius:7px;padding:6px 10px;margin-top:8px"></div>
+  <div id="rb_error" style="display:none;font-size:11px;color:#f87171;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:7px;padding:6px 10px;margin-top:8px"></div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('resumeBatch')">Cancel</button>
+    <button class="btn-save" id="rb_confirm_btn" onclick="confirmResumeBatch()">Confirm Resume</button>
+  </div>
+</div></div>
+
 <!-- Emergency trainer reassignment (spec parts 3/4/5) — same canonical get_available_trainers()
      RPC Create Batch/Edit Batch already use for backend-validated availability, keyed to this
      batch's OWN saved schedule and excluding itself so it can never conflict with its own
@@ -2306,7 +2336,8 @@ async function loadLive(){
   // students while the trainers row itself is "Laura and philip") — id is the only reliable key.
   const inactiveTrainerIds = new Set((trainerStatusResult.data||[]).filter(t=>t.status==='inactive').map(t=>String(t.id)));
   const batchIdByName = {}, batchTrainerIdByName = {}, batchCourseIdByName = {};
-  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; });
+  const batchFreezeData = {};
+  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; if(b.status==='frozen') batchFreezeData[b.name]={freeze_start_date:b.freeze_start_date,freeze_resume_date:b.freeze_resume_date,freeze_reason:b.freeze_reason,frozen_at:b.frozen_at,freeze_previous_trainer_id:b.freeze_previous_trainer_id}; });
   window._acadBatchIdByName = batchIdByName;
   // OTO completion map: batchId → completed count. Used by isBatchFinished to block
   // auto-completion until all OTO sessions are done.
@@ -2452,7 +2483,7 @@ async function loadLive(){
   // split Student Attendance into "My Assigned Batches" / "Other Trainers' Batches" for an
   // Academic Head, who is also a working Trainer with their own teaching load (spec: keep
   // that split ID-based, never by trainer name text).
-  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); const _crs = b._courseId && courseById[b._courseId]; b._otoRequired = (_crs && !b.elite && _crs.type === 'group') ? (+_crs.oto_sessions_required || 0) : 0; if (b._otoRequired > 0 && b._batchId) { const _od = _otoCompByBatch[b._batchId]; b._otoDone = _od ? _od.completed : 0; b._otoTotal = b.students.length * b._otoRequired; } });
+  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); const _crs = b._courseId && courseById[b._courseId]; b._otoRequired = (_crs && !b.elite && _crs.type === 'group') ? (+_crs.oto_sessions_required || 0) : 0; if (b._otoRequired > 0 && b._batchId) { const _od = _otoCompByBatch[b._batchId]; b._otoDone = _od ? _od.completed : 0; b._otoTotal = b.students.length * b._otoRequired; } const _fd = batchFreezeData[b.raw||b.name]; if(_fd){b._isFrozen=true;b._freezeData=_fd;} });
   previous.forEach(b => b._progress = progressOf(b));
   window._liveActiveBatches = active;
   window._livePreviousBatches = previous;
@@ -2537,11 +2568,13 @@ function renderLiveBatchCards(){
   const trainerFilter = document.getElementById('live_filter_trainer')?.value || '';
   const batchFilter = document.getElementById('live_filter_batch')?.value || '';
   const courseFilter = document.getElementById('live_filter_course')?.value || '';
-  const anyFilterActive = !!(term || trainerFilter || batchFilter || courseFilter);
+  const statusFilter = document.getElementById('live_filter_status')?.value || '';
+  const anyFilterActive = !!(term || trainerFilter || batchFilter || courseFilter || statusFilter);
   const matchesFilters = b => _acadBatchMatchesSearch(b, term)
     && (!trainerFilter || String(b._trainerId||'') === trainerFilter)
     && (!batchFilter || String(b._batchId||'') === batchFilter)
-    && (!courseFilter || String(b._courseId||'') === courseFilter);
+    && (!courseFilter || String(b._courseId||'') === courseFilter)
+    && (!statusFilter || (statusFilter==='frozen' ? b._isFrozen : !b._isFrozen));
   const active = window._liveActiveBatches || [];
   const previous = window._livePreviousBatches || [];
   const el = document.getElementById('liveBatches');
@@ -2572,7 +2605,7 @@ function renderLiveBatchCards(){
     // Reset to page 1 whenever the search/filters (or page size) change — never on an unrelated
     // realtime re-render (same signature → keep the current page).
     const size = window._liveBatchPageSize || 10;
-    const sig = term + '|' + trainerFilter + '|' + batchFilter + '|' + courseFilter + '|' + size;
+    const sig = term + '|' + trainerFilter + '|' + batchFilter + '|' + courseFilter + '|' + statusFilter + '|' + size;
     if (window._liveFilterSig !== sig) { window._liveBatchPage = 1; window._liveFilterSig = sig; }
     const pages = Math.max(1, Math.ceil(total / size));
     let page = window._liveBatchPage || 1; if (page > pages) page = pages; if (page < 1) page = 1; window._liveBatchPage = page;
@@ -2656,18 +2689,20 @@ function card(b,i,isPrevious){
   // when the click would have worked anyway, instead of a delegated Trainer only being able
   // to discover write access existed by clicking a button that was never there.
   const isHead = isCurrentlyAcademicHead();
+  const isFrozen = !!b._isFrozen;
   const {total,dn,pct,base,marked} = b._progress || {total:0,dn:0,pct:0,base:0,marked:0};
   const nameHtml = (isHead&&b.elite) ? `<span style="cursor:pointer" onclick="openStu(${i},0)">${esc(b.name)}</span>` : esc(b.name);
   const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
     b.students.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:var(--tx2);${isHead?'cursor:pointer':''}" ${isHead?`onclick="openStu(${i},${j})"`:''}><span class="acad-avatar-dot" style="width:18px;height:18px;font-size:8.5px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(s.name)}</span>`).join('')
   }</div>`;
-  return `<div class="card" style="margin-bottom:12px;padding:16px;text-align:left">
+  return `<div class="card" style="margin-bottom:12px;padding:16px;text-align:left${isFrozen?';border:2px solid #f59e0b':''}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:15px;font-weight:700;color:var(--tx)">${nameHtml}</span>
           <span class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.28)">${esc(b.prog||'\u2014')}</span>
           ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : '<span class="badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28)">Group</span>'}
+          ${isFrozen ? '<span class="badge" style="background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.28)">FROZEN</span>' : ''}
         </div>
         <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
         ${(function(){ var sch=(window._acadSchedByName&&window._acadSchedByName[b.raw])||{}; return (sch.days||sch.time)?`<div style="font-size:11px;color:var(--tx3);margin-top:3px"><i data-lucide="calendar-clock" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> ${esc(sch.days||'Schedule')}${sch.time?(' \u00b7 '+esc(sch.time)):''}</div>`:''; })()}
@@ -2676,12 +2711,17 @@ function card(b,i,isPrevious){
         ${isPrevious ? `<span class="badge b-active">Completed</span>
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
+        ` : isFrozen ? `
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
+        ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openResumeBatch('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#10b981;font-weight:700">Resume Batch</button>`:''}
         ` : `
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
         ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
+        ${isHead&&b.elite&&b.raw?`<button class="act-btn" onclick="openFreezeBatch(${i})" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b">Freeze</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
         ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
         `}
@@ -2691,6 +2731,7 @@ function card(b,i,isPrevious){
          gone inactive but this batch still has unfinished sessions; historical
          attendance/progress is completely untouched by this, it's a visibility flag only. -->
     ${(!isPrevious && b._trainerInactive) ? `<div class="mhint" style="margin-top:8px;color:var(--yellow);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:7px 10px">\u26a0 Trainer Inactive \u2014 Academic Head Action Required</div>` : ''}
+    ${(isFrozen && b._freezeData) ? `<div class="mhint" style="margin-top:8px;color:#fbbf24;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:7px 10px">&#10052; Classes paused: ${esc(b._freezeData.freeze_start_date||'')} \u2192 ${esc(b._freezeData.freeze_resume_date||'TBD')}${b._freezeData.freeze_reason?' \u00b7 '+esc(b._freezeData.freeze_reason):''}</div>` : ''}
     <!-- BUG FIX, CONFIRMED LIVE \u2014 "Complete Batch" (and Edit Batch) silently did nothing on
          this "Unassigned" card, no error, no modal. Root cause: this card is a synthetic
          grouping of students with no batch_id/batch_name at all (b.raw === '') \u2014 there is no
@@ -2814,6 +2855,139 @@ async function confirmCompleteBatch(){
     window._cbInFlight = false;
   }
 }
+
+/* ── FREEZE / RESUME for standalone 1:1 batches ── */
+let _freezeBatchIdx = null;
+function openFreezeBatch(i){
+  const b = window._liveBatches[i]; if(!b||!b.elite) return;
+  if(!isCurrentlyAcademicHead()){ showToast('error','Only Academic Head can freeze batches.'); return; }
+  _freezeBatchIdx = i;
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('fb_info').innerHTML =
+    '<div style="font-size:13px;color:var(--tx)"><b>'+esc(b.name)+'</b></div>'+
+    '<div style="font-size:11.5px;color:var(--tx3);margin-top:2px">Trainer: '+esc(b.trainer)+'</div>';
+  document.getElementById('fb_start').value = today;
+  document.getElementById('fb_resume').value = '';
+  document.getElementById('fb_reason').value = '';
+  document.getElementById('fb_error').style.display = 'none';
+  document.getElementById('modalFreezeBatch').classList.add('on');
+}
+async function confirmFreezeBatch(){
+  const b = window._liveBatches[_freezeBatchIdx]; if(!b) return;
+  const startDate = document.getElementById('fb_start').value;
+  const resumeDate = document.getElementById('fb_resume').value;
+  const reason = document.getElementById('fb_reason').value.trim();
+  const errEl = document.getElementById('fb_error');
+  if(!startDate){ errEl.textContent='Freeze start date required.'; errEl.style.display=''; return; }
+  if(!resumeDate){ errEl.textContent='Expected resume date required.'; errEl.style.display=''; return; }
+  if(resumeDate <= startDate){ errEl.textContent='Resume date must be after freeze start date.'; errEl.style.display=''; return; }
+  errEl.style.display='none';
+  const batchId = window._acadBatchIdByName && window._acadBatchIdByName[b.raw||b.name];
+  if(!batchId){ showToast('error','Batch ID not found.'); return; }
+  try {
+    const { error } = await sb.from('batches').update({
+      status: 'frozen',
+      freeze_start_date: startDate,
+      freeze_resume_date: resumeDate,
+      freeze_reason: reason || null,
+      frozen_at: new Date().toISOString()
+    }).eq('id', batchId);
+    if(error) throw error;
+    closeModal('freezeBatch');
+    showToast('success', esc(b.name)+' frozen until '+resumeDate);
+    await loadLive();
+  } catch(e) { errEl.textContent = 'Failed to freeze: '+(e.message||e); errEl.style.display=''; }
+}
+
+let _resumeBatchId = null, _resumeBatchData = null;
+async function openResumeBatch(batchId){
+  if(!isCurrentlyAcademicHead()){ showToast('error','Only Academic Head can resume batches.'); return; }
+  _resumeBatchId = batchId;
+  document.getElementById('rb_info').innerHTML = '<div class="loading">Loading…</div>';
+  document.getElementById('rb_freeze_details').innerHTML = '';
+  document.getElementById('rb_error').style.display = 'none';
+  document.getElementById('rb_avail').style.display = 'none';
+  document.getElementById('modalResumeBatch').classList.add('on');
+  try {
+    const { data: batch } = await sb.from('batches').select('*').eq('id', batchId).maybeSingle();
+    if(!batch){ document.getElementById('rb_info').innerHTML='Batch not found.'; return; }
+    _resumeBatchData = batch;
+    document.getElementById('rb_info').innerHTML =
+      '<div style="font-size:13px;color:var(--tx)"><b>'+esc(batch.name)+'</b></div>'+
+      '<div style="font-size:11.5px;color:var(--tx3);margin-top:2px">'+esc(batch.programme||'')+'</div>';
+    document.getElementById('rb_freeze_details').innerHTML =
+      '<div><b>Frozen since:</b> '+(batch.freeze_start_date||'—')+'</div>'+
+      '<div><b>Expected resume:</b> '+(batch.freeze_resume_date||'—')+'</div>'+
+      (batch.freeze_reason?'<div><b>Reason:</b> '+esc(batch.freeze_reason)+'</div>':'');
+    document.getElementById('rb_date').value = batch.freeze_resume_date || new Date().toISOString().slice(0,10);
+    const { data: trainers } = await sb.from('trainers').select('id,name').eq('status','active').order('name');
+    const sel = document.getElementById('rb_trainer');
+    sel.innerHTML = (trainers||[]).map(t =>
+      '<option value="'+t.id+'"'+(String(t.id)===String(batch.trainer_id)?' selected':'')+'>'+esc(t.name)+'</option>'
+    ).join('');
+    _rbCheckAvailability();
+  } catch(e) { document.getElementById('rb_info').innerHTML = 'Error loading batch.'; }
+}
+async function _rbCheckAvailability(){
+  const el = document.getElementById('rb_avail');
+  const batch = _resumeBatchData; if(!batch){ el.style.display='none'; return; }
+  const trainerId = document.getElementById('rb_trainer').value;
+  if(!trainerId){ el.style.display='none'; return; }
+  if(String(trainerId) === String(batch.trainer_id)){ el.innerHTML='<span style="color:#10b981">Same trainer — no conflict check needed.</span>'; el.style.display=''; el.style.background='rgba(16,185,129,.06)'; el.style.border='1px solid rgba(16,185,129,.2)'; el.style.color='#10b981'; return; }
+  try {
+    const allBatches = await _allBatchesForAvailabilityCheck();
+    const startMin = _timeToMin(batch.time_slot);
+    const dur = batch.class_duration_minutes || 60;
+    const endMin = startMin + dur;
+    const resumeDate = document.getElementById('rb_date').value;
+    const endDate = batch.expected_completion_date || '2099-12-31';
+    const days = (batch.day_pattern||'').split(',').map(d=>d.trim()).filter(Boolean);
+    const conflict = findExactRangeConflict(trainerId, startMin, endMin, allBatches.filter(b=>b.id!==batch.id), resumeDate, endDate, days);
+    if(conflict){
+      el.innerHTML = '<span style="color:#f87171">Conflict with: '+esc(conflict.name||'another batch')+'</span>';
+      el.style.background='rgba(248,113,113,.06)'; el.style.border='1px solid rgba(248,113,113,.2)'; el.style.color='#f87171';
+    } else {
+      el.innerHTML = '<span style="color:#10b981">Trainer available for this schedule.</span>';
+      el.style.background='rgba(16,185,129,.06)'; el.style.border='1px solid rgba(16,185,129,.2)'; el.style.color='#10b981';
+    }
+    el.style.display='';
+  } catch(e) { el.innerHTML='Could not check availability.'; el.style.display=''; el.style.background='rgba(255,255,255,.05)'; el.style.border='1px solid rgba(255,255,255,.1)'; el.style.color='var(--tx3)'; }
+}
+function _timeToMin(slot){
+  if(!slot) return 0;
+  const m = slot.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if(!m) return 0;
+  let h = +m[1], mi = +m[2];
+  if(m[3]){
+    const ampm = m[3].toUpperCase();
+    if(ampm==='PM'&&h<12) h+=12;
+    if(ampm==='AM'&&h===12) h=0;
+  }
+  return h*60+mi;
+}
+async function confirmResumeBatch(){
+  const batch = _resumeBatchData; if(!batch) return;
+  const resumeDate = document.getElementById('rb_date').value;
+  const newTrainerId = document.getElementById('rb_trainer').value;
+  const errEl = document.getElementById('rb_error');
+  if(!resumeDate){ errEl.textContent='Resume date required.'; errEl.style.display=''; return; }
+  errEl.style.display='none';
+  const updates = { status: 'active' };
+  if(String(newTrainerId) !== String(batch.trainer_id)){
+    updates.trainer_id = newTrainerId;
+    updates.freeze_previous_trainer_id = batch.trainer_id;
+    const sel = document.getElementById('rb_trainer');
+    updates.trainer_name = sel.options[sel.selectedIndex]?.textContent || '';
+  }
+  try {
+    const { error } = await sb.from('batches').update(updates).eq('id', batch.id);
+    if(error) throw error;
+    closeModal('resumeBatch');
+    showToast('success', esc(batch.name)+' resumed');
+    await loadLive();
+  } catch(e) { errEl.textContent='Failed to resume: '+(e.message||e); errEl.style.display=''; }
+}
+
 // EMERGENCY TRAINER REASSIGNMENT (spec parts 3/4/5/6/7). Populates the New Trainer dropdown
 // from the SAME canonical get_available_trainers() RPC Create/Edit Batch already use — the
 // batch's own saved day_pattern/time_slot/duration/date-range define "available for this exact
@@ -3082,6 +3256,7 @@ function _attRenderOTO() {
 }
 async function saveAtt(){
   const b=window._attBatch; if(!b)return;
+  if(b._isFrozen){showToast('error','This batch is frozen. Resume it before marking attendance.');return;}
   const num=parseInt(document.getElementById('att_num').value)||1;
   const date=document.getElementById('att_date').value||new Date().toISOString().slice(0,10);
   // BUG FIX: batch_name must be the REAL batch_name (b.raw) — see the identical comment in
@@ -3861,6 +4036,7 @@ function notifMeta(n) {
     case 'team_leave': return { icon: 'calendar-days', color: 'orange', label: '🌴 Team Member On Leave', onClick: "acadSwitchTab('team')" };
     case 'team_wfh': return { icon: 'home', color: 'purple', label: '🏠 Team Member Working From Home', onClick: "acadSwitchTab('team')" };
     case 'new_batch': return { icon: 'calendar-plus', color: 'green', label: '🆕 New Batch Assigned', onClick: "acadSwitchTab('live')" };
+    case 'freeze_resume': return { icon: 'snowflake', color: 'orange', label: '❄️ Batch Resume Reminder', onClick: "acadSwitchTab('live')" };
     case 'announcement': {
       const priorityLabel = n.priority === 'urgent' ? '🚨 Urgent Announcement' : n.priority === 'important' ? '⚠️ Important Announcement' : '📢 Company Announcement';
       return { icon: 'megaphone', color: n.priority === 'urgent' ? 'red' : 'orange', label: priorityLabel, onClick: "acadSwitchTab('announcements')" };
@@ -4005,14 +4181,27 @@ async function _acadCheckDeptLeaveNotifications(){
     localStorage.setItem(key, JSON.stringify([...known].slice(-300)));
   } catch(e) { /* best-effort */ }
 }
+async function _acadCheckFreezeResumeReminders(){
+  if(typeof isCurrentlyAcademicHead!=='function'||!isCurrentlyAcademicHead()) return;
+  try {
+    var today=new Date().toISOString().slice(0,10);
+    var tom=new Date(); tom.setDate(tom.getDate()+1); var tomISO=tom.toISOString().slice(0,10);
+    var {data}=await sb.from('batches').select('id,name,freeze_resume_date').eq('status','frozen').not('freeze_resume_date','is',null);
+    (data||[]).forEach(function(b){
+      if(b.freeze_resume_date===today) addNotif('freeze_resume','Batch "'+b.name+'" resume date is TODAY',null,'fr_'+b.id);
+      else if(b.freeze_resume_date===tomISO) addNotif('freeze_resume','Batch "'+b.name+'" resumes tomorrow ('+b.freeze_resume_date+')',null,'fr_'+b.id);
+    });
+  } catch(e){ console.warn('freeze resume notif:',e); }
+}
 async function _acadCheckNotifications(){
   const now = Date.now();
-  if (now - _acadLastNotifPoll < 20000) return; // throttled, same as common.js's own 20s poll
+  if (now - _acadLastNotifPoll < 20000) return;
   _acadLastNotifPoll = now;
   await Promise.all([
     _acadCheckTaskNotifications(),
     _acadCheckMyLeaveStatusNotifications(),
     _acadCheckDeptLeaveNotifications(),
+    _acadCheckFreezeResumeReminders(),
   ]);
 }
 // Entry point — called from boot() WITHOUT await (see there). loadNotifs()/renderNotifBadges()
@@ -4966,7 +5155,7 @@ function isBatchCurrentlyActive(b){
   // one change frees the slot consistently in My Availability, Head Trainer Availability and the
   // Free-Slot views. History is untouched — the batch row still exists in Finished Batches.
   const _st = String(b.status || '').toLowerCase();
-  if (_st === 'completed' || _st === 'finished' || _st === 'closed' || _st === 'cancelled' || _st === 'archived') return false;
+  if (_st === 'completed' || _st === 'finished' || _st === 'closed' || _st === 'cancelled' || _st === 'archived' || _st === 'frozen') return false;
   if (b.completed_at) return false;
   // BUG FIX: a batch finished purely by session-progress (loadLive()'s own isBatchFinished —
   // baseline + marked attendance reaching sessions_total, with no explicit status field ever
@@ -7013,6 +7202,10 @@ async function openBatchDetails(id){
   });
   _doneDates.forEach(d => { if (!_statByDate[d]) _statByDate[d]='done'; });       // dated sessions off the recurrence
   _absentDates.forEach(d => { if (!_statByDate[d]) _statByDate[d]='absent'; });
+  if (b.freeze_start_date && (b.status==='frozen' || b.frozen_at)) {
+    const _fzStart = b.freeze_start_date, _fzEnd = b.freeze_resume_date || '9999-12-31';
+    Object.keys(_statByDate).forEach(d => { if(d>=_fzStart && d<=_fzEnd && (_statByDate[d]==='missing'||_statByDate[d]==='sched')) _statByDate[d]='frozen'; });
+  }
   const _bdRemain = _sched;                                   // future successful sessions still to run
   const _bdPct = _bdTotal ? Math.round(_completed/_bdTotal*100) : 0;
   // next class = first future scheduled occurrence
@@ -7086,10 +7279,11 @@ async function openBatchDetails(id){
         leave:         {bg:'#3b0764', bd:'#a855f7 2px solid',   tx:'#e9d5ff', glow:'0 0 7px rgba(168,85,247,.45)'},
         holiday:       {bg:'#083344', bd:'#06b6d4 2px solid',   tx:'#a5f3fc', glow:'0 0 7px rgba(6,182,212,.45)'},
         officialEvent: {bg:'#500724', bd:'#ec4899 2px solid',   tx:'#fbcfe8', glow:'0 0 7px rgba(236,72,153,.45)'},
+        frozen:        {bg:'#78350f', bd:'#f59e0b 1.5px solid', tx:'#fde68a', glow:''},
       };
       const _cs = _C[st] || {bg:'rgba(255,255,255,.03)', bd:'1px solid rgba(255,255,255,.07)', tx:'rgba(255,255,255,.2)', glow:''};
       const tally = _byDate[iso] ? (' · '+_byDate[iso].p+' Present / '+_byDate[iso].ab+' Absent') : '';
-      const lbl = st==='done'?'Completed':(st==='sched'?'Scheduled':(st==='absent'?'All Students Absent — Makeup Session Required':(st==='missing'?'Attendance Not Marked — class time passed, not submitted':(st==='leave'?('Trainer Leave — '+esc(b.trainers?.name||'Trainer')+' · session not counted, makeup added to end'):(st==='holiday'?(_holInfo?(_holInfo.type+' — '+_holInfo.name+' · no class, makeup added to end'):'Company Holiday — no class, makeup added to end'):(st==='officialEvent'?('Official Company Event — '+(_evTitle||'Event')+' · no class, makeup added to end'):''))))));
+      const lbl = st==='frozen'?('Frozen — classes paused'+(b.freeze_reason?' · '+b.freeze_reason:'')):(st==='done'?'Completed':(st==='sched'?'Scheduled':(st==='absent'?'All Students Absent — Makeup Session Required':(st==='missing'?'Attendance Not Marked — class time passed, not submitted':(st==='leave'?('Trainer Leave — '+esc(b.trainers?.name||'Trainer')+' · session not counted, makeup added to end'):(st==='holiday'?(_holInfo?(_holInfo.type+' — '+_holInfo.name+' · no class, makeup added to end'):'Company Holiday — no class, makeup added to end'):(st==='officialEvent'?('Official Company Event — '+(_evTitle||'Event')+' · no class, makeup added to end'):'')))))));
       cells += '<div title="'+iso+(st?(' · '+lbl+tally):'')+'" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:'+(st?'800':'500')+';border-radius:6px;background:'+_cs.bg+';border:'+_cs.bd+';color:'+_cs.tx+';box-shadow:'+(_cs.glow||'none')+'">'+d+'</div>';
     }
     const mk = x => x.slice(0,7)===ym;
@@ -7100,8 +7294,9 @@ async function openBatchDetails(id){
     const holN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='holiday').length;
     const evN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='officialEvent').length;
     const leaveN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='leave').length;
+    const frozenN = Object.keys(_statByDate).filter(x=>mk(x)&&_statByDate[x]==='frozen').length;
     const _pill = (n,col,tip) => n ? '<span title="'+tip+'" style="display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:700;color:'+col+';background:'+col+'18;border:1px solid '+col+'44;border-radius:4px;padding:0 5px;line-height:18px">'+n+'</span> ' : '';
-    return '<div style="flex:0 0 auto;width:250px"><div style="font-size:12px;font-weight:800;color:var(--tx);margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:4px">'+esc(label)+' '+_pill(doneN,'#22c55e',doneN+' session'+(doneN===1?'':'s')+' completed')+_pill(schN,'#3b82f6',schN+' session'+(schN===1?'':'s')+' scheduled')+_pill(absN,'#f59e0b',absN+' day'+(absN===1?'':'s')+' all students absent — makeup added')+_pill(missN,'#ef4444',missN+' day'+(missN===1?'':'s')+' attendance not marked')+_pill(leaveN,'#a855f7',leaveN+' day'+(leaveN===1?'':'s')+' trainer leave')+_pill(holN,'#06b6d4',holN+' company/public holiday'+(holN===1?'':'s'))+_pill(evN,'#ec4899',evN+' official no-class event'+(evN===1?'':'s'))+'</div>'
+    return '<div style="flex:0 0 auto;width:250px"><div style="font-size:12px;font-weight:800;color:var(--tx);margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:4px">'+esc(label)+' '+_pill(doneN,'#22c55e',doneN+' session'+(doneN===1?'':'s')+' completed')+_pill(schN,'#3b82f6',schN+' session'+(schN===1?'':'s')+' scheduled')+_pill(absN,'#f59e0b',absN+' day'+(absN===1?'':'s')+' all students absent — makeup added')+_pill(missN,'#ef4444',missN+' day'+(missN===1?'':'s')+' attendance not marked')+_pill(leaveN,'#a855f7',leaveN+' day'+(leaveN===1?'':'s')+' trainer leave')+_pill(holN,'#06b6d4',holN+' company/public holiday'+(holN===1?'':'s'))+_pill(evN,'#ec4899',evN+' official no-class event'+(evN===1?'':'s'))+_pill(frozenN,'#f59e0b',frozenN+' day'+(frozenN===1?'':'s')+' frozen')+'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:9px;color:var(--tx3);text-align:center;margin-bottom:3px">'+['S','M','T','W','T','F','S'].map(x=>'<div>'+x+'</div>').join('')+'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">'+cells+'</div></div>';
   };
@@ -7918,7 +8113,7 @@ async function ovLoad(){
   var clEl=document.getElementById('ov-class-list'); if(clEl) clEl.innerHTML='';
   try {
     var res=await Promise.all([
-      sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at'),
+      sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,freeze_start_date,freeze_resume_date'),
       sb.from('trainers').select('id,name,type,hr_employee_id,status'),
       _acadFetchAllRows('attendance','batch_name,session_date,session_num,status,marked_by,created_at',q=>q.gte('session_date',rangeStart).lte('session_date',rangeEnd)),
       mediaHrDB.from('hr_leave_requests').select('employee_id,start_date,end_date,status').eq('status','approved')
@@ -7945,6 +8140,10 @@ async function ovLoad(){
     batches.forEach(function(b){
       if(b.programme) courses[b.programme]=1;
       var occ=[]; try{ occ=generateBatchOccurrences(b,rangeStart,rangeEnd)||[]; }catch(e){}
+      if(b.status==='frozen' && b.freeze_start_date){
+        var _fzEnd=b.freeze_resume_date||'9999-12-31';
+        occ=occ.filter(function(o){ return o.date<b.freeze_start_date || o.date>_fzEnd; });
+      }
       if(!occ.length) return;
       var trRec=trById[String(b.trainer_id)];
       // Separate unassigned (no matching trainer record)
@@ -8365,7 +8564,7 @@ function findOccupyingBatchInRange(trainerId, startTime, endTime, batches, reqSt
   const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (['inactive','completed','finished','frozen'].includes(b.status) || _isBatchDeleted(b)) return false;
     // Same fix as isBatchCurrentlyActive() — a batch finished purely by session progress
     // (no explicit status field) must not keep counting as occupying here either.
     if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
@@ -8380,7 +8579,7 @@ function findExactTimeConflict(trainerId, time24, batches, reqStart, reqEnd) {
   const min = _timeToMinutes(time24);
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (['inactive','completed','finished','frozen'].includes(b.status) || _isBatchDeleted(b)) return false;
     if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
     if (_batchStartMinutes(b) !== min) return false;
     return _dateRangesOverlap(b.start_date, b.expected_completion_date, reqStart, reqEnd);
@@ -8402,7 +8601,7 @@ async function _allBatchesForAvailabilityCheck() {
 function findExactRangeConflict(trainerId, startMin, endMin, batches, reqStart, reqEnd, reqDays) {
   return (batches||[]).find(b => {
     if (String(b.trainer_id) !== String(trainerId)) return false;
-    if (['inactive','completed','finished'].includes(b.status) || _isBatchDeleted(b)) return false;
+    if (['inactive','completed','finished','frozen'].includes(b.status) || _isBatchDeleted(b)) return false;
     if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
     if (reqDays && reqDays.length) {
       const bDays = (b.day_pattern||'').split(/[,·]/).map(s=>s.trim());
