@@ -4130,7 +4130,7 @@ async function _acadCheckTaskNotifications(){
   try {
     const hadBaseline = localStorage.getItem('be_acad_known_tasks_' + window._myTrainerId) !== null;
     let known; try { known = new Set(JSON.parse(localStorage.getItem('be_acad_known_tasks_' + window._myTrainerId) || '[]')); } catch(e) { known = new Set(); }
-    const { data: tasks } = await sb.from('assignments').select('id,task,status,assigned_by').eq('trainer_id', window._myTrainerId).order('created_at', { ascending: false }).limit(20);
+    const { data: tasks } = await sb.from('trainer_tasks').select('id,task,status,assigned_by').eq('trainer_id', window._myTrainerId).order('created_at', { ascending: false }).limit(20);
     (tasks || []).forEach(t => {
       if (!known.has(t.id)) {
         if (hadBaseline) addNotif('new_task', t.task, t.assigned_by || null, t.id);
@@ -6701,7 +6701,7 @@ async function loadHeadView(){
   window._allBatchesFull = batches;
   renderBatchTable();
 
-  const { data: assigns } = await sb.from('assignments').select('*, trainers(name)').order('created_at',{ascending:false});
+  const { data: assigns } = await sb.from('trainer_tasks').select('*, trainers(name)').order('created_at',{ascending:false});
   document.getElementById('assignTable').innerHTML = (assigns||[]).map(a => `
     <tr><td data-label="Trainer">${a.trainers?.name||'—'}</td><td data-label="Task">${a.task}</td><td data-label="Due">${a.due_date||'—'}</td><td data-label="Status">${a.status}</td></tr>
   `).join('') || '<tr><td colspan="4" class="empty">No tasks assigned</td></tr>';
@@ -6731,7 +6731,7 @@ async function loadTrainerView(){
   // Attendance tab (loadLive()), which already scopes to a Trainer's own batches. This
   // function's remaining job is My Assigned Tasks + window._myTrainerId, both still needed
   // elsewhere (renderMyTasks, saveAtt/Mark Attendance's own trainer-id lookups, etc).
-  const { data: tasks } = await sb.from('assignments').select('*').eq('trainer_id', myTrainer.id).order('due_date');
+  const { data: tasks } = await sb.from('trainer_tasks').select('*').eq('trainer_id', myTrainer.id).order('due_date');
   window._myTasksAll = tasks||[];
   renderMyTasks('all');
 
@@ -8941,7 +8941,7 @@ async function saveAssignment(){
   const task = document.getElementById('m_a_task').value.trim();
   const due_date = document.getElementById('m_a_due').value || null;
   if(!task) return;
-  await sb.from('assignments').insert({ trainer_id, task, due_date, assigned_by: currentUser.name });
+  await sb.from('trainer_tasks').insert({ trainer_id, task, due_date, assigned_by: currentUser.name });
   closeModal('assignment'); document.getElementById('m_a_task').value='';
   await loadHeadView();
 }
