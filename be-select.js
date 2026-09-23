@@ -383,6 +383,25 @@
     '.be-cal-foot{display:flex;justify-content:space-between;margin-top:10px;}',
     '.be-cal-link{background:none;border:none;color:var(--be-sel-accent,#ff6b06);cursor:pointer;font-size:12.5px;padding:4px 2px;}',
     '.be-cal-link:hover{text-decoration:underline;}',
+    '.be-cal-title-btn{background:rgba(255,255,255,.06);border:1px solid var(--be-sel-border,rgba(255,255,255,.12));color:var(--be-sel-text,#f2f3f7);font-weight:700;font-size:13px;cursor:pointer;padding:4px 10px;border-radius:6px;transition:background .15s,border-color .15s;}',
+    '.be-cal-title-btn:hover{background:rgba(255,255,255,.12);border-color:var(--be-sel-accent,#ff6b06);}',
+    '.be-cal-title-btn::after{content:"\\25BE";margin-left:4px;font-size:9px;opacity:.5;}',
+    '.be-cal-mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 0;}',
+    '.be-cal-mcell{text-align:center;padding:10px 4px;border-radius:8px;cursor:pointer;font-size:12.5px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);transition:background .12s;}',
+    '.be-cal-mcell:hover{background:rgba(255,255,255,.1);}',
+    '.be-cal-mcell[data-current]{border-color:rgba(255,107,6,.4);color:var(--be-sel-accent,#ff6b06);}',
+    '.be-cal-mcell[data-selected]{background:var(--be-sel-accent,#ff6b06);color:#fff;font-weight:700;border-color:transparent;}',
+    '.be-cal-ygrid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:4px 0;}',
+    '.be-cal-ycell{text-align:center;padding:8px 2px;border-radius:8px;cursor:pointer;font-size:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);transition:background .12s;}',
+    '.be-cal-ycell:hover{background:rgba(255,255,255,.1);}',
+    '.be-cal-ycell[data-current]{border-color:rgba(255,107,6,.4);color:var(--be-sel-accent,#ff6b06);}',
+    '.be-cal-ycell[data-selected]{background:var(--be-sel-accent,#ff6b06);color:#fff;font-weight:700;border-color:transparent;}',
+    '.be-cal-ylist{max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent;}',
+    '.be-cal-ysearch{margin-bottom:8px;}',
+    '.be-cal-ysearch input{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--be-sel-border,rgba(255,255,255,.12));border-radius:8px;padding:7px 10px;color:var(--be-sel-text,#f2f3f7);font-size:12px;outline:none;font-family:inherit;}',
+    '.be-cal-ysearch input:focus{border-color:var(--be-sel-accent,#ff6b06);}',
+    '.be-cal-back{background:none;border:none;color:var(--be-sel-muted,#8b93ad);cursor:pointer;font-size:12px;padding:4px 2px;}',
+    '.be-cal-back:hover{color:var(--be-sel-text,#f2f3f7);}',
     '@media (max-width:640px){.be-cal{width:min(320px,92vw);}}'
   ].join('');
   var st = document.createElement('style'); st.textContent = CSS; (document.head || document.documentElement).appendChild(st);
@@ -391,7 +410,8 @@
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var DOW = ['S','M','T','W','T','F','S'];
 
-  var cal = null, calGrid = null, calTitle = null, openInput = null, viewY = 0, viewM = 0;
+  var cal = null, calGrid = null, calTitle = null, openInput = null, viewY = 0, viewM = 0, calView = 'days';
+  var MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   function pad(n) { return String(n).padStart(2, '0'); }
   function toISO(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
@@ -415,17 +435,26 @@
       '<div class="be-cal-head"><span class="be-cal-title"></span><span class="be-cal-nav">' +
       '<button type="button" class="be-cal-btn" data-prev>&#8249;</button>' +
       '<button type="button" class="be-cal-btn" data-next>&#8250;</button></span></div>' +
-      '<div class="be-cal-grid" data-grid></div>' +
+      '<div class="be-cal-body" data-body></div>' +
       '<div class="be-cal-foot"><button type="button" class="be-cal-link" data-clear>Clear</button>' +
       '<button type="button" class="be-cal-link" data-today>Today</button></div>';
     calTitle = cal.querySelector('.be-cal-title');
-    calGrid = cal.querySelector('[data-grid]');
+    calGrid = cal.querySelector('[data-body]');
     document.body.appendChild(cal);
-    cal.querySelector('[data-prev]').addEventListener('click', function () { shift(-1); });
-    cal.querySelector('[data-next]').addEventListener('click', function () { shift(1); });
+    cal.querySelector('[data-prev]').addEventListener('click', function () { navPrev(); });
+    cal.querySelector('[data-next]').addEventListener('click', function () { navNext(); });
     cal.querySelector('[data-clear]').addEventListener('click', function () { setValue(''); closeCal(); });
-    cal.querySelector('[data-today]').addEventListener('click', function () { var n = new Date(); viewY = n.getFullYear(); viewM = n.getMonth(); pick(n.getFullYear(), n.getMonth(), n.getDate()); });
+    cal.querySelector('[data-today]').addEventListener('click', function () { var n = new Date(); viewY = n.getFullYear(); viewM = n.getMonth(); calView = 'days'; pick(n.getFullYear(), n.getMonth(), n.getDate()); });
     cal.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  }
+
+  function navPrev() {
+    if (calView === 'days') { shift(-1); }
+    else if (calView === 'months') { viewY--; renderCal(); }
+  }
+  function navNext() {
+    if (calView === 'days') { shift(1); }
+    else if (calView === 'months') { viewY++; renderCal(); }
   }
 
   function shift(delta) { viewM += delta; if (viewM < 0) { viewM = 11; viewY--; } else if (viewM > 11) { viewM = 0; viewY++; } renderCal(); }
@@ -442,8 +471,18 @@
 
   function renderCal() {
     if (!openInput) return;
-    calTitle.textContent = MONTHS[viewM] + ' ' + viewY;
+    if (calView === 'months') { renderMonthsView(); return; }
+    if (calView === 'years') { renderYearsView(); return; }
+    renderDaysView();
+  }
+
+  function renderDaysView() {
+    calTitle.innerHTML = '<button type="button" class="be-cal-title-btn" data-show-months>' + MONTHS[viewM] + '</button> <button type="button" class="be-cal-title-btn" data-show-years>' + viewY + '</button>';
+    calTitle.querySelector('[data-show-months]').addEventListener('click', function () { calView = 'months'; renderCal(); });
+    calTitle.querySelector('[data-show-years]').addEventListener('click', function () { calView = 'years'; renderCal(); });
     calGrid.innerHTML = '';
+    calGrid.className = 'be-cal-grid';
+    calGrid.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:2px;';
     DOW.forEach(function (d) { var el = document.createElement('div'); el.className = 'be-cal-dow'; el.textContent = d; calGrid.appendChild(el); });
     var first = new Date(viewY, viewM, 1).getDay();
     var daysIn = new Date(viewY, viewM + 1, 0).getDate();
@@ -468,6 +507,66 @@
       else el.addEventListener('click', function () { pick(yy, mm, dd); });
       calGrid.appendChild(el);
     });
+  }
+
+  function renderMonthsView() {
+    calTitle.innerHTML = '<button type="button" class="be-cal-title-btn" data-show-years>' + viewY + '</button>';
+    calTitle.querySelector('[data-show-years]').addEventListener('click', function () { calView = 'years'; renderCal(); });
+    calGrid.innerHTML = '';
+    calGrid.className = 'be-cal-mgrid';
+    calGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 0;';
+    var sel = parseISO(openInput ? openInput.value : '');
+    var now = new Date();
+    for (var i = 0; i < 12; i++) {
+      var el = document.createElement('div');
+      el.className = 'be-cal-mcell';
+      el.textContent = MONTHS_SHORT[i];
+      if (now.getFullYear() === viewY && now.getMonth() === i) el.setAttribute('data-current', '');
+      if (sel && sel.y === viewY && sel.m === i) el.setAttribute('data-selected', '');
+      (function (month) { el.addEventListener('click', function () { viewM = month; calView = 'days'; renderCal(); }); })(i);
+      calGrid.appendChild(el);
+    }
+  }
+
+  function renderYearsView() {
+    calTitle.innerHTML = '<button type="button" class="be-cal-back" data-back-days>&#8592; Back</button>';
+    calTitle.querySelector('[data-back-days]').addEventListener('click', function () { calView = 'days'; renderCal(); });
+    calGrid.innerHTML = '';
+    calGrid.className = '';
+    calGrid.style.cssText = '';
+    var searchWrap = document.createElement('div');
+    searchWrap.className = 'be-cal-ysearch';
+    searchWrap.innerHTML = '<input type="text" placeholder="Search year…" autocomplete="off"/>';
+    calGrid.appendChild(searchWrap);
+    var listWrap = document.createElement('div');
+    listWrap.className = 'be-cal-ylist';
+    var grid = document.createElement('div');
+    grid.className = 'be-cal-ygrid';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:4px 0;';
+    var sel = parseISO(openInput ? openInput.value : '');
+    var now = new Date();
+    var centerY = viewY;
+    var startY = centerY - 50, endY = centerY + 20;
+    for (var y = endY; y >= startY; y--) {
+      var el = document.createElement('div');
+      el.className = 'be-cal-ycell';
+      el.textContent = y;
+      if (y === now.getFullYear()) el.setAttribute('data-current', '');
+      if (sel && sel.y === y) el.setAttribute('data-selected', '');
+      (function (yr) { el.addEventListener('click', function () { viewY = yr; calView = 'months'; renderCal(); }); })(y);
+      grid.appendChild(el);
+    }
+    listWrap.appendChild(grid);
+    calGrid.appendChild(listWrap);
+    var searchInput = searchWrap.querySelector('input');
+    searchInput.addEventListener('input', function () {
+      var q = this.value.trim();
+      var btns = grid.querySelectorAll('.be-cal-ycell');
+      for (var i = 0; i < btns.length; i++) { btns[i].style.display = !q || btns[i].textContent.indexOf(q) !== -1 ? '' : 'none'; }
+    });
+    setTimeout(function () { searchInput.focus(); }, 50);
+    var scrollTo = grid.querySelector('[data-selected]') || grid.querySelector('[data-current]');
+    if (scrollTo) setTimeout(function () { scrollTo.scrollIntoView({ block: 'center', behavior: 'auto' }); }, 60);
   }
 
   function setValue(iso) {
@@ -497,6 +596,7 @@
     if (input.disabled) return;
     if (!cal) buildCal();
     openInput = input;
+    calView = 'days';
     var p = parseISO(input.value) || (function () { var n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; })();
     viewY = p.y; viewM = p.m;
     input.__beDateTrigger.setAttribute('data-open', '');
