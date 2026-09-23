@@ -2283,6 +2283,7 @@ async function loadLive(){
   // sessions done per batch (by attendance)
   const doneMap={};
   const statusMap={};
+  const completedAtMap={};
   const totalMap={};window._acadTotalMap=totalMap; // real sessions_total per batch — see progressOf()
   const deletedNames=new Set();
   // PERFORMANCE: the attendance query and the batches/baseline query below are independent of
@@ -2360,6 +2361,7 @@ async function loadLive(){
   try{
     (baseResult.data||[]).forEach(function(b){
       statusMap[b.name]=b.status||null;
+      if(b.completed_at) completedAtMap[b.name]=b.completed_at;
       // BUG FIX (rule: "do not hardcode progress percentages" — confirmed live, root cause of
       // a batch reading FINISHED in one place while genuinely still active): progressOf() used
       // to guess each batch's required session count as b.elite?20:32, a hardcoded stand-in for
@@ -2437,7 +2439,10 @@ async function loadLive(){
   const isBatchCardFinished = b => {
     const status = statusMap[b.raw||b.name];
     if (status !== 'completed' && status !== 'finished') return false;
-    // Guard: a stale "completed" status from a legacy import or premature click must not
+    // Explicit completion (completed_at set) = admin-closed, trust it even if some sessions
+    // were never individually logged (business rule: administrative closure != 100% attendance).
+    if (completedAtMap[b.raw||b.name]) return true;
+    // Guard: a stale "completed" status from a legacy import (no completed_at) must not
     // override the real session count. Require delivered >= required when total is configured.
     const { dn, total } = progressOf(b);
     return !total || dn >= total;
