@@ -5836,18 +5836,109 @@ async function removeMyAvailability(id){ return removeAvailabilitySlot(id); }
 // pre-filled, in edit mode; save re-validates (end>start, no exact-duplicate of another of
 // that trainer's slots — the same identity the DB unique index now enforces).
 let _editingAvailSlotId = null;
+// Returns [{day, batchName}] for days that have an active batch overlapping the given time range
+// for this trainer. Used to show which days are booked and to disable them in the day picker.
+function _findBookedDaysForSlot(trainerId, startTime, endTime, excludeSlotId){
+  const startMin = _timeToMinutes(startTime), endMin = _timeToMinutes(endTime);
+  const bookedDays = [];
+  const seen = new Set();
+  (_availBatchesForOccupancy||[]).forEach(b => {
+    if (String(b.trainer_id) !== String(trainerId)) return;
+    if (!isBatchCurrentlyActive(b)) return;
+    const bStart = _batchStartMinutes(b);
+    if (bStart === null) return;
+    const bEnd = bStart + (b.class_duration_minutes || 60);
+    if (!(bStart < endMin && bEnd > startMin)) return;
+    const bDays = _acadParseDays(b.day_pattern || (typeof _acadEffectiveDayPattern === 'function' ? _acadEffectiveDayPattern(b) : ''));
+    bDays.forEach(d => {
+      const key = d + '|' + b.id;
+      if (!seen.has(key)) { seen.add(key); bookedDays.push({ day: d, batchName: b.name || 'Active batch' }); }
+    });
+  });
+  return bookedDays;
+}
+
 function editAvailabilitySlot(id){
   const slot = _acadFindAvailSlot(id);
   if (!slot) return;
   if (!_acadCanManageAvailSlot(slot)) { showToast('warning','You can only edit your own availability.'); return; }
-  const occ = findOccupyingBatch(slot.trainer_id, slot.start_time, slot.end_time, _availBatchesForOccupancy);
-  if (occ) { showToast('warning', `This slot is currently occupied by ${occ.name || 'an active batch'} — reassign or remove that booking before changing the slot’s hours.`, 7000); return; }
+  const bookedDays = _findBookedDaysForSlot(slot.trainer_id, slot.start_time, slot.end_time, id);
+  const bookedDaySet = new Set(bookedDays.map(x => x.day));
+  const allSlotDays = _acadSlotDays(slot);
+  const allBooked = allSlotDays.length > 0 && allSlotDays.every(d => bookedDaySet.has(d));
+  if (allBooked && allSlotDays.length === bookedDaySet.size) {
+    const names = [...new Set(bookedDays.map(x => x.batchName))].join(', ');
+    showToast('warning', `Every day in this slot is occupied by ${names} — reassign or remove those bookings before editing.`, 7000);
+    return;
+  }
   _editingAvailSlotId = id;
+  window._editAvailBookedDays = bookedDays;
   const startEl = document.getElementById('editAvailStart'), endEl = document.getElementById('editAvailEnd');
   startEl.dataset.time24 = slot.start_time; startEl.value = _formatTime12(slot.start_time);
   endEl.dataset.time24 = slot.end_time; endEl.value = _formatTime12(slot.end_time);
   _acadInitDayPickers();
-  _acadSetPickerDays('editAvailDaysWrap', _acadSlotDays(slot));
+  _acadSetPickerDays('editAvailDaysWrap', allSlotDays);
+  // Disable booked day chips and mark them visually
+  document.querySelectorAll('#editAvailDaysWrap .acad-day-chip').forEach(btn => {
+    const d = btn.dataset.day;
+    const booking = bookedDays.find(x => x.day === d);
+    if (booking) {
+      btn.classList.add('active');
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      btn.style.cursor = 'not-allowed';
+      btn.title = `Booked: ${booking.batchName}`;
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+      btn.title = '';
+    }
+  });
+  // Show booked-days info banner
+  let banner = document.getElementById('editAvailBookedInfo');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'editAvailBookedInfo';
+    banner.style.cssText = 'padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:10px;line-height:1.5';
+    const daysWrap = document.getElementById('editAvailDaysWrap');
+    daysWrap.parentNode.insertBefore(banner, daysWrap);
+  }
+  if (bookedDays.length) {
+    const byBatch = {};
+    bookedDays.forEach(x => { (byBatch[x.batchName] = byBatch[x.batchName] || []).push(x.day); });
+    const lines = Object.entries(byBatch).map(([name, days]) => `<b>${days.join(', ')}</b>: ${name}`).join('<br>');
+    banner.innerHTML = `<span style="color:var(--brand-3)">⚠</span> Some days are booked and locked:<br>${lines}`;
+    banner.style.background = 'rgba(255,5,82,.08)';
+    banner.style.border = '1px solid rgba(255,5,82,.2)';
+    banner.style.color = 'var(--tx)';
+    banner.hidden = false;
+  } else {
+    banner.hidden = true;
+  }
+  // If there are booked days, lock time inputs to prevent changing hours
+  if (bookedDays.length) {
+    startEl.disabled = true; startEl.style.opacity = '0.5'; startEl.style.cursor = 'not-allowed';
+    startEl.onclick = null; startEl.removeAttribute('onclick');
+    endEl.disabled = true; endEl.style.opacity = '0.5'; endEl.style.cursor = 'not-allowed';
+    endEl.onclick = null; endEl.removeAttribute('onclick');
+    let timeBanner = document.getElementById('editAvailTimeInfo');
+    if (!timeBanner) {
+      timeBanner = document.createElement('div');
+      timeBanner.id = 'editAvailTimeInfo';
+      timeBanner.style.cssText = 'font-size:11px;color:var(--tx3);margin-top:6px';
+      endEl.parentNode.parentNode.appendChild(timeBanner);
+    }
+    timeBanner.textContent = 'Time cannot be changed while some days have active bookings.';
+    timeBanner.hidden = false;
+  } else {
+    startEl.disabled = false; startEl.style.opacity = ''; startEl.style.cursor = 'pointer';
+    startEl.setAttribute('onclick', "openClockPicker('editAvailStart')");
+    endEl.disabled = false; endEl.style.opacity = ''; endEl.style.cursor = 'pointer';
+    endEl.setAttribute('onclick', "openClockPicker('editAvailEnd')");
+    const timeBanner = document.getElementById('editAvailTimeInfo');
+    if (timeBanner) timeBanner.hidden = true;
+  }
   document.getElementById('editAvailTrainerName').textContent =
     (_availTrainers.find(t=>String(t.id)===String(slot.trainer_id))||{}).name
     || (String(slot.trainer_id)===String(window._myTrainerId) ? (currentUser.name||'You') : 'Trainer');
@@ -5871,12 +5962,27 @@ async function saveEditedAvailabilitySlot(){
   if (dup) { showToast('warning','This trainer already has a declared slot at exactly that time.'); return; }
   const editDays = _acadReadPickerDays('editAvailDaysWrap');
   if (!editDays.length) { showToast('warning','Select at least one weekday for this slot.'); return; }
+  // Protect booked days: ensure none were removed (chips are disabled, but guard server-side too)
+  const bookedDays = window._editAvailBookedDays || [];
+  const editDaySet = new Set(editDays);
+  const droppedBooked = bookedDays.filter(x => !editDaySet.has(x.day));
+  if (droppedBooked.length) {
+    const dropped = droppedBooked.map(x => `${x.day} (${x.batchName})`).join(', ');
+    showToast('warning', `Cannot remove booked days: ${dropped}. Remove the booking first.`, 7000);
+    return;
+  }
+  // If time changed while booked days exist, block (UI already locks this, but guard here too)
+  if (bookedDays.length && (start !== slot.start_time || end !== slot.end_time)) {
+    showToast('warning', 'Cannot change slot time while some days have active bookings. Remove those bookings first.', 7000);
+    return;
+  }
   const btn = document.getElementById('editAvailSaveBtn'); if (btn) btn.disabled = true;
   try {
     const { error } = await sb.from('trainer_availability').update({ start_time: start, end_time: end, days: editDays.join(', ') }).eq('id', id);
     if (error) { showToast('error','Could not save slot: '+error.message); return; }
     document.getElementById('modalEditAvail').classList.remove('on');
     _editingAvailSlotId = null;
+    window._editAvailBookedDays = null;
     showToast('success','Availability updated');
     await loadAvailabilityTab();
   } catch(e) { showToast('error','Could not save slot: '+e.message); }
