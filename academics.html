@@ -234,6 +234,9 @@ tr.clickable{cursor:pointer}
 .att-row input:checked~.att-seg .seg-p{background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff}
 .att-row input:not(:checked)~.att-seg .seg-a{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff}
 .att-empty{color:var(--tx3);font-size:12.5px;text-align:center;padding:22px 0}
+.btn-mark-att{background:var(--gk);border:none;color:#fff;font-weight:700;font-size:12px;padding:7px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(255,107,6,.25);letter-spacing:.01em}
+.btn-mark-att:hover{filter:brightness(1.1);box-shadow:0 3px 12px rgba(255,107,6,.35)}
+.att-log-required{display:none;font-size:11.5px;color:#f59e0b;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:7px;padding:6px 10px;margin:8px 0 0}
 .warn-box{background:rgba(255,196,0,.06);border:1px solid rgba(255,196,0,.2);border-radius:12px;padding:14px 16px;font-size:12px;color:var(--tx2);margin-bottom:14px;line-height:1.6;}
 .warn-box b{color:var(--yellow);}
 .lv-note{font-size:11.5px;color:var(--tx3);line-height:1.6;margin-bottom:14px;}
@@ -1732,12 +1735,13 @@ details[open] .rawsum::before{content:'▾ '}
        this isn't about one specific student — old per-student rows from the previous Log a
        Session feature are untouched and still readable in Session History below. -->
   <div class="subhead" style="margin:14px 0 8px">Class Log / Today's Class Notes</div>
-  <textarea id="att_class_log" placeholder="What was taught in today's class? (topics covered, activities, homework, notes...)" style="min-height:80px;width:100%"></textarea>
+  <textarea id="att_class_log" placeholder="What was taught in today's class? (topics covered, activities, homework, notes...)" style="min-height:80px;width:100%" oninput="var w=document.getElementById('att_log_warn');if(w)w.style.display='none'"></textarea>
   </div>
   <div id="att_oto_section" style="display:none">
     <div id="att_oto_summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
     <div id="att_oto_students" style="max-height:400px;overflow-y:auto"></div>
   </div>
+  <div id="att_log_warn" class="att-log-required">Please complete the Class Log before submitting attendance.</div>
   <div class="modal-actions">
     <button class="btn-cancel" onclick="closeModal('att')">Cancel</button>
     <button class="btn-save" id="att_save_btn" onclick="saveAtt()">Save Attendance &amp; Class Log</button>
@@ -1800,6 +1804,12 @@ details[open] .rawsum::before{content:'▾ '}
   <h3 id="sessionHistoryTitle">Session History</h3>
   <div id="sessionHistoryList" style="max-height:420px;overflow:auto;margin:10px 0"></div>
   <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('sessionHistory')">Close</button></div>
+</div></div>
+
+<div class="modal-bg" id="modalBatchLogs"><div class="modal" style="width:580px;max-width:95vw">
+  <h3 id="batchLogsTitle">Class Logs</h3>
+  <div id="batchLogsList" style="max-height:calc(100vh - 260px);overflow:auto;margin:10px 0"></div>
+  <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('batchLogs')">Close</button></div>
 </div></div>
 
 <!-- Safe "Complete & Close Batch" workflow — canonical completion is decided server-side by
@@ -2718,6 +2728,7 @@ function card(b,i,isPrevious){
         ${isPrevious ? `<span class="badge b-active">Completed</span>
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
         ` : isFrozen ? `
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
@@ -2726,7 +2737,8 @@ function card(b,i,isPrevious){
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
         <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
-        <button class="act-btn" onclick="openAtt(${i})" style="background:var(--gk);border:none;color:#fff;font-weight:700">Mark Attendance</button>
+        <button class="act-btn btn-mark-att" onclick="openAtt(${i})">Mark Attendance</button>
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
         ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
         ${isHead&&b.elite&&b.raw?`<button class="act-btn" onclick="openFreezeBatch(${i})" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b">Freeze</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
@@ -3266,13 +3278,19 @@ async function saveAtt(){
   if(b._isFrozen){showToast('error','This batch is frozen. Resume it before marking attendance.');return;}
   const num=parseInt(document.getElementById('att_num').value)||1;
   const date=document.getElementById('att_date').value||new Date().toISOString().slice(0,10);
-  // BUG FIX: batch_name must be the REAL batch_name (b.raw) — see the identical comment in
-  // openAtt() above. Writing b.name here (the display key) was the actual root cause: every
-  // Elite/1:1 attendance row got saved under a batch_name no read-side query (doneMap,
-  // Finished Batches, Session History) could ever match, so real marked sessions never
-  // counted toward progress no matter how many were saved.
   const realBatchName = b.raw||b.name;
   const rows=b.students.map(function(s,j){return {batch_name:realBatchName,student_uin:s.uin,session_num:num,session_date:date,status:document.getElementById('att_'+j).checked?'present':'absent',marked_by:currentUser.name};});
+  // Mandatory class log validation — required when at least one student is present.
+  // All-absent / no students = class didn't happen, no teaching log needed.
+  const _anyPresent = rows.some(r => r.status === 'present');
+  const classLogText = document.getElementById('att_class_log').value.trim();
+  const warnEl = document.getElementById('att_log_warn');
+  if (_anyPresent && !classLogText) {
+    if (warnEl) { warnEl.style.display = 'block'; }
+    document.getElementById('att_class_log').focus();
+    return;
+  }
+  if (warnEl) warnEl.style.display = 'none';
   // BUG FIX (spec: "prevent duplicate session counting" / editing an already-marked session):
   // this used to be a bare insert — re-opening and re-saving a session_num that already had
   // attendance rows (editing it, not creating it) INSERTED a second set of rows instead of
@@ -3288,11 +3306,8 @@ async function saveAtt(){
   if (delErr) { showToast('error','Save failed: '+delErr.message); return; }
   const {error}=await sb.from('attendance').insert(rows);
   if(error){showToast('error','Save failed: '+error.message);return;}
-  // Class log \u2014 same `sessions` table the old standalone "Logs" tab used, one row per
-  // batch+date (student_id null), saved alongside attendance for the same batch/date/trainer/
-  // session per spec. Replaces (not stacks onto) any existing log for the same batch+date, so
-  // re-opening and re-saving the same day's attendance edits the log instead of duplicating it.
-  const classLogText = document.getElementById('att_class_log').value.trim();
+  // Class log \u2014 saved alongside attendance in `sessions` table (one row per batch+date,
+  // student_id null). Replaces any existing log for same batch+date on re-save.
   if (classLogText && window._attBatchId) {
     try {
       const { data: existing } = await sb.from('sessions').select('id').eq('batch_id', window._attBatchId).eq('session_date', date).is('student_id', null).maybeSingle();
@@ -3416,6 +3431,44 @@ async function openSessionHistoryFor(batchName){
       </div>`;
     }).join('') : '<div class="empty">No sessions recorded yet for this batch.</div>';
   } catch(e) { list.innerHTML = '<div class="empty">Could not load session history: '+esc(e.message)+'</div>'; }
+}
+async function openBatchLogs(batchId, rawBatchName, displayName){
+  document.getElementById('batchLogsTitle').textContent = 'Class Logs — ' + (displayName || rawBatchName || 'Batch');
+  const list = document.getElementById('batchLogsList');
+  list.innerHTML = '<div class="loading">Loading…</div>';
+  document.getElementById('modalBatchLogs').classList.add('on');
+  if (!batchId) { list.innerHTML = '<div class="empty">No batch selected.</div>'; return; }
+  try {
+    const lookupName = rawBatchName || displayName;
+    const [{ data: logRows }, attRows] = await Promise.all([
+      sb.from('sessions').select('session_date,notes,logged_by,created_at,type').eq('batch_id', batchId).is('student_id', null).order('session_date',{ascending:false}),
+      _acadFetchAllRows('attendance','session_date,session_num,status,marked_by',q=>q.eq('batch_name', lookupName))
+    ]);
+    const attByDate = {};
+    (attRows||[]).forEach(r => {
+      const d = attByDate[r.session_date] = attByDate[r.session_date] || { present:0, absent:0, session_num: r.session_num, marked_by: r.marked_by };
+      if (r.status === 'present') d.present++; else if (r.status === 'absent') d.absent++;
+      if (r.session_num) d.session_num = r.session_num;
+    });
+    const logs = (logRows||[]).filter(r => r.notes && r.notes.trim());
+    if (!logs.length) { list.innerHTML = '<div class="empty">No class logs recorded yet for this batch.</div>'; return; }
+    list.innerHTML = logs.map(r => {
+      const dateLabel = new Date(r.session_date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+      const att = attByDate[r.session_date];
+      const attText = att ? `${att.present} Present / ${att.absent} Absent` : '';
+      const sessNum = att && att.session_num ? 'Session ' + att.session_num : '';
+      const submittedAt = r.created_at ? new Date(r.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      return `<div class="section" style="margin-bottom:10px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+          <div><span style="font-weight:700;color:var(--tx)">${esc(dateLabel)}</span>${sessNum?` <span style="font-size:11px;color:var(--tx3);margin-left:6px">${esc(sessNum)}</span>`:''}</div>
+          <span style="font-size:11px;color:var(--tx3)">Trainer: ${esc(r.logged_by||'—')}</span>
+        </div>
+        ${attText ? `<div style="font-size:12px;color:var(--tx2);margin-top:4px">${esc(attText)}</div>` : ''}
+        <div style="font-size:12.5px;color:var(--tx);margin-top:8px;white-space:pre-wrap;line-height:1.5">${esc(r.notes)}</div>
+        ${submittedAt ? `<div style="font-size:10px;color:var(--tx3);margin-top:6px">Submitted: ${esc(submittedAt)}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) { list.innerHTML = '<div class="empty">Could not load logs: '+esc(e.message)+'</div>'; }
 }
 // Applies role-based visibility to every section now that they're split across tabs
 // instead of two big headView/trainerView containers — same three role tiers as before,
