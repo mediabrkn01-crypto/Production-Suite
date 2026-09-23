@@ -8369,54 +8369,77 @@ window.ovRender=function(){
   }
 };
 // ── Trainer drill-down modal ──────────────────────────────────────────────────
-var _ovDDTrainerKey=null, _ovDDMonth=null;
+var _ovDDTrainerKey=null, _ovDDMonth=null, _ovDDDay=null, _ovDDMode=null;
 window._ovDDNav=async function(dir){
-  if(!_ovDDMonth||!_ovDDTrainerKey) return;
-  var p=_ovDDMonth.split('-'), y=+p[0], m=+p[1]+dir;
-  if(m>12){y++;m=1;} if(m<1){y--;m=12;}
-  _ovDDMonth=y+'-'+String(m).padStart(2,'0');
-  _ovMode='monthly'; _ovMonth=_ovDDMonth;
-  var em=document.getElementById('ov-month'); if(em) em.value=_ovMonth;
-  document.getElementById('ov-dd-body').innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">Loading…</div>';
-  await ovLoad();
-  _ovRenderDD();
+  if(!_ovDDTrainerKey) return;
+  if(_ovDDMode==='today'){
+    if(!_ovDDDay) return;
+    var dt=new Date(_ovDDDay+'T00:00:00'); dt.setDate(dt.getDate()+dir);
+    _ovDDDay=dt.toISOString().slice(0,10);
+    var newMonth=_ovDDDay.slice(0,7);
+    if(newMonth!==_ovDay.slice(0,7)){
+      _ovDay=_ovDDDay; var ed=document.getElementById('ov-day'); if(ed) ed.value=_ovDay;
+      document.getElementById('ov-dd-body').innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">Loading…</div>';
+      await ovLoad();
+    }
+    _ovRenderDD();
+  } else {
+    if(!_ovDDMonth) return;
+    var p=_ovDDMonth.split('-'), y=+p[0], m=+p[1]+dir;
+    if(m>12){y++;m=1;} if(m<1){y--;m=12;}
+    _ovDDMonth=y+'-'+String(m).padStart(2,'0');
+    _ovMonth=_ovDDMonth;
+    var em=document.getElementById('ov-month'); if(em) em.value=_ovMonth;
+    document.getElementById('ov-dd-body').innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">Loading…</div>';
+    await ovLoad();
+    _ovRenderDD();
+  }
 };
 function _ovRenderDD(){
   if(!_ovData||!_ovDDTrainerKey) return;
-  var tk=_ovDDTrainerKey, month=_ovDDMonth;
+  var tk=_ovDDTrainerKey;
+  var isToday=_ovDDMode==='today';
+  var filterDay=isToday?_ovDDDay:null;
+  var month=isToday?(_ovDDDay||'').slice(0,7):_ovDDMonth;
   var todayISO=new Date().toISOString().slice(0,10);
   var now=new Date(); var nowMin=now.getHours()*60+now.getMinutes();
   var allSess=_ovData.sessions.filter(function(s){return String(s.tk)===String(tk);})
     .map(function(s){ var st=_ovResolve(s.date,s.att,s.lv,todayISO,nowMin,s.startMin,s.dur); return Object.assign({},s,{status:st}); })
-    .filter(function(s){ return s.date.slice(0,7)===month; })
+    .filter(function(s){ return isToday?(s.date===filterDay):(s.date.slice(0,7)===month); })
     .sort(function(a,b){return a.date===b.date?a.startMin-b.startMin:a.date.localeCompare(b.date);});
   var name=allSess.length?allSess[0].trainer:(_ovData.sessions.find(function(s){return String(s.tk)===String(tk);})||{}).trainer||'Trainer';
   var mc={completed:0,inprogress:0,missing:0,absent:0,leave:0};
   allSess.forEach(function(s){if(mc[s.status]!==undefined)mc[s.status]++;});
-  var mLabel=new Date(month+'-15').toLocaleDateString('en',{month:'long',year:'numeric'});
+  var periodLabel=isToday?new Date(filterDay+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):new Date(month+'-15').toLocaleDateString('en',{month:'long',year:'numeric'});
   var subtitle=allSess.length+' session(s)';
   if(mc.missing>0) subtitle+=' · <span style="color:#f87171;font-weight:700">'+mc.missing+' missing</span>';
   if(mc.absent>0) subtitle+=' · <span style="color:#fb923c">'+mc.absent+' absent</span>';
   if(mc.completed>0) subtitle+=' · <span style="color:#22c55e">'+mc.completed+' done</span>';
   if(mc.inprogress>0) subtitle+=' · <span style="color:#06b6d4">'+mc.inprogress+' in progress</span>';
   document.getElementById('ov-dd-title').innerHTML='<h3 style="margin:0">'+esc(name)+'</h3><div class="lv-note" style="margin-top:2px">'+subtitle+'</div>';
-  document.getElementById('ov-dd-month').textContent=mLabel;
-  var mb=_ovMonthBounds(month);
-  var byDate={}; allSess.forEach(function(s){(byDate[s.date]=byDate[s.date]||[]).push(s);});
-  var first=new Date(mb.y,mb.mo-1,1).getDay(); var cells='';
-  for(var i=0;i<first;i++) cells+='<div></div>';
-  var pr={missing:7,absent:6,leave:5,inprogress:4,scheduled:3,postponed:2,completed:1};
-  for(var d=1;d<=mb.days;d++){
-    var iso=month+'-'+String(d).padStart(2,'0'); var list=byDate[iso]||[]; var col='transparent',lbl='';
-    if(list.length){ var top=list.slice().sort(function(a,b){return (pr[b.status]||0)-(pr[a.status]||0);})[0]; col=_OV[top.status].c; lbl=list.length>1?(list.length+' classes'):_OV[top.status].l; }
-    cells+='<div class="ov-cell"'+(list.length?' style="border-color:'+col+'55;background:'+col+'14"':'')+'>'+
-      '<div style="font-weight:700;color:#f1f5f9">'+d+'</div>'+
-      (lbl?'<div style="color:'+col+';font-size:9.5px;font-weight:700;margin-top:2px">'+esc(lbl)+'</div>':'')+'</div>';
+  document.getElementById('ov-dd-month').textContent=periodLabel;
+  var prevBtn=document.getElementById('ov-dd-prev'); if(prevBtn) prevBtn.textContent=isToday?'‹ Prev Day':'‹ Prev';
+  var nextBtn=document.getElementById('ov-dd-next'); if(nextBtn) nextBtn.textContent=isToday?'Next Day ›':'Next ›';
+  var cal='';
+  if(!isToday){
+    var mb=_ovMonthBounds(month);
+    var byDate={}; allSess.forEach(function(s){(byDate[s.date]=byDate[s.date]||[]).push(s);});
+    var first=new Date(mb.y,mb.mo-1,1).getDay(); var cells='';
+    for(var i=0;i<first;i++) cells+='<div></div>';
+    var pr={missing:7,absent:6,leave:5,inprogress:4,scheduled:3,postponed:2,completed:1};
+    for(var d=1;d<=mb.days;d++){
+      var iso=month+'-'+String(d).padStart(2,'0'); var list=byDate[iso]||[]; var col='transparent',lbl='';
+      if(list.length){ var top=list.slice().sort(function(a,b){return (pr[b.status]||0)-(pr[a.status]||0);})[0]; col=_OV[top.status].c; lbl=list.length>1?(list.length+' classes'):_OV[top.status].l; }
+      cells+='<div class="ov-cell"'+(list.length?' style="border-color:'+col+'55;background:'+col+'14"':'')+'>'+
+        '<div style="font-weight:700;color:#f1f5f9">'+d+'</div>'+
+        (lbl?'<div style="color:'+col+';font-size:9.5px;font-weight:700;margin-top:2px">'+esc(lbl)+'</div>':'')+'</div>';
+    }
+    var legend=Object.keys(_OV).map(function(k){return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:rgba(255,255,255,.45)"><span style="width:9px;height:9px;border-radius:2px;background:'+_OV[k].c+'"></span>'+_OV[k].l+'</span>';}).join('');
+    cal='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">'+legend+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">'+
+      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(function(x){return '<div style="text-align:center;font-size:10px;color:rgba(255,255,255,.35);font-weight:700">'+x+'</div>';}).join('')+cells+'</div>';
   }
-  var legend=Object.keys(_OV).map(function(k){return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:rgba(255,255,255,.45)"><span style="width:9px;height:9px;border-radius:2px;background:'+_OV[k].c+'"></span>'+_OV[k].l+'</span>';}).join('');
-  var cal='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">'+legend+'</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">'+
-    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(function(x){return '<div style="text-align:center;font-size:10px;color:rgba(255,255,255,.35);font-weight:700">'+x+'</div>';}).join('')+cells+'</div>';
+  var emptyMsg=isToday?'No sessions on '+periodLabel:'No sessions in '+periodLabel;
   var listHtml=allSess.length?'<div style="overflow-x:auto;margin-top:16px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:rgba(255,255,255,.35);text-align:left">'+
     ['Date','Time','Batch','Course','Type','Status','P / A','Marked By / At'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
     allSess.map(function(s){ var st=_OV[s.status]||_OV.scheduled;
@@ -8430,25 +8453,19 @@ function _ovRenderDD(){
         '<td style="padding:7px 8px"><span class="ov-pill" style="background:'+st.c+'22;color:'+st.c+'">'+st.l+'</span></td>'+
         '<td style="padding:7px 8px;color:rgba(255,255,255,.55)">'+paStr+'</td>'+
         '<td style="padding:7px 8px;color:rgba(255,255,255,.4);white-space:nowrap">'+(s.markedAt?(esc(s.markedBy||'—')+' · '+_ovFmtDT(s.markedAt)):'—')+'</td></tr>';
-    }).join('')+'</tbody></table></div>':'<div style="text-align:center;padding:40px 20px;color:rgba(255,255,255,.3)">No sessions in '+mLabel+'</div>';
+    }).join('')+'</tbody></table></div>':'<div style="text-align:center;padding:40px 20px;color:rgba(255,255,255,.3)">'+emptyMsg+'</div>';
   document.getElementById('ov-dd-body').innerHTML=cal+listHtml;
   document.getElementById('ov-dd-body').scrollTop=0;
 }
 window.ovOpenTrainer=async function(tk){
   if(!_ovData) return;
   _ovDDTrainerKey=tk;
+  _ovDDMode=_ovMode;
   if(_ovMode==='today'){
+    _ovDDDay=_ovDay;
     _ovDDMonth=_ovDay.slice(0,7);
-    _ovMode='monthly'; _ovMonth=_ovDDMonth;
-    var em=document.getElementById('ov-month'); if(em) em.value=_ovMonth;
-    var dayNav=document.getElementById('ov-day-nav'); if(dayNav) dayNav.style.display='none';
-    var moNav=document.getElementById('ov-month-nav'); if(moNav) moNav.style.display='flex';
-    var bT=document.getElementById('ov-btn-today'); if(bT) bT.classList.remove('ov-mode-active');
-    var bM=document.getElementById('ov-btn-monthly'); if(bM) bM.classList.add('ov-mode-active');
-    document.getElementById('modalOvTrainer').classList.add('on');
-    document.getElementById('ov-dd-body').innerHTML='<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)">Loading month…</div>';
-    await ovLoad();
   } else {
+    _ovDDDay=null;
     _ovDDMonth=_ovMonth;
   }
   _ovRenderDD();
@@ -8460,12 +8477,14 @@ window._ovExportPDF=function(trainerKey){
   if(!_ovData||!_ovData.sessions.length){showToast('error','No data to export.');return;}
   var todayISO=new Date().toISOString().slice(0,10);
   var now=new Date(); var nowMin=now.getHours()*60+now.getMinutes();
+  var isDaily=trainerKey?(_ovDDMode==='today'):(_ovMode==='today');
+  var dailyDate=trainerKey?_ovDDDay:_ovDay;
   var month=trainerKey?_ovDDMonth:(_ovMode==='today'?_ovDay.slice(0,7):_ovMonth);
-  var isDaily=_ovMode==='today'&&!trainerKey;
-  var dateLabel=isDaily?new Date(_ovDay+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):new Date(month+'-15').toLocaleDateString('en',{month:'long',year:'numeric'});
+  var dateLabel=isDaily?new Date(dailyDate+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):new Date(month+'-15').toLocaleDateString('en',{month:'long',year:'numeric'});
   var allSess=_ovData.sessions.map(function(s){var st=_ovResolve(s.date,s.att,s.lv,todayISO,nowMin,s.startMin,s.dur);return Object.assign({},s,{status:st});});
-  if(trainerKey) allSess=allSess.filter(function(s){return String(s.tk)===String(trainerKey)&&s.date.slice(0,7)===month;});
-  else if(isDaily) allSess=allSess.filter(function(s){return s.date===_ovDay;});
+  if(trainerKey&&isDaily) allSess=allSess.filter(function(s){return String(s.tk)===String(trainerKey)&&s.date===dailyDate;});
+  else if(trainerKey) allSess=allSess.filter(function(s){return String(s.tk)===String(trainerKey)&&s.date.slice(0,7)===month;});
+  else if(isDaily) allSess=allSess.filter(function(s){return s.date===dailyDate;});
   else allSess=allSess.filter(function(s){return s.date.slice(0,7)===month;});
   allSess.sort(function(a,b){return a.date===b.date?a.startMin-b.startMin:a.date.localeCompare(b.date);});
   var trainerName=trainerKey&&allSess.length?allSess[0].trainer:null;
@@ -8581,8 +8600,8 @@ window._ovExportPDF=function(trainerKey){
     // Download
     var safeName=trainerName?trainerName.replace(/[^a-zA-Z0-9]/g,'_'):'';
     var fname=trainerKey
-      ?(safeName+'_'+(isDaily?'Daily':'Monthly')+'_Report_'+(isDaily?_ovDay:month)+'.pdf')
-      :('Academic_'+(isDaily?'Daily':'Monthly')+'_Report_'+(isDaily?_ovDay:month)+'.pdf');
+      ?(safeName+'_'+(isDaily?'Daily':'Monthly')+'_Report_'+(isDaily?dailyDate:month)+'.pdf')
+      :('Academic_'+(isDaily?'Daily':'Monthly')+'_Report_'+(isDaily?dailyDate:month)+'.pdf');
     doc.save(fname);
     showToast('success','PDF downloaded: '+fname);
   }catch(e){
