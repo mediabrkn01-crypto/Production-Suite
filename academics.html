@@ -1939,6 +1939,52 @@ function showToast(type, message, duration){
   setTimeout(() => { el.style.transition = 'opacity .25s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }, duration || 3500);
 }
 
+function beConfirm(opts) {
+  opts = opts || {};
+  return new Promise(function (resolve) {
+    var existing = document.getElementById('be-confirm-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'be-confirm-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:beConfFadeIn .15s ease';
+    var title = opts.title || 'Confirm';
+    var message = opts.message || 'Are you sure?';
+    var detail = opts.detail || '';
+    var confirmLabel = opts.confirmLabel || 'Confirm';
+    var cancelLabel = opts.cancelLabel || 'Cancel';
+    var confirmColor = opts.confirmColor || '#f87171';
+    overlay.innerHTML =
+      '<div style="background:#0d111c;border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:beConfSlideUp .2s ease">' +
+      '<div style="padding:20px 22px 0"><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px">' + esc(title) + '</div>' +
+      '<div style="font-size:13px;color:#a5adcf;line-height:1.5">' + esc(message) + '</div>' +
+      (detail ? '<div style="margin-top:10px;font-size:12px;color:#8890b5;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px">' + detail + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;gap:10px;padding:18px 22px;justify-content:flex-end">' +
+      '<button id="be-confirm-no" style="padding:8px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#a5adcf;font-size:13px;font-weight:600;cursor:pointer">' + esc(cancelLabel) + '</button>' +
+      '<button id="be-confirm-yes" style="padding:8px 18px;border-radius:8px;border:none;background:' + confirmColor + ';color:#fff;font-size:13px;font-weight:600;cursor:pointer;min-width:120px">' + esc(confirmLabel) + '</button>' +
+      '</div></div>';
+    document.body.appendChild(overlay);
+    if (!document.getElementById('be-confirm-style')) {
+      var st = document.createElement('style'); st.id = 'be-confirm-style';
+      st.textContent = '@keyframes beConfFadeIn{from{opacity:0}to{opacity:1}}@keyframes beConfSlideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}';
+      document.head.appendChild(st);
+    }
+    var done = false;
+    function dismiss() { overlay.style.transition = 'opacity .15s'; overlay.style.opacity = '0'; setTimeout(function () { overlay.remove(); }, 150); }
+    function finish(val) { if (done) return; done = true; if (!val) dismiss(); resolve(val); }
+    document.getElementById('be-confirm-no').onclick = function () { finish(false); };
+    document.getElementById('be-confirm-yes').onclick = function () {
+      var btn = document.getElementById('be-confirm-yes');
+      if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; btn.style.opacity = '0.6'; }
+      var noBtn = document.getElementById('be-confirm-no');
+      if (noBtn) { noBtn.disabled = true; noBtn.style.opacity = '0.4'; }
+      finish(true);
+    };
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) finish(false); });
+    window._beConfirmDismiss = dismiss;
+  });
+}
+
 let currentUser = null;
 // Single-login policy: credentials are only ever entered on index.html. This
 // portal only accepts a be_session token that index.html already wrote for
@@ -9521,21 +9567,23 @@ async function saveLeave(){
   document.getElementById('lv_reason').value='';document.getElementById('lv_from').value='';document.getElementById('lv_to').value='';
   if(document.getElementById('lv_proof'))document.getElementById('lv_proof').value='';
   if(document.getElementById('lv_emergency'))document.getElementById('lv_emergency').checked=false;
-  alert((isHalf?'Half-day':'Leave')+' request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
+  showToast('success',(isHalf?'Half-day':'Leave')+' request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
   loadLeave();
 }
 
 async function acadCancelLeave(id){
   if(!window._mediaEmployeeId)return;
   const {data}=await mediaHrDB.from('hr_leave_requests').select('*').eq('id',id).maybeSingle();
-  if(!data){alert('Request not found.');return;}
+  if(!data){showToast('error','Request not found.');return;}
   const today=new Date().toISOString().slice(0,10);
-  if(data.start_date<=today&&data.status==='approved'){alert('Cannot cancel leave that has already started.');return;}
-  if(data.status==='cancelled'||data.status==='rejected'){alert('Already '+data.status+'.');return;}
-  if(!confirm('Cancel this '+data.leave_type+' request ('+data.start_date+' → '+data.end_date+')?'))return;
+  if(data.start_date<=today&&data.status==='approved'){showToast('error','Cannot cancel leave that has already started.');return;}
+  if(data.status==='cancelled'||data.status==='rejected'){showToast('error','Already '+data.status+'.');return;}
+  const confirmed=await beConfirm({title:'Cancel Leave Request',message:'Are you sure you want to cancel this leave request?',detail:esc(data.leave_type||'Leave')+' &nbsp;·&nbsp; '+esc(data.start_date)+' → '+esc(data.end_date),confirmLabel:'Yes, Cancel Leave',cancelLabel:'Keep Leave',confirmColor:'#ef4444'});
+  if(!confirmed)return;
   const nowIso=new Date().toISOString();
   const {error}=await mediaHrDB.from('hr_leave_requests').update({status:'cancelled',cancelled_at:nowIso,cancelled_by:currentUser||'Employee'}).eq('id',id);
-  if(error){alert('Could not cancel: '+error.message);return;}
+  if(error){if(window._beConfirmDismiss)window._beConfirmDismiss();showToast('error','Could not cancel: '+error.message);return;}
+  if(window._beConfirmDismiss)window._beConfirmDismiss();
   // Remove synced attendance rows for future dates
   if(data.hr_status==='approved'||data.manager_status==='approved'){
     const start=new Date(data.start_date),end=new Date(data.end_date);
@@ -9559,7 +9607,7 @@ async function acadCancelLeave(id){
       if(sl&&Number(sl.used)>0){await mediaHrDB.from('hr_sl_ledger').update({used:Math.max(0,Number(sl.used)-Number(data.days))}).eq('id',sl.id);}
     }catch(e){console.warn('SL restore failed',e);}
   }
-  alert('Leave cancelled. Balance restored.');
+  showToast('success','Leave cancelled. Balance restored.');
   loadLeave();
 }
 

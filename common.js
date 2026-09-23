@@ -28,6 +28,54 @@
 // identical, whichever loads is fine.
 function esc(s){return String(s??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
 
+// ── beConfirm: shared custom confirmation modal (replaces native confirm()) ──
+function beConfirm(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+        var existing = document.getElementById('be-confirm-overlay');
+        if (existing) existing.remove();
+        var overlay = document.createElement('div');
+        overlay.id = 'be-confirm-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:beConfFadeIn .15s ease';
+        var title = opts.title || 'Confirm';
+        var message = opts.message || 'Are you sure?';
+        var detail = opts.detail || '';
+        var confirmLabel = opts.confirmLabel || 'Confirm';
+        var cancelLabel = opts.cancelLabel || 'Cancel';
+        var confirmColor = opts.confirmColor || '#f87171';
+        overlay.innerHTML =
+            '<div style="background:#0d111c;border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:beConfSlideUp .2s ease">' +
+            '<div style="padding:20px 22px 0"><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px">' + esc(title) + '</div>' +
+            '<div style="font-size:13px;color:#a5adcf;line-height:1.5">' + esc(message) + '</div>' +
+            (detail ? '<div style="margin-top:10px;font-size:12px;color:#8890b5;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px">' + detail + '</div>' : '') +
+            '</div>' +
+            '<div style="display:flex;gap:10px;padding:18px 22px;justify-content:flex-end">' +
+            '<button id="be-confirm-no" style="padding:8px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#a5adcf;font-size:13px;font-weight:600;cursor:pointer">' + esc(cancelLabel) + '</button>' +
+            '<button id="be-confirm-yes" style="padding:8px 18px;border-radius:8px;border:none;background:' + confirmColor + ';color:#fff;font-size:13px;font-weight:600;cursor:pointer;min-width:120px">' + esc(confirmLabel) + '</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+        if (!document.getElementById('be-confirm-style')) {
+            var st = document.createElement('style');
+            st.id = 'be-confirm-style';
+            st.textContent = '@keyframes beConfFadeIn{from{opacity:0}to{opacity:1}}@keyframes beConfSlideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}';
+            document.head.appendChild(st);
+        }
+        var done = false;
+        function dismiss() { overlay.style.transition = 'opacity .15s'; overlay.style.opacity = '0'; setTimeout(function () { overlay.remove(); }, 150); }
+        function finish(val) { if (done) return; done = true; if (!val) dismiss(); resolve(val); }
+        document.getElementById('be-confirm-no').onclick = function () { finish(false); };
+        document.getElementById('be-confirm-yes').onclick = function () {
+            var btn = document.getElementById('be-confirm-yes');
+            if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; btn.style.opacity = '0.6'; }
+            var noBtn = document.getElementById('be-confirm-no');
+            if (noBtn) { noBtn.disabled = true; noBtn.style.opacity = '0.4'; }
+            finish(true);
+        };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) finish(false); });
+        // Expose dismiss for caller to close after async work.
+        window._beConfirmDismiss = dismiss;
+    });
+}
 // ---------- Supabase clients ----------
 const SUPABASE_URL = "https://fevqnpllmarhoqdzpatq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA";
@@ -2359,7 +2407,15 @@ function hrOfficialEventFor(employee, dateStr) {
                 if (typeof showToast === 'function') showToast('error', 'This request is already ' + req.status + '.');
                 return false;
             }
-            if (!confirm('Cancel this ' + (req.leave_type || 'leave') + ' request (' + req.start_date + ' → ' + req.end_date + ')?')) return false;
+            const confirmed = await beConfirm({
+                title: 'Cancel Leave Request',
+                message: 'Are you sure you want to cancel this leave request?',
+                detail: esc(req.leave_type || 'Leave') + ' &nbsp;·&nbsp; ' + esc(req.start_date) + ' → ' + esc(req.end_date) + (req.days ? ' &nbsp;(' + req.days + ' day' + (req.days === 1 ? '' : 's') + ')' : ''),
+                confirmLabel: 'Yes, Cancel Leave',
+                cancelLabel: 'Keep Leave',
+                confirmColor: '#ef4444'
+            });
+            if (!confirmed) return false;
             const actorEmail = (typeof activeEmail !== 'undefined' && activeEmail) || null;
             const actorName = (typeof activeUser !== 'undefined' && activeUser) || 'System';
             const nowIso = new Date().toISOString();
@@ -2367,9 +2423,11 @@ function hrOfficialEventFor(employee, dateStr) {
             const upd = { status: 'cancelled', cancelled_at: nowIso, cancelled_by: actorName };
             const { error } = await db.from('hr_leave_requests').update(upd).eq('id', id);
             if (error) {
+                if (window._beConfirmDismiss) window._beConfirmDismiss();
                 if (typeof showToast === 'function') showToast('error', 'Could not cancel: ' + error.message);
                 return false;
             }
+            if (window._beConfirmDismiss) window._beConfirmDismiss();
             Object.assign(req, upd);
             // Remove synced on_leave attendance rows for future dates of a previously-approved request.
             if (req.hr_status === 'approved' || req.manager_status === 'approved') {
