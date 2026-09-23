@@ -1321,7 +1321,11 @@ async function loadLeave(){
       sb.from('hr_leave_balances').select('*').eq('employee_id',ME.id)
     ]);
     document.getElementById('lvBalances').innerHTML=(bal||[]).map(b=>`<span class="badge b-blue">${esc(b.leave_type)}: ${(b.allotted||0)-(b.used||0)} left</span>`).join('')||'<span class="sub" style="margin:0">No balances set.</span>';
-    document.getElementById('lvList').innerHTML=(reqs&&reqs.length)?reqs.map(r=>`<div class="qrow"><div><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date} → ${r.end_date}${r.days?' · '+r.days+'d':''}</div></div><span class="badge ${r.status==='approved'?'b-green':r.status==='rejected'?'b-red':'b-amber'}">${esc(r.status||'pending')}</span></div>`).join(''):'<div class="empty">No leave requests yet.</div>';
+    const today=new Date().toISOString().slice(0,10);
+    document.getElementById('lvList').innerHTML=(reqs&&reqs.length)?reqs.map(r=>{
+      const canCancel=r.status!=='cancelled'&&r.status!=='rejected'&&r.start_date>today;
+      return `<div class="qrow"><div><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date} → ${r.end_date}${r.days?' · '+r.days+'d':''}</div></div><div style="display:flex;align-items:center;gap:6px"><span class="badge ${r.status==='approved'?'b-green':(r.status==='rejected'||r.status==='cancelled')?'b-red':'b-amber'}">${esc(r.status||'pending')}</span>${canCancel?`<button onclick="salesCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>`:''}</div></div>`;
+    }).join(''):'<div class="empty">No leave requests yet.</div>';
   }catch(e){document.getElementById('lvList').innerHTML='<div class="empty">Could not load leave.</div>';}
 }
 // Half Day is a single-day request — hide the To date, show the half-type picker.
@@ -1341,6 +1345,32 @@ async function submitLeave(){
   const {error}=await sb.from('hr_leave_requests').insert(rec);
   if(error){showToast('error',error.message);return;}
   document.getElementById('lv_reason').value='';showToast('success',(isHalf?'Half-day':'Leave')+' request submitted — HR will review.');loadLeave();
+}
+async function salesCancelLeave(id){
+  const{data}=await sb.from('hr_leave_requests').select('*').eq('id',id).maybeSingle();
+  if(!data){showToast('error','Request not found.');return;}
+  const today=new Date().toISOString().slice(0,10);
+  if(data.start_date<=today&&data.status==='approved'){showToast('error','Cannot cancel leave that has already started.');return;}
+  if(data.status==='cancelled'||data.status==='rejected'){showToast('error','Already '+data.status+'.');return;}
+  if(!confirm('Cancel this '+data.leave_type+' request ('+data.start_date+' → '+data.end_date+')?'))return;
+  const nowIso=new Date().toISOString();
+  const{error}=await sb.from('hr_leave_requests').update({status:'cancelled',cancelled_at:nowIso,cancelled_by:ME.name||'Employee'}).eq('id',id);
+  if(error){showToast('error','Could not cancel: '+error.message);return;}
+  if(data.hr_status==='approved'||data.manager_status==='approved'){
+    const start=new Date(data.start_date),end=new Date(data.end_date);
+    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+      const ds=d.toISOString().slice(0,10);
+      if(ds>=today){try{await sb.from('hr_attendance').delete().eq('employee_id',data.employee_id).eq('att_date',ds).in('status',['on_leave','half_day','wfh']);}catch(e){}}
+    }
+  }
+  if(/casual/i.test(data.leave_type||'')&&data.days){
+    try{const{data:buckets}=await sb.from('hr_cl_buckets').select('*').eq('employee_id',data.employee_id).order('credit_date',{ascending:true});if(buckets&&buckets.length){let restore=Number(data.days);for(let i=buckets.length-1;i>=0&&restore>0;i--){const b=buckets[i];const used=Number(b.original_amount)-Number(b.remaining_amount);if(used>0){const give=Math.min(used,restore);await sb.from('hr_cl_buckets').update({remaining_amount:Number(b.remaining_amount)+give}).eq('id',b.id);restore-=give;}}}}catch(e){}
+  }
+  if(/sick/i.test(data.leave_type||'')&&data.days){
+    try{const period=data.start_date.slice(0,7);const{data:sl}=await sb.from('hr_sl_ledger').select('*').eq('employee_id',data.employee_id).eq('period',period).maybeSingle();if(sl&&Number(sl.used)>0){await sb.from('hr_sl_ledger').update({used:Math.max(0,Number(sl.used)-Number(data.days))}).eq('id',sl.id);}}catch(e){}
+  }
+  showToast('success','Leave cancelled. Balance restored.');
+  loadLeave();
 }
 function loadDocuments(){
   const links=(ME.rec&&ME.rec.document_links)||'';

@@ -9485,7 +9485,11 @@ async function loadMyLeaveHistory(){
   try{
     const {data} = await mediaHrDB.from('hr_leave_requests').select('*').eq('employee_id',window._mediaEmployeeId).order('requested_at',{ascending:false});
     const rows = data||[];
-    body.innerHTML = rows.length ? rows.map(r=>`<div class="dash-row"><span>${esc(r.leave_type||'Leave')} \u00b7 ${r.start_date} \u2192 ${r.end_date}</span><span class="badge ${r.status==='approved'?'b-active':(r.status==='rejected'?'b-inactive':'')}" style="${r.status==='pending'?'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)':''}">${esc(r.status)}</span></div>`).join('') : '<div class="empty">No leave requests yet.</div>';
+    const today = new Date().toISOString().slice(0,10);
+    body.innerHTML = rows.length ? rows.map(r=>{
+      const canCancel = r.status!=='cancelled' && r.status!=='rejected' && r.start_date>today;
+      return `<div class="dash-row" style="display:flex;justify-content:space-between;align-items:center"><span>${esc(r.leave_type||'Leave')} \u00b7 ${r.start_date} \u2192 ${r.end_date}</span><div style="display:flex;align-items:center;gap:6px"><span class="badge ${r.status==='approved'?'b-active':(r.status==='rejected'||r.status==='cancelled'?'b-inactive':'')}" style="${r.status==='pending'?'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)':''}">${esc(r.status)}</span>${canCancel?`<button onclick="acadCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>`:''}</div></div>`;
+    }).join('') : '<div class="empty">No leave requests yet.</div>';
   }catch(e){ body.innerHTML = '<div class="empty">Could not load your leave history: '+esc(e.message)+'</div>'; }
 }
 // Half Day is a single-day request \u2014 hide End Date, show the half-type picker.
@@ -9518,6 +9522,44 @@ async function saveLeave(){
   if(document.getElementById('lv_proof'))document.getElementById('lv_proof').value='';
   if(document.getElementById('lv_emergency'))document.getElementById('lv_emergency').checked=false;
   alert((isHalf?'Half-day':'Leave')+' request submitted to HR \u2014 you\'ll see the status update once it\'s reviewed.');
+  loadLeave();
+}
+
+async function acadCancelLeave(id){
+  if(!window._mediaEmployeeId)return;
+  const {data}=await mediaHrDB.from('hr_leave_requests').select('*').eq('id',id).maybeSingle();
+  if(!data){alert('Request not found.');return;}
+  const today=new Date().toISOString().slice(0,10);
+  if(data.start_date<=today&&data.status==='approved'){alert('Cannot cancel leave that has already started.');return;}
+  if(data.status==='cancelled'||data.status==='rejected'){alert('Already '+data.status+'.');return;}
+  if(!confirm('Cancel this '+data.leave_type+' request ('+data.start_date+' → '+data.end_date+')?'))return;
+  const nowIso=new Date().toISOString();
+  const {error}=await mediaHrDB.from('hr_leave_requests').update({status:'cancelled',cancelled_at:nowIso,cancelled_by:currentUser||'Employee'}).eq('id',id);
+  if(error){alert('Could not cancel: '+error.message);return;}
+  // Remove synced attendance rows for future dates
+  if(data.hr_status==='approved'||data.manager_status==='approved'){
+    const start=new Date(data.start_date),end=new Date(data.end_date);
+    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+      const ds=d.toISOString().slice(0,10);
+      if(ds>=today){try{await mediaHrDB.from('hr_attendance').delete().eq('employee_id',data.employee_id).eq('att_date',ds).in('status',['on_leave','half_day','wfh']);}catch(e){}}
+    }
+  }
+  // Restore CL balance
+  if(/casual/i.test(data.leave_type||'')&&data.days){
+    try{
+      const{data:buckets}=await mediaHrDB.from('hr_cl_buckets').select('*').eq('employee_id',data.employee_id).order('credit_date',{ascending:true});
+      if(buckets&&buckets.length){let restore=Number(data.days);for(let i=buckets.length-1;i>=0&&restore>0;i--){const b=buckets[i];const used=Number(b.original_amount)-Number(b.remaining_amount);if(used>0){const give=Math.min(used,restore);await mediaHrDB.from('hr_cl_buckets').update({remaining_amount:Number(b.remaining_amount)+give}).eq('id',b.id);restore-=give;}}}
+    }catch(e){console.warn('CL restore failed',e);}
+  }
+  // Restore SL balance
+  if(/sick/i.test(data.leave_type||'')&&data.days){
+    try{
+      const period=data.start_date.slice(0,7);
+      const{data:sl}=await mediaHrDB.from('hr_sl_ledger').select('*').eq('employee_id',data.employee_id).eq('period',period).maybeSingle();
+      if(sl&&Number(sl.used)>0){await mediaHrDB.from('hr_sl_ledger').update({used:Math.max(0,Number(sl.used)-Number(data.days))}).eq('id',sl.id);}
+    }catch(e){console.warn('SL restore failed',e);}
+  }
+  alert('Leave cancelled. Balance restored.');
   loadLeave();
 }
 

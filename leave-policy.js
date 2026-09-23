@@ -83,6 +83,16 @@
     return { label: ymd(cs).slice(0,7) + '..' + ymd(ce).slice(0,7), credit_date: credit,
              expiry_date: addMonths(credit, P.CL_VALIDITY_MONTHS), index: idx };
   }
+  // Monthly CL accrual: 1 CL/month after probation, up to 6 per cycle.
+  // Returns how many CL the employee has EARNED to date within the current cycle.
+  function clAccruedToDate(dateStr, cycleInfo) {
+    var ci = cycleInfo || clCycleFor(dateStr);
+    var cycleStart = new Date(ci.credit_date.slice(0, 10) + 'T00:00:00');
+    var d = new Date((dateStr || '').slice(0, 10) + 'T00:00:00');
+    var monthsIn = (d.getFullYear() - cycleStart.getFullYear()) * 12 + (d.getMonth() - cycleStart.getMonth()) + 1;
+    return Math.max(0, Math.min(P.CL_PER_CYCLE, monthsIn));
+  }
+
   // Extract local HH:MM from a timestamptz/ISO string.
   function hhmm(ts) {
     if (!ts) return null; var d = new Date(ts); if (isNaN(d)) return null;
@@ -172,8 +182,8 @@
   }
   function isApproved(r) {
     if (!r) return false;
+    if (r.status === 'cancelled' || r.status === 'Cancelled') return false;
     if (r.status === 'approved' || r.status === 'Approved' || r.status === 'Exception Approved') return true;
-    // two-stage: both stages approved
     return r.manager_status === 'approved' && r.hr_status === 'approved';
   }
 
@@ -212,11 +222,18 @@
       if (bIdx < curIdx) clCarried += b.remaining; else clCurrent += b.remaining;
       if (b.remaining > 0 && (!nextExpiry || b.expiry < nextExpiry)) nextExpiry = b.expiry;
     });
+    // Cap remaining to accrued-to-date (1 CL/month) so balance never shows unearned future CL.
+    var accrued = clAccruedToDate(dateStr, curInfo);
+    var totalOriginal = buckets.reduce(function (s, b) { return s + b.original; }, 0);
+    var totalUsed = totalOriginal - clRemaining;
+    var accruedRemaining = Math.max(0, accrued - totalUsed);
+    if (clRemaining > accruedRemaining) clRemaining = accruedRemaining;
     var casual = {
       currentCycle: curCycle,
       currentCredit: clCurrent,
       carriedForward: clCarried,
       remaining: clRemaining,
+      accrued: accrued,
       nextExpiry: nextExpiry,
       buckets: buckets               // ordered oldest-first = consumption order
     };
@@ -263,6 +280,16 @@
     // Balance availability.
     var bal = resolveLeaveBalance(Object.assign({}, ctx, { date: start }));
     var available = kind === 'SL' ? bal.sick.remaining : kind === 'CL' ? bal.casual.remaining : 0;
+    // CL accrual cap: employee can only use CL accrued to date (1/month), not future entitlement.
+    if (kind === 'CL') {
+      var accrued = clAccruedToDate(start);
+      var clUsed = bal.casual.buckets.reduce(function (s, b) { return s + (b.original - b.remaining); }, 0);
+      var accruedAvailable = Math.max(0, accrued - clUsed);
+      if (available > accruedAvailable) available = accruedAvailable;
+      if (days > available && available >= 0) {
+        warnings.push('You currently have only ' + available + ' available Casual Leave day' + (available === 1 ? '' : 's') + '. You cannot apply for ' + days + ' Casual Leave day' + (days === 1 ? '' : 's') + '.');
+      }
+    }
     var paidDays = Math.min(days, Math.max(0, available));
     var lopDays = days - paidDays;
     var consumeFrom = null;
@@ -524,11 +551,19 @@
       logAudit: async function (row) {
         try { await sb.from('hr_audit_log').insert(Object.assign({ created_at: new Date().toISOString() }, row)); } catch (e) { console.warn('audit log failed', e); }
       },
-      // Ensure current CL cycle bucket + SL month row exist for an employee (idempotent).
+      // Ensure current CL monthly buckets + SL month row exist for an employee (idempotent).
+      // Creates one 1-CL bucket per elapsed month in the cycle, not a single 6-CL bucket.
       ensureCurrent: async function (empId, dateStr) {
         dateStr = dateStr || ymd(new Date());
         var cyc = clCycleFor(dateStr), period = monthPeriod(dateStr);
-        try { await sb.from('hr_cl_buckets').upsert({ employee_id: empId, credit_date: cyc.credit_date, cycle_label: cyc.label, original_amount: P.CL_PER_CYCLE, remaining_amount: P.CL_PER_CYCLE, expiry_date: cyc.expiry_date, source: 'auto-credit' }, { onConflict: 'employee_id,cycle_label', ignoreDuplicates: true }); } catch (e) {}
+        var accrued = clAccruedToDate(dateStr, cyc);
+        var cycleStart = new Date(cyc.credit_date.slice(0, 10) + 'T00:00:00');
+        for (var m = 0; m < accrued; m++) {
+          var monthStart = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + m, 1);
+          var creditDate = ymd(monthStart);
+          var monthLabel = cyc.label + '/m' + (m + 1);
+          try { await sb.from('hr_cl_buckets').upsert({ employee_id: empId, credit_date: creditDate, cycle_label: monthLabel, original_amount: 1, remaining_amount: 1, expiry_date: cyc.expiry_date, source: 'auto-monthly' }, { onConflict: 'employee_id,cycle_label', ignoreDuplicates: true }); } catch (e) {}
+        }
         try { await sb.from('hr_sl_ledger').upsert({ employee_id: empId, period: period, entitlement: P.SL_PER_MONTH, used: 0, expired: 0 }, { onConflict: 'employee_id,period', ignoreDuplicates: true }); } catch (e) {}
       }
     };
@@ -549,6 +584,7 @@
     detectAdjacency: detectAdjacency,
     planCLConsumption: planCLConsumption,
     isApproved: isApproved,
+    clAccruedToDate: clAccruedToDate,
     makeDb: makeDb,
     // convenience: attach a live sb client
     withClient: function (sb) { this.db = makeDb(sb); return this; }

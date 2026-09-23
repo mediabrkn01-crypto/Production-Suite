@@ -4735,7 +4735,7 @@
                     return `<span style="font-size:10.5px;color:${c};border:1px solid ${c}33;border-radius:99px;padding:2px 8px">${label} ${mark} ${st || 'pending'}</span>`;
                 };
                 const statusLabel = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(r) : r.status;
-                const badgeKind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : 'pending';
+                const badgeKind = r.status === 'approved' ? 'approved' : (r.status === 'rejected' || r.status === 'cancelled') ? 'rejected' : 'pending';
                 const authName = r.reporting_authority_email ? (hrEmpNameByEmail ? hrEmpNameByEmail(r.reporting_authority_email) : r.reporting_authority_email) : 'HR only';
                 const needsException = r.status !== 'approved' && r.status !== 'rejected' && (r.adjacency_flag || (r.consecutive_days && r.consecutive_days > 2));
                 // §4/§6 — HR can change the leave type (e.g. Unpaid Leave → Maternity Leave),
@@ -4760,13 +4760,14 @@
                     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
                         <span class="hr-badge hr-badge-${badgeKind}">${statusLabel}</span>
                         <select onchange="hrChangeLeaveType('${r.id}', this.value)" class="hr-select" style="font-size:10.5px;padding:3px 6px;max-width:170px" title="Change leave type">${typeOpts}</select>
-                        ${r.status !== 'approved' && r.status !== 'rejected' ? `
+                        ${r.status !== 'approved' && r.status !== 'rejected' && r.status !== 'cancelled' ? `
                             <div style="display:flex;gap:6px">
                             <button onclick="decideHRLeave('${r.id}','approved').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#4ade80">Approve</button>
                             <button onclick="decideHRLeave('${r.id}','rejected').then(renderHRLeaveRequests)" class="hr-icon-btn" style="color:#f87171">Reject</button>
                             </div>
                             ${needsException ? `<button onclick="hrGrantException('${r.id}')" class="hr-icon-btn" style="color:#fb923c;border:1px solid rgba(251,146,60,.4);border-radius:8px;padding:3px 8px">Management Exception</button>` : ''}
                         ` : ''}
+                        ${r.status !== 'cancelled' && r.status !== 'rejected' && r.start_date > new Date().toISOString().slice(0,10) ? `<button onclick="cancelLeaveRequest('${r.id}').then(r=>{if(r)renderHRLeaveRequests()})" class="hr-icon-btn" style="color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:3px 8px;font-size:11px">Cancel Leave</button>` : ''}
                     </div>
                 </div>
             `; }).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';

@@ -2344,6 +2344,78 @@ function hrOfficialEventFor(employee, dateStr) {
             } catch (e) { console.warn('audit log failed', e); }
         }
 
+// ── cancelLeaveRequest — shared across all pages ──
+        async function cancelLeaveRequest(id, opts) {
+            opts = opts || {};
+            const db = opts.db || dbInstance;
+            const req = (typeof hrLeaveRequests !== 'undefined') ? hrLeaveRequests.find(r => r.id === id) : null;
+            if (!req) { if (typeof showToast === 'function') showToast('error', 'Could not find that leave request.'); return false; }
+            const today = new Date().toISOString().slice(0, 10);
+            if (req.start_date <= today && req.status === 'approved') {
+                if (typeof showToast === 'function') showToast('error', 'Cannot cancel leave that has already started.');
+                return false;
+            }
+            if (req.status === 'cancelled' || req.status === 'rejected') {
+                if (typeof showToast === 'function') showToast('error', 'This request is already ' + req.status + '.');
+                return false;
+            }
+            if (!confirm('Cancel this ' + (req.leave_type || 'leave') + ' request (' + req.start_date + ' → ' + req.end_date + ')?')) return false;
+            const actorEmail = (typeof activeEmail !== 'undefined' && activeEmail) || null;
+            const actorName = (typeof activeUser !== 'undefined' && activeUser) || 'System';
+            const nowIso = new Date().toISOString();
+            const prevLabel = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(req) : req.status;
+            const upd = { status: 'cancelled', cancelled_at: nowIso, cancelled_by: actorName };
+            const { error } = await db.from('hr_leave_requests').update(upd).eq('id', id);
+            if (error) {
+                if (typeof showToast === 'function') showToast('error', 'Could not cancel: ' + error.message);
+                return false;
+            }
+            Object.assign(req, upd);
+            // Remove synced on_leave attendance rows for future dates of a previously-approved request.
+            if (req.hr_status === 'approved' || req.manager_status === 'approved') {
+                const start = new Date(req.start_date), end = new Date(req.end_date);
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    const ds = d.toISOString().slice(0, 10);
+                    if (ds >= today) {
+                        try { await db.from('hr_attendance').delete().eq('employee_id', req.employee_id).eq('att_date', ds).in('status', ['on_leave', 'half_day', 'wfh']); } catch (e) {}
+                    }
+                }
+            }
+            // Restore CL bucket balance if CL was consumed.
+            if (req.status === 'cancelled' && /casual/i.test(req.leave_type || '') && req.days) {
+                try {
+                    const { data: buckets } = await db.from('hr_cl_buckets').select('*').eq('employee_id', req.employee_id).order('credit_date', { ascending: true });
+                    if (buckets && buckets.length) {
+                        let restore = Number(req.days);
+                        for (let i = buckets.length - 1; i >= 0 && restore > 0; i--) {
+                            const b = buckets[i];
+                            const used = Number(b.original_amount) - Number(b.remaining_amount);
+                            if (used > 0) {
+                                const give = Math.min(used, restore);
+                                await db.from('hr_cl_buckets').update({ remaining_amount: Number(b.remaining_amount) + give }).eq('id', b.id);
+                                restore -= give;
+                            }
+                        }
+                    }
+                } catch (e) { console.warn('CL balance restore failed', e); }
+            }
+            // Restore SL balance if SL was consumed.
+            if (req.status === 'cancelled' && /sick/i.test(req.leave_type || '') && req.days) {
+                try {
+                    const period = req.start_date.slice(0, 7);
+                    const { data: sl } = await db.from('hr_sl_ledger').select('*').eq('employee_id', req.employee_id).eq('period', period).maybeSingle();
+                    if (sl && Number(sl.used) > 0) {
+                        const newUsed = Math.max(0, Number(sl.used) - Number(req.days));
+                        await db.from('hr_sl_ledger').update({ used: newUsed }).eq('id', sl.id);
+                    }
+                } catch (e) { console.warn('SL balance restore failed', e); }
+            }
+            await hrAuditLeave(req, actorEmail, actorName, 'leave_cancel', prevLabel, 'Cancelled', 'Employee/HR cancelled');
+            await hrReloadAfterLeave();
+            if (typeof showToast === 'function') showToast('success', 'Leave request cancelled. Balance restored.');
+            return true;
+        }
+
 // ── myHREmployeeRecord (orig line 11445) ──
         function myHREmployeeRecord() {
             return hrEmployees.find(e => (e.portal_email || '').toLowerCase() === (activeEmail || '').toLowerCase());
@@ -2485,13 +2557,18 @@ function hrOfficialEventFor(employee, dateStr) {
                 })();
             }
             const mine = hrLeaveRequests.filter(r => r.employee_id === me.id);
+            const today = new Date().toISOString().slice(0, 10);
             document.getElementById('my-leave-history').innerHTML = mine.length ? mine.map(r => {
                 const label = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(r) : r.status;
-                const kind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : 'pending';
+                const kind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : r.status === 'cancelled' ? 'rejected' : 'pending';
+                const canCancel = r.status !== 'cancelled' && r.status !== 'rejected' && r.start_date > today;
                 return `
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
                     <span class="text-sm text-[#a5adcf]">${r.leave_type} — ${r.start_date} → ${r.end_date}${r.emergency ? ' ⚡' : ''}</span>
-                    <span class="hr-badge hr-badge-${kind}">${label}</span>
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <span class="hr-badge hr-badge-${kind}">${label}</span>
+                        ${canCancel ? `<button onclick="cancelLeaveRequest('${r.id}').then(r=>{if(r)initMyLeave()})" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>` : ''}
+                    </div>
                 </div>`;
             }).join('') : '<p class="text-[#4a5182] text-xs">No requests yet.</p>';
         }
