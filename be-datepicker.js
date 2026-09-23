@@ -149,7 +149,7 @@
     if(!active) return;
     var el=active.el;
     el.addEventListener('click',function(e){
-      var btn=e.target.closest('[data-act]');
+      var btn=e.target.closest('[data-act],[data-date]');
       if(!btn) return;
       e.stopPropagation();
       var act=btn.getAttribute('data-act');
@@ -261,12 +261,17 @@
       e.preventDefault();
       open(this);
     });
-    // prevent native picker
+    // prevent native picker on desktop
     input.addEventListener('mousedown',function(e){
       e.preventDefault();
       this.blur();
       open(this);
     });
+    // prevent native picker on mobile — touchstart fires before the OS picker
+    input.addEventListener('touchstart',function(e){
+      e.preventDefault();
+      open(this);
+    },{passive:false});
   }
 
   function init(){

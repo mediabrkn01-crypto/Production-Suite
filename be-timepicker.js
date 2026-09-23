@@ -173,6 +173,10 @@
       this.blur();
       open(this);
     });
+    input.addEventListener('touchstart',function(e){
+      e.preventDefault();
+      open(this);
+    },{passive:false});
   }
 
   function init(){
