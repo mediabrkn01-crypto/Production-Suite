@@ -372,6 +372,11 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
         <div class="sub">Real enrolment creates the student in the Academics database. Changing a stage to "Enrolled" is only a tag — use this action.</div>
         <div style="overflow-x:auto"><table><thead><tr><th>Student UIN</th><th>Name</th><th>Course</th><th>Lead</th><th>Enrolled</th></tr></thead><tbody id="enrolRows"><tr><td colspan="5" class="empty">No enrolments yet.</td></tr></tbody></table></div>
       </div>
+      <div class="section">
+        <h2>CRM Enrolments <span class="tag" id="crmEnrolCount" style="font-size:11px;vertical-align:middle">0</span></h2>
+        <div class="sub">Students enrolled via external CRM (Xale). Auto-synced — no manual entry needed.</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>UIN</th><th>Name</th><th>Course</th><th>Counselor</th><th>Enrolled</th><th>Batch</th><th>Status</th></tr></thead><tbody id="crmEnrolRows"><tr><td colspan="7" class="empty">No CRM enrolments yet.</td></tr></tbody></table></div>
+      </div>
     </div>
 
     <!-- TEAM OVERVIEW (head) -->
@@ -995,6 +1000,36 @@ async function saveEnrol(){
 function renderEnrol(){
   const rows=LEADS.filter(l=>l.stage==='Enrolled');
   document.getElementById('enrolRows').innerHTML=rows.length?rows.map(l=>`<tr><td>${esc(l.student_uin||'—')}</td><td>${esc(l.name||'')}</td><td>${esc(l.course_interest||'')}</td><td>${esc(l.lead_id)}</td><td>${l.updated_at?String(l.updated_at).slice(0,10):'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No enrolments yet.</td></tr>';
+  loadCrmEnrolments();
+}
+async function loadCrmEnrolments(){
+  try {
+    const { data, error } = await sb.from('students')
+      .select('id,uin,name,programme,source_counsellor,enrolled_date,batch_name,status,crm_source')
+      .eq('crm_source', 'xale')
+      .order('enrolled_date', { ascending: false });
+    if (error) throw error;
+    const rows = data || [];
+    document.getElementById('crmEnrolCount').textContent = rows.length;
+    const el = document.getElementById('crmEnrolRows');
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="7" class="empty">No CRM enrolments yet.</td></tr>'; return; }
+    const statusBadge = s => {
+      const colors = { New: '#38bdf8', 'In Progress': '#10b981', Completed: '#8b5cf6', Dropped: '#ef4444', Cancelled: '#ef4444' };
+      const c = colors[s] || '#94a3b8';
+      return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:' + c + '18;color:' + c + '">' + esc(s || 'New') + '</span>';
+    };
+    el.innerHTML = rows.map(s =>
+      '<tr><td>' + esc(s.uin || '—') + '</td>' +
+      '<td>' + esc(s.name) + '</td>' +
+      '<td>' + esc(s.programme || '—') + '</td>' +
+      '<td>' + esc(s.source_counsellor || '—') + '</td>' +
+      '<td>' + esc(s.enrolled_date || '—') + '</td>' +
+      '<td>' + esc(s.batch_name || 'Unassigned') + '</td>' +
+      '<td>' + statusBadge(s.status) + '</td></tr>'
+    ).join('');
+  } catch (e) {
+    console.warn('CRM enrolments load error:', e.message);
+  }
 }
 
 /* ---------- HEAD: reassign, team, counsellors, routing ---------- */

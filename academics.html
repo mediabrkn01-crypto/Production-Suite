@@ -1321,6 +1321,11 @@ details[open] .rawsum::before{content:'▾ '}
               <option value="None">No Payment Recorded</option>
             </select>
             <select id="stu_filter_course" onchange="_acadStuFilterChanged()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All courses</option></select>
+            <select id="stu_filter_source" onchange="_acadStuFilterChanged()" style="flex:1;min-width:110px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
+              <option value="">All sources</option>
+              <option value="crm">CRM Only</option>
+              <option value="manual">Manual Only</option>
+            </select>
             <select id="stu_sort" onchange="_acadStuFilterChanged()" style="flex:1;min-width:150px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark">
               <option value="new_first">Sort: New Students First</option>
               <option value="oldest_first">Sort: Oldest Students First</option>
@@ -6376,7 +6381,8 @@ function _acadStuPayBadge(payStatus){
 // (statuses computed client-side per row) — same markup either way.
 function _acadStuRow(s, lifecycle, payStatus){
   const badgeStyle = _ACAD_STU_BADGE_STYLE[lifecycle] || 'class="badge"';
-  return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
+  const crmBadge = s.crm_source && s.crm_source !== 'manual' ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:rgba(139,92,246,.15);color:#a78bfa;margin-left:6px;vertical-align:middle;letter-spacing:.03em">CRM</span>' : '';
+  return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}${crmBadge}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
   <td data-label="Batch">${s.batch_id?esc(s.batch_name||'—'):'—'}</td><td data-label="Course">${esc(s.programme||'—')}</td><td data-label="Coach">${s.batch_id?esc(s.trainer_name||'—'):'—'}</td>
   <td data-label="Status"><span ${badgeStyle}>${esc(lifecycle)}</span></td>
   <td data-label="Payment">${_acadStuPayBadge(payStatus)}</td>
@@ -6442,6 +6448,7 @@ async function renderStudentsTable(){
   const statusF = document.getElementById('stu_filter_status')?.value||'';
   const paymentF = document.getElementById('stu_filter_payment')?.value||'';
   const courseF = document.getElementById('stu_filter_course')?.value||'';
+  const sourceF = document.getElementById('stu_filter_source')?.value||'';
   const sortMode = document.getElementById('stu_sort')?.value||'new_first';
   const isHead = isCurrentlyAcademicHead();
 
@@ -6503,6 +6510,8 @@ async function renderStudentsTable(){
     if (statusF && _acadStudentLifecycleStatus(s) !== statusF) return false;
     if (paymentF && _acadStudentPaymentStatus(s) !== paymentF) return false;
     if (courseF && s.programme !== courseF) return false;
+    if (sourceF === 'crm' && (!s.crm_source || s.crm_source === 'manual')) return false;
+    if (sourceF === 'manual' && s.crm_source && s.crm_source !== 'manual') return false;
     if (ql) {
       const hay = [s.name, s.uin, s.contact].filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(ql)) return false;
