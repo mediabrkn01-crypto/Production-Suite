@@ -121,24 +121,11 @@ function generateUin(): string {
 
 async function resolveCounsellorId(counselorName?: string): Promise<string | null> {
   if (!counselorName) return null;
-  // Try exact match first
-  const { data: exact } = await sb
-    .from("hr_employees")
-    .select("id")
-    .eq("division", "sales")
-    .ilike("full_name", counselorName.trim())
-    .limit(1)
-    .maybeSingle();
-  if (exact?.id) return exact.id;
-  // Fuzzy: strip spaces and compare — handles "Thayee Krishna" vs "Thayeekrishna"
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
-  const needle = norm(counselorName);
-  const { data: all } = await sb
-    .from("hr_employees")
-    .select("id, full_name")
-    .eq("division", "sales");
-  const match = (all || []).find((e) => norm(e.full_name) === needle);
-  return match?.id || null;
+  // Single source of truth shared with the students trigger: crm_counsellor_aliases,
+  // then a unique normalized-name match among Sales employees.
+  const { data, error } = await sb.rpc("fn_resolve_crm_counsellor", { p_name: counselorName });
+  if (error) return null;
+  return (data as string | null) || null;
 }
 
 async function processLead(payload: EnrollmentPayload) {
@@ -232,6 +219,14 @@ async function processEnrollment(payload: EnrollmentPayload) {
       .limit(1)
       .maybeSingle();
     if (existing) {
+      // Repeat delivery: never create a second student, but keep ownership current so a
+      // counselor reassignment in Xale moves the enrolment to the new counselor.
+      if (existing.student_id && counselor) {
+        await sb.from("students").update({
+          source_counsellor: counselor,
+          counsellor_id: counsellorId,
+        }).eq("id", existing.student_id);
+      }
       return {
         ok: true,
         duplicate: true,
@@ -358,6 +353,7 @@ async function processEnrollment(payload: EnrollmentPayload) {
       is_new: !existingStudent,
       course_matched: !!course,
       course_unmatched: courseUnmatched,
+      counsellor_matched: !!counsellorId,
       batch: batchResult,
       processing_ms: processingMs,
     };
