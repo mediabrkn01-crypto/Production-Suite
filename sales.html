@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="dashboard-metrics.css">
 <script src="dashboard-metrics.js"></script>
 <link rel="stylesheet" href="account-menu.css">
+<link rel="stylesheet" href="be-ui.css">
 <script src="account-menu.js"></script>
 <script src="photo-preview.js"></script>
 <script src="shared-greeting.js"></script>
@@ -582,6 +583,10 @@ const SUPABASE_URL='https://fevqnpllmarhoqdzpatq.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnFucGxsbWFyaG9xZHpwYXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTI1MjgsImV4cCI6MjA5NzE2ODUyOH0.23qi1hDcOA19W2psdIiP2ucypkymG7BZzcTrt2Q2ZSA';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _uiAv=n=>{const i=String(n||'?').trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';return `<span class="dsh-av" style="width:32px;height:32px"><span class="dsh-ini" style="font-size:11.5px">${esc(i)}</span></span>`;};
+const _uiEmpty=(ic,t,sub)=>`<div class="dsh-empty"><div class="dsh-empty-ic"><i data-lucide="${ic}" style="width:18px;height:18px"></i></div><div class="dsh-empty-t">${esc(t)}</div>${sub?`<div class="dsh-empty-s">${esc(sub)}</div>`:''}</div>`;
+const _uiDate=(iso,yr)=>{if(!iso)return '—';const d=new Date(String(iso).slice(0,10)+'T00:00:00');return isNaN(d)?String(iso):d.toLocaleDateString('en-IN',yr?{day:'2-digit',month:'short',year:'numeric'}:{weekday:'short',day:'2-digit',month:'short'});};
+const _uiIcons=()=>{if(typeof lucide!=='undefined')try{lucide.createIcons();}catch(e){}};
 function showToast(type,msg,dur){const h=document.getElementById('toastHost');const t=document.createElement('div');t.className='toast '+(type||'');t.textContent=msg;h.appendChild(t);setTimeout(()=>t.remove(),dur||3500);}
 
 function beConfirm(opts){opts=opts||{};return new Promise(function(resolve){var existing=document.getElementById('be-confirm-overlay');if(existing)existing.remove();var overlay=document.createElement('div');overlay.id='be-confirm-overlay';overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:beConfFadeIn .15s ease';var title=opts.title||'Confirm',message=opts.message||'Are you sure?',detail=opts.detail||'',confirmLabel=opts.confirmLabel||'Confirm',cancelLabel=opts.cancelLabel||'Cancel',confirmColor=opts.confirmColor||'#f87171';overlay.innerHTML='<div style="background:#0d111c;border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:beConfSlideUp .2s ease"><div style="padding:20px 22px 0"><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px">'+esc(title)+'</div><div style="font-size:13px;color:#a5adcf;line-height:1.5">'+esc(message)+'</div>'+(detail?'<div style="margin-top:10px;font-size:12px;color:#8890b5;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px">'+detail+'</div>':'')+'</div><div style="display:flex;gap:10px;padding:18px 22px;justify-content:flex-end"><button id="be-confirm-no" style="padding:8px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#a5adcf;font-size:13px;font-weight:600;cursor:pointer">'+esc(cancelLabel)+'</button><button id="be-confirm-yes" style="padding:8px 18px;border-radius:8px;border:none;background:'+confirmColor+';color:#fff;font-size:13px;font-weight:600;cursor:pointer;min-width:120px">'+esc(confirmLabel)+'</button></div></div>';document.body.appendChild(overlay);if(!document.getElementById('be-confirm-style')){var st=document.createElement('style');st.id='be-confirm-style';st.textContent='@keyframes beConfFadeIn{from{opacity:0}to{opacity:1}}@keyframes beConfSlideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}';document.head.appendChild(st);}var done=false;function dismiss(){overlay.style.transition='opacity .15s';overlay.style.opacity='0';setTimeout(function(){overlay.remove();},150);}function finish(val){if(done)return;done=true;if(!val)dismiss();resolve(val);}document.getElementById('be-confirm-no').onclick=function(){finish(false);};document.getElementById('be-confirm-yes').onclick=function(){var btn=document.getElementById('be-confirm-yes');if(btn){btn.disabled=true;btn.textContent='Processing…';btn.style.opacity='0.6';}var noBtn=document.getElementById('be-confirm-no');if(noBtn){noBtn.disabled=true;noBtn.style.opacity='0.4';}finish(true);};overlay.addEventListener('click',function(e){if(e.target===overlay)finish(false);});window._beConfirmDismiss=dismiss;});}
@@ -813,14 +818,14 @@ function renderQueue(){
   const icon={1:'💰',2:'⏰',3:'🆕',4:'📞',5:'🔥'};
   document.getElementById('queueList').innerHTML=items.length?items.map(({l,p})=>{
     const [sla,scls]=slaOf(l);
-    return `<div class="qrow"><div><div style="font-weight:600">${icon[p]} ${esc(l.name||l.lead_id)} <span class="badge ${scls}" style="margin-left:6px">${sla}</span></div>
+    return `<div class="qrow">${_uiAv(l.name||l.lead_id)}<div style="flex:1;min-width:0"><div style="font-weight:600">${icon[p]} ${esc(l.name||l.lead_id)} <span class="badge ${scls}" style="margin-left:6px">${sla}</span></div>
       <div style="font-size:11.5px;color:var(--tx3)">${esc(l.contact||'')} · ${esc(l.course_interest||'')} · ${stageBadge(l.stage)}</div></div>
       <div class="row" style="gap:6px">${l.contact?`<a class="btn-ghost btn-sm" href="https://wa.me/91${String(l.contact).replace(/\\D/g,'')}" target="_blank">WhatsApp</a>`:''}<button class="btn btn-sm" onclick="openFollow('${l.id}')">Log</button></div></div>`;
-  }).join(''):'<div class="empty">Queue clear — no actionable leads right now.</div>';
+  }).join(''):_uiEmpty('check-circle-2','Queue clear','No actionable leads right now.');_uiIcons();
   // waiting banner (dashboard)
   const waiting=LEADS.filter(l=>!l.first_contact_at&&l.stage==='New').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   const wb=document.getElementById('waitingBanner');
-  if(waiting.length){wb.style.display='';document.getElementById('waitingList').innerHTML=waiting.map(l=>{const[sla,scls]=slaOf(l);return `<div class="qrow"><div><b>${esc(l.name||l.lead_id)}</b> · ${esc(l.contact||'')} <span class="badge ${scls}">${sla}</span></div><button class="btn btn-sm" onclick="openFollow('${l.id}')">Contact</button></div>`;}).join('');}
+  if(waiting.length){wb.style.display='';document.getElementById('waitingList').innerHTML=waiting.map(l=>{const[sla,scls]=slaOf(l);return `<div class="qrow">${_uiAv(l.name||l.lead_id)}<div style="flex:1;min-width:0"><b>${esc(l.name||l.lead_id)}</b> · ${esc(l.contact||'')} <span class="badge ${scls}">${sla}</span></div><button class="btn btn-sm" onclick="openFollow('${l.id}')">Contact</button></div>`;}).join('');}
   else wb.style.display='none';
 }
 
@@ -850,10 +855,10 @@ function renderDash(){
   const open=mine.filter(l=>!['Enrolled','Closed','Not Interested','Lost'].includes(l.stage));
   const sev=l=>{const[,c]=slaOf(l);return c==='b-red'?0:c==='b-amber'?1:2;};
   const pri=[...open].sort((a,b)=>sev(a)-sev(b)||((b.temperature==='Hot')-(a.temperature==='Hot'))).slice(0,5);
-  document.getElementById('dashPriority').innerHTML=pri.length?pri.map(l=>{const[sla,sc]=slaOf(l);return `<div class="qrow"><div><b>${esc(l.name||l.lead_id)}</b> <span class="badge ${sc}" style="margin-left:4px">${sla}</span><div style="font-size:11px;color:var(--tx3);margin-top:2px">${esc(l.contact||'')} · ${stageBadge(l.stage)}</div></div><button class="btn btn-sm" onclick="openFollow('${l.id}')">Log</button></div>`;}).join(''):'<div class="empty">Nothing pressing right now. 🎉</div>';
+  document.getElementById('dashPriority').innerHTML=pri.length?pri.map(l=>{const[sla,sc]=slaOf(l);return `<div class="qrow">${_uiAv(l.name||l.lead_id)}<div style="flex:1;min-width:0"><b>${esc(l.name||l.lead_id)}</b> <span class="badge ${sc}" style="margin-left:4px">${sla}</span><div style="font-size:11px;color:var(--tx3);margin-top:2px">${esc(l.contact||'')} · ${stageBadge(l.stage)}</div></div><button class="btn btn-sm" onclick="openFollow('${l.id}')">Log</button></div>`;}).join(''):_uiEmpty('party-popper','Nothing pressing','No overdue or hot leads right now.');
   // Recently Added — newest 5
   const rec=[...mine].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
-  document.getElementById('dashRecent').innerHTML=rec.length?rec.map(l=>`<div class="qrow"><div><b>${esc(l.name||l.lead_id)}</b><div style="font-size:11px;color:var(--tx3);margin-top:2px">${esc(l.contact||'')} · ${esc(l.source||'—')} · ${l.created_at?new Date(l.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):''}</div></div>${stageBadge(l.stage)}</div>`).join(''):'<div class="empty">No leads yet.</div>';
+  document.getElementById('dashRecent').innerHTML=rec.length?rec.map(l=>`<div class="qrow">${_uiAv(l.name||l.lead_id)}<div style="flex:1;min-width:0"><b>${esc(l.name||l.lead_id)}</b><div style="font-size:11px;color:var(--tx3);margin-top:2px">${esc(l.contact||'')} · ${esc(l.source||'—')} · ${l.created_at?new Date(l.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):''}</div></div>${stageBadge(l.stage)}</div>`).join(''):_uiEmpty('user-plus','No leads yet','New leads you add or receive will appear here.');
   if(typeof lucide!=='undefined')try{lucide.createIcons();}catch(e){}
 }
 
@@ -946,7 +951,7 @@ async function renderTasks(){
   if(!ME.isHead)q=q.eq('assigned_to',ME.id);
   const {data}=await q;
   const rows=data||[];
-  document.getElementById('taskList').innerHTML=rows.length?rows.map(t=>`<div class="qrow"><div><b>${esc(t.title||t.task_type)}</b><div style="font-size:11.5px;color:var(--tx3)">Due ${t.due_date||'—'}</div></div><button class="btn-ghost btn-sm" onclick="doneTask('${t.id}')">Done</button></div>`).join(''):'<div class="empty">No open tasks.</div>';
+  document.getElementById('taskList').innerHTML=rows.length?rows.map(t=>`<div class="qrow"><span class="dsh-ic"><i data-lucide="phone-call" style="width:16px;height:16px"></i></span><div style="flex:1;min-width:0"><b>${esc(t.title||t.task_type)}</b><div style="font-size:11.5px;color:var(--tx3)">Due ${esc(_uiDate(t.due_date))}</div></div><button class="btn-ghost btn-sm" onclick="doneTask('${t.id}')">Done</button></div>`).join(''):_uiEmpty('check-circle-2','All caught up','No open tasks or callbacks.');_uiIcons();
 }
 async function doneTask(id){await sb.from('tasks').update({status:'done'}).eq('id',id);renderTasks();}
 
@@ -974,12 +979,12 @@ async function loadCrmEnrolments(){
       return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:' + c + '18;color:' + c + '">' + esc(s || 'New') + '</span>';
     };
     el.innerHTML = rows.map(s =>
-      '<tr><td>' + esc(s.uin || '—') + '</td>' +
-      '<td>' + esc(s.name) + '</td>' +
+      '<tr><td class="ui-num" style="color:var(--tx2)">' + esc(s.uin || '—') + '</td>' +
+      '<td><div style="display:flex;align-items:center;gap:10px">' + _uiAv(s.name) + '<span style="font-weight:600;color:var(--tx)">' + esc(s.name) + '</span></div></td>' +
       '<td>' + esc(s.programme || '—') + '</td>' +
       '<td>' + esc(s.source_counsellor || '—') + '</td>' +
-      '<td>' + esc(s.enrolled_date || '—') + '</td>' +
-      '<td>' + esc(s.batch_name || 'Unassigned') + '</td>' +
+      '<td style="white-space:nowrap">' + esc(_uiDate(s.enrolled_date, true)) + '</td>' +
+      '<td>' + (s.batch_name ? esc(s.batch_name) : '<span class="st-pill st-mute" style="text-transform:none">Unassigned</span>') + '</td>' +
       '<td>' + statusBadge(s.status) + '</td></tr>'
     ).join('');
     renderDash();
@@ -1001,14 +1006,14 @@ async function loadCrmLeads(){
     if (!rows.length) { el.innerHTML = '<tr><td colspan="9" class="empty">No CRM leads yet.</td></tr>'; return; }
     el.innerHTML = rows.map(l =>
       '<tr><td>' + esc(l.crm_lead_id || '—') + '</td>' +
-      '<td>' + esc(l.name) + '</td>' +
+      '<td><span style="font-weight:600;color:var(--tx)">' + esc(l.name) + '</span></td>' +
       '<td>' + (l.phone ? '<a href="https://wa.me/91'+String(l.phone).replace(/\D/g,'')+'" target="_blank" style="color:var(--ac)">'+esc(l.phone)+'</a>' : '—') + '</td>' +
       '<td>' + esc(l.email || '—') + '</td>' +
       '<td>' + esc(l.course_interest || '—') + '</td>' +
       '<td>' + esc(l.lead_source || '—') + '</td>' +
       '<td>' + esc(l.counselor_name || '—') + '</td>' +
       '<td>' + stageBadge(l.stage || 'New') + '</td>' +
-      '<td>' + (l.created_at ? String(l.created_at).slice(0,10) : '—') + '</td></tr>'
+      '<td style="white-space:nowrap">' + (l.created_at ? esc(_uiDate(l.created_at, true)) : '—') + '</td></tr>'
     ).join('');
   } catch (e) {
     console.warn('CRM leads load error:', e.message);
@@ -1069,7 +1074,7 @@ function renderCounsellors(){
     const open=own.filter(l=>l.stage!=='Enrolled'&&!PARK.includes(l.stage)).length;
     const enr=own.filter(l=>l.stage==='Enrolled').length;
     const conv=own.length?Math.round(enr/own.length*100):0;
-    return `<tr><td>${esc(c.full_name)}</td><td>${open}</td><td>${enr}</td><td>${conv}%</td><td><span class="badge ${c.sales_accept_leads===false?'b-mut':'b-green'}">${c.sales_accept_leads===false?'Paused':'Yes'}</span></td></tr>`;
+    return `<tr><td><div style="display:flex;align-items:center;gap:10px">${_uiAv(c.full_name)}<span style="font-weight:600;color:var(--tx)">${esc(c.full_name)}</span></div></td><td class="ui-num">${open}</td><td class="ui-num">${enr}</td><td><div style="display:flex;align-items:center;gap:10px;min-width:110px"><span class="ui-num" style="font-weight:600;min-width:34px">${conv}%</span><span class="rp-bar rp-bar-sm" style="flex:1;margin:0;max-width:120px"><span style="width:${conv}%"></span></span></div></td><td><span class="badge ${c.sales_accept_leads===false?'b-mut':'b-green'}">${c.sales_accept_leads===false?'Paused':'Yes'}</span></td></tr>`;
   }).join(''):'<tr><td colspan="5" class="empty">No Sales employees synced from HR yet.</td></tr>';
 }
 async function loadRules(){const {data}=await sb.from('lead_routing_rules').select('*').order('priority');
@@ -1342,8 +1347,8 @@ async function loadLeave(){
     const today=new Date().toISOString().slice(0,10);
     document.getElementById('lvList').innerHTML=(reqs&&reqs.length)?reqs.map(r=>{
       const canCancel=r.status!=='cancelled'&&r.status!=='rejected'&&r.start_date>today;
-      return `<div class="qrow"><div><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date} → ${r.end_date}${r.days?' · '+r.days+'d':''}</div></div><div style="display:flex;align-items:center;gap:6px"><span class="badge ${r.status==='approved'?'b-green':(r.status==='rejected'||r.status==='cancelled')?'b-red':'b-amber'}">${esc(r.status||'pending')}</span>${canCancel?`<button onclick="salesCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>`:''}</div></div>`;
-    }).join(''):'<div class="empty">No leave requests yet.</div>';
+      return `<div class="qrow"><span class="dsh-ic"><i data-lucide="calendar-days" style="width:16px;height:16px"></i></span><div style="flex:1;min-width:0"><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date===r.end_date?esc(_uiDate(r.start_date)):esc(_uiDate(r.start_date))+' → '+esc(_uiDate(r.end_date))}${r.days?' · '+r.days+'d':''}</div></div><div style="display:flex;align-items:center;gap:6px"><span class="badge ${r.status==='approved'?'b-green':(r.status==='rejected'||r.status==='cancelled')?'b-red':'b-amber'}">${esc(r.status||'pending')}</span>${canCancel?`<button onclick="salesCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>`:''}</div></div>`;
+    }).join(''):_uiEmpty('calendar-days','No leave requests yet','Requests you submit will appear here with their HR status.');_uiIcons();
   }catch(e){document.getElementById('lvList').innerHTML='<div class="empty">Could not load leave.</div>';}
 }
 // Half Day is a single-day request — hide the To date, show the half-type picker.
@@ -1395,16 +1400,16 @@ async function salesCancelLeave(id){
 function loadDocuments(){
   const links=(ME.rec&&ME.rec.document_links)||'';
   const arr=String(links).split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
-  document.getElementById('docList').innerHTML=arr.length?arr.map((l,i)=>`<div class="qrow"><span>Document ${i+1}</span><a class="btn-ghost btn-sm" href="${esc(l)}" target="_blank" rel="noopener">Open</a></div>`).join(''):'<div class="empty">No documents shared by HR yet.</div>';
+  document.getElementById('docList').innerHTML=arr.length?arr.map((l,i)=>`<div class="qrow"><span class="dsh-ic"><i data-lucide="file-text" style="width:16px;height:16px"></i></span><div style="flex:1;min-width:0"><b>Document ${i+1}</b><div class="sub" style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l)}</div></div><a class="btn-ghost btn-sm" href="${esc(l)}" target="_blank" rel="noopener">Open</a></div>`).join(''):_uiEmpty('folder-open','No documents yet','Documents HR shares on your record will appear here.');_uiIcons();
 }
 async function loadPayslips(){
   try{
     const {data}=await sb.from('hr_payroll').select('*').eq('employee_id',ME.id).eq('published',true).order('month',{ascending:false});
-    document.getElementById('payRows').innerHTML=(data&&data.length)?data.map(p=>`<tr><td>${esc(p.month)}</td><td>₹${p.net_salary!=null?Number(p.net_salary).toLocaleString('en-IN'):'—'}</td><td><span class="badge ${p.payment_status==='paid'?'b-green':'b-amber'}">${esc(p.payment_status||'pending')}</span></td><td>${p.payment_date||'—'}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">No published payslips yet.</td></tr>';
+    document.getElementById('payRows').innerHTML=(data&&data.length)?data.map(p=>`<tr><td><span style="font-weight:600;color:var(--tx)">${esc(/^\d{4}-\d{2}$/.test(p.month||'')?new Date(p.month+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'}):p.month)}</span></td><td class="ui-num" style="font-weight:700;color:var(--tx)">₹${p.net_salary!=null?Number(p.net_salary).toLocaleString('en-IN'):'—'}</td><td><span class="badge ${p.payment_status==='paid'?'b-green':'b-amber'}">${esc(p.payment_status||'pending')}</span></td><td>${p.payment_date||'—'}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">No published payslips yet.</td></tr>';
   }catch(e){document.getElementById('payRows').innerHTML='<tr><td colspan="4" class="empty">Could not load payslips.</td></tr>';}
 }
 function loadTeamMembers(){
-  document.getElementById('teamMemRows').innerHTML=COUNSELLORS.length?COUNSELLORS.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(c.designation||'—')}</td><td>${esc(c.department||'—')}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No Sales team members synced from HR yet.</td></tr>';
+  document.getElementById('teamMemRows').innerHTML=COUNSELLORS.length?COUNSELLORS.map(c=>`<tr><td><div style="display:flex;align-items:center;gap:10px">${_uiAv(c.full_name)}<span style="font-weight:600;color:var(--tx)">${esc(c.full_name)}</span></div></td><td>${esc(c.designation||'—')}</td><td>${esc(c.department||'—')}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No Sales team members synced from HR yet.</td></tr>';
 }
 function openModal(id){document.getElementById(id).classList.add('on');}
 function closeModal(id){document.getElementById(id).classList.remove('on');}
