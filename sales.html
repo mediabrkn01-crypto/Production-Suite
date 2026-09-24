@@ -361,6 +361,11 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
         </div>
         <div style="overflow-x:auto"><table><thead><tr><th>Lead</th><th>Contact</th><th>Course</th><th>Stage</th><th>Temp</th><th>SLA</th><th>Counsellor</th><th>Next</th><th></th></tr></thead><tbody id="leadRows"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody></table></div>
       </div>
+      <div class="section">
+        <h2>CRM Leads <span class="tag" id="crmLeadCount" style="font-size:11px;vertical-align:middle">0</span></h2>
+        <div class="sub">Leads synced from Xale CRM. Assigned to your counselor identity.</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>CRM ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Course</th><th>Source</th><th>Counselor</th><th>Stage</th><th>Created</th></tr></thead><tbody id="crmLeadRows"><tr><td colspan="9" class="empty">No CRM leads yet.</td></tr></tbody></table></div>
+      </div>
     </div>
 
     <!-- TASKS -->
@@ -370,14 +375,10 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 
     <!-- ENROLMENTS -->
     <div class="tab" id="tab-enrol">
-      <div class="section"><h2>Enrolments <button class="btn" onclick="openEnrol()">+ Enrol Student</button></h2>
-        <div class="sub">Real enrolment creates the student in the Academics database. Changing a stage to "Enrolled" is only a tag — use this action.</div>
-        <div style="overflow-x:auto"><table><thead><tr><th>Student UIN</th><th>Name</th><th>Course</th><th>Lead</th><th>Enrolled</th></tr></thead><tbody id="enrolRows"><tr><td colspan="5" class="empty">No enrolments yet.</td></tr></tbody></table></div>
-      </div>
       <div class="section">
-        <h2>CRM Enrolments <span class="tag" id="crmEnrolCount" style="font-size:11px;vertical-align:middle">0</span></h2>
-        <div class="sub">Students enrolled via external CRM (Xale). Auto-synced — no manual entry needed.</div>
-        <div style="overflow-x:auto"><table><thead><tr><th>UIN</th><th>Name</th><th>Course</th><th>Counselor</th><th>Enrolled</th><th>Batch</th><th>Status</th></tr></thead><tbody id="crmEnrolRows"><tr><td colspan="7" class="empty">No CRM enrolments yet.</td></tr></tbody></table></div>
+        <h2>Enrolments <span class="tag" id="crmEnrolCount" style="font-size:11px;vertical-align:middle">0</span></h2>
+        <div class="sub">Students enrolled via CRM (Xale). Auto-synced — no manual entry needed.</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>UIN</th><th>Name</th><th>Course</th><th>Counselor</th><th>Enrolled</th><th>Batch</th><th>Status</th></tr></thead><tbody id="crmEnrolRows"><tr><td colspan="7" class="empty">No enrolments yet.</td></tr></tbody></table></div>
       </div>
     </div>
 
@@ -521,20 +522,6 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
   <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mFollow')">Cancel</button><button class="btn" id="fu_save" onclick="saveFollow()">Save follow-up</button></div>
 </div></div>
 
-<div class="modal-bg" id="mEnrol"><div class="modal"><h3>Enrol Student</h3>
-  <div class="sub">Creates the real student in the Academics database (status New) and links the lead.</div>
-  <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
-    <label class="fld">Convert a lead<select id="en_lead" onchange="enrolPrefill()"><option value="">— pick one of your leads —</option></select></label>
-    <label class="fld">Student name<input id="en_name"/></label>
-    <label class="fld">Contact<input id="en_contact"/></label>
-    <label class="fld">Course<select id="en_course"></select></label>
-    <label class="fld">Preferred class time <span style="color:var(--tx3)">(optional — Academic Head sees this when creating the batch)</span>
-      <button type="button" id="en_pref_btn" class="btn-ghost" style="text-align:left;justify-content:flex-start" onclick="openTimeSlotPicker(document.getElementById('en_pref').value, function(v){document.getElementById('en_pref').value=v; document.getElementById('en_pref_btn').textContent=v||'Select time slot';})">Select time slot</button>
-      <input id="en_pref" type="hidden"/>
-    </label>
-  </div>
-  <div class="modal-actions"><button class="btn-ghost" onclick="closeModal('mEnrol')">Cancel</button><button class="btn" id="en_save" onclick="saveEnrol()">Enrol & hand off to Academics</button></div>
-</div></div>
 
 <!-- Batch Enrollment Modal (Available Batches → enroll existing student) -->
 <div class="modal-bg" id="mBatchEnrol"><div class="modal" style="max-width:550px">
@@ -747,6 +734,8 @@ async function boot(){
   initClock();
   loadAttendance();
   subscribeRealtime();
+  loadCrmEnrolments();
+  loadCrmLeads();
   if (typeof DynamicTabs !== 'undefined') DynamicTabs.init(sb, 'sales', ME && ME.isHead ? 'admin' : 'employee');
 }
 
@@ -961,61 +950,22 @@ async function renderTasks(){
 async function doneTask(id){await sb.from('tasks').update({status:'done'}).eq('id',id);renderTasks();}
 
 /* ---------- ENROLMENT → students handoff ---------- */
-function openEnrol(){
-  const mine=LEADS.filter(l=>l.stage!=='Enrolled'&&!PARK.includes(l.stage));
-  document.getElementById('en_lead').innerHTML='<option value="">— pick one of your leads —</option>'+mine.map(l=>`<option value="${l.id}">${esc(l.lead_id)} · ${esc(l.name||'')} · ${esc(l.course_interest||'')}</option>`).join('');
-  document.getElementById('en_name').value='';document.getElementById('en_contact').value='';document.getElementById('en_course').value='';document.getElementById('en_pref').value='';document.getElementById('en_pref_btn').textContent='Select time slot';
-  openModal('mEnrol');
-}
-function enrolPrefill(){const l=LEADS.find(x=>String(x.id)===document.getElementById('en_lead').value);if(!l)return;document.getElementById('en_name').value=l.name||'';document.getElementById('en_contact').value=l.contact||'';document.getElementById('en_course').value=l.course_interest||'';}
-async function saveEnrol(){
-  const name=document.getElementById('en_name').value.trim();const contact=document.getElementById('en_contact').value.trim();
-  const course=document.getElementById('en_course').value;const leadId=document.getElementById('en_lead').value;
-  const pref=document.getElementById('en_pref').value.trim()||null;
-  if(!name){showToast('warning','Student name required.');return;}
-  const btn=document.getElementById('en_save');btn.disabled=true;
-  try{
-    const lead=leadId?LEADS.find(x=>String(x.id)===leadId):null;
-    // Duplicate prevention (spec item 10/11): the shared students table is source of truth.
-    // Look for an existing student by, in order: this lead's already-linked student_uin, then
-    // the same contact number. If found, UPDATE/link that record — never blind-insert a second
-    // Academic student for the same person. Only genuinely-new people get a fresh UIN.
-    let existing=null;
-    if(lead&&lead.student_uin){const{data}=await sb.from('students').select('*').eq('uin',lead.student_uin).limit(1);existing=data&&data[0];}
-    if(!existing&&contact){const{data}=await sb.from('students').select('*').ilike('contact',contact).limit(1);existing=data&&data[0];}
-    let uin;
-    if(existing){
-      uin=existing.uin;
-      // Only fill blanks / set the sales-owned admission fields — never stomp an assigned
-      // batch/trainer or flip an In-Progress student back to New (Academic owns those).
-      const upd={programme:existing.programme||course||null,preferred_slot:pref||existing.preferred_slot||null,source_counsellor:existing.source_counsellor||ME.name};
-      if(!existing.contact&&contact)upd.contact=contact;
-      await sb.from('students').update(upd).eq('id',existing.id);
-    }else{
-      uin='BRK'+Date.now().toString().slice(-8);
-      const{error}=await sb.from('students').insert({uin,name,contact:contact||null,programme:course||null,status:'New',source_counsellor:ME.name,enrolled_date:new Date().toISOString().slice(0,10),preferred_slot:pref});
-      if(error){showToast('error','Could not create student: '+error.message);return;}
-    }
-    if(leadId)await sb.from('leads').update({stage:'Enrolled',student_uin:uin}).eq('id',leadId);
-    closeModal('mEnrol');showToast('success',existing?`Linked to existing student ${uin} in Academics.`:`Enrolled — student ${uin} created in Academics.`);await loadLeads();
-  }finally{btn.disabled=false;}
-}
 function renderEnrol(){
-  const rows=LEADS.filter(l=>l.stage==='Enrolled');
-  document.getElementById('enrolRows').innerHTML=rows.length?rows.map(l=>`<tr><td>${esc(l.student_uin||'—')}</td><td>${esc(l.name||'')}</td><td>${esc(l.course_interest||'')}</td><td>${esc(l.lead_id)}</td><td>${l.updated_at?String(l.updated_at).slice(0,10):'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No enrolments yet.</td></tr>';
   loadCrmEnrolments();
 }
 async function loadCrmEnrolments(){
   try {
-    const { data, error } = await sb.from('students')
-      .select('id,uin,name,programme,source_counsellor,enrolled_date,batch_name,status,crm_source')
+    let q = sb.from('students')
+      .select('id,uin,name,programme,source_counsellor,counsellor_id,enrolled_date,batch_name,status,crm_source')
       .eq('crm_source', 'xale')
       .order('enrolled_date', { ascending: false });
+    if (!ME.isHead) q = q.eq('counsellor_id', ME.id);
+    const { data, error } = await q;
     if (error) throw error;
     const rows = data || [];
     document.getElementById('crmEnrolCount').textContent = rows.length;
     const el = document.getElementById('crmEnrolRows');
-    if (!rows.length) { el.innerHTML = '<tr><td colspan="7" class="empty">No CRM enrolments yet.</td></tr>'; return; }
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="7" class="empty">No enrolments yet.</td></tr>'; return; }
     const statusBadge = s => {
       const colors = { New: '#38bdf8', 'In Progress': '#10b981', Completed: '#8b5cf6', Dropped: '#ef4444', Cancelled: '#ef4444' };
       const c = colors[s] || '#94a3b8';
@@ -1032,6 +982,33 @@ async function loadCrmEnrolments(){
     ).join('');
   } catch (e) {
     console.warn('CRM enrolments load error:', e.message);
+  }
+}
+async function loadCrmLeads(){
+  try {
+    let q = sb.from('crm_leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!ME.isHead) q = q.eq('counsellor_id', ME.id);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = data || [];
+    document.getElementById('crmLeadCount').textContent = rows.length;
+    const el = document.getElementById('crmLeadRows');
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="9" class="empty">No CRM leads yet.</td></tr>'; return; }
+    el.innerHTML = rows.map(l =>
+      '<tr><td>' + esc(l.crm_lead_id || '—') + '</td>' +
+      '<td>' + esc(l.name) + '</td>' +
+      '<td>' + (l.phone ? '<a href="https://wa.me/91'+String(l.phone).replace(/\D/g,'')+'" target="_blank" style="color:var(--ac)">'+esc(l.phone)+'</a>' : '—') + '</td>' +
+      '<td>' + esc(l.email || '—') + '</td>' +
+      '<td>' + esc(l.course_interest || '—') + '</td>' +
+      '<td>' + esc(l.lead_source || '—') + '</td>' +
+      '<td>' + esc(l.counselor_name || '—') + '</td>' +
+      '<td>' + stageBadge(l.stage || 'New') + '</td>' +
+      '<td>' + (l.created_at ? String(l.created_at).slice(0,10) : '—') + '</td></tr>'
+    ).join('');
+  } catch (e) {
+    console.warn('CRM leads load error:', e.message);
   }
 }
 
@@ -1196,7 +1173,8 @@ function subscribeRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>renderTasks())
     .on('postgres_changes',{event:'*',schema:'public',table:'hr_employees'},()=>loadCounsellors().then(populateStaticSelects))
     .on('postgres_changes',{event:'*',schema:'public',table:'batches'},()=>{ if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
-    .on('postgres_changes',{event:'*',schema:'public',table:'students'},()=>{ if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
+    .on('postgres_changes',{event:'*',schema:'public',table:'students'},()=>{ loadCrmEnrolments(); if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
+    .on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},()=>loadCrmLeads())
     .subscribe();
 }
 
@@ -1288,10 +1266,7 @@ function salesRenderOccupancy(){
 // the trainer). Occupied slots are not clickable, so a conflicting slot can't be chosen here.
 function salesPickFreeSlot(arg){
   const [tn,label]=arg.split('|').map(decodeURIComponent);
-  openEnrol();
-  document.getElementById('en_pref').value=label;
-  document.getElementById('en_pref_btn').textContent=label;
-  showToast('success',`Slot selected — ${tn}, ${label}. Complete the enrolment.`);
+  showToast('info',`Free slot: ${tn}, ${label}. Enrolments now come through CRM.`);
 }
 // The get_available_trainers RPC wants a 24h HH:MM start time (it rejects "AM/PM"). Convert
 // whatever the Sales user types ("9:30 PM", "9 pm", "21:30", "9.30pm") into HH:MM for it.
