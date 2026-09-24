@@ -1344,6 +1344,12 @@ function applyCurrentUserProfileToDOM(profile) {
         // refresh, tab-switch and session restore, matching the popup.
         const mtbAvatar = document.getElementById('mtb-account-avatar');
         if (mtbAvatar) mtbAvatar.innerHTML = hrAvatarHTML(profile.raw, 34);
+        const acadSidebarAvatar = document.getElementById('acad-user-avatar-wrap');
+        if (acadSidebarAvatar) acadSidebarAvatar.innerHTML = hrAvatarHTML(profile.raw, 28);
+        const acadTopbarAvatar = document.getElementById('acad-topbar-account-avatar');
+        if (acadTopbarAvatar) acadTopbarAvatar.innerHTML = hrAvatarHTML(profile.raw, 30);
+        const acadMtbAvatar = document.getElementById('mtb-acad-account-avatar');
+        if (acadMtbAvatar) acadMtbAvatar.innerHTML = hrAvatarHTML(profile.raw, 34);
     }
     if (profile.designation) {
         // user-role-badge (index.html's top sidebar identity block, under "Media Suite") used
