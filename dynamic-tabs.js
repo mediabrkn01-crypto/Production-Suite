@@ -23,14 +23,18 @@
       if (!_sb || !_dept) return;
 
       var { data, error } = await _sb.from('hr_custom_tabs')
-        .select('id,slug,name,icon,target_departments')
+        .select('id,slug,name,icon,target_departments,target_roles')
         .eq('status', 'published')
         .order('sort_order');
       if (error || !data) return;
 
       _tabs = data.filter(function (t) {
         var depts = t.target_departments || [];
-        return depts.indexOf('all') >= 0 || depts.indexOf(_dept) >= 0;
+        var deptMatch = depts.indexOf('all') >= 0 || depts.indexOf(_dept) >= 0;
+        if (!deptMatch) return false;
+        var roles = t.target_roles || [];
+        if (roles.length === 0) return true;
+        return roles.indexOf(_role) >= 0;
       });
 
       if (_tabs.length === 0) return;

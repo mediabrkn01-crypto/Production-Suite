@@ -229,6 +229,26 @@
       html += '</label>';
     });
     html += '</div></div>';
+
+    // Role targeting
+    html += '<div style="margin-top:12px">';
+    html += '<div style="font-size:10px;color:#808a9d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Visible To Roles (empty = all)</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    var ROLE_OPTIONS = [
+      { value: 'admin', label: 'Admin / HR' },
+      { value: 'manager', label: 'Manager' },
+      { value: 'employee', label: 'Employee' },
+      { value: 'social_media', label: 'Social Media' },
+      { value: 'trainer', label: 'Trainer' }
+    ];
+    var currentRoles = t.target_roles || [];
+    ROLE_OPTIONS.forEach(function (r) {
+      var checked = currentRoles.indexOf(r.value) >= 0;
+      html += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#f1f5f9;cursor:pointer;padding:4px 8px;border-radius:6px;background:' + (checked ? 'rgba(168,85,247,.15)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (checked ? 'rgba(168,85,247,.3)' : 'rgba(255,255,255,0.06)') + '">';
+      html += '<input type="checkbox" class="tb-role" value="' + r.value + '" ' + (checked ? 'checked' : '') + '> ' + r.label;
+      html += '</label>';
+    });
+    html += '</div></div>';
     html += '</div>';
 
     // Sections
@@ -313,7 +333,20 @@
       html += '<button onclick="TabBuilder._addFormField(' + idx + ')" style="font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#808a9d;cursor:pointer;margin-top:4px">+ Field</button>';
       html += '</div>';
     } else if (sec.section_type === 'document') {
-      html += '<div style="font-size:11px;color:#808a9d;padding:10px">Document upload section. Files managed after publishing.</div>';
+      var files = (sec.content && sec.content.files) || [];
+      html += '<div id="tb-docs-' + idx + '">';
+      files.forEach(function (f, fi) {
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+        html += '<i data-lucide="file" style="width:12px;height:12px;color:#808a9d;flex-shrink:0"></i>';
+        html += '<span style="font-size:12px;color:#f1f5f9;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>';
+        html += '<button onclick="TabBuilder._removeDoc(' + idx + ',' + fi + ')" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(248,113,113,.2);background:none;color:#f87171;cursor:pointer;flex-shrink:0">&times;</button>';
+        html += '</div>';
+      });
+      html += '<label style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.08);color:#3b82f6;cursor:pointer;margin-top:4px">';
+      html += '<i data-lucide="upload" style="width:12px;height:12px"></i> Upload File';
+      html += '<input type="file" style="display:none" onchange="TabBuilder._uploadDoc(' + idx + ',this)">';
+      html += '</label>';
+      html += '</div>';
     } else if (sec.section_type === 'table') {
       html += '<div style="font-size:11px;color:#808a9d;padding:10px">Table displays form submissions automatically.</div>';
     }
@@ -376,6 +409,24 @@
     _sections[secIdx].content.cards[cardIdx][key] = val;
   };
 
+  // Document manipulation
+  TabBuilder._uploadDoc = async function (secIdx, input) {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    var path = 'docs/' + Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    var { data, error } = await _sb.storage.from('custom-tab-docs').upload(path, file, { upsert: true });
+    if (error) { alert('Upload failed: ' + error.message); return; }
+    var { data: urlData } = _sb.storage.from('custom-tab-docs').getPublicUrl(path);
+    if (!_sections[secIdx].content.files) _sections[secIdx].content.files = [];
+    _sections[secIdx].content.files.push({ name: file.name, url: urlData.publicUrl, uploaded_at: new Date().toISOString() });
+    _renderEditor(document.getElementById('hr-tab-builder-content'));
+  };
+
+  TabBuilder._removeDoc = function (secIdx, fileIdx) {
+    _sections[secIdx].content.files.splice(fileIdx, 1);
+    _renderEditor(document.getElementById('hr-tab-builder-content'));
+  };
+
   // Save tab + sections
   TabBuilder._saveTab = async function (status) {
     var name = document.getElementById('tb-name').value.trim();
@@ -387,10 +438,13 @@
     var depts = [];
     deptCheckboxes.forEach(function (cb) { depts.push(cb.value); });
     if (depts.length === 0) { alert('Select at least one department.'); return; }
+    var roleCheckboxes = document.querySelectorAll('.tb-role:checked');
+    var roles = [];
+    roleCheckboxes.forEach(function (cb) { roles.push(cb.value); });
 
     var tabData = {
       name: name, description: desc || null, icon: icon,
-      target_departments: depts, sort_order: sortOrder,
+      target_departments: depts, target_roles: roles, sort_order: sortOrder,
       status: status, updated_at: new Date().toISOString()
     };
 

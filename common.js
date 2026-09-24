@@ -162,13 +162,21 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
         // never has to manually type a starting allocation per person. Edit these numbers to
         // change the company-wide policy; existing employees' allocations are untouched (they're
         // only used as the seed value at the moment an employee record is first created).
-        const HR_DEFAULT_LEAVE_ALLOCATION = {
+        const HR_DEFAULT_LEAVE_ALLOCATION = (typeof P !== 'undefined') ? {
+            'Casual Leave': P.CL_PER_CYCLE || 3,
+            'Sick Leave': P.SL_PER_MONTH || 1,
+            'Annual Leave': P.ANNUAL_LEAVE || 12,
+            'Emergency Leave': P.EMERGENCY_LEAVE || 3,
+            'Maternity Leave': null,
+            'Unpaid Leave': null,
+            'Work From Home': P.WFH_PER_MONTH || 10
+        } : {
             'Casual Leave': 3,
             'Sick Leave': 1,
             'Annual Leave': 12,
             'Emergency Leave': 3,
-            'Maternity Leave': null, // no fixed allocation — paid, granted per approved request
-            'Unpaid Leave': null, // no fixed allocation
+            'Maternity Leave': null,
+            'Unpaid Leave': null,
             'Work From Home': 10
         };
         const HR_ATT_STATUSES = ['present', 'absent', 'late', 'afternoon', 'half_day', 'wfh', 'on_leave', 'holiday'];
@@ -180,7 +188,7 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
         // "always-paid medical/special exception" flag in hr_leave_requests today (only
         // leave_type), so every other approved leave_type (Casual/Sick/Annual/Emergency Leave)
         // is treated as eligible — see hrCalculatePayrollForMonth.
-        const HR_MONTHLY_PAID_LEAVE_DAYS = 3;
+        const HR_MONTHLY_PAID_LEAVE_DAYS = (typeof P !== 'undefined' && P.MONTHLY_PAID_LEAVE_DAYS) ? P.MONTHLY_PAID_LEAVE_DAYS : 3;
         // ── Late auto-detection ─────────────────────────────────────────────────────
         // Single cutoff, single source of truth: clock in at/before this hour → Present;
         // after it → Present + Late. Simplified to exactly this 2-state model per spec
