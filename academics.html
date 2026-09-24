@@ -1829,6 +1829,17 @@ details[open] .rawsum::before{content:'▾ '}
   </div>
 </div></div>
 
+<!-- Complete Group Classes modal (Head only, group batches with OTO) -->
+<div class="modal-bg" id="modalCompleteGroupClasses"><div class="modal" style="width:460px">
+  <h3 id="cgc_title">Complete Group Classes</h3>
+  <div id="cgc_body"></div>
+  <div id="cgc_error" style="display:none;font-size:11px;color:#f87171;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:7px;padding:6px 10px;margin-top:8px"></div>
+  <div class="modal-actions">
+    <button class="btn-cancel" onclick="closeModal('completeGroupClasses')">Cancel</button>
+    <button class="btn-save" id="cgc_confirm_btn" onclick="confirmCompleteGroupClasses()" style="background:linear-gradient(135deg,#10b981,#059669)">Yes, Complete Group Classes</button>
+  </div>
+</div></div>
+
 <!-- Restore Batch modal (Head only, Finished Batches) -->
 <div class="modal-bg" id="modalRestoreBatch"><div class="modal" style="width:440px">
   <h3 id="rst_title">Restore Batch</h3>
@@ -2408,8 +2419,8 @@ async function loadLive(){
   // students while the trainers row itself is "Laura and philip") — id is the only reliable key.
   const inactiveTrainerIds = new Set((trainerStatusResult.data||[]).filter(t=>t.status==='inactive').map(t=>String(t.id)));
   const batchIdByName = {}, batchTrainerIdByName = {}, batchCourseIdByName = {};
-  const batchFreezeData = {};
-  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; if(b.status==='frozen') batchFreezeData[b.name]={freeze_start_date:b.freeze_start_date,freeze_resume_date:b.freeze_resume_date,freeze_reason:b.freeze_reason,frozen_at:b.frozen_at,freeze_previous_trainer_id:b.freeze_previous_trainer_id}; });
+  const batchFreezeData = {}, batchGCCompletedAt = {};
+  (baseResult.data||[]).forEach(b => { batchIdByName[b.name] = b.id; batchTrainerIdByName[b.name] = b.trainer_id; batchCourseIdByName[b.name] = b.course_id; if(b.group_classes_completed_at) batchGCCompletedAt[b.name]=b.group_classes_completed_at; if(b.status==='frozen') batchFreezeData[b.name]={freeze_start_date:b.freeze_start_date,freeze_resume_date:b.freeze_resume_date,freeze_reason:b.freeze_reason,frozen_at:b.frozen_at,freeze_previous_trainer_id:b.freeze_previous_trainer_id}; });
   window._acadBatchIdByName = batchIdByName;
   // OTO completion map: batchId → completed count. Used by isBatchFinished to block
   // auto-completion until all OTO sessions are done.
@@ -2559,7 +2570,7 @@ async function loadLive(){
   // split Student Attendance into "My Assigned Batches" / "Other Trainers' Batches" for an
   // Academic Head, who is also a working Trainer with their own teaching load (spec: keep
   // that split ID-based, never by trainer name text).
-  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); const _crs = b._courseId && courseById[b._courseId]; b._otoRequired = (_crs && !b.elite && _crs.type === 'group') ? (+_crs.oto_sessions_required || 0) : 0; if (b._otoRequired > 0 && b._batchId) { const _od = _otoCompByBatch[b._batchId]; b._otoDone = _od ? _od.completed : 0; b._otoTotal = b.students.length * b._otoRequired; } const _fd = batchFreezeData[b.raw||b.name]; if(_fd){b._isFrozen=true;b._freezeData=_fd;} });
+  active.forEach(b => { b._progress = progressOf(b); b._batchId = batchIdByName[b.raw||b.name]; b._trainerId = batchTrainerIdByName[b.raw||b.name]; b._courseId = batchCourseIdByName[b.raw||b.name]; b._trainerInactive = inactiveTrainerIds.has(String(b._trainerId)); const _crs = b._courseId && courseById[b._courseId]; b._otoRequired = (_crs && !b.elite && _crs.type === 'group') ? (+_crs.oto_sessions_required || 0) : 0; if (b._otoRequired > 0 && b._batchId) { const _od = _otoCompByBatch[b._batchId]; b._otoDone = _od ? _od.completed : 0; b._otoTotal = b.students.length * b._otoRequired; } b._groupClassesDone = !!batchGCCompletedAt[b.raw||b.name]; b._groupClassesCompletedAt = batchGCCompletedAt[b.raw||b.name]||null; const _fd = batchFreezeData[b.raw||b.name]; if(_fd){b._isFrozen=true;b._freezeData=_fd;} });
   previous.forEach(b => b._progress = progressOf(b));
   window._liveActiveBatches = active;
   window._livePreviousBatches = previous;
@@ -2779,6 +2790,7 @@ function card(b,i,isPrevious){
           <span class="badge" style="background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.28)">${esc(b.prog||'\u2014')}</span>
           ${b.elite ? '<span class="badge" style="background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)">1:1</span>' : '<span class="badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.28)">Group</span>'}
           ${isFrozen ? '<span class="badge" style="background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.28)">FROZEN</span>' : ''}
+          ${(!isPrevious&&!isFrozen&&b._groupClassesDone) ? '<span class="badge" style="background:rgba(16,185,129,.12);color:#10b981;border:1px solid rgba(16,185,129,.28)">Group Classes Done</span>' : ''}
         </div>
         <div style="font-size:11.5px;color:var(--tx3);margin-top:4px">${esc(b.trainer)}${b.elite?'':' \u00b7 '+b.students.length+' student'+(b.students.length===1?'':'s')}</div>
         ${(function(){ var sch=(window._acadSchedByName&&window._acadSchedByName[b.raw])||{}; return (sch.days||sch.time)?`<div style="font-size:11px;color:var(--tx3);margin-top:3px"><i data-lucide="calendar-clock" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> ${esc(sch.days||'Schedule')}${sch.time?(' \u00b7 '+esc(sch.time)):''}</div>`:''; })()}
@@ -2800,6 +2812,7 @@ function card(b,i,isPrevious){
         <button class="act-btn btn-mark-att" onclick="openAtt(${i})">Mark Attendance</button>
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
         ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
+        ${(isHead&&!b.elite&&b._otoRequired>0&&b.raw&&!b._groupClassesDone)?`<button class="act-btn" onclick="openCompleteGroupClasses(${i})" style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#10b981">Complete Group Classes</button>`:''}
         ${isHead&&b.elite&&b.raw?`<button class="act-btn" onclick="openFreezeBatch(${i})" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b">Freeze</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
         ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
@@ -2811,6 +2824,7 @@ function card(b,i,isPrevious){
          attendance/progress is completely untouched by this, it's a visibility flag only. -->
     ${(!isPrevious && b._trainerInactive) ? `<div class="mhint" style="margin-top:8px;color:var(--yellow);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:7px 10px">\u26a0 Trainer Inactive \u2014 Academic Head Action Required</div>` : ''}
     ${(isFrozen && b._freezeData) ? `<div class="mhint" style="margin-top:8px;color:#fbbf24;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:7px 10px">&#10052; Classes paused: ${esc(b._freezeData.freeze_start_date||'')} \u2192 ${esc(b._freezeData.freeze_resume_date||'TBD')}${b._freezeData.freeze_reason?' \u00b7 '+esc(b._freezeData.freeze_reason):''}</div>` : ''}
+    ${(!isPrevious&&b._groupClassesDone) ? `<div class="mhint" style="margin-top:8px;color:#10b981;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:8px;padding:7px 10px">\u2714 Group classes completed${b._groupClassesCompletedAt?' on '+new Date(b._groupClassesCompletedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):''}. One-on-One sessions remain active.</div>` : ''}
     <!-- BUG FIX, CONFIRMED LIVE \u2014 "Complete Batch" (and Edit Batch) silently did nothing on
          this "Unassigned" card, no error, no modal. Root cause: this card is a synthetic
          grouping of students with no batch_id/batch_name at all (b.raw === '') \u2014 there is no
@@ -2932,6 +2946,78 @@ async function confirmCompleteBatch(){
   } finally {
     btn.disabled = false;
     window._cbInFlight = false;
+  }
+}
+
+/* ── COMPLETE GROUP CLASSES (Head only, group batches with OTO) ── */
+window._cgcBatchIndex = null;
+window._cgcInFlight = false;
+async function openCompleteGroupClasses(i){
+  if(!requireHeadAccess())return;
+  const b=window._liveBatches[i]; if(!b||!b.raw)return;
+  window._cgcBatchIndex = i;
+  const errEl = document.getElementById('cgc_error');
+  errEl.style.display = 'none';
+  const {total,dn} = b._progress || {total:0,dn:0};
+  const remaining = Math.max(0, total-dn);
+  document.getElementById('cgc_title').textContent = 'Complete Group Classes · '+b.name;
+  const confirmBtn = document.getElementById('cgc_confirm_btn');
+  if (remaining > 0) {
+    confirmBtn.disabled = true;
+    errEl.textContent = remaining+' group class'+(remaining===1?' is':'es are')+' still remaining. Complete all scheduled group classes before marking the group phase as done.';
+    errEl.style.display = '';
+  } else {
+    confirmBtn.disabled = false;
+  }
+  document.getElementById('cgc_body').innerHTML =
+    '<div class="mhint" style="margin-bottom:10px">Mark all Group Classes as completed for this batch? One-on-One Sessions will remain active and the batch stays open until all 1:1 sessions are done.</div>'
+    +'<div class="stu-grid">'
+    +'<span class="k">Batch</span><span class="v">'+esc(b.name)+'</span>'
+    +'<span class="k">Trainer</span><span class="v">'+esc(b.trainer||'—')+'</span>'
+    +'<span class="k">Group Sessions</span><span class="v">'+dn+' / '+total+' done</span>'
+    +'<span class="k">1:1 Sessions</span><span class="v">'+(b._otoDone||0)+' / '+(b._otoTotal||0)+' done</span>'
+    +'<span class="k">Students</span><span class="v">'+(b.students?b.students.length:0)+'</span>'
+    +'</div>'
+    +(remaining > 0 ? '<div class="mhint" style="margin-top:8px;color:var(--yellow)">'+remaining+' group session'+(remaining===1?' has':'s have')+' not been individually logged yet.</div>' : '<div class="mhint" style="margin-top:8px;color:#10b981">All '+total+' group sessions completed. Ready to close the group phase.</div>');
+  document.getElementById('modalCompleteGroupClasses').classList.add('on');
+}
+async function confirmCompleteGroupClasses(){
+  if(!requireHeadAccess())return;
+  if(window._cgcInFlight) return;
+  const i = window._cgcBatchIndex;
+  const b = i!=null ? window._liveBatches[i] : null;
+  if(!b||!b.raw){ closeModal('completeGroupClasses'); return; }
+  let batchId = b._batchId;
+  if(!batchId){
+    const {data:row} = await sb.from('batches').select('id').eq('name',b.raw).maybeSingle();
+    batchId = row && row.id;
+  }
+  if(!batchId){ showToast('error','Could not find this batch’s database record.'); return; }
+  const errEl = document.getElementById('cgc_error');
+  const realDone = await _acadRealDoneCount(b.raw);
+  const realTotal = (window._acadTotalMap && window._acadTotalMap[b.raw]) || 0;
+  if(realTotal > 0 && realDone < realTotal){
+    const gap = realTotal - realDone;
+    errEl.textContent = gap+' group class'+(gap===1?' is':'es are')+' still remaining ('+realDone+'/'+realTotal+' done). Cannot complete the group phase yet.';
+    errEl.style.display = '';
+    document.getElementById('cgc_confirm_btn').disabled = true;
+    return;
+  }
+  window._cgcInFlight = true;
+  const btn = document.getElementById('cgc_confirm_btn');
+  btn.disabled = true;
+  try {
+    const {error} = await sb.from('batches').update({group_classes_completed_at: new Date().toISOString()}).eq('id',batchId);
+    if(error){ showToast('error','Could not complete group classes: '+error.message); return; }
+    showToast('success','Group classes completed for '+b.name+'. One-on-One sessions remain active.');
+    closeModal('completeGroupClasses');
+    loadLive();
+    if(typeof window._ovRefresh === 'function') window._ovRefresh();
+    if(typeof loadHeadView === 'function') loadHeadView();
+    if(typeof loadStats === 'function') loadStats();
+  } finally {
+    btn.disabled = false;
+    window._cgcInFlight = false;
   }
 }
 
@@ -3294,7 +3380,7 @@ async function openAtt(i){
   if (!b.elite && b._otoRequired > 0 && window._attBatchId) {
     _attOtoToggle.style.display = '';
     window._attIsGroupOTO = true;
-    _attSetMode('group');
+    _attSetMode(b._groupClassesDone ? 'oto' : 'group');
     // Pre-load OTO data
     try {
       const [{ data: otoSess }, { data: stuRows }] = await Promise.all([
@@ -8445,7 +8531,7 @@ async function ovLoad(){
   var clEl=document.getElementById('ov-class-list'); if(clEl) clEl.innerHTML='';
   try {
     var res=await Promise.all([
-      sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,freeze_start_date,freeze_resume_date'),
+      sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,freeze_start_date,freeze_resume_date,group_classes_completed_at'),
       sb.from('trainers').select('id,name,type,hr_employee_id,status'),
       _acadFetchAllRows('attendance','batch_name,session_date,session_num,status,marked_by,created_at',q=>q.gte('session_date',rangeStart).lte('session_date',rangeEnd)),
       mediaHrDB.from('hr_leave_requests').select('employee_id,start_date,end_date,status').eq('status','approved')
@@ -8894,7 +8980,13 @@ function generateBatchOccurrences(b, rangeStart, rangeEnd) {
   // Clip the batch's own [start_date, expected_completion_date] (null end = ongoing) against
   // the requested window — occurrences only exist where the two overlap.
   const batchStart = b.start_date || '0000-01-01';
-  const batchEnd = b.expected_completion_date || '9999-12-31';
+  let batchEnd = b.expected_completion_date || '9999-12-31';
+  // When group classes are completed, stop generating group class occurrences after that date.
+  // The batch stays active for OTO sessions, but scheduled group occurrences cease.
+  if (b.group_classes_completed_at) {
+    const gcDoneDate = b.group_classes_completed_at.slice(0,10);
+    if (gcDoneDate < batchEnd) batchEnd = gcDoneDate;
+  }
   const effStart = batchStart > rangeStart ? batchStart : rangeStart;
   const effEnd = batchEnd < rangeEnd ? batchEnd : rangeEnd;
   if (effStart > effEnd) return [];
