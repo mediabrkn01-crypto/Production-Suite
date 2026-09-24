@@ -1586,12 +1586,12 @@
                     <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 flex items-center gap-2">
                         <i data-lucide="file-plus" class="w-4 h-4"></i> Create & Assign Work Task
                     </h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                        <div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+                        <div class="md:col-span-3">
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Task / Campaign Topic</label>
                             <input type="text" id="task-topic" placeholder="Vocabulary Reels Day 5" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 transition-colors duration-200">
                         </div>
-                        <div>
+                        <div class="md:col-span-3">
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Work Classification</label>
                             <select id="task-type" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 transition-colors duration-200">
                                 <option value="Video Editing">🎬 Video Editing</option>
@@ -1600,13 +1600,13 @@
                                 <option value="Social Media">📱 Social Media</option>
                             </select>
                         </div>
-                        <div>
+                        <div class="md:col-span-2">
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Assign Creator</label>
                             <select id="task-assigned-employee" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 transition-colors duration-200">
                                 <option value="">-- Select Employee --</option>
                             </select>
                         </div>
-                        <div>
+                        <div class="md:col-span-2">
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Priority</label>
                             <select id="task-priority" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 transition-colors duration-200">
                                 <option value="low">Low</option>
@@ -1614,7 +1614,7 @@
                                 <option value="very_high">Very High</option>
                             </select>
                         </div>
-                        <div>
+                        <div class="md:col-span-2">
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Target Deadline Date</label>
                             <input type="date" id="task-date" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-orange-500 transition-colors duration-200">
                         </div>
@@ -9846,7 +9846,7 @@ async function saveLeave(){
     var all=agwFilteredSorted(), per=_agwFilter.per, total=all.length, pages=Math.max(1,Math.ceil(total/per));
     if(_agwFilter.page>pages)_agwFilter.page=pages;
     var rows=all.slice((_agwFilter.page-1)*per,(_agwFilter.page-1)*per+per);
-    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:26px;text-align:center;color:#6b74a0;font-size:13px">No assignments match these filters.</div>'; if(pager)pager.innerHTML=''; return; }
+    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl"><div class="dsh-empty" style="min-height:150px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></div><div class="dsh-empty-t">No assignments match these filters</div><div class="dsh-empty-s">Try clearing a filter or search term.</div></div></div>'; if(pager)pager.innerHTML=''; return; }
     body.innerHTML=rows.map(function(a){
       var st=agwState(a), hasDeliv=beParseDelivery(a.asset_link).length>0;
       var chip='<span style="font-size:10px;font-weight:800;color:'+st.c+';background:'+st.c+'22;border:1px solid '+st.c+'55;padding:2px 8px;border-radius:999px">'+esc(st.t)+'</span>';
@@ -9856,11 +9856,21 @@ async function saveLeave(){
       if(hasDeliv) acts+='<button onclick="mhViewDelivery('+a.id+')" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>';
       if(canCancel) acts+='<button onclick="agwCancel('+a.id+','+(strong?'true':'false')+')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Cancel</button>';
       if(st.key==='cancelled' && a.cancellation_reason) acts+='<span style="font-size:10px;color:#8890b5;align-self:center">Reason: '+esc(a.cancellation_reason)+'</span>';
-      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:14px 16px;background:rgba(255,255,255,.02)">'
-        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:230px;flex:1">'
-        +'<div style="font-weight:700;color:#fff;font-size:14px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> '+chip+' '+bePriorityBadge(a)+'</div>'
-        +'<div style="color:#8890b5;font-size:11px;margin-top:4px">'+esc(waEmpName(a))+' · by '+esc(a.assigned_by||'—')+' · Assigned '+esc(a.assigned_date||'—')+' · Target '+esc(a.date||'—')+'</div>'
-        +'<div style="color:#6b74a0;font-size:10px;margin-top:2px">Last updated '+esc(agwLastUpdated(a))+'</div></div>'
+      var _fd=function(iso){ if(!iso) return '—'; var d=new Date(String(iso).slice(0,10)+'T00:00:00'); return isNaN(d)?String(iso):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}); };
+      var _due=''; if(a.date && (st.key==='Pending'||st.key==='In Progress'||st.key==='Rework Required'||st.key==='uploading'||st.key==='pendingreview')){ var _t=new Date(); _t.setHours(0,0,0,0); var _dd=new Date(String(a.date).slice(0,10)+'T00:00:00'); if(!isNaN(_dd)){ var _n=Math.round((_dd-_t)/86400000); var _dc=_n<0?'#f87171':_n<=3?'#fbbf24':'#8890b5'; _due='<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;color:'+_dc+';background:'+_dc+'1a;border:1px solid '+_dc+'40;white-space:nowrap">'+(_n<0?'Overdue '+(-_n)+'d':_n===0?'Due today':_n===1?'Due tomorrow':'In '+_n+' days')+'</span>'; } }
+      var _pr=String(a.priority||'').toLowerCase(), _edge=_pr==='very_high'?'#f87171':_pr==='medium'?'#fbbf24':_pr==='low'?'#60a5fa':'rgba(255,255,255,.12)';
+      var _emp=(typeof hrEmployees!=='undefined'&&Array.isArray(hrEmployees))?hrEmployees.find(function(e){return (e.portal_email||'').toLowerCase()===String(a.employee_email||'').toLowerCase();}):null;
+      var _av=(typeof hrAvatarHTML==='function')?hrAvatarHTML(_emp||waEmpName(a)||'?',38):'';
+      var _meta=function(lbl,val,extra){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap">'+val+(extra||'')+'</div></div>'; };
+      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);border-left:3px solid '+_edge+';padding:14px 16px;background:rgba(255,255,255,.02)">'
+        +'<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start">'
+        +'<div style="display:flex;gap:12px;min-width:260px;flex:1"><span style="flex-shrink:0">'+_av+'</span><div style="min-width:0;flex:1">'
+        +'<div style="font-weight:700;color:#fff;font-size:14px;line-height:1.35">'+esc(a.topic||'Untitled')+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px"><span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;color:#c7cbe0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)">'+esc(a.type||'—')+'</span>'+chip+' '+bePriorityBadge(a)+'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,max-content));gap:6px 22px;margin-top:10px">'
+        +_meta('Creator',esc(waEmpName(a)))+_meta('Assigned by',esc(a.assigned_by||'—'))+_meta('Assigned',esc(_fd(a.assigned_date)))+_meta('Target',esc(_fd(a.date)),_due)
+        +'</div>'
+        +'<div style="color:#6b74a0;font-size:10.5px;margin-top:8px">Last updated '+esc(agwLastUpdated(a))+'</div></div></div>'
         +'<div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">'+(acts||'<span style="font-size:10px;color:#4a5182;align-self:center">—</span>')+'</div>'
         +'</div></div>';
     }).join('');
