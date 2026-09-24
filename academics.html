@@ -3466,8 +3466,10 @@ async function openAtt(i){
   // when an all-absent session is followed by a new session (both compute next=N because the
   // absent session's num is excluded). This is intentional — saveAtt deletes by session_date
   // (not session_num) to prevent the new session from wiping the absent session's record.
-  try{const {data}=await sb.from('attendance').select('session_num').eq('batch_name',b.raw||b.name).eq('status','present');
-    const validNums=[...new Set((data||[]).map(r=>r.session_num))]; dn=validNums.length; next=dn+1;}catch(e){}
+  // Completed = distinct present DATES (+ legacy undated sessions by number) — same rule as
+  // progress and the DB renumber trigger, so the modal's "session N" always matches history.
+  try{const {data}=await sb.from('attendance').select('session_num,session_date').eq('batch_name',b.raw||b.name).eq('status','present');
+    const validNums=[...new Set((data||[]).map(r=>r.session_date?('d'+r.session_date):('n'+r.session_num)))]; dn=validNums.length; next=dn+1;}catch(e){}
   document.getElementById('att_num').value=next;
   document.getElementById('att_title').innerHTML=esc(b.name)+' <span style="font-weight:400;opacity:.6;font-size:13px">\u00b7 session '+next+' of '+total+' \u00b7 '+dn+' done</span>';
   // Pre-fill Class Date with the most recent scheduled class day ≤ today (not blindly today).
@@ -8059,17 +8061,19 @@ async function openBatchDetails(id){
   document.getElementById('bd_students').innerHTML = rows.length
     ? rows.map(s=>{const lc=_acadStudentLifecycleStatus(s);return '<div class="pick-row"><span>'+esc(s.name)+(s.uin?' · '+esc(s.uin):'')+'</span><span class="badge '+(lc==='In Progress'?'b-active':(lc==='Dropped'?'b-inactive':''))+'">'+esc(lc)+'</span></div>';}).join('')
     : '<div class="mhint" style="padding:8px">No students assigned to this batch yet — add them from the Students tab.</div>';
-  // ── SESSION HISTORY (from attendance grouped by session_num) ──
+  // ── SESSION HISTORY — one entry per class DATE (session_num is kept in date order by the
+  //    trg_attendance_renumber_* triggers; grouping by it merged different days that shared a number).
   const _sess = {};
-  _attRows.forEach(a=>{ const k=a.session_num; if(!_sess[k]) _sess[k]={num:k,date:a.session_date,present:0,absent:0,markedBy:a.marked_by,markedAt:a.created_at};
+  _attRows.forEach(a=>{ const k=a.session_date ? 'd'+a.session_date : 'n'+a.session_num; if(!_sess[k]) _sess[k]={num:a.session_num,date:a.session_date,present:0,absent:0,markedBy:a.marked_by,markedAt:a.created_at};
+    if(a.session_num!=null) _sess[k].num=a.session_num;
     if((a.status||'').toLowerCase()==='present') _sess[k].present++; else if((a.status||'').toLowerCase()==='absent') _sess[k].absent++;
     if(a.created_at && (!_sess[k].markedAt || a.created_at>_sess[k].markedAt)){ _sess[k].markedAt=a.created_at; _sess[k].markedBy=a.marked_by; } });
-  const _hist = Object.values(_sess).sort((a,c)=>(c.num||0)-(a.num||0));
+  const _hist = Object.values(_sess).sort((a,c)=>((c.date||'')>(a.date||'')?1:(c.date||'')<(a.date||'')?-1:(c.num||0)-(a.num||0)));
   document.getElementById('bd_history').innerHTML = _hist.length
     ? _hist.map(s=>{ var mt=''; if(s.markedAt){ var d=new Date(s.markedAt); if(!isNaN(d)) mt=d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
         var _allAbs = s.present===0 && s.absent>0;
         return '<div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:9px 11px;margin-bottom:6px;background:'+(_allAbs?'rgba(239,68,68,.06)':'rgba(16,185,129,.04)')+'">'
-          +'<div style="display:flex;justify-content:space-between;font-size:12px"><b style="color:var(--tx)">Session '+esc(s.num)+'</b><span class="badge'+(_allAbs?'':' b-active')+'" style="font-size:9px'+(_allAbs?';color:#f87171;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4)':'')+'">'+(_allAbs?'All Absent':'Completed')+'</span></div>'
+          +'<div style="display:flex;justify-content:space-between;font-size:12px"><b style="color:var(--tx)">Session '+esc(s.num)+(_allAbs?' <span style="font-weight:500;color:var(--tx3)">· makeup required</span>':'')+'</b><span class="badge'+(_allAbs?'':' b-active')+'" style="font-size:9px'+(_allAbs?';color:#f87171;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4)':'')+'">'+(_allAbs?'All Absent':'Completed')+'</span></div>'
           +'<div style="font-size:11px;color:var(--tx2);margin-top:3px">'+esc(s.date?_fmtD(s.date):'—')+(b.time_slot?(' · '+esc(b.time_slot)):'')+'</div>'
           +'<div style="font-size:11px;color:var(--tx3);margin-top:1px">Trainer: '+esc(b.trainers?.name||'—')+'</div>'
           +'<div style="font-size:11px;color:var(--tx3);margin-top:2px"><span style="color:var(--green)">'+s.present+' Present</span> · <span style="color:#f87171">'+s.absent+' Absent</span>'+(mt?(' · marked '+esc(mt)+(s.markedBy?(' by '+esc(s.markedBy)):'')):'')+'</div></div>';
