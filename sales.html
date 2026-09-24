@@ -587,7 +587,7 @@ function showToast(type,msg,dur){const h=document.getElementById('toastHost');co
 function beConfirm(opts){opts=opts||{};return new Promise(function(resolve){var existing=document.getElementById('be-confirm-overlay');if(existing)existing.remove();var overlay=document.createElement('div');overlay.id='be-confirm-overlay';overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:beConfFadeIn .15s ease';var title=opts.title||'Confirm',message=opts.message||'Are you sure?',detail=opts.detail||'',confirmLabel=opts.confirmLabel||'Confirm',cancelLabel=opts.cancelLabel||'Cancel',confirmColor=opts.confirmColor||'#f87171';overlay.innerHTML='<div style="background:#0d111c;border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:beConfSlideUp .2s ease"><div style="padding:20px 22px 0"><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px">'+esc(title)+'</div><div style="font-size:13px;color:#a5adcf;line-height:1.5">'+esc(message)+'</div>'+(detail?'<div style="margin-top:10px;font-size:12px;color:#8890b5;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px">'+detail+'</div>':'')+'</div><div style="display:flex;gap:10px;padding:18px 22px;justify-content:flex-end"><button id="be-confirm-no" style="padding:8px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#a5adcf;font-size:13px;font-weight:600;cursor:pointer">'+esc(cancelLabel)+'</button><button id="be-confirm-yes" style="padding:8px 18px;border-radius:8px;border:none;background:'+confirmColor+';color:#fff;font-size:13px;font-weight:600;cursor:pointer;min-width:120px">'+esc(confirmLabel)+'</button></div></div>';document.body.appendChild(overlay);if(!document.getElementById('be-confirm-style')){var st=document.createElement('style');st.id='be-confirm-style';st.textContent='@keyframes beConfFadeIn{from{opacity:0}to{opacity:1}}@keyframes beConfSlideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}';document.head.appendChild(st);}var done=false;function dismiss(){overlay.style.transition='opacity .15s';overlay.style.opacity='0';setTimeout(function(){overlay.remove();},150);}function finish(val){if(done)return;done=true;if(!val)dismiss();resolve(val);}document.getElementById('be-confirm-no').onclick=function(){finish(false);};document.getElementById('be-confirm-yes').onclick=function(){var btn=document.getElementById('be-confirm-yes');if(btn){btn.disabled=true;btn.textContent='Processing…';btn.style.opacity='0.6';}var noBtn=document.getElementById('be-confirm-no');if(noBtn){noBtn.disabled=true;noBtn.style.opacity='0.4';}finish(true);};overlay.addEventListener('click',function(e){if(e.target===overlay)finish(false);});window._beConfirmDismiss=dismiss;});}
 
 let ME=null;          // {id, name, email, isHead, isFounder}
-let COURSES=[], COUNSELLORS=[], LEADS=[];
+let COURSES=[], COUNSELLORS=[], LEADS=[], CRM_ENROL_COUNT=0;
 const STAGES=['New','Contacted','Details Shared','Assessment Booked','Assessment Completed','Ready to Pay','Payment Link Sent','Partially Paid','Enrolled'];
 const PARK=['Join Later','Not Interested','Closed'];
 const CADENCE=[0,1,3,7]; // days after fu #1..#4
@@ -830,9 +830,11 @@ function renderDash(){
   const nMonth=mine.filter(l=>String(l.created_at).slice(0,7)===mo).length;
   const need=mine.filter(l=>!l.first_contact_at&&l.stage==='New').length;
   const hot=mine.filter(l=>l.temperature==='Hot').length;
-  const enrolled=mine.filter(l=>l.stage==='Enrolled').length;
+  const leadEnrolled=mine.filter(l=>l.stage==='Enrolled').length;
+  const enrolled=leadEnrolled+CRM_ENROL_COUNT;
   const breach=mine.filter(l=>{const[,c]=slaOf(l);return c==='b-red';}).length;
-  const conv=mine.length?Math.round(enrolled/mine.length*100):0;
+  const totalForConv=mine.length+CRM_ENROL_COUNT;
+  const conv=totalForConv?Math.round(enrolled/totalForConv*100):0;
   // Shared platform metric-strip (same dashboard-metrics.js component HR/Academics/Media use) — Sales data + colours
   const items=[
     {icon:'users',color:'#3b82f6',label:'Total Leads',value:mine.length,status:nMonth+' this month',onclick:"switchTab('leads')"},
@@ -962,6 +964,7 @@ async function loadCrmEnrolments(){
     const { data, error } = await q;
     if (error) throw error;
     const rows = data || [];
+    CRM_ENROL_COUNT = rows.length;
     document.getElementById('crmEnrolCount').textContent = rows.length;
     const el = document.getElementById('crmEnrolRows');
     if (!rows.length) { el.innerHTML = '<tr><td colspan="7" class="empty">No enrolments yet.</td></tr>'; return; }
@@ -979,6 +982,7 @@ async function loadCrmEnrolments(){
       '<td>' + esc(s.batch_name || 'Unassigned') + '</td>' +
       '<td>' + statusBadge(s.status) + '</td></tr>'
     ).join('');
+    renderDash();
   } catch (e) {
     console.warn('CRM enrolments load error:', e.message);
   }
