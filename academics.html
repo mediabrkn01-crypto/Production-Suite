@@ -2347,6 +2347,10 @@ async function _acadFetchAllRows(table, select, extra){
 }
 
 async function loadLive(){
+  // Generation token — only the NEWEST loadLive() call may render. Realtime bursts + direct
+  // calls overlap; an older in-flight call finishing last used to repaint pre-completion data
+  // and pull a just-completed batch back into Live (the Completed → Active "recall").
+  const _liveGen = window._acadLiveGen = (window._acadLiveGen || 0) + 1;
   // Head OR an active Temporary Academic Head delegation → full company batch/student list
   // (spec: delegated Head sees ALL batches, not just their own). Personal "Today's Classes"/
   // "My Calendar" stay scoped to own teaching via _acadIsRealHeadForSchedule(), unchanged.
@@ -2444,6 +2448,14 @@ async function loadLive(){
     trainerStatusPromise,
     otoCompletionPromise,
   ]);
+  if (_liveGen !== window._acadLiveGen) return; // a newer loadLive() owns the screen
+  // Batch status is what keeps a Completed batch in Finished — if that fetch failed, rendering
+  // anyway would treat every completed batch as active. Keep the current lists and retry.
+  if (baseQuery && (!baseResult || baseResult.error || !Array.isArray(baseResult.data))) {
+    console.warn('loadLive: batches fetch failed — keeping current batch lists, retrying', baseResult && baseResult.error);
+    if (!window._acadLiveRetry) window._acadLiveRetry = setTimeout(() => { window._acadLiveRetry = null; loadLive(); }, 3000);
+    return;
+  }
   // Matched by trainer_id, not name — students.trainer_name is a denormalized cache that can
   // genuinely drift from trainers.name (confirmed live: one real batch had "Laura" cached on its
   // students while the trainers row itself is "Laura and philip") — id is the only reliable key.
@@ -2524,7 +2536,8 @@ async function loadLive(){
     const bid = batchIdByName[b.raw||b.name];
     const cid = batchCourseIdByName[b.raw||b.name];
     const crs = cid && courseById[cid];
-    if (crs && !b.elite && crs.type === 'group' && (+crs.oto_sessions_required||0) > 0) {
+    if (crs && !b.elite && crs.type === 'group' && (+crs.oto_sessions_required||0) > 0
+        && !_acadOtoValidityExpired({ group_classes_completed_at: batchGCCompletedAt[b.raw||b.name] })) {
       const otoReq = +crs.oto_sessions_required;
       const stuCount = _otoStudentCountByBatchId[bid] || 0;
       const totalNeeded = stuCount * otoReq;
@@ -2550,14 +2563,10 @@ async function loadLive(){
   // close" (see the progress line in card()) until the Head actually confirms.
   const isBatchCardFinished = b => {
     const status = statusMap[b.raw||b.name];
-    if (status !== 'completed' && status !== 'finished') return false;
-    // Explicit completion (completed_at set) = admin-closed, trust it even if some sessions
-    // were never individually logged (business rule: administrative closure != 100% attendance).
-    if (completedAtMap[b.raw||b.name]) return true;
-    // Guard: a stale "completed" status from a legacy import (no completed_at) must not
-    // override the real session count. Require delivered >= required when total is configured.
-    const { dn, total } = progressOf(b);
-    return !total || dn >= total;
+    // An explicit Completed/Finished status is final for placement — the batch stays in
+    // Finished Batches whatever its progress count says (administrative closure != 100%
+    // attendance). Only the explicit Restore action (status back to 'active') moves it back.
+    return status === 'completed' || status === 'finished';
   };
   // Soft-deleted batches (deleteBatch()) never appear in My Batches/Live Batches/Finished
   // Batches — deletedNames comes from the same batches fetch just above (keyed by real batch
@@ -5486,6 +5495,23 @@ function _acadIsFinishedByStatusOrProgress(status, done, total){
 // for why 'closed' isn't trustworthy on its own); a status='closed'-but-not-actually-done batch
 // now correctly keeps occupying its trainer's slot via the progress-based check right below,
 // the one shared answer, instead of a second one computed here that could disagree with it.
+// GROUP-COURSE ONE-ON-ONE VALIDITY — once a group batch's group classes are completed
+// (batches.group_classes_completed_at, set only by Complete Group Classes on group courses with
+// oto_sessions_required > 0), its included 1:1 sessions (1 per student for a 1-month course,
+// 2 for a 2-month course — entitlement unchanged) are valid for ACAD_OTO_VALIDITY_DAYS more days.
+// After that the batch no longer occupies its trainer, completed or not. Standalone 1:1 batches
+// (capacity 1) never carry this field and are excluded explicitly anyway.
+const ACAD_OTO_VALIDITY_DAYS = 2;
+function _acadLocalDateStr(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _acadOtoValidityExpired(b){
+  if (!b || !b.group_classes_completed_at) return false;
+  if (b.capacity != null && +b.capacity === 1) return false;
+  const gc = String(b.group_classes_completed_at).slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(gc)) return false;
+  const last = new Date(gc + 'T00:00:00');
+  last.setDate(last.getDate() + ACAD_OTO_VALIDITY_DAYS);
+  return _acadLocalDateStr(new Date()) > _acadLocalDateStr(last);
+}
 function isBatchCurrentlyActive(b){
   if (!b) return false;
   if (_isBatchDeleted(b)) return false;
@@ -5502,6 +5528,7 @@ function isBatchCurrentlyActive(b){
   const _st = String(b.status || '').toLowerCase();
   if (_st === 'completed' || _st === 'finished' || _st === 'closed' || _st === 'cancelled' || _st === 'archived' || _st === 'frozen') return false;
   if (b.completed_at) return false;
+  if (_acadOtoValidityExpired(b)) return false;
   // BUG FIX: a batch finished purely by session-progress (loadLive()'s own isBatchFinished —
   // baseline + marked attendance reaching sessions_total, with no explicit status field ever
   // set) used to keep blocking its trainer's slot forever, since this function only ever
@@ -7167,10 +7194,10 @@ function renderBatchTable(){
     <td data-label="Course">${esc(cn)}${b.sessions_total?' · '+b.sessions_total+'s':''}</td>
     <td data-label="Schedule">${b.day_pattern||''} ${b.time_slot||''}</td>
     <td data-label="Students" style="color:${seatCol}">${seats}</td>
-    <td data-label="Status"><span class="badge ${b.status!=='inactive'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name))?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
+    <td data-label="Status"><span class="badge ${b.status!=='inactive'&&b.status!=='completed'&&b.status!=='finished'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name))?'b-active':'b-inactive'}">${esc(b.status||'active')}</span></td>
     <td data-label="Start Date">${b.start_date||'—'}</td>
     <td data-label="End Date">${b.expected_completion_date||'—'}</td>
-    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${(b.status!=='inactive'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)))?` <button class="act-btn" onclick="openManageStudents('${b.id}')">Manage Students</button>`:''} <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
+    <td data-label="Actions"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button> <button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${(b.status!=='inactive'&&b.status!=='completed'&&b.status!=='finished'&&!(window._acadFinishedBatchNames&&window._acadFinishedBatchNames.has(b.name)))?` <button class="act-btn" onclick="openManageStudents('${b.id}')">Manage Students</button>`:''} <button class="act-btn" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></td></tr>`;
   }).join('') || `<tr><td colspan="9" class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No batches yet'}</td></tr>`;
 }
 async function loadHeadView(){
@@ -8674,7 +8701,7 @@ async function ovLoad(){
       mediaHrDB.from('hr_leave_requests').select('employee_id,start_date,end_date,status').eq('status','approved')
     ]);
     if(res[0].error) throw new Error('batches: '+(res[0].error.message||JSON.stringify(res[0].error)));
-    var batches=(res[0].data||[]).filter(function(b){ return !b.deleted_at && b.status!=='cancelled' && b.status!=='completed'; });
+    var batches=(res[0].data||[]).filter(function(b){ return !b.deleted_at && b.status!=='cancelled' && b.status!=='completed' && b.status!=='finished'; });
     // Self-heal: if group_classes_completed_at was stored as button-click timestamp
     // rather than last-attendance date, correct it so phantom occurrences aren't generated.
     var _gcHeal=[];
@@ -10578,7 +10605,7 @@ let _ubAllBatchesForConflict = [];
 async function _ubLoadAvailData() {
   const [{ data: avail }, { data: batches }] = await Promise.all([
     sb.from('trainer_availability').select('*').eq('is_active', true),
-    sb.from('batches').select('id,name,trainer_id,day_pattern,time_slot,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,completed_at').is('deleted_at', null)
+    sb.from('batches').select('id,name,trainer_id,day_pattern,time_slot,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,completed_at,capacity,group_classes_completed_at').is('deleted_at', null)
   ]);
   _ubAvailData = avail || [];
   _ubAllBatchesForConflict = batches || [];
