@@ -4874,7 +4874,7 @@ async function loadAcadDashboard(){
         _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
       let _occ = [];
-      _trows.forEach(b => { _occ = _occ.concat(generateBatchOccurrences(b, today, today)); });
+      _trows.forEach(b => { if (b.group_classes_completed_at) return; _occ = _occ.concat(generateBatchOccurrences(b, today, today)); });
       _occ = _occ.filter(o => o.date === today).sort((a,b)=>a.startTime-b.startTime);
       document.getElementById('dashToday').innerHTML = _occ.length
         ? _occ.slice(0, 8).map(o => `<div class="dash-row" style="cursor:pointer" onclick="openBatchDetails('${o.batch.id}')"><span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue);margin-right:8px"></span>${esc(o.batch.name)}${o.batch.programme?' · '+esc(o.batch.programme):''}</span><span style="color:var(--tx3)">${esc(o.batch.time_slot||'')}</span></div>`).join('')
@@ -6528,7 +6528,7 @@ async function loadClassesTab(){
       return;
     }
     let allOccurrences = [];
-    rows.forEach(b => { allOccurrences = allOccurrences.concat(generateBatchOccurrences(b, today, soonStr)); });
+    rows.forEach(b => { if (b.group_classes_completed_at) return; allOccurrences = allOccurrences.concat(generateBatchOccurrences(b, today, soonStr)); });
     allOccurrences.sort((a,b) => a.date === b.date ? (a.startTime - b.startTime) : a.date.localeCompare(b.date));
     const todays = allOccurrences.filter(o => o.date === today);
     const upcoming = allOccurrences.filter(o => o.date > today);
@@ -7598,6 +7598,8 @@ async function openBatchDetails(id){
     if (_eventDates.has(o.date)) { _statByDate[o.date]='officialEvent'; _evCount++; return; }
     // Trainer-leave sessions: mark as 'leave', do NOT count as missing, do NOT consume a required session
     if (_leaveDates.has(o.date)) { _statByDate[o.date]='leave'; _leaveCount++; return; }
+    // Group phase closed: unmarked group slots are no longer actionable — never "missing".
+    if (b.group_classes_completed_at) return;
     if (_occEnd(o) < _now) { _statByDate[o.date]='missing'; _missing++; return; }  // past, unmarked
     if (_usedFuture >= _needFuture) return;                                        // enough future success slots
     _statByDate[o.date]='sched'; _sched++; _usedFuture++; _schedOcc.push(o);
@@ -8610,6 +8612,9 @@ async function ovLoad(){
       var tk=String(trRec.id);
       occ.forEach(function(o){
         var a=attByKey[b.name+'|'+o.date]||null; var lv=onLeave(trRec,o.date);
+        // Group phase closed: keep marked group sessions as history, drop unmarked ones so
+        // they never surface as pending/"Attendance Not Marked" once only 1:1 remains.
+        if(b.group_classes_completed_at && !a) return;
         var dur=_ovDur(b);
         // Store raw att + leave flag — status computed at RENDER time so it stays live
         sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:b.name,course:b.programme||'',ctype:_ovClassType(b),date:o.date,startMin:o.startTime,dur:dur,att:a,lv:lv,present:a?a.p:0,absent:a?a.ab:0,markedBy:a?a.markedBy:'',markedAt:a?a.markedAt:''});
