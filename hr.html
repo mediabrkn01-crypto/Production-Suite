@@ -2541,7 +2541,7 @@
             const el = document.getElementById('hr-announcements-admin-list');
             if (!el) return;
             if (_announcementsTableMissing) { el.innerHTML = `<tr><td colspan="7" class="py-3 text-red-300 text-xs">Announcements tables not found — see banner above.</td></tr>`; return; }
-            if (!hrAnnouncements.length) { el.innerHTML = `<tr><td colspan="7"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No announcements yet.</div></div></td></tr>`; return; }
+            if (!hrAnnouncements.length) { el.innerHTML = `<tr><td colspan="7"><div class="dsh-empty" style="min-height:190px;gap:12px"><div class="dsh-empty-ic" style="width:48px;height:48px;color:#ff8a3d;background:rgba(255,107,6,.1);border-color:rgba(255,107,6,.3)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></div><div style="font-size:15px;font-weight:700;color:#fff">No announcements yet</div><div class="dsh-empty-s" style="max-width:380px">Post a company-wide or targeted update — it lands straight in each recipient's notification bell.</div><button onclick="hrOpenAnnouncementModal()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider" style="margin-top:4px">+ Create Announcement</button></div></td></tr>`; return; }
             el.innerHTML = hrAnnouncements.map(a => {
                 const readCount = hrAnnouncementReads.filter(r => String(r.announcement_id) === String(a.id)).length;
                 const dateStr = new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -2550,16 +2550,19 @@
                 const expired = a.end_at && now > new Date(a.end_at).getTime();
                 const status = notYetStarted ? { label: 'Scheduled', cls: 'b-inactive' } : expired ? { label: 'Expired', cls: 'b-inactive' } : { label: 'Active', cls: 'b-active' };
                 const audienceLabel = a.audience === 'selected' ? `Selected (${(Array.isArray(a.audience_employee_ids) ? a.audience_employee_ids.length : 0)})` : (HR_ANNOUNCEMENT_AUDIENCE_LABEL[a.audience] || 'All Employees');
-                const priorityBadge = a.priority === 'urgent' ? `<span class="badge" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3)">Urgent</span>`
-                    : a.priority === 'important' ? `<span class="badge" style="background:rgba(245,158,11,.12);color:#fbbf24;border:1px solid rgba(245,158,11,.3)">Important</span>`
-                    : `<span class="text-[#6b74a0]">Normal</span>`;
-                return `<tr class="border-b border-white/[0.04]">
-                    <td data-label="Title" class="py-2.5 px-4"><span class="font-bold text-white">${a.title}</span>${a.category ? ` <span class="text-[9px] text-[#6b74a0] uppercase">· ${a.category}</span>` : ''}</td>
-                    <td data-label="Audience" class="py-2.5 px-4 text-[#a5adcf]">${audienceLabel}</td>
+                const priorityBadge = `<span class="st-pill ${a.priority === 'urgent' ? 'st-bad' : a.priority === 'important' ? 'st-warn' : 'st-mute'}">${a.priority === 'urgent' ? 'Urgent' : a.priority === 'important' ? 'Important' : 'Normal'}</span>`;
+                const _act = hrEmployees.filter(e => e.employment_status === 'active');
+                const recipients = a.audience === 'selected' ? (Array.isArray(a.audience_employee_ids) ? a.audience_employee_ids.length : 0) : (!a.audience || a.audience === 'all') ? _act.length : _act.filter(e => e.division === a.audience).length;
+                const readPct = recipients ? Math.min(100, Math.round(readCount / recipients * 100)) : 0;
+                const audiencePill = (!a.audience || a.audience === 'all') ? '<span class="st-pill st-mute" style="text-transform:none">All Employees</span>' : a.audience === 'selected' ? `<span class="st-pill st-info" style="text-transform:none">${audienceLabel}</span>` : hrDivPill(a.audience, audienceLabel);
+                const _pub = new Date(a.created_at);
+                return `<tr class="border-b border-white/[0.04] hover:bg-white/[0.02]" style="${a.priority === 'urgent' ? 'box-shadow:inset 3px 0 0 #ef4444' : ''}">
+                    <td data-label="Title" class="py-2.5 px-4"><div class="font-bold text-white">${a.title}</div>${a.category ? `<div class="text-[11px] text-[#6b74a0] mt-0.5">${a.category}</div>` : ''}</td>
+                    <td data-label="Audience" class="py-2.5 px-4">${audiencePill}</td>
                     <td data-label="Priority" class="py-2.5 px-4">${priorityBadge}</td>
-                    <td data-label="Published" class="py-2.5 px-4 text-[#6b74a0]">${dateStr}</td>
-                    <td data-label="Status" class="py-2.5 px-4"><span class="badge ${status.cls}">${status.label}</span></td>
-                    <td data-label="Read" class="py-2.5 px-4 text-[#6b74a0]">${readCount}</td>
+                    <td data-label="Published" class="py-2.5 px-4" style="white-space:nowrap"><div class="text-white text-[12.5px] font-semibold">${isNaN(_pub) ? dateStr : _pub.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="text-[11px] text-[#6b74a0]">${isNaN(_pub) ? '' : _pub.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div></td>
+                    <td data-label="Status" class="py-2.5 px-4"><span class="st-pill ${status.label === 'Active' ? 'st-ok' : status.label === 'Scheduled' ? 'st-info' : 'st-mute'}">${status.label}</span></td>
+                    <td data-label="Read" class="py-2.5 px-4"><div style="min-width:110px"><div class="text-[12px] ui-num"><b class="text-white">${readCount}</b><span class="text-[#6b74a0]"> / ${recipients} read</span></div><div class="rp-bar rp-bar-sm" style="max-width:120px"><span style="width:${readPct}%;background:#10b981"></span></div></div></td>
                     <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="hrViewAnnouncement('${a.id}')" class="hr-icon-btn">View</button> <button onclick="hrOpenAnnouncementModal('${a.id}')" class="hr-icon-btn" style="color:#60a5fa;margin-left:4px">Edit</button> <button onclick="hrDeleteAnnouncementConfirm('${a.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>`;
             }).join('');
@@ -6565,17 +6568,29 @@ async function populateHRJobDeptOptions() {
             const appliesToLabel = { all: 'All Employees', production: 'Production House', education: 'Education', sales: 'Sales', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
             const typeLabel = { festival: 'Festival', national_day: 'National Day', company_event: 'Company Event', custom: 'Custom', birthday: '🎂 Birthday (template)', work_anniversary: '🏆 Work Anniversary (template)' };
             const rows = [...(hrCelebrationEvents || [])].sort((a,b) => (a.event_date || '9999').localeCompare(b.event_date || '9999'));
+            const _todayC = new Date().toISOString().slice(0,10);
+            const _fd = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+            const _celebDate = ev => {
+                if (!ev.event_date) return '<span class="st-pill st-purple" style="text-transform:none">Each employee\'s own date</span>';
+                const end = ev.event_end_date || ev.event_date, start = ev.advance_start_date || ev.event_date;
+                const st = _todayC > end ? ['Past', 'st-mute'] : _todayC >= start ? ['Live now', 'st-ok'] : ['Upcoming', 'st-info'];
+                const days = Math.round((new Date(end) - new Date(ev.event_date)) / 86400000) + 1;
+                const d = new Date(ev.event_date + 'T00:00:00');
+                return `<div style="display:flex;align-items:center;gap:12px;${st[0] === 'Past' ? 'opacity:.55' : ''}"><div style="width:42px;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.1);text-align:center;flex-shrink:0"><div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:rgba(236,72,153,.15);color:#f472b6;padding:2px 0">${d.toLocaleDateString('en-IN',{month:'short'})}</div><div style="font-size:16px;font-weight:800;color:#fff;padding:3px 0 4px;line-height:1">${d.getDate()}</div></div><div><div class="text-white text-[12.5px] font-semibold" style="white-space:nowrap">${end !== ev.event_date ? _fd(ev.event_date) + ' → ' + _fd(end) : d.toLocaleDateString('en-IN',{weekday:'long'})}</div><div style="display:flex;align-items:center;gap:6px;margin-top:3px"><span class="st-pill ${st[1]}">${st[0]}</span>${days > 1 ? `<span class="text-[11px] text-[#6b74a0]">${days} days</span>` : ''}</div></div></div>`;
+            };
+            const _typePill = t => `<span class="st-pill ${t === 'festival' ? 'st-purple' : t === 'national_day' ? 'st-info' : t === 'company_event' ? 'st-warn' : 'st-mute'}" style="text-transform:none">${(typeLabel[t] || t || '—').replace(/^[^A-Za-z]+/, '')}</span>`;
+            const _yn = (on, has, yesTxt, missTxt) => on === false ? '<span class="st-pill st-mute" style="text-transform:none">Off</span>' : has ? `<span class="st-pill st-ok" style="text-transform:none">${yesTxt}</span>` : `<span class="st-pill st-warn" style="text-transform:none">${missTxt}</span>`;
             document.getElementById('hr-celebrations-rows').innerHTML = rows.length ? rows.map(ev => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td data-label="Event Dates" class="py-2.5 px-4 text-white font-semibold">${ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) + (ev.event_end_date && ev.event_end_date !== ev.event_date ? ' → ' + new Date(ev.event_end_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '') : 'Every employee\'s own date'}</td>
-                    <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">
-                        ${ev.popup_image_base64 ? `<img src="${ev.popup_image_base64}" style="width:28px;height:28px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : ''}${ev.icon ? ev.icon + ' ' : ''}${ev.title}
+                    <td data-label="Event Dates" class="py-2.5 px-4">${_celebDate(ev)}</td>
+                    <td data-label="Title" class="py-2.5 px-4">
+                        <div style="display:flex;align-items:center;gap:10px">${ev.popup_image_base64 ? `<img src="${ev.popup_image_base64}" style="width:34px;height:34px;object-fit:cover;border-radius:8px;flex-shrink:0">` : `<span class="dsh-ic" style="width:34px;height:34px">${ev.icon ? `<span style="font-size:16px">${ev.icon}</span>` : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/></svg>'}</span>`}<span class="text-white font-semibold">${ev.title}</span></div>
                     </td>
-                    <td data-label="Type" class="py-2.5 px-4 text-[#a5adcf]">${typeLabel[ev.event_type] || ev.event_type}</td>
-                    <td data-label="Advance Start" class="py-2.5 px-4 text-[#a5adcf]">${ev.advance_start_date ? new Date(ev.advance_start_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—'}</td>
-                    <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
-                    <td data-label="Popup" class="py-2.5 px-4 text-[#a5adcf]">${ev.popup_enabled === false ? 'No' : (ev.popup_image_base64 ? 'Yes' : 'No image')}</td>
-                    <td data-label="Banner" class="py-2.5 px-4 text-[#a5adcf]">${ev.banner_enabled === false ? 'No' : (ev.banner_video_url ? '🎬 Video' : (ev.banner_image_base64 ? 'Yes' : 'No media'))}</td>
+                    <td data-label="Type" class="py-2.5 px-4">${_typePill(ev.event_type)}</td>
+                    <td data-label="Advance Start" class="py-2.5 px-4" style="white-space:nowrap">${ev.advance_start_date ? `<span class="text-[#c7cbe0] text-[12.5px]">${new Date(ev.advance_start_date + 'T00:00:00').toLocaleDateString('en-IN', {day:'2-digit', month:'short'})}</span>` : '<span class="text-[#4a5182]">—</span>'}</td>
+                    <td data-label="Applies To" class="py-2.5 px-4">${ev.applies_to === 'all' || !ev.applies_to ? '<span class="st-pill st-mute" style="text-transform:none">All Employees</span>' : hrDivPill(ev.applies_to, appliesToLabel[ev.applies_to] || ev.applies_to)}</td>
+                    <td data-label="Popup" class="py-2.5 px-4">${_yn(ev.popup_enabled, ev.popup_image_base64, 'Image set', 'No image')}</td>
+                    <td data-label="Banner" class="py-2.5 px-4">${_yn(ev.banner_enabled, ev.banner_video_url || ev.banner_image_base64, ev.banner_video_url ? 'Video' : 'Image set', 'No media')}</td>
                     <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="openHRCelebrationModal('${ev.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="deleteHRCelebration('${ev.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="8"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No celebrations added yet.</div></div></td></tr>`;
