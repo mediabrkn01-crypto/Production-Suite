@@ -565,6 +565,7 @@ details[open] .rawsum::before{content:'▾ '}
         <button class="acad-nav-link sidebar-link" id="nav-acad-schedule" onclick="acadSwitchTab('schedule')"><i data-lucide="calendar-range" style="width:14px;height:14px"></i> <span id="nav-acad-schedule-label">Schedule</span></button>
         <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-reports" onclick="acadSwitchTab('reports')"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Reports</button>
         <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-overview" onclick="acadSwitchTab('overview')"><i data-lucide="clipboard-check" style="width:14px;height:14px"></i> Class &amp; Attendance</button>
+        <button class="acad-nav-link sidebar-link role-head-only hidden" id="nav-acad-timestamps" onclick="acadSwitchTab('timestamps')"><i data-lucide="clock" style="width:14px;height:14px"></i> Timestamps</button>
         <!-- role-real-head-only, not role-head-only — a delegated Trainer must never be able
              to create/revoke a delegation for themselves (spec item 18), even though they
              correctly get every OTHER Head-only tab during their active window. -->
@@ -1382,6 +1383,23 @@ details[open] .rawsum::before{content:'▾ '}
       <!-- CLASS & ATTENDANCE OVERVIEW — Academic Head (+ active delegate) audit dashboard.
            Overview of existing source-of-truth data (batches recurrence + attendance +
            trainer leave); no new attendance records. -->
+      <div class="acad-tab" id="tab-acad-timestamps">
+        <div class="section role-head-only hidden">
+          <h2>Timestamps <span class="tag" id="tsCount">0</span> <button onclick="loadTimestampsTab()">Refresh</button></h2>
+          <div class="lv-note" style="margin-bottom:10px">When each attendance save, 1:1 session and class log was recorded — read from the database records themselves.</div>
+          <div class="mrow" style="margin-bottom:12px;flex-wrap:wrap">
+            <input id="ts_from" type="date" onchange="loadTimestampsTab()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"/>
+            <input id="ts_to" type="date" onchange="loadTimestampsTab()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"/>
+            <select id="ts_trainer" onchange="_tsRender()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All trainers</option></select>
+            <select id="ts_batch" onchange="_tsRender()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All batches</option></select>
+            <select id="ts_action" onchange="_tsRender()" style="flex:1;min-width:130px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;color-scheme:dark"><option value="">All actions</option><option value="group">Group attendance</option><option value="oto">1:1 session</option><option value="log">Class log</option></select>
+          </div>
+          <div style="overflow-x:auto">
+            <table><thead><tr><th>Timestamp</th><th>Action</th><th>Trainer</th><th>Batch</th><th>Course</th><th>Session</th><th>Student(s)</th><th>Class Date</th><th>Class Time</th><th>Present / Absent</th><th>Recorded By</th></tr></thead>
+              <tbody id="tsList"><tr><td colspan="11" class="empty">Loading…</td></tr></tbody></table>
+          </div>
+        </div>
+      </div>
       <div class="acad-tab" id="tab-acad-overview">
         <div class="section role-head-only hidden">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:4px">
@@ -3635,6 +3653,95 @@ async function openSessionHistoryFor(batchName){
     }).join('') : '<div class="empty">No sessions recorded yet for this batch.</div>';
   } catch(e) { list.innerHTML = '<div class="empty">Could not load session history: '+esc(e.message)+'</div>'; }
 }
+let _tsEvents = [];
+async function loadTimestampsTab(){
+  const list = document.getElementById('tsList');
+  if (!list || !(typeof isCurrentlyAcademicHead === 'function' && isCurrentlyAcademicHead())) return;
+  const fromEl = document.getElementById('ts_from'), toEl = document.getElementById('ts_to');
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  if (!fromEl.value || !toEl.value) { const t = new Date(), f = new Date(); f.setDate(t.getDate()-6); fromEl.value = iso(f); toEl.value = iso(t); }
+  const fromTs = new Date(fromEl.value+'T00:00:00').toISOString();
+  const toTs = new Date(toEl.value+'T23:59:59.999').toISOString();
+  list.innerHTML = '<tr><td colspan="11" class="empty">Loading…</td></tr>';
+  try {
+    const [attRows, otoRes, logRes, batchRes] = await Promise.all([
+      _acadFetchAllRows('attendance','batch_name,student_uin,session_num,session_date,status,marked_by,created_at,edited_by,edited_at,session_type',q=>q.gte('created_at',fromTs).lte('created_at',toTs)),
+      sb.from('oto_sessions').select('batch_id,session_number,session_date,start_time,end_time,status,marked_by,marked_at,created_at,updated_at,students(name),trainers(name)').gte('updated_at',fromTs).lte('updated_at',toTs),
+      sb.from('sessions').select('batch_id,student_id,session_date,type,status,notes,logged_by,created_at,students(name)').gte('created_at',fromTs).lte('created_at',toTs),
+      sb.from('batches').select('id,name,programme,trainer_name,time_slot')
+    ]);
+    const batches = batchRes.data || [];
+    const byId = {}, byName = {};
+    batches.forEach(b => { byId[b.id] = b; byName[b.name] = b; });
+    const uins = [...new Set((attRows||[]).map(r => r.student_uin).filter(Boolean))];
+    const nameByUin = {};
+    for (let i = 0; i < uins.length; i += 200) {
+      const { data } = await sb.from('students').select('uin,name').in('uin', uins.slice(i, i+200));
+      (data||[]).forEach(s => { nameByUin[s.uin] = s.name; });
+    }
+    const ev = [];
+    const groups = {};
+    (attRows||[]).forEach(r => {
+      const k = r.batch_name + '|' + r.session_date;
+      const g = groups[k] || (groups[k] = { kind:'group', batch:r.batch_name, date:r.session_date, session:r.session_num, p:[], a:[], by:r.marked_by, ts:r.created_at, editedBy:null, editedAt:null });
+      const nm = nameByUin[r.student_uin] || r.student_uin || '—';
+      (r.status === 'present' ? g.p : g.a).push(nm);
+      if (r.created_at > g.ts) { g.ts = r.created_at; g.by = r.marked_by || g.by; }
+      if (r.edited_at && (!g.editedAt || r.edited_at > g.editedAt)) { g.editedAt = r.edited_at; g.editedBy = r.edited_by; }
+      if (r.session_num) g.session = r.session_num;
+    });
+    Object.values(groups).forEach(g => {
+      const b = byName[g.batch] || {};
+      ev.push({ kind:'group', action: g.editedAt ? 'Group attendance (edited)' : 'Group attendance saved', ts: g.editedAt && g.editedAt > g.ts ? g.editedAt : g.ts,
+        trainer: b.trainer_name || '—', batch: g.batch, course: b.programme || '—', session: g.session ? 'Session '+g.session : '—',
+        students: (g.p.length ? 'Present: '+g.p.join(', ') : '') + (g.a.length ? (g.p.length?' · ':'')+'Absent: '+g.a.join(', ') : ''),
+        date: g.date, time: b.time_slot || '—', pa: g.p.length+' / '+g.a.length, by: (g.editedAt ? (g.editedBy||g.by) : g.by) || '—' });
+    });
+    (otoRes.data||[]).forEach(o => {
+      const b = byId[o.batch_id] || {};
+      const fmtT = t => t ? t.slice(0,5) : '';
+      ev.push({ kind:'oto', action: '1:1 session — ' + (o.status || '—'), ts: o.marked_at || o.updated_at || o.created_at,
+        trainer: (o.trainers && o.trainers.name) || b.trainer_name || '—', batch: (b.name || '—') + ' (1:1)', course: b.programme || '—',
+        session: o.session_number ? '1:1 #'+o.session_number : '—', students: (o.students && o.students.name) || '—',
+        date: o.session_date || '—', time: o.start_time ? fmtT(o.start_time) + (o.end_time ? ' – ' + fmtT(o.end_time) : '') : '—',
+        pa: o.status === 'completed' ? '1 / 0' : (o.status === 'absent' || o.status === 'no_show' ? '0 / 1' : '—'), by: o.marked_by || '—' });
+    });
+    (logRes.data||[]).forEach(s => {
+      const b = byId[s.batch_id] || {};
+      ev.push({ kind:'log', action: 'Class log' + (s.type && s.type !== 'class_log' ? ' ('+s.type+')' : ''), ts: s.created_at,
+        trainer: b.trainer_name || '—', batch: b.name || '—', course: b.programme || '—', session: '—',
+        students: (s.students && s.students.name) || '—', date: s.session_date || '—', time: b.time_slot || '—',
+        pa: '—', by: s.logged_by || '—', notes: s.notes || '' });
+    });
+    ev.sort((x,y) => (y.ts||'').localeCompare(x.ts||''));
+    _tsEvents = ev;
+    const fill = (id, vals, label) => { const el = document.getElementById(id); const cur = el.value; el.innerHTML = `<option value="">${label}</option>` + vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join(''); if (vals.includes(cur)) el.value = cur; };
+    fill('ts_trainer', [...new Set(ev.map(e => e.trainer).filter(v => v && v !== '—'))].sort(), 'All trainers');
+    fill('ts_batch', [...new Set(ev.map(e => e.batch.replace(/ \(1:1\)$/,'')).filter(v => v && v !== '—'))].sort(), 'All batches');
+    _tsRender();
+  } catch(e) { list.innerHTML = '<tr><td colspan="11" class="empty">Could not load timestamps: '+esc(e.message)+'</td></tr>'; }
+}
+function _tsRender(){
+  const list = document.getElementById('tsList');
+  if (!list) return;
+  const tr = document.getElementById('ts_trainer').value, ba = document.getElementById('ts_batch').value, ac = document.getElementById('ts_action').value;
+  const rows = _tsEvents.filter(e => (!tr || e.trainer === tr) && (!ba || e.batch.replace(/ \(1:1\)$/,'') === ba) && (!ac || e.kind === ac));
+  document.getElementById('tsCount').textContent = rows.length;
+  const fmtDate = d => d && d !== '—' ? new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  list.innerHTML = rows.length ? rows.map(e => `<tr>
+    <td data-label="Timestamp" style="white-space:nowrap;font-weight:600">${esc(_ovFmtTS(e.ts) || '—')}</td>
+    <td data-label="Action">${esc(e.action)}</td>
+    <td data-label="Trainer">${esc(e.trainer)}</td>
+    <td data-label="Batch">${esc(e.batch)}</td>
+    <td data-label="Course">${esc(e.course)}</td>
+    <td data-label="Session">${esc(e.session)}</td>
+    <td data-label="Student(s)" style="font-size:11.5px;color:var(--tx2);max-width:320px">${esc(e.students || '—')}${e.notes ? `<div style="color:var(--tx3);margin-top:3px;white-space:pre-wrap">${esc(e.notes)}</div>` : ''}</td>
+    <td data-label="Class Date" style="white-space:nowrap">${esc(fmtDate(e.date))}</td>
+    <td data-label="Class Time" style="white-space:nowrap">${esc(e.time)}</td>
+    <td data-label="Present / Absent">${esc(e.pa)}</td>
+    <td data-label="Recorded By">${esc(e.by)}</td>
+  </tr>`).join('') : '<tr><td colspan="11" class="empty">No records in this date range.</td></tr>';
+}
 async function openBatchLogs(batchId, rawBatchName, displayName){
   document.getElementById('batchLogsTitle').textContent = 'Class Logs — ' + (displayName || rawBatchName || 'Batch');
   const list = document.getElementById('batchLogsList');
@@ -4694,6 +4801,7 @@ function acadSwitchTab(tab){
   // PERFORMANCE: fetch this tab's data the first time it's actually opened, not back at
   // boot() (see ACAD_LAZY_TAB_LOADERS) — cached after that, so switching back is instant.
   if (typeof acadEnsureTabLoaded === 'function') acadEnsureTabLoaded(tab);
+  if (tab === 'timestamps' && typeof loadTimestampsTab === 'function') loadTimestampsTab();
   // Availability tab always resets to its list view when navigated to fresh (not via
   // its own internal crumbs), so stale drill-down state never lingers between visits.
   if (tab === 'availability' && typeof availShowList === 'function') availShowList();
