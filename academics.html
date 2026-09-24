@@ -202,6 +202,26 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
 .dsh-empty-ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.04);border:1px solid var(--panel-border);color:var(--tx2)}
 .dsh-empty-t{font-size:12.5px;font-weight:600;color:var(--tx2)}
 .dsh-empty-s{font-size:11px;color:var(--tx3);max-width:260px;line-height:1.5}
+.cls-row{display:grid;grid-template-columns:92px 3px minmax(0,1fr) auto;align-items:center;gap:14px;padding:11px 10px;margin:0 -10px;border-radius:10px;transition:background .15s}
+.cls-row + .cls-row{border-top:1px solid rgba(255,255,255,.04)}
+.cls-row.is-link{cursor:pointer}
+.cls-row.is-link:hover{background:rgba(255,255,255,.035)}
+.cls-time{display:flex;flex-direction:column;gap:1px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cls-start{font-size:13.5px;font-weight:700;color:var(--tx)}
+.cls-end{font-size:10.5px;color:var(--tx3)}
+.cls-rail{align-self:stretch;width:3px;border-radius:2px;background:rgba(59,130,246,.55)}
+.cls-st-done .cls-rail{background:rgba(255,255,255,.12)}
+.cls-st-done .dsh-title,.cls-st-done .cls-start{color:var(--tx2)}
+.cls-st-live .cls-rail{background:var(--green);box-shadow:0 0 8px rgba(16,185,129,.5)}
+.cls-chip{font-size:10px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:999px;border:1px solid var(--panel-border);color:var(--tx3);background:rgba(255,255,255,.03);white-space:nowrap}
+.cls-live{color:var(--green);background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3)}
+.cls-next{color:var(--blue);background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3)}
+.cls-day + .cls-day{margin-top:14px}
+.cls-day-h{display:flex;align-items:center;gap:8px;padding:0 0 6px;margin-bottom:2px;border-bottom:1px solid var(--panel-border)}
+.cls-day-name{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tx2)}
+.cls-day-tag{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;color:var(--blue);background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3)}
+.cls-day-n{margin-left:auto;font-size:10.5px;color:var(--tx3)}
+@media(max-width:640px){.cls-row{grid-template-columns:70px 3px minmax(0,1fr);gap:10px}.cls-chip{grid-column:3;justify-self:start}}
 .dash-grid.dash-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:900px){.dash-grid.dash-grid-2{grid-template-columns:minmax(0,1fr)!important;gap:12px!important}}
 @media(max-width:640px){.dsh-item{gap:10px}.dsh-meta-lbl{display:none}}
@@ -1313,11 +1333,11 @@ details[open] .rawsum::before{content:'▾ '}
       <!-- Classes — today's + upcoming sessions across all batches, drawn from `sessions`. -->
       <div class="acad-tab" id="tab-acad-classes">
         <div class="section">
-          <h2><span id="tab-acad-classes-label">Today's Classes</span></h2>
+          <h2><span style="display:inline-flex;align-items:center;gap:10px"><span id="tab-acad-classes-label">Today's Classes</span><span class="tag" id="classesTodayCount" style="display:none">0</span></span></h2>
           <div id="classesToday" class="loading">Loading…</div>
         </div>
         <div class="section">
-          <h2>Upcoming (Next 7 Days)</h2>
+          <h2><span style="display:inline-flex;align-items:center;gap:10px">Upcoming (Next 7 Days)<span class="tag" id="classesUpcomingCount" style="display:none">0</span></span></h2>
           <div id="classesUpcoming" class="loading">Loading…</div>
         </div>
       </div>
@@ -6726,13 +6746,36 @@ async function loadClassesTab(){
     const todays = allOccurrences.filter(o => o.date === today);
     const upcoming = allOccurrences.filter(o => o.date > today);
     const DOW_LABEL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const card = o => {
-      const b = o.batch;
-      const dateLabel = new Date(o.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
-      return `<div class="dsh-item is-link" onclick="openBatchDetails('${b.id}')"><span class="dsh-dot"></span><div class="dsh-main"><div class="dsh-title">${esc(b.name)}</div>${b.programme?`<div class="dsh-sub">${esc(b.programme)}</div>`:''}</div><div class="dsh-meta"><span class="dsh-meta-lbl">${esc(DOW_LABEL[o.dow])}, ${esc(dateLabel)}</span><span class="dsh-meta-val">${esc(b.time_slot||'—')}</span></div></div>`;
+    const _fmtMin = m => { if (m == null || isNaN(m)) return ''; const h = Math.floor(m/60) % 24, mm = m % 60; return ((h+11)%12+1) + ':' + String(mm).padStart(2,'0') + ' ' + (h<12?'AM':'PM'); };
+    const _nowD = new Date(), _nowMin = _nowD.getHours()*60 + _nowD.getMinutes();
+    const _clsRow = (o, state) => {
+      const b = o.batch, dur = Number(b.class_duration_minutes) || 60;
+      const start = o.startTime != null ? _fmtMin(o.startTime) : (b.time_slot || '—');
+      const end = o.startTime != null ? _fmtMin(o.startTime + dur) : '';
+      const chip = state ? `<span class="cls-chip cls-${state}">${state==='live'?'Live now':state==='next'?'Up next':state==='done'?'Done':'Later'}</span>` : '';
+      return `<div class="cls-row is-link${state?' cls-st-'+state:''}" onclick="openBatchDetails('${b.id}')"><div class="cls-time"><span class="cls-start">${esc(start)}</span>${end?`<span class="cls-end">to ${esc(end)}</span>`:''}</div><span class="cls-rail"></span><div class="dsh-main"><div class="dsh-title">${esc(b.name)}</div><div class="dsh-sub">${esc(b.programme||'—')}${dur?' · '+dur+' min':''}</div></div>${chip}</div>`;
     };
-    if (todaysEl) _dshSet('classesToday', todays.length ? '<div class="dsh-list">'+todays.map(card).join('')+'</div>' : _dshEmpty('calendar', 'No classes today', 'No classes scheduled for you today.'));
-    if (upcomingEl) _dshSet('classesUpcoming', upcoming.length ? '<div class="dsh-list">'+upcoming.map(card).join('')+'</div>' : _dshEmpty('calendar-range', 'Nothing upcoming', 'No upcoming classes assigned to you.'));
+    let _nextFound = false;
+    const todayHtml = todays.map(o => {
+      const dur = Number(o.batch.class_duration_minutes) || 60;
+      let st = 'later';
+      if (o.startTime != null) {
+        if (_nowMin >= o.startTime + dur) st = 'done';
+        else if (_nowMin >= o.startTime) st = 'live';
+        else if (!_nextFound) { st = 'next'; _nextFound = true; }
+      }
+      return _clsRow(o, st);
+    }).join('');
+    const _tomorrow = new Date(today+'T00:00:00'); _tomorrow.setDate(_tomorrow.getDate()+1);
+    const _tomISO = `${_tomorrow.getFullYear()}-${String(_tomorrow.getMonth()+1).padStart(2,'0')}-${String(_tomorrow.getDate()).padStart(2,'0')}`;
+    const _byDay = [];
+    upcoming.forEach(o => { const last = _byDay[_byDay.length-1]; if (last && last.date === o.date) last.items.push(o); else _byDay.push({ date:o.date, dow:o.dow, items:[o] }); });
+    const upcomingHtml = _byDay.map(g => {
+      const dl = new Date(g.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+      return `<div class="cls-day"><div class="cls-day-h"><span class="cls-day-name">${esc(DOW_LABEL[g.dow])}, ${esc(dl)}</span>${g.date===_tomISO?'<span class="cls-day-tag">Tomorrow</span>':''}<span class="cls-day-n">${g.items.length} class${g.items.length===1?'':'es'}</span></div><div class="dsh-list">${g.items.map(o=>_clsRow(o,null)).join('')}</div></div>`;
+    }).join('');
+    if (todaysEl) _dshSet('classesToday', todays.length ? '<div class="dsh-list">'+todayHtml+'</div>' : _dshEmpty('calendar', 'No classes today', 'No classes scheduled for you today.'), todays.length);
+    if (upcomingEl) _dshSet('classesUpcoming', upcoming.length ? upcomingHtml : _dshEmpty('calendar-range', 'Nothing upcoming', 'No upcoming classes assigned to you.'), upcoming.length);
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }catch(e){ console.warn('Classes tab failed to load:', e.message); }
 }
