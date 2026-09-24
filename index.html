@@ -5571,6 +5571,14 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         }
         // Thin, label-fixed wrappers — kept so existing call sites read clearly.
         function buildReferenceFileMarkup(assetString, uid) { return buildGroupedFileMarkup(assetString, uid, 'Reference Files'); }
+        function _pmDate(iso) { if (!iso) return '—'; const d = new Date(String(iso).slice(0,10) + 'T00:00:00'); return isNaN(d) ? iso : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); }
+        function _pmDue(iso, status) {
+            if (!iso || status === 'Completed' || status === 'Rejected') return '';
+            const t = new Date(); t.setHours(0,0,0,0); const d = new Date(String(iso).slice(0,10) + 'T00:00:00'); if (isNaN(d)) return '';
+            const n = Math.round((d - t) / 86400000);
+            const [txt, c] = n < 0 ? ['Overdue ' + (-n) + 'd', '#f87171'] : n === 0 ? ['Due today', '#fbbf24'] : n === 1 ? ['Due tomorrow', '#fbbf24'] : ['In ' + n + ' days', n <= 3 ? '#fbbf24' : '#8890b5'];
+            return `<span style="display:inline-block;margin-top:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;color:${c};background:${c}1a;border:1px solid ${c}40">${txt}</span>`;
+        }
         function buildDeliveryOutputMarkup(assetString, uid) { return buildGroupedFileMarkup(assetString, uid, 'Delivery Output'); }
         function toggleReferenceFolder(uid) {
             _refFolderOpenState[uid] = !_refFolderOpenState[uid];
@@ -6309,7 +6317,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
 
                 // Employees see who assigned the work
                 const assignedByLine = (activeRole === 'employee' && t.assignedBy)
-                    ? `<br><span class="text-white/70/70 text-[10px]">Assigned by: ${t.assignedBy}</span>`
+                    ? `<span class="text-[#8890b5] text-[10.5px] font-medium">by ${t.assignedBy}</span>`
                     : '';
 
                 // Shows the creator's real HR designation (e.g. "Video Editor") — never the
@@ -6318,23 +6326,25 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 // ensureHRDataLoaded()+renderTableRows() call in launchSession().
                 const creatorDesignation = (typeof hrDesignationForEmail === 'function') ? hrDesignationForEmail(t.employeeEmail) : null;
                 const creatorDesignationLine = creatorDesignation
-                    ? `<br><span class="text-[#4a5182] text-[10px]">${creatorDesignation}</span>`
+                    ? `<div class="text-[#6b74a0] text-[10.5px]">${creatorDesignation}</div>`
                     : '';
+                const _creatorEmp = (typeof hrEmployees !== 'undefined' && Array.isArray(hrEmployees)) ? hrEmployees.find(e => (e.portal_email || '').toLowerCase() === String(t.employeeEmail || '').toLowerCase()) : null;
+                const _creatorAv = (typeof hrAvatarHTML === 'function') ? hrAvatarHTML(_creatorEmp || t.assignedTo || '?', 30) : '';
 
                 let desktopRow = document.createElement('tr');
                 desktopRow.className = `hover:bg-transparent/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 desktopRow.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-white sticky left-0 bg-transparent z-10 min-w-[160px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}>${t.topic} ${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}${assignedByLine}</td>
-                    <td class="py-3 px-4"><span class="whitespace-nowrap">${t.type}</span></td>
-                    <td class="py-3 px-4 font-medium">${t.assignedTo}<br><span class="text-[#4a5182] text-[10px]">${t.employeeEmail}</span>${creatorDesignationLine}</td>
-                    <td class="py-3 px-4 text-[#6b74a0] max-w-xs truncate cursor-pointer select-none" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">${t.description ? t.description.slice(0,60)+(t.description.length>60?'…':'') : ''}</td>
-                    <td class="py-3 px-4 text-[#6b74a0] font-mono">${t.assignedDate}</td>
-                    <td class="py-3 px-4 text-white/70 font-mono font-semibold">${t.date}</td>
+                    <td class="py-3 px-4 text-white sticky left-0 bg-transparent z-10 min-w-[200px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}><div class="font-bold text-[13px] leading-snug">${t.topic}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px">${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}${assignedByLine}</div></td>
+                    <td class="py-3 px-4"><span class="whitespace-nowrap" style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:#c7cbe0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)">${t.type}</span></td>
+                    <td class="py-3 px-4" title="${t.employeeEmail || ''}"><div style="display:flex;align-items:center;gap:9px"><span style="flex-shrink:0">${_creatorAv}</span><div style="min-width:0"><div class="font-semibold text-white text-[12.5px] whitespace-nowrap">${t.assignedTo}</div>${creatorDesignationLine}</div></div></td>
+                    <td class="py-3 px-4 text-[#8890b5] cursor-pointer select-none" style="min-width:200px;max-width:280px" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})"><span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45">${t.description || '<span class="text-[#4a5182]">—</span>'}</span></td>
+                    <td class="py-3 px-4 text-[#8890b5] whitespace-nowrap">${_pmDate(t.assignedDate)}</td>
+                    <td class="py-3 px-4 whitespace-nowrap"><div class="text-white font-semibold">${_pmDate(t.date)}</div>${_pmDue(t.date, t.status)}</td>
                     <td class="py-3 px-4" id="status-engine-cell-${t.id}">${inputActionSelectorMarkup}</td>
                     <td class="py-3 px-4 italic max-w-xs ${t.status === 'Completed' && t.explanation !== 'None' ? 'text-emerald-400' : 'text-yellow-500'}">
                         ${t.explanation && t.explanation !== 'None'
                             ? `<span class="line-clamp-2 cursor-pointer hover:underline" onclick="showFullExplanation(this)" data-full="${(t.explanation||'').replace(/"/g,'&quot;')}" title="Click to read full note">${t.explanation}</span>`
-                            : `<span class="text-[#4a5182]">${t.explanation}</span>`}
+                            : `<span class="text-[#4a5182] not-italic">—</span>`}
                     </td>
                     <td class="py-3 px-4">${outputLinkBtn}</td>
                     <td class="py-3 px-4">${refFileBtnDesktop}</td>
@@ -6360,8 +6370,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                     </div>
                     <div class="grid grid-cols-2 gap-y-2 gap-x-1 pt-1 text-gray-300">
                         <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Creator</p><p class="font-medium">${t.assignedTo}</p></div>
-                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Assigned On</p><p class="font-mono">${t.assignedDate}</p></div>
-                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Target Deadline</p><p class="font-mono text-white/70 font-semibold">${t.date}</p></div>
+                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Assigned On</p><p>${_pmDate(t.assignedDate)}</p></div>
+                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Target Deadline</p><p class="text-white font-semibold">${_pmDate(t.date)}</p>${_pmDue(t.date, t.status)}</div>
                         <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Delivery Link</p><div class="mt-1">${outputLinkBtn}</div></div>
                         ${(activeRole === 'employee' && t.assignedBy) ? `<div class="col-span-2"><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Assigned By</p><p class="font-medium text-white/70/80">${t.assignedBy}</p></div>` : ''}
                     </div>
