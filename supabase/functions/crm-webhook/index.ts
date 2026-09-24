@@ -121,14 +121,24 @@ function generateUin(): string {
 
 async function resolveCounsellorId(counselorName?: string): Promise<string | null> {
   if (!counselorName) return null;
-  const { data } = await sb
+  // Try exact match first
+  const { data: exact } = await sb
     .from("hr_employees")
     .select("id")
     .eq("division", "sales")
     .ilike("full_name", counselorName.trim())
     .limit(1)
     .maybeSingle();
-  return data?.id || null;
+  if (exact?.id) return exact.id;
+  // Fuzzy: strip spaces and compare — handles "Thayee Krishna" vs "Thayeekrishna"
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const needle = norm(counselorName);
+  const { data: all } = await sb
+    .from("hr_employees")
+    .select("id, full_name")
+    .eq("division", "sales");
+  const match = (all || []).find((e) => norm(e.full_name) === needle);
+  return match?.id || null;
 }
 
 async function processLead(payload: EnrollmentPayload) {
