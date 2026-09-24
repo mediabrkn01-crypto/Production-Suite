@@ -2950,17 +2950,35 @@
             }
             html += '</div></div>';
 
-            // Settings grid
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
-            fields.forEach(function (f) {
-                var val = s[f.key] !== undefined ? s[f.key] : '';
-                html += '<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px">';
-                html += '<div style="font-size:10px;color:#808a9d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">' + f.label + '</div>';
-                if (_policyEditing) {
-                    html += '<input id="pol-' + f.key + '" type="' + f.type + '" value="' + val + '" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:13px">';
-                } else {
-                    html += '<div style="font-size:14px;font-weight:600;color:#f1f5f9">' + val + '</div>';
-                }
+            // Settings — grouped by topic, same inputs/ids as before so edit + save are unchanged.
+            var _groups = [
+                { title: 'Probation', color: '#f59e0b', keys: { PROBATION_MONTHS: ['Probation period', 'months'] } },
+                { title: 'Casual Leave', color: '#3b82f6', keys: { CL_PER_CYCLE: ['Leaves per cycle', 'days'], CL_CYCLE_MONTHS: ['Cycle length', 'months'], CL_CARRY_MONTHS: ['Carry-forward', 'months'], CL_VALIDITY_MONTHS: ['Validity', 'months'] } },
+                { title: 'Sick Leave & Limits', color: '#10b981', keys: { SL_PER_MONTH: ['Sick leave', 'per month'], MAX_CONSECUTIVE: ['Max consecutive leave', 'days'] } },
+                { title: 'Late / Incident Deductions', color: '#f87171', keys: { INCIDENT_HALFDAY_AT: ['Half-day deduction after', 'incidents'], INCIDENT_FULLDAY_AT: ['Full-day deduction after', 'incidents'] } },
+                { title: 'Work Hours & System', color: '#a78bfa', keys: { WORK_START: ['Work starts', ''], WORK_END: ['Work ends', ''], LEAVE_SYSTEM_START: ['Leave system start', ''] } }
+            ];
+            var _fmtVal = function (f, v) {
+                if (v === '' || v == null) return '<span style="color:#4a5182">—</span>';
+                if (f.type === 'time') { var p = String(v).split(':'); var h = +p[0]; return ((h + 11) % 12 + 1) + ':' + (p[1] || '00') + ' ' + (h < 12 ? 'AM' : 'PM'); }
+                if (f.type === 'date') { var d = new Date(v + 'T00:00:00'); return isNaN(d) ? v : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+                return v;
+            };
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;align-items:start">';
+            _groups.forEach(function (g) {
+                html += '<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-top:2px solid ' + g.color + ';border-radius:10px;padding:14px 16px">';
+                html += '<div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:' + g.color + ';margin-bottom:8px">' + g.title + '</div>';
+                fields.filter(function (f) { return g.keys[f.key]; }).forEach(function (f, i) {
+                    var meta = g.keys[f.key], val = s[f.key] !== undefined ? s[f.key] : '';
+                    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;' + (i ? 'border-top:1px solid rgba(255,255,255,0.05)' : '') + '">';
+                    html += '<span style="font-size:12.5px;color:#a5adcf">' + meta[0] + '</span>';
+                    if (_policyEditing) {
+                        html += '<span style="display:flex;align-items:center;gap:6px"><input id="pol-' + f.key + '" type="' + f.type + '" value="' + val + '" style="width:' + (f.type === 'number' ? '80px' : '150px') + ';background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:13px;text-align:right">' + (meta[1] ? '<span style="font-size:11px;color:#6b74a0">' + meta[1] + '</span>' : '') + '</span>';
+                    } else {
+                        html += '<span style="font-size:14px;font-weight:700;color:#f1f5f9;font-variant-numeric:tabular-nums;white-space:nowrap">' + _fmtVal(f, val) + (meta[1] && val !== '' ? ' <span style="font-size:11px;font-weight:500;color:#6b74a0">' + meta[1] + '</span>' : '') + '</span>';
+                    }
+                    html += '</div>';
+                });
                 html += '</div>';
             });
             html += '</div>';
@@ -4514,6 +4532,10 @@
             }
         }
 
+const HR_DIV_COLOR = { education:'#10b981', production:'#7c3aed', sales:'#f59e0b', hr:'#3b82f6', accounts:'#06b6d4', other:'#94a3b8' };
+function hrDivPill(div, label) { const c = HR_DIV_COLOR[div] || '#94a3b8'; return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:${c};background:${c}1a;border:1px solid ${c}40;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${c}"></span>${label}</span>`; }
+function hrDateChip(iso, past) { const d = new Date(String(iso).slice(0,10)+'T00:00:00'); if (isNaN(d)) return iso || '—'; return `<div style="display:flex;align-items:center;gap:12px;${past?'opacity:.5':''}"><div style="width:42px;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.1);text-align:center;flex-shrink:0"><div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,107,6,.15);color:#ff8a3d;padding:2px 0">${d.toLocaleDateString('en-IN',{month:'short'})}</div><div style="font-size:16px;font-weight:800;color:#fff;padding:3px 0 4px;line-height:1">${d.getDate()}</div></div><div><div style="color:#fff;font-weight:600;font-size:13px">${d.toLocaleDateString('en-IN',{weekday:'long'})}</div><div style="color:#6b74a0;font-size:11px">${d.getFullYear()}${past?' · passed':''}</div></div></div>`; }
+function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice(0,10)+'T00:00:00'); return isNaN(d) ? x : d.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'}); }; return !b || a === b ? f(a) : f(a) + ' → ' + f(b); }
 // ── renderHRDepartments (orig line 9464) ──
         function renderHRDepartments() {
             const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
@@ -4522,14 +4544,15 @@
             // An employee with multiple roles counts toward each one — e.g. an Editor +
             // Cinematographer shows up under both tiles, not just the first.
             hrEmployees.forEach(e => hrParseRoles(e.department).forEach(role => { if (groups[role]) groups[role].count++; }));
-            document.getElementById('hr-departments-grid').innerHTML = Object.entries(groups).map(([name, g]) => `
-                <div class="card glass-card p-4 rounded-2xl cursor-pointer" onclick="document.getElementById('hr-emp-filter-department').value='${name}';switchHRSubtab('employees')">
-                    <p class="text-white font-bold text-sm">${name}</p>
-                    <p class="text-[10px] text-[#6b74a0] uppercase tracking-wider mt-1">${divisionLabel[g.division]}</p>
-                    <p class="text-2xl font-extrabold text-white mt-2">${g.count}</p>
-                    <p class="text-[10px] text-[#4a5182]">employees</p>
-                </div>
-            `).join('');
+            const _maxDept = Math.max(1, ...Object.values(groups).map(g => g.count));
+            document.getElementById('hr-departments-grid').innerHTML = Object.entries(groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => { const c = HR_DIV_COLOR[g.division] || '#94a3b8'; return `
+                <div class="card glass-card p-4 rounded-2xl cursor-pointer" style="border-left:3px solid ${c};${g.count ? '' : 'opacity:.55'}" onclick="document.getElementById('hr-emp-filter-department').value='${name}';switchHRSubtab('employees')">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                        <div style="min-width:0"><p class="text-white font-bold text-sm">${name}</p><div style="margin-top:6px">${hrDivPill(g.division, divisionLabel[g.division])}</div></div>
+                        <div style="text-align:right"><p class="text-2xl font-extrabold ${g.count ? 'text-white' : 'text-[#4a5182]'}" style="line-height:1">${g.count}</p><p class="text-[10px] text-[#4a5182] mt-1">employee${g.count === 1 ? '' : 's'}</p></div>
+                    </div>
+                    <div class="rp-bar rp-bar-sm" style="margin-top:12px"><span style="width:${Math.round(g.count / _maxDept * 100)}%;background:${c}"></span></div>
+                </div>`; }).join('');
         }
 
 // ── renderHRDesignations (orig line 9480) ──
@@ -4544,7 +4567,8 @@
             const rows = Object.entries(counts).sort((a,b) => b[1]-a[1]);
             document.getElementById('hr-designations-rows').innerHTML = rows.length ? rows.map(([key, count]) => {
                 const [desig, div] = key.split('|');
-                return `<tr><td data-label="Designation" class="py-2.5 px-4 text-white font-semibold">${desig}</td><td data-label="Division" class="py-2.5 px-4 text-[#a5adcf]">${divisionLabel[div]||div}</td><td data-label="Employees" class="py-2.5 px-4 text-[#a5adcf]">${count}</td></tr>`;
+                const _mx = rows[0] ? rows[0][1] : 1;
+                return `<tr class="hover:bg-white/[0.02]"><td data-label="Designation" class="py-2.5 px-4 text-white font-semibold">${desig}</td><td data-label="Division" class="py-2.5 px-4">${hrDivPill(div, divisionLabel[div]||div)}</td><td data-label="Employees" class="py-2.5 px-4"><div style="display:flex;align-items:center;gap:10px;min-width:140px"><span class="text-white font-bold ui-num" style="min-width:18px">${count}</span><span class="rp-bar rp-bar-sm" style="flex:1;margin:0;max-width:180px"><span style="width:${Math.round(count/_mx*100)}%;background:${HR_DIV_COLOR[div]||'#94a3b8'}"></span></span></div></td></tr>`;
             }).join('') : `<tr><td colspan="3"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No designations recorded yet.</div></div></td></tr>`;
         }
 
@@ -4614,7 +4638,7 @@
                 <tr class="hover:bg-white/[0.02]">
                     <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
                     <td data-label="Division" class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
-                    <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}"${status==='half_day'&&rec?.reason?` title="Reason: ${(rec.reason||'').replace(/"/g,'&quot;')}${rec.marked_by?' · Marked by: '+rec.marked_by:''}"`:''}>${status==='half_day' ? ('Half Day · ' + (rec?.half_day_type==='morning'?'Morning':rec?.half_day_type==='afternoon'?'Afternoon':'—')) : status.replace('_',' ')}</span>` : '<span class="text-[#4a5182] text-xs">Not marked</span>'}</td>
+                    <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}"${status==='half_day'&&rec?.reason?` title="Reason: ${(rec.reason||'').replace(/"/g,'&quot;')}${rec.marked_by?' · Marked by: '+rec.marked_by:''}"`:''}>${status==='half_day' ? ('Half Day · ' + (rec?.half_day_type==='morning'?'Morning':rec?.half_day_type==='afternoon'?'Afternoon':'—')) : status.replace('_',' ')}</span>` : '<span class="st-pill st-mute" style="text-transform:none">Not marked</span>'}</td>
                     <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
                     <td data-label="Check-out" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
                     <td data-label="Set" class="py-2.5 px-4 text-center">
@@ -5030,7 +5054,7 @@
                         ${hrAvatarForEmployeeId(r.employee_id, 30)}
                         <div>
                         <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}${halfLabel}${r.emergency ? ' <span style="color:#fb923c;font-size:10.5px;font-weight:700">⚡ EMERGENCY</span>' : ''}</div>
-                        <div class="text-[#6b74a0] text-xs">${r.start_date}${r.end_date !== r.start_date ? ' → ' + r.end_date : ''} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
+                        <div class="text-[#6b74a0] text-xs">${hrNiceRange(r.start_date, r.end_date)} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
                         <div class="text-[#6b74a0] text-xs" style="margin-top:2px" title="${submitted.title}">${submitted.label}${submitted.kind === 'late' ? ' <span style="color:#fb923c;font-weight:600">⚠ Submitted after leave date</span>' : submitted.kind === 'same-day' ? ' · <span style="color:#8890b5">Same-day request</span>' : ''}</div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${stageChip('HR', r.hr_status || 'pending')}<span style="font-size:10.5px;color:#6b74a0">Approver: HR only</span></div>
                         ${r.policy_warning ? `<div style="margin-top:6px;font-size:11px;color:#fb923c;background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);border-radius:8px;padding:5px 8px">⚠ ${r.policy_warning}</div>` : ''}
@@ -5667,17 +5691,22 @@ async function populateHRJobDeptOptions() {
                 const key = (divisionLabel[e.division] || e.division) + ' — ' + (e.department || 'Unassigned');
                 byDept[key] = (byDept[key] || 0) + 1;
             });
-            document.getElementById('hr-report-employees').innerHTML = Object.entries(byDept).length ? Object.entries(byDept).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `
-                <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)"><span class="text-[#a5adcf]">${k}</span><span class="text-white font-semibold">${v}</span></div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">No employees yet.</p>';
+            const _byDiv = {};
+            hrEmployees.forEach(e => { const d = e.division || 'other'; (_byDiv[d] = _byDiv[d] || {}); const dep = e.department || 'Unassigned'; _byDiv[d][dep] = (_byDiv[d][dep] || 0) + 1; });
+            const _maxRole = Math.max(1, ...Object.values(_byDiv).flatMap(o => Object.values(o)));
+            document.getElementById('hr-report-employees').innerHTML = Object.keys(_byDiv).length ? Object.entries(_byDiv).sort((a,b) => Object.values(b[1]).reduce((x,y)=>x+y,0) - Object.values(a[1]).reduce((x,y)=>x+y,0)).map(([div, deps]) => {
+                const tot = Object.values(deps).reduce((x,y)=>x+y,0), c = HR_DIV_COLOR[div] || '#94a3b8';
+                return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">${hrDivPill(div, divisionLabel[div] || div)}<span class="text-white font-bold ui-num">${tot}</span></div>`
+                  + Object.entries(deps).sort((a,b)=>b[1]-a[1]).map(([dep, n]) => `<div class="rp-row" style="padding:7px 0 7px 14px"><div class="rp-row-h"><span class="text-[#a5adcf]" style="font-size:12.5px">${dep}</span><span class="text-white font-semibold ui-num" style="font-size:12.5px">${n}</span></div><div class="rp-bar rp-bar-sm"><span style="width:${Math.round(n/_maxRole*100)}%;background:${c}"></span></div></div>`).join('') + '</div>';
+            }).join('') : '<p class="text-[#4a5182] text-xs">No employees yet.</p>';
 
             // Leave report by type
             const byType = {};
             hrLeaveRequests.forEach(r => { byType[r.leave_type] = byType[r.leave_type] || { approved: 0, pending: 0, rejected: 0 }; byType[r.leave_type][r.status]++; });
             document.getElementById('hr-report-leave').innerHTML = Object.entries(byType).length ? Object.entries(byType).map(([type, c]) => `
-                <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-                    <span class="text-[#a5adcf]">${type}</span>
-                    <span class="text-xs"><span class="text-green-400">${c.approved||0} appr</span> · <span class="text-yellow-400">${c.pending||0} pend</span> · <span class="text-red-400">${c.rejected||0} rej</span></span>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                    <span class="text-white font-semibold" style="font-size:13px">${type}</span>
+                    <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="st-pill ${c.approved?'st-ok':'st-mute'}" style="text-transform:none">${c.approved||0} approved</span><span class="st-pill ${c.pending?'st-warn':'st-mute'}" style="text-transform:none">${c.pending||0} pending</span><span class="st-pill ${c.rejected?'st-bad':'st-mute'}" style="text-transform:none">${c.rejected||0} rejected</span></span>
                 </div>
             `).join('') : '<p class="text-[#4a5182] text-xs">No leave requests yet.</p>';
 
@@ -5716,7 +5745,7 @@ async function populateHRJobDeptOptions() {
                         <th class="py-2 pr-4">Employee</th><th class="py-2 pr-4">Present</th><th class="py-2 pr-4">Absent</th><th class="py-2 pr-4">Late</th><th class="py-2 pr-4">Afternoon</th><th class="py-2 pr-4">Half Day</th><th class="py-2 pr-4">WFH</th><th class="py-2 pr-4">On Leave</th><th class="py-2 pr-4">Attendance %</th>
                     </tr></thead>
                     <tbody class="divide-y divide-white/[0.05]">
-                        ${rows.map(r => `<tr><td data-label="Employee" class="py-2 pr-4 text-white">${r.name}</td><td data-label="Present" class="py-2 pr-4">${r.counts.present}</td><td data-label="Absent" class="py-2 pr-4">${r.counts.absent}</td><td data-label="Late" class="py-2 pr-4">${r.counts.late}</td><td data-label="Afternoon" class="py-2 pr-4">${r.counts.afternoon}</td><td data-label="Half Day" class="py-2 pr-4">${r.counts.half_day}</td><td data-label="WFH" class="py-2 pr-4">${r.counts.wfh}</td><td data-label="On Leave" class="py-2 pr-4">${r.counts.on_leave}</td><td data-label="Attendance %" class="py-2 pr-4 font-bold ${r.pct===null?'text-[#4a5182]':r.pct>=90?'text-green-400':r.pct>=75?'text-yellow-400':'text-red-400'}">${r.pct===null?'—':r.pct+'%'}</td></tr>`).join('') || `<tr><td colspan="9"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No data.</div></div></td></tr>`}
+                        ${rows.map(r => `<tr><td data-label="Employee" class="py-2 pr-4 text-white">${r.name}</td><td data-label="Present" class="py-2 pr-4">${r.counts.present}</td><td data-label="Absent" class="py-2 pr-4">${r.counts.absent}</td><td data-label="Late" class="py-2 pr-4">${r.counts.late}</td><td data-label="Afternoon" class="py-2 pr-4">${r.counts.afternoon}</td><td data-label="Half Day" class="py-2 pr-4">${r.counts.half_day}</td><td data-label="WFH" class="py-2 pr-4">${r.counts.wfh}</td><td data-label="On Leave" class="py-2 pr-4">${r.counts.on_leave}</td><td data-label="Attendance %" class="py-2 pr-4">${r.pct===null?'<span class="text-[#4a5182]">—</span>':`<div style="display:flex;align-items:center;gap:10px;min-width:130px"><span class="font-bold ui-num" style="min-width:38px;color:${r.pct>=90?'#34d399':r.pct>=75?'#fbbf24':'#f87171'}">${r.pct}%</span><span class="rp-bar rp-bar-sm" style="flex:1;margin:0;max-width:110px"><span style="width:${r.pct}%;background:${r.pct>=90?'#10b981':r.pct>=75?'#f59e0b':'#ef4444'}"></span></span></div>`}</td></tr>`).join('') || `<tr><td colspan="9"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No data.</div></div></td></tr>`}
                     </tbody>
                 </table>`;
         }
@@ -5801,14 +5830,21 @@ async function populateHRJobDeptOptions() {
         function renderHRNotifications() {
             const dismissed = hrGetDismissedNotifKeys();
             const notifs = hrComputeNotifications().filter(n => !dismissed.has(n.key));
-            document.getElementById('hr-notifications-list').innerHTML = notifs.length ? notifs.map(n => `
-                <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
-                    ${n.employeeId ? hrAvatarForEmployeeId(n.employeeId, 22) : `<i data-lucide="${n.icon}" class="w-4 h-4 ${n.type==='action'?'text-orange-400':'text-[#6b74a0]'}"></i>`}
+            const _nKind = t => /not marked|absent|missing/i.test(t) ? ['Attendance','#fb923c'] : /leave|wfh|work from home/i.test(t) ? ['Leave','#a78bfa'] : /payroll|payslip|salary/i.test(t) ? ['Payroll','#38bdf8'] : /birthday|anniversary|celebrat/i.test(t) ? ['Celebration','#f472b6'] : ['Update','#94a3b8'];
+            const _dayKey = ts => { const d = new Date(ts); const t = new Date(); const y = new Date(); y.setDate(t.getDate()-1); if (d.toDateString() === t.toDateString()) return 'Today'; if (d.toDateString() === y.toDateString()) return 'Yesterday'; return d.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short'}); };
+            let _lastDay = null;
+            document.getElementById('hr-notifications-list').innerHTML = notifs.length ? notifs.map(n => {
+                const [kind, col] = _nKind(n.text || ''); const day = _dayKey(n.time);
+                const head = day !== _lastDay ? `<div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0;margin:${_lastDay ? '14px' : '0'} 0 6px">${day}</div>` : '';
+                _lastDay = day;
+                return head + `
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-left:3px solid ${col};border-radius:12px;background:rgba(255,255,255,.015)">
+                    ${n.employeeId ? hrAvatarForEmployeeId(n.employeeId, 28) : `<i data-lucide="${n.icon}" class="w-4 h-4 ${n.type==='action'?'text-orange-400':'text-[#6b74a0]'}"></i>`}
                     <span class="text-sm text-[#e6e9f5] flex-1">${n.text}</span>
-                    <span class="text-[10px] text-[#4a5182]">${new Date(n.time).toLocaleDateString()}</span>
+                    <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;color:${col};background:${col}1a;border:1px solid ${col}40;white-space:nowrap">${kind}</span>
+                    <span class="text-[11px] text-[#6b74a0] ui-num" style="white-space:nowrap">${new Date(n.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
                     <button onclick="hrDismissNotification('${n.key}')" class="hr-icon-btn" style="padding:2px" aria-label="Dismiss">✕</button>
-                </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">No notifications right now.</p>';
+                </div>`; }).join('') : '<div class="dsh-empty" style="min-height:160px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div><div class="dsh-empty-t">You are all caught up</div><div class="dsh-empty-s">New attendance, leave and payroll alerts will appear here.</div></div>';
             if (window.lucide) lucide.createIcons();
             const badge = document.getElementById('hr-notif-badge');
             const actionCount = notifs.filter(n => n.type === 'action').length;
@@ -6091,7 +6127,7 @@ async function populateHRJobDeptOptions() {
                 { label: 'Net', value: Math.round(netTotal), color: '#10b981' }
             ];
             const payrollEl = document.getElementById('hr-wf-chart-payroll');
-            if (payrollEl) payrollEl.innerHTML = payrollRows.length ? hrSvgBars(payrollSegs) : '<div class="text-center text-[#4a5182] text-xs py-8">No payslips generated for this month yet.</div>';
+            if (payrollEl) payrollEl.innerHTML = payrollRows.length ? hrSvgBars(payrollSegs) : '<div class="dsh-empty" style="min-height:150px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div><div class="dsh-empty-t">No payslips generated for this month yet</div><div class="dsh-empty-s">Generate payslips from Payroll to see the summary here.</div></div>' ;
 
             // 6-month company-wide Attendance % trend
             const trendPoints = [];
@@ -6236,9 +6272,9 @@ async function populateHRJobDeptOptions() {
             const rows = [...hrHolidays].sort((a,b) => a.holiday_date.localeCompare(b.holiday_date));
             document.getElementById('hr-holidays-rows').innerHTML = rows.length ? rows.map(h => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td data-label="Date" class="py-2.5 px-4 text-white font-semibold">${new Date(h.holiday_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
-                    <td data-label="Holiday" class="py-2.5 px-4 text-[#a5adcf]">${h.name}</td>
-                    <td data-label="Type" class="py-2.5 px-4 text-[#a5adcf]">${h.type}</td>
+                    <td data-label="Date" class="py-2.5 px-4">${hrDateChip(h.holiday_date, h.holiday_date < new Date().toISOString().slice(0,10))}</td>
+                    <td data-label="Holiday" class="py-2.5 px-4 text-white font-semibold">${h.name}</td>
+                    <td data-label="Type" class="py-2.5 px-4"><span class="st-pill ${/public/i.test(h.type||'') ? 'st-info' : 'st-purple'}" style="text-transform:none">${h.type}</span></td>
                     <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHRHoliday('${h.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="4"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No holidays added yet.</div></div></td></tr>`;
@@ -6299,11 +6335,11 @@ async function populateHRJobDeptOptions() {
             const rows = [...hrOfficialEvents].sort((a,b) => a.event_date.localeCompare(b.event_date));
             document.getElementById('hr-official-events-rows').innerHTML = rows.length ? rows.map(ev => `
                 <tr class="hover:bg-white/[0.02]">
-                    <td data-label="Date" class="py-2.5 px-4 text-white font-semibold">${new Date(ev.event_date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}</td>
-                    <td data-label="Title" class="py-2.5 px-4 text-[#a5adcf]">${ev.title}</td>
-                    <td data-label="Applies To" class="py-2.5 px-4 text-[#a5adcf]">${appliesToLabel[ev.applies_to] || ev.applies_to}</td>
-                    <td data-label="Paid" class="py-2.5 px-4 text-[#a5adcf]">${ev.paid === false ? 'No' : 'Yes'}</td>
-                    <td data-label="Clock In Required" class="py-2.5 px-4 text-[#a5adcf]">${ev.clock_in_required ? 'Yes' : 'No'}</td>
+                    <td data-label="Date" class="py-2.5 px-4">${hrDateChip(ev.event_date, ev.event_date < new Date().toISOString().slice(0,10))}</td>
+                    <td data-label="Title" class="py-2.5 px-4 text-white font-semibold">${ev.title}</td>
+                    <td data-label="Applies To" class="py-2.5 px-4">${ev.applies_to === 'all' ? '<span class="st-pill st-mute" style="text-transform:none">All Employees</span>' : hrDivPill(ev.applies_to, appliesToLabel[ev.applies_to] || ev.applies_to)}</td>
+                    <td data-label="Paid" class="py-2.5 px-4"><span class="st-pill ${ev.paid === false ? 'st-mute' : 'st-ok'}">${ev.paid === false ? 'Unpaid' : 'Paid'}</span></td>
+                    <td data-label="Clock In Required" class="py-2.5 px-4"><span class="st-pill ${ev.clock_in_required ? 'st-warn' : 'st-mute'}">${ev.clock_in_required ? 'Required' : 'Not required'}</span></td>
                     <td data-label="Actions" class="py-2.5 px-4 text-center"><button onclick="deleteHROfficialEvent('${ev.id}')" class="hr-icon-btn" style="color:#f87171">Del</button></td>
                 </tr>
             `).join('') : `<tr><td colspan="6"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No official events added yet.</div></div></td></tr>`;
