@@ -202,6 +202,22 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
 .dsh-empty-ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.04);border:1px solid var(--panel-border);color:var(--tx2)}
 .dsh-empty-t{font-size:12.5px;font-weight:600;color:var(--tx2)}
 .dsh-empty-s{font-size:11px;color:var(--tx3);max-width:260px;line-height:1.5}
+.bcard{transition:border-color .15s}
+.bcard:hover{border-color:rgba(255,255,255,.14)}
+.bcard-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.bcard-actions .act-btn{margin:0}
+.bcard-actions:empty{display:none}
+.tr-type{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid}
+.tr-ft{color:var(--blue);background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.28)}
+.tr-pt{color:var(--purple);background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.3)}
+.tr-load{display:flex;align-items:center;gap:10px;min-width:120px}
+.tr-load-bar{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden;max-width:140px}
+.tr-load-bar > span{display:block;height:100%;border-radius:99px;background:var(--gk)}
+.tr-load-v{font-size:12px;font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums;min-width:32px}
+.tr-zero{color:var(--tx3)}
+.ub-meta{display:flex;gap:8px 18px;flex-wrap:wrap;font-size:12px;color:rgba(255,255,255,.5)}
+.ub-meta > span{display:inline-flex;align-items:center;gap:6px}
+.ub-meta svg{display:inline-block!important;flex-shrink:0;opacity:.8}
 .cls-row{display:grid;grid-template-columns:92px 3px minmax(0,1fr) auto;align-items:center;gap:14px;padding:11px 10px;margin:0 -10px;border-radius:10px;transition:background .15s}
 .cls-row + .cls-row{border-top:1px solid rgba(255,255,255,.04)}
 .cls-row.is-link{cursor:pointer}
@@ -2849,7 +2865,7 @@ function card(b,i,isPrevious){
   const roster = b.elite ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${
     b.students.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:var(--tx2);${isHead?'cursor:pointer':''}" ${isHead?`onclick="openStu(${i},${j})"`:''}><span class="acad-avatar-dot" style="width:18px;height:18px;font-size:8.5px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(s.name)}</span>`).join('')
   }</div>`;
-  return `<div class="card" style="margin-bottom:12px;padding:16px;text-align:left${isFrozen?';border:2px solid #f59e0b':''}">
+  return `<div class="card bcard" style="margin-bottom:12px;padding:16px 18px;text-align:left${isFrozen?';border:2px solid #f59e0b':''}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2863,27 +2879,7 @@ function card(b,i,isPrevious){
         ${(function(){ var sch=(window._acadSchedByName&&window._acadSchedByName[b.raw])||{}; return (sch.days||sch.time)?`<div style="font-size:11px;color:var(--tx3);margin-top:3px"><i data-lucide="calendar-clock" style="width:12px;height:12px;display:inline;vertical-align:-1px"></i> ${esc(sch.days||'Schedule')}${sch.time?(' \u00b7 '+esc(sch.time)):''}</div>`:''; })()}
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        ${isPrevious ? `<span class="badge b-active">Completed</span>
-        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
-        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
-        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
-        ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openRestoreBatch('${window._acadBatchIdByName[b.raw]}','${esc(b.name).replace(/'/g,"\\'")}',${total},${dn})" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);color:var(--blue);font-weight:700">Restore Batch</button>`:''}
-        ` : isFrozen ? `
-        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
-        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
-        ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openResumeBatch('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#10b981;font-weight:700">Resume Batch</button>`:''}
-        ` : `
-        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
-        ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
-        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
-        <button class="act-btn btn-mark-att" onclick="openAtt(${i})">Mark Attendance</button>
-        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
-        ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
-        ${(isHead&&!b.elite&&b._otoRequired>0&&b.raw&&!b._groupClassesDone)?`<button class="act-btn" onclick="openCompleteGroupClasses(${i})" style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#10b981">Complete Group Classes</button>`:''}
-        ${isHead&&b.elite&&b.raw?`<button class="act-btn" onclick="openFreezeBatch(${i})" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b">Freeze</button>`:''}
-        ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
-        ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
-        `}
+        ${isPrevious ? '<span class="badge b-active">Completed</span>' : (!isFrozen ? `<button class="act-btn btn-mark-att" onclick="openAtt(${i})">Mark Attendance</button>` : '')}
       </div>
     </div>
     <!-- DEACTIVATED TRAINER FLAG (spec part 1/6/7) \u2014 the assigned trainer's status has since
@@ -2916,6 +2912,28 @@ function card(b,i,isPrevious){
       <div style="height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-top:2px">
         <div style="height:100%;width:${b._otoTotal?Math.round((b._otoDone||0)/b._otoTotal*100):0}%;background:#a78bfa;border-radius:99px"></div>
       </div>`:''}
+    </div>
+    <div class="bcard-actions">
+        ${isPrevious ? `
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
+        ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openRestoreBatch('${window._acadBatchIdByName[b.raw]}','${esc(b.name).replace(/'/g,"\\'")}',${total},${dn})" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);color:var(--blue);font-weight:700">Restore Batch</button>`:''}
+        ` : isFrozen ? `
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
+        ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openResumeBatch('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#10b981;font-weight:700">Resume Batch</button>`:''}
+        ` : `
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
+        ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
+        ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
+        ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
+        ${(isHead&&!b.elite&&b._otoRequired>0&&b.raw&&!b._groupClassesDone)?`<button class="act-btn" onclick="openCompleteGroupClasses(${i})" style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#10b981">Complete Group Classes</button>`:''}
+        ${isHead&&b.elite&&b.raw?`<button class="act-btn" onclick="openFreezeBatch(${i})" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b">Freeze</button>`:''}
+        ${isHead&&b.raw?`<button class="act-btn" onclick="openCompleteBatch(${i})">Complete Batch</button>`:''}
+        ${isHead&&b._trainerInactive?`<button class="act-btn" onclick="openReassignTrainer(${i})" style="background:rgba(255,5,82,.12);border:1px solid rgba(255,5,82,.3);color:#ff0552">Reassign Trainer</button>`:''}
+        `}
     </div>
   </div>`;
 }
@@ -5293,10 +5311,25 @@ async function loadTrainersTable(){
   // (checkbox above) is an explicit opt-in to see them, never the default.
   const showInactive = document.getElementById('trainerShowInactive')?.checked;
   const visibleTrainers = showInactive ? (trainers||[]) : (trainers||[]).filter(t => t.status === 'active');
+  // Photos: same hr_employees.photo_base64/photo_url source _acadAvatarHTML renders elsewhere,
+  // resolved via trainers.hr_employee_id (or portal_email) for the visible rows only.
+  const photoByEmp = {}, empIdByEmail = {};
+  try {
+    const wantIds = visibleTrainers.map(t => t.hr_employee_id).filter(Boolean);
+    const wantEmails = visibleTrainers.filter(t => !t.hr_employee_id && t.portal_email).map(t => t.portal_email.toLowerCase());
+    const [byId, byMail] = await Promise.all([
+      wantIds.length ? mediaHrDB.from('hr_employees').select('id,photo_base64,photo_url').in('id', wantIds) : Promise.resolve({ data: [] }),
+      wantEmails.length ? mediaHrDB.from('hr_employees').select('id,portal_email,photo_base64,photo_url').in('portal_email', wantEmails) : Promise.resolve({ data: [] })
+    ]);
+    (byId.data||[]).concat(byMail.data||[]).forEach(e => { photoByEmp[e.id] = e; if (e.portal_email) empIdByEmail[e.portal_email.toLowerCase()] = e.id; });
+  } catch (_) {}
+  const maxHrs = Math.max(1, ...visibleTrainers.map(t => (byTrainer[t.id]||{}).hrs || 0));
   document.getElementById('trainerTable').innerHTML = visibleTrainers.map(t => {
     const load = byTrainer[t.id] || { count: 0, hrs: 0 };
-    return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((t.name||'?').trim().charAt(0).toUpperCase())}</span>${esc(t.name)}</div></td><td data-label="Type">${t.type==='pt'?'Part-time':'Full-time'}</td>
-    <td data-label="Active Batches">${load.count}</td><td data-label="Weekly Load">${load.hrs?Math.round(load.hrs)+'h':'0h'}</td>
+    const ph = photoByEmp[t.hr_employee_id || empIdByEmail[(t.portal_email||'').toLowerCase()]] || {};
+    const hrs = Math.round(load.hrs || 0);
+    return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:11px"><span class="dsh-av">${_acadAvatarHTML({ full_name: t.name, photo_base64: ph.photo_base64, photo_url: ph.photo_url }, 34)}</span><div style="min-width:0"><div style="font-weight:600;color:var(--tx)">${esc(t.name)}</div>${t.portal_email?`<div style="font-size:11px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis">${esc(t.portal_email)}</div>`:''}</div></div></td><td data-label="Type"><span class="tr-type ${t.type==='pt'?'tr-pt':'tr-ft'}">${t.type==='pt'?'Part-time':'Full-time'}</span></td>
+    <td data-label="Active Batches"><span style="font-weight:600;font-variant-numeric:tabular-nums" class="${load.count?'':'tr-zero'}">${load.count}</span></td><td data-label="Weekly Load"><div class="tr-load"><span class="tr-load-v ${hrs?'':'tr-zero'}">${hrs}h</span><span class="tr-load-bar"><span style="width:${Math.round(hrs/maxHrs*100)}%"></span></span></div></td>
     <td data-label="Status"><span class="badge ${t.status==='active'?'b-active':'b-inactive'}">${t.status}</span></td></tr>`;
   }).join('') || `<tr><td colspan="5" class="empty">${showInactive ? 'No trainers yet' : 'No active trainers — check “Show Inactive” to see revoked/former coaches'}</td></tr>`;
 }
@@ -10374,7 +10407,7 @@ function renderUpcomingBatches() {
     const remaining = cap ? Math.max(0, cap - enrolled) : '∞';
     const pct = cap > 0 ? Math.min(100, Math.round(enrolled / cap * 100)) : 0;
     const barColor = b.enrollment_status === 'full' ? '#f59e0b' : '#10b981';
-    return '<div style="background:rgba(13,17,28,.75);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px 18px;margin-bottom:10px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(255,255,255,.18)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.07)\'" onclick="openUbDetail(\'' + b.id + '\')">' +
+    return '<div class="card bcard" style="padding:16px 18px;margin-bottom:10px;cursor:pointer" onclick="openUbDetail(\'' + b.id + '\')">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
         '<div style="flex:1;min-width:200px">' +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
@@ -10389,13 +10422,13 @@ function renderUpcomingBatches() {
         '</div>' +
       '</div>' +
       (cap > 0 ? '<div style="margin:10px 0 8px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width .3s"></div></div>' : '') +
-      '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:rgba(255,255,255,.45)">' +
-        '<span><i data-lucide="user" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.trainer_name || 'TBD') + '</span>' +
-        (b.day_pattern ? '<span><i data-lucide="calendar" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.day_pattern) + '</span>' : '') +
-        (b.time_slot ? '<span><i data-lucide="clock" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.time_slot) + '</span>' : '') +
-        '<span>Start: ' + esc(b.start_date || '—') + '</span>' +
-        (remaining !== '∞' ? '<span style="color:' + (remaining === 0 ? '#f59e0b' : '#38bdf8') + '">Remaining: <b>' + remaining + '</b></span>' : '') +
-        (b.enrollment_deadline ? '<span>Deadline: ' + esc(b.enrollment_deadline) + '</span>' : '') +
+      '<div class="ub-meta"' + (cap > 0 ? '' : ' style="margin-top:12px"') + '>' +
+        '<span><i data-lucide="user" style="width:13px;height:13px"></i>' + esc(b.trainer_name || 'TBD') + '</span>' +
+        (b.day_pattern ? '<span><i data-lucide="calendar" style="width:13px;height:13px"></i>' + esc(b.day_pattern) + '</span>' : '') +
+        (b.time_slot ? '<span><i data-lucide="clock" style="width:13px;height:13px"></i>' + esc(b.time_slot) + '</span>' : '') +
+        '<span><i data-lucide="play-circle" style="width:13px;height:13px"></i>Start ' + esc(b.start_date ? _dshDate(b.start_date) : '—') + '</span>' +
+        (remaining !== '∞' ? '<span style="color:' + (remaining === 0 ? '#f59e0b' : '#38bdf8') + '"><i data-lucide="users" style="width:13px;height:13px"></i>' + remaining + ' seat' + (remaining === 1 ? '' : 's') + ' left</span>' : '') +
+        (b.enrollment_deadline ? '<span><i data-lucide="alarm-clock" style="width:13px;height:13px"></i>Deadline ' + esc(_dshDate(b.enrollment_deadline)) + '</span>' : '') +
       '</div>' +
     '</div>';
   }).join('');
