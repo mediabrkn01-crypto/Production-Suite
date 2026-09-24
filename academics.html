@@ -234,6 +234,28 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
 .ov-tr{transition:background .15s}
 .ov-tr:hover{background:rgba(255,255,255,.025)}
 .ov-tr-miss td:first-child{box-shadow:inset 3px 0 0 #fb923c}
+.loading:has(> *){text-align:inherit;padding:0;color:inherit;font-size:inherit}
+.st-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid;text-transform:capitalize;white-space:nowrap}
+.st-pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.st-ok{color:var(--green);background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3)}
+.st-warn{color:var(--yellow);background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3)}
+.st-bad{color:#f87171;background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}
+.st-info{color:var(--blue);background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3)}
+.st-mute{color:var(--tx2);background:rgba(255,255,255,.04);border-color:var(--panel-border)}
+.dsh-ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.04);border:1px solid var(--panel-border);color:var(--tx2);flex-shrink:0}
+.dsh-ic svg{display:block}
+.rp-hero{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+.rp-big{font-size:30px;font-weight:800;color:var(--tx);font-variant-numeric:tabular-nums;line-height:1}
+.rp-cap{font-size:12px;color:var(--tx2)}
+.rp-bar{height:8px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden}
+.rp-bar > span{display:block;height:100%;border-radius:99px;background:var(--gk)}
+.rp-bar-sm{height:5px;margin-top:6px}
+.rp-row{padding:9px 0}
+.rp-row + .rp-row{border-top:1px solid rgba(255,255,255,.04)}
+.rp-row-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#tab-acad-createbatch .subhead{display:flex;align-items:center;gap:8px;padding-top:14px;margin-top:14px!important;border-top:1px solid rgba(255,255,255,.06);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tx2)}
+#tab-acad-createbatch .subhead::before{content:'';width:3px;height:12px;border-radius:2px;background:var(--gk)}
+#tab-acad-createbatch h2 + .lv-note + .subhead,#tab-acad-createbatch h2 + .subhead{border-top:none;padding-top:0}
 .bcard{transition:border-color .15s}
 .bcard:hover{border-color:rgba(255,255,255,.14)}
 .bcard-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
@@ -2159,9 +2181,10 @@ async function loadDelegationTab(){
       const start = new Date(d.start_datetime), end = new Date(d.end_datetime);
       const status = d.status === 'revoked' ? 'Revoked' : (now < start ? 'Upcoming' : (now > end ? 'Expired' : 'Active'));
       const canRevoke = d.status === 'active' && now <= end;
-      return `<tr><td data-label="Delegated To">${esc(d.delegate_name || d.trainers?.name || '—')}</td>
-        <td data-label="Window">${start.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})} → ${end.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
-        <td data-label="Status"><span class="badge ${status==='Active'?'b-active':'b-inactive'}">${status}</span></td>
+      const _sc = status==='Active'?'st-ok':status==='Upcoming'?'st-info':status==='Revoked'?'st-bad':'st-mute';
+      return `<tr><td data-label="Delegated To"><span style="font-weight:600;color:var(--tx)">${esc(d.delegate_name || d.trainers?.name || '—')}</span></td>
+        <td data-label="Window" style="font-variant-numeric:tabular-nums"><div>${start.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div><div style="font-size:11px;color:var(--tx3)">until ${end.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div></td>
+        <td data-label="Status"><span class="st-pill ${_sc}">${status}</span></td>
         <td data-label="Notes" style="max-width:200px;white-space:pre-wrap;font-size:11.5px;color:var(--tx3)">${esc(d.notes||'—')}</td>
         <td data-label="Actions">${canRevoke ? `<button class="act-btn" onclick="revokeDelegation('${d.id}','${esc((d.delegate_name||'').replace(/'/g,"\\'"))}')" style="border-color:rgba(255,5,82,.4);color:var(--brand-3)">Revoke</button>` : ''}</td></tr>`;
     }).join('') : '<tr><td colspan="5" class="empty">No delegations yet.</td></tr>';
@@ -5148,6 +5171,11 @@ function _dshSet(id, html, count){
   const c = document.getElementById(id + 'Count');
   if (c) { c.textContent = count || 0; c.style.display = count ? '' : 'none'; }
 }
+function _stPill(status){
+  const v = String(status || '—'); const k = v.toLowerCase();
+  const cls = /complet|done|approved|paid|active/.test(k) ? 'st-ok' : /pending|progress|open|review/.test(k) ? 'st-warn' : /reject|cancel|overdue|fail|unpaid/.test(k) ? 'st-bad' : 'st-mute';
+  return '<span class="st-pill '+cls+'">'+esc(v)+'</span>';
+}
 function _dshEmpty(icon, title, sub){
   return `<div class="dsh-empty"><div class="dsh-empty-ic"><i data-lucide="${icon}" style="width:18px;height:18px"></i></div><div class="dsh-empty-t">${esc(title)}</div>${sub ? `<div class="dsh-empty-s">${esc(sub)}</div>` : ''}</div>`;
 }
@@ -5546,7 +5574,9 @@ async function loadDocumentsTab(){
     const me = await _acadGetMyHREmployeeRecord();
     if (!me) { el.innerHTML = '<div class="empty">No HR employee record is linked to your login yet.</div>'; return; }
     const docs = (me.document_links || '').split(',').map(s=>s.trim()).filter(Boolean);
-    el.innerHTML = docs.length ? docs.map(d => `<div class="dash-row"><a href="${esc(d)}" target="_blank" rel="noopener" style="color:var(--tx)">${esc(d)}</a></div>`).join('') : '<div class="empty">No documents on file yet.</div>';
+    const _docName = u => { try { const x = new URL(u); const seg = decodeURIComponent(x.pathname.split('/').filter(Boolean).pop() || ''); return seg && !/^(view|edit|d|file|open)$/i.test(seg) && seg.length < 60 ? seg : x.hostname.replace(/^www\./,''); } catch(_) { return 'Document'; } };
+    el.innerHTML = docs.length ? '<div class="dsh-list">' + docs.map((d,i) => `<a class="dsh-item is-link" href="${esc(d)}" target="_blank" rel="noopener" style="text-decoration:none"><span class="dsh-ic"><i data-lucide="file-text" style="width:16px;height:16px"></i></span><div class="dsh-main"><div class="dsh-title">${esc(_docName(d))}</div><div class="dsh-sub">${esc(d)}</div></div><span class="dsh-meta"><i data-lucide="external-link" style="width:14px;height:14px;color:var(--tx3)"></i></span></a>`).join('') + '</div>' : _dshEmpty('folder-open', 'No documents on file yet', 'Documents HR adds to your employee record will show up here.');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) { el.innerHTML = '<div class="empty">Could not load documents: '+esc(e.message)+'</div>'; }
 }
 async function loadPayslipsTab(){
@@ -5557,7 +5587,7 @@ async function loadPayslipsTab(){
     if (!me) { tbody.innerHTML = '<tr><td colspan="3" class="empty">No HR employee record is linked to your login yet.</td></tr>'; return; }
     const { data } = await mediaHrDB.from('hr_payroll').select('*').eq('employee_id', me.id).eq('published', true);
     const rows = data || [];
-    tbody.innerHTML = rows.length ? rows.map(p => `<tr><td data-label="Month">${esc(p.month)}</td><td data-label="Net Salary">₹${Number(p.net_salary||0).toLocaleString('en-IN')}</td><td data-label="Status"><span class="badge ${p.payment_status==='paid'?'b-active':'b-inactive'}">${esc(p.payment_status)}</span></td></tr>`).join('') : '<tr><td colspan="3" class="empty">No payslips yet.</td></tr>';
+    tbody.innerHTML = rows.length ? rows.slice().sort((a,b)=>String(b.month||'').localeCompare(String(a.month||''))).map(p => { let _m = p.month; try { if (/^\d{4}-\d{2}$/.test(p.month)) _m = new Date(p.month+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'}); } catch(_){} return `<tr><td data-label="Month"><span style="font-weight:600;color:var(--tx)">${esc(_m)}</span></td><td data-label="Net Salary" style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--tx)">₹${Number(p.net_salary||0).toLocaleString('en-IN')}</td><td data-label="Status">${_stPill(p.payment_status)}</td></tr>`; }).join('') : '<tr><td colspan="3" class="empty">No payslips yet.</td></tr>';
   } catch(e) { tbody.innerHTML = '<tr><td colspan="3" class="empty">Could not load payslips: '+esc(e.message)+'</td></tr>'; }
 }
 async function loadTeamTab(){
@@ -5930,7 +5960,7 @@ function _resolveSimpleConfirm(result){
 }
 
 function _availRowStyle(color){
-  return `display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:9px;background:rgba(${color},.1);border:1px solid rgba(${color},.25)`;
+  return `display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:9px;background:rgba(${color},.06);border:1px solid rgba(${color},.2);border-left:3px solid rgb(${color})`;
 }
 const _AVAIL_GREEN = '16,185,129', _AVAIL_RED = '255,5,82', _AVAIL_AMBER = '245,158,11';
 
@@ -6958,13 +6988,15 @@ function _acadStuPayBadge(payStatus){
 function _acadStuRow(s, lifecycle, payStatus){
   const badgeStyle = _ACAD_STU_BADGE_STYLE[lifecycle] || 'class="badge"';
   const crmBadge = s.crm_source && s.crm_source !== 'manual' ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:rgba(139,92,246,.15);color:#a78bfa;margin-left:6px;vertical-align:middle;letter-spacing:.03em">CRM</span>' : '';
-  return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}${crmBadge}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
-  <td data-label="Batch">${s.batch_id?esc(s.batch_name||'—'):'—'}</td><td data-label="Course">${esc(s.programme||'—')}</td><td data-label="Coach">${s.batch_id?esc(s.trainer_name||'—'):'—'}</td>
-  <td data-label="Counselor">${esc(s.source_counsellor||'—')}</td>
+  const _m = v => v ? esc(v) : '<span class="crs-muted">—</span>';
+  let _enr = s.enrolled_date || ''; try { if (/^\d{4}-\d{2}-\d{2}/.test(_enr)) _enr = new Date(_enr.slice(0,10)+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); } catch(_){}
+  return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:10px"><span class="acad-avatar-dot" style="width:32px;height:32px;font-size:12px">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div style="min-width:0"><div style="font-weight:600;color:var(--tx)">${esc(s.name)}${crmBadge}</div>${s.contact?`<div style="font-size:11px;color:var(--tx3);font-variant-numeric:tabular-nums">${esc(s.contact)}</div>`:''}</div></div></td>
+  <td data-label="Batch">${s.batch_id?_m(s.batch_name):'<span class="st-pill st-mute" style="text-transform:none">Unassigned</span>'}</td><td data-label="Course">${_m(s.programme)}</td><td data-label="Coach">${s.batch_id?_m(s.trainer_name):'<span class="crs-muted">—</span>'}</td>
+  <td data-label="Counselor">${_m(s.source_counsellor)}</td>
   <td data-label="Status"><span ${badgeStyle}>${esc(lifecycle)}</span></td>
   <td data-label="Payment">${_acadStuPayBadge(payStatus)}</td>
-  <td data-label="Enrolled">${s.enrolled_date||'—'}</td>
-  <td data-label="Actions"><button class="act-btn" onclick="openStuById('${s.id}')">View</button></td></tr>`;
+  <td data-label="Enrolled" style="white-space:nowrap;font-variant-numeric:tabular-nums">${_enr?esc(_enr):'<span class="crs-muted">—</span>'}</td>
+  <td data-label="Actions" style="text-align:right"><button class="act-btn" style="margin:0" onclick="openStuById('${s.id}')">View</button></td></tr>`;
 }
 // Shared pager component (Students + Batches) — numbered buttons with ellipsis on desktop,
 // compact "Page X of Y" on mobile, plus a "from–to of total" summary. goFn is the name of the
@@ -7285,7 +7317,11 @@ async function loadReportsTab(){
     const activeBatches = allBatches.filter(b=>b.status==='active');
     const busyIds = new Set(activeBatches.map(b=>b.trainer_id).filter(Boolean));
     const utilPct = activeTrainers.length ? Math.round((busyIds.size/activeTrainers.length)*100) : 0;
-    document.getElementById('reportCoachUtil').innerHTML = `<div class="dash-row"><span>Coaches assigned to an active batch</span><span style="color:var(--tx3)">${busyIds.size} / ${activeTrainers.length} (${utilPct}%)</span></div>`;
+    const _idle = activeTrainers.filter(t => !busyIds.has(t.id));
+    _dshSet('reportCoachUtil', `<div class="rp-hero"><span class="rp-big">${utilPct}%</span><span class="rp-cap">${busyIds.size} of ${activeTrainers.length} coaches teaching an active batch</span></div>
+      <div class="rp-bar"><span style="width:${utilPct}%"></span></div>
+      <div class="dsh-meta-lbl" style="margin:14px 0 6px">Free coaches (${_idle.length})</div>
+      <div class="crs-days" style="max-width:none">${_idle.length ? _idle.map(t=>'<span class="crs-day">'+esc(t.name)+'</span>').join('') : '<span class="crs-muted" style="font-size:11.5px">Every active coach has a batch.</span>'}</div>`);
 
     const byBatch = {};
     (students||[]).forEach(s=>{ const k=s.batch_name||'Unassigned'; byBatch[k]=(byBatch[k]||0)+1; });
@@ -7293,9 +7329,10 @@ async function loadReportsTab(){
       const enrolled = byBatch[b.name]||0;
       const cap = b.capacity||0;
       const pct = cap ? Math.round((enrolled/cap)*100) : null;
-      return `<div class="dash-row"><span>${esc(b.name)}</span><span style="color:var(--tx3)">${enrolled}${cap?(' / '+cap+' ('+pct+'%)'):' enrolled'}</span></div>`;
+      const col = pct == null ? 'var(--blue)' : pct >= 100 ? 'var(--green)' : pct >= 60 ? 'var(--blue)' : 'var(--yellow)';
+      return `<div class="rp-row"><div class="rp-row-h"><span class="dsh-title" style="font-size:12.5px">${esc(b.name)}</span><span class="dsh-meta-val" style="font-size:11.5px">${enrolled}${cap?(' / '+cap):' enrolled'}${pct!=null?` <span class="crs-muted">· ${pct}%</span>`:''}</span></div>${cap?`<div class="rp-bar rp-bar-sm"><span style="width:${Math.min(100,pct)}%;background:${col}"></span></div>`:''}</div>`;
     }).join('');
-    document.getElementById('reportBatchFill').innerHTML = fillRows || '<div class="empty">No active batches.</div>';
+    _dshSet('reportBatchFill', fillRows || _dshEmpty('layers', 'No active batches', 'Fill rates appear once batches are active.'));
 
     // Same three real numbers just computed above, surfaced as headline stat tiles (same
     // acadStatTile() component used on the Overview dashboard) — not new metrics, just a
@@ -7311,9 +7348,11 @@ async function loadReportsTab(){
 
     const byStatus = {};
     allBatches.forEach(b=>{ const k=b.status||'unknown'; byStatus[k]=(byStatus[k]||0)+1; });
-    document.getElementById('reportBatchStatus').innerHTML = Object.keys(byStatus).length
-      ? Object.entries(byStatus).map(([k,v])=>`<div class="dash-row"><span>${esc(k)}</span><span style="color:var(--tx3)">${v}</span></div>`).join('')
-      : '<div class="empty">No batches yet.</div>';
+    const _tot = allBatches.length || 1;
+    _dshSet('reportBatchStatus', Object.keys(byStatus).length
+      ? Object.entries(byStatus).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="rp-row"><div class="rp-row-h">${_stPill(k)}<span class="dsh-meta-val">${v} <span class="crs-muted" style="font-weight:500">· ${Math.round(v/_tot*100)}%</span></span></div><div class="rp-bar rp-bar-sm"><span style="width:${Math.round(v/_tot*100)}%"></span></div></div>`).join('')
+      : _dshEmpty('layers', 'No batches yet', ''));
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }catch(e){ console.warn('Reports tab failed to load:', e.message); }
 }
 
@@ -7391,7 +7430,7 @@ async function loadHeadView(){
 
   const { data: assigns } = await sb.from('trainer_tasks').select('*, trainers(name)').order('created_at',{ascending:false});
   document.getElementById('assignTable').innerHTML = (assigns||[]).map(a => `
-    <tr><td data-label="Trainer">${a.trainers?.name||'—'}</td><td data-label="Task">${a.task}</td><td data-label="Due">${a.due_date||'—'}</td><td data-label="Status">${a.status}</td></tr>
+    <tr><td data-label="Trainer"><span style="font-weight:600;color:var(--tx)">${esc(a.trainers?.name||'—')}</span></td><td data-label="Task">${esc(a.task||'')}</td><td data-label="Due" style="white-space:nowrap">${a.due_date?esc(_dshDate(a.due_date)):'<span class="crs-muted">—</span>'}</td><td data-label="Status">${_stPill(a.status)}</td></tr>
   `).join('') || '<tr><td colspan="4" class="empty">No tasks assigned</td></tr>';
 
   await populateTrainerSelects();
@@ -7406,7 +7445,7 @@ function renderMyTasks(filter){
   const all = window._myTasksAll||[];
   const rows = filter==='all' ? all : all.filter(t => filter==='completed' ? /completed|done/i.test(t.status||'') : !/completed|done/i.test(t.status||''));
   document.getElementById('myTasks').innerHTML = rows.map(t => `
-    <tr><td data-label="Task">${esc(t.task)}</td><td data-label="Assigned By">${esc(t.assigned_by||'—')}</td><td data-label="Due">${t.due_date||'—'}</td><td data-label="Status"><span class="badge ${/completed|done/i.test(t.status||'')?'b-active':'b-inactive'}">${esc(t.status||'—')}</span></td></tr>
+    <tr><td data-label="Task"><span style="font-weight:600;color:var(--tx)">${esc(t.task)}</span></td><td data-label="Assigned By">${esc(t.assigned_by||'—')}</td><td data-label="Due" style="white-space:nowrap">${t.due_date?esc(_dshDate(t.due_date)):'<span class="crs-muted">—</span>'}</td><td data-label="Status">${_stPill(t.status||'—')}</td></tr>
   `).join('') || `<tr><td colspan="4" class="empty">${all.length?'No tasks match this filter.':'No tasks assigned'}</td></tr>`;
 }
 function filterMyTasks(filter){ renderMyTasks(filter); }
@@ -10132,9 +10171,10 @@ async function loadAttendanceCalendar(){
       else if (_rec && _rec.status==='half_day') { code=_rec.half_day_type==='morning'?'HD-M':_rec.half_day_type==='afternoon'?'HD-A':'HD'; color='#fde047'; present++; }
       else if (attByDate.has(dateStr)) { code='P'; color='var(--green)'; present++; }
       else if (dateStr < today) { code='A'; color='var(--brand-3)'; absent++; }
-      cells.push(`<div style="border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;min-height:44px;${dateStr===today?'border-color:var(--brand-1)':''}">
-        <div style="font-size:10px;color:var(--tx3)">${d}</div>
-        <div style="font-size:12px;font-weight:700;color:${color}">${code||'—'}</div>
+      const _tint = code ? `background:color-mix(in srgb, ${color} 9%, transparent);border-color:color-mix(in srgb, ${color} 30%, transparent);` : '';
+      cells.push(`<div style="border:1px solid var(--bd);border-radius:10px;padding:7px 6px;text-align:center;min-height:50px;${_tint}${dateStr===today?'box-shadow:0 0 0 2px var(--brand-1);':''}">
+        <div style="font-size:10px;color:var(--tx3);font-weight:600">${d}</div>
+        <div style="font-size:12.5px;font-weight:800;color:${code?color:'rgba(255,255,255,.15)'};margin-top:2px">${code||'·'}</div>
       </div>`);
     }
     calEl.innerHTML = cells.join('');
@@ -10202,8 +10242,11 @@ async function loadMyLeaveHistory(){
     const today = new Date().toISOString().slice(0,10);
     body.innerHTML = rows.length ? rows.map(r=>{
       const canCancel = r.status!=='cancelled' && r.status!=='rejected' && r.start_date>today;
-      return `<div class="dash-row" style="display:flex;justify-content:space-between;align-items:center"><span>${esc(r.leave_type||'Leave')} \u00b7 ${r.start_date} \u2192 ${r.end_date}</span><div style="display:flex;align-items:center;gap:6px"><span class="badge ${r.status==='approved'?'b-active':(r.status==='rejected'||r.status==='cancelled'?'b-inactive':'')}" style="${r.status==='pending'?'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)':''}">${esc(r.status)}</span>${canCancel?`<button onclick="acadCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>`:''}</div></div>`;
-    }).join('') : '<div class="empty">No leave requests yet.</div>';
+      const _rng = r.start_date === r.end_date ? _dshDate(r.start_date) : _dshDate(r.start_date) + ' → ' + _dshDate(r.end_date);
+      return `<div class="dsh-item"><span class="dsh-ic"><i data-lucide="calendar-days" style="width:16px;height:16px"></i></span><div class="dsh-main"><div class="dsh-title">${esc(r.leave_type||'Leave')}</div><div class="dsh-sub">${esc(_rng)}${r.reason?' · '+esc(r.reason):''}</div></div><div style="display:flex;align-items:center;gap:6px">${_stPill(r.status)}${canCancel?`<button onclick="acadCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:3px 9px;cursor:pointer">Cancel</button>`:''}</div></div>`;
+    }).join('') : _dshEmpty('calendar-days', 'No leave requests yet', 'Requests you submit above will appear here with their HR status.');
+    body.innerHTML = rows.length ? '<div class="dsh-list">' + body.innerHTML + '</div>' : body.innerHTML;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }catch(e){ body.innerHTML = '<div class="empty">Could not load your leave history: '+esc(e.message)+'</div>'; }
 }
 // Half Day is a single-day request \u2014 hide End Date, show the half-type picker.
