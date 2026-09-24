@@ -207,6 +207,10 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
 @media(max-width:640px){.dsh-item{gap:10px}.dsh-meta-lbl{display:none}}
 .acad-leave-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px}
 .acad-leave-row:last-child{border:none}
+.stu-sk{display:inline-block;height:10px;border-radius:5px;background:rgba(255,255,255,.08);vertical-align:middle;margin:3px 0;animation:stuSkPulse 1.2s ease-in-out infinite}
+#p_entries .stu-sk{display:block;margin:8px 0}
+@keyframes stuSkPulse{50%{opacity:.45}}
+@media(prefers-reduced-motion:reduce){.stu-sk{animation:none}}
 .acad-avatar-dot{width:26px;height:26px;border-radius:50%;background:var(--gk);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
 .section{background:rgba(13,17,28,.7);border:1px solid var(--panel-border);border-radius:14px;padding:22px;margin-bottom:18px;backdrop-filter:blur(12px);}
 .section h2{font-size:17px;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;letter-spacing:.02em;}
@@ -9668,6 +9672,7 @@ async function saveStuPrefSlot(){
 }
 async function saveStuMove(){
   if(!requireHeadAccess())return;const s=_stu;if(!s||!s.id)return;
+  if(document.getElementById('stu_move_batch').dataset.loading==='1'){showToast('info','Batches are still loading — try again in a moment.');return;}
   const bid=document.getElementById('stu_move_batch').value||null;
   const course=document.getElementById('stu_move_course').value||null;
   const upd={};
@@ -9690,13 +9695,13 @@ async function openStu(i,j){
 // Students-tab "View" action — same detail/edit modal as the per-batch attendance view's
 // student click, just entered from a flat student id instead of a batch/row index.
 async function openStuById(id){
-  return openStuCore({ id });
+  // Seed from the row the Students tab already rendered, so the popup can open with real
+  // basic data on the same tick instead of waiting for a fetch.
+  const cached = (window._acadStudentsPageRows||[]).find(r => r.id === id) || (_allStudents||[]).find(r => r.id === id);
+  return openStuCore(cached ? Object.assign({}, cached) : { id });
 }
-async function openStuCore(s){
-  if(!requireHeadAccess())return;
-  if(!s)return;_stu=s;
-  try{const {data:full}=await sb.from('students').select('*').eq('id',s.id).maybeSingle();if(full)Object.assign(s,full);}catch(e){}
-  document.getElementById('stu_name').textContent=s.name;
+const _stuSk = (w) => '<span class="stu-sk" style="width:'+(w||'60%')+'"></span>';
+function _stuRenderInfo(s, assignedBatch, batchPending){
   // STUDENT PROFILE and CURRENT ACADEMIC ASSIGNMENT kept as two clearly separate blocks (spec
   // Part 14) — assignment fields collapse into one "Not assigned yet" line when there's no
   // batch_id, instead of two separate "Batch: —" / "Trainer: —" rows.
@@ -9704,49 +9709,96 @@ async function openStuCore(s){
   // Resolve the CURRENT academic assignment from the batch (source of truth), not from any
   // cached field on the student (spec #1/#2/#10). Trainer + actual schedule both come from the
   // batch row; the student's own preferred_slot is a SEPARATE preference, never the class time.
-  let assignedBatch = null;
-  if (s.batch_id) { try { const {data:ab}=await sb.from('batches').select('name,trainer_name,day_pattern,time_slot').eq('id',s.batch_id).maybeSingle(); assignedBatch=ab; } catch(e){} }
   const _sched = assignedBatch ? [assignedBatch.day_pattern, assignedBatch.time_slot].filter(Boolean).join(' · ') : '';
-  const assignmentHTML = s.batch_id
+  const assignmentHTML = batchPending
+    ? '<span class="k">Batch</span><span class="v">'+_stuSk('55%')+'</span><span class="k">Trainer</span><span class="v">'+_stuSk('45%')+'</span><span class="k">Actual Class Schedule</span><span class="v">'+_stuSk('70%')+'</span>'
+    : s.batch_id
     ? '<span class="k">Batch</span><span class="v">'+esc((assignedBatch&&assignedBatch.name)||s.batch_name||'—')+'</span>'
       +'<span class="k">Trainer</span><span class="v">'+esc((assignedBatch&&assignedBatch.trainer_name)||'— (unassigned)')+'</span>'
       +'<span class="k">Actual Class Schedule</span><span class="v">'+esc(_sched||'—')+'</span>'
     : '<span class="k">Current Assignment</span><span class="v" style="color:var(--tx3);font-style:italic">Not assigned yet — add this student to a batch (Create Batch or Edit Batch → Add Students) to assign a trainer and start progress.</span>';
+  const v = (x) => x ? esc(x) : (s._full ? '—' : _stuSk('50%'));
   document.getElementById('stu_info').innerHTML='<div class="subhead" style="margin:0 0 6px">Student Profile</div><div class="stu-grid">'
-    +'<span class="k">Student ID</span><span class="v">'+esc(s.uin||'—')+'</span>'
-    +'<span class="k">Contact</span><span class="v">'+esc(s.contact||'—')+'</span>'
-    +'<span class="k">Preferred Class Time</span><span class="v">'+esc(s.preferred_slot||'—')+' <span style="color:var(--tx3);font-size:10.5px">(student preference)</span></span>'
-    +'<span class="k">Course interest</span><span class="v">'+esc(s.programme||'—')+'</span>'
-    +'<span class="k">Counsellor</span><span class="v">'+esc(s.source_counsellor||'—')+'</span>'
-    +'<span class="k">Enrolled</span><span class="v">'+esc(s.enrolled_date||'—')+'</span>'
-    +'<span class="k">Status</span><span class="v" id="stu_prof_status_v">'+esc(lifecycle)+'</span>'
+    +'<span class="k">Student ID</span><span class="v">'+v(s.uin)+'</span>'
+    +'<span class="k">Contact</span><span class="v">'+v(s.contact)+'</span>'
+    +'<span class="k">Preferred Class Time</span><span class="v">'+(s.preferred_slot||s._full ? esc(s.preferred_slot||'—')+' <span style="color:var(--tx3);font-size:10.5px">(student preference)</span>' : _stuSk('55%'))+'</span>'
+    +'<span class="k">Course interest</span><span class="v">'+v(s.programme)+'</span>'
+    +'<span class="k">Counsellor</span><span class="v">'+v(s.source_counsellor)+'</span>'
+    +'<span class="k">Enrolled</span><span class="v">'+v(s.enrolled_date)+'</span>'
+    +'<span class="k">Status</span><span class="v" id="stu_prof_status_v">'+(s._full ? esc(lifecycle) : _stuSk('40%'))+'</span>'
     +'</div><div class="subhead" style="margin:12px 0 6px">Current Academic Assignment</div><div class="stu-grid">'
     +assignmentHTML
     +'</div>';
   var _ss=document.getElementById('stu_status');if(_ss)_ss.value=(s.status==='On Freeze'||s.status==='Dropped')?s.status:'';
   var _sp=document.getElementById('stu_pref_slot');if(_sp)_sp.value=s.preferred_slot||'';
-  (async()=>{
-    const {data:bs}=await sb.from('batches').select('id,name,trainer_name').order('name');
-    window._moveBatches=bs||[];
-    const mb=document.getElementById('stu_move_batch');
-    if(mb)mb.innerHTML='<option value="">— Unassigned —</option>'+(bs||[]).map(b=>'<option value="'+b.id+'"'+(b.id===s.batch_id?' selected':'')+'>'+esc(b.name)+'</option>').join('');
-    const mc=document.getElementById('stu_move_course');
-    if(mc)mc.innerHTML='<option value="">— keep course —</option>'+COURSE_ROWS.filter(c=>c.active!==false).map(c=>'<option value="'+esc(c.name)+'"'+((s.programme===c.name)?' selected':'')+'>'+esc(c.name)+'</option>').join('');
-  })();
+}
+function _stuFillMoveSelects(s, bs){
+  const mb=document.getElementById('stu_move_batch');
+  if(mb)delete mb.dataset.loading;
+  if(mb)mb.innerHTML='<option value="">— Unassigned —</option>'+(bs||[]).map(b=>'<option value="'+b.id+'"'+(b.id===s.batch_id?' selected':'')+'>'+esc(b.name)+'</option>').join('');
+  const mc=document.getElementById('stu_move_course');
+  if(mc)mc.innerHTML='<option value="">— keep course —</option>'+COURSE_ROWS.filter(c=>c.active!==false).map(c=>'<option value="'+esc(c.name)+'"'+((s.programme===c.name)?' selected':'')+'>'+esc(c.name)+'</option>').join('');
+}
+function _stuRenderAtt(att){
+  const p=(att||[]).filter(function(a){return a.status==='present';}).length,t=(att||[]).length;
+  document.getElementById('stu_att').textContent='Progress · attendance: '+p+' present / '+t+' marked'+(t?' ('+Math.round(p/t*100)+'%)':' — none marked yet');
+}
+async function openStuCore(s){
+  if(!requireHeadAccess())return;
+  if(!s)return;_stu=s;
+  // 1) Open NOW with whatever is already known; every still-loading section shows its own
+  //    skeleton, and nothing from the previously opened student can flash through.
+  document.getElementById('stu_name').textContent=s.name||'Student';
+  _stuRenderInfo(s, null, !!s.batch_id);
+  document.getElementById('stu_att').innerHTML=_stuSk('220px');
+  document.getElementById('p_summary').innerHTML=_stuSk('70%');
+  document.getElementById('p_entries').innerHTML=_stuSk('90%')+_stuSk('75%');
+  ['p_fee','p_disc','p_discby','p_due','p_note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const _mb=document.getElementById('stu_move_batch');if(_mb){_mb.innerHTML='<option value="">Loading batches…</option>';_mb.dataset.loading='1';}
+  const _mc=document.getElementById('stu_move_course');if(_mc)_mc.innerHTML='';
   document.getElementById('modalStu').classList.add('on');
-  try{const {data:att}=await sb.from('attendance').select('status').eq('student_uin',s.uin);
-    const p=(att||[]).filter(function(a){return a.status==='present';}).length,t=(att||[]).length;
-    document.getElementById('stu_att').textContent='Progress · attendance: '+p+' present / '+t+' marked'+(t?' ('+Math.round(p/t*100)+'%)':' — none marked yet');
-  }catch(e){document.getElementById('stu_att').textContent='';}
+  // 2) Everything independent runs in parallel; batch/attendance start immediately when the
+  //    cached row already carries batch_id/uin, otherwise right after the student row lands.
+  const stale = () => _stu !== s;
+  const fullP = sb.from('students').select('*').eq('id',s.id).maybeSingle().then(r=>r.data).catch(()=>null);
+  const batchQ = id => sb.from('batches').select('name,trainer_name,day_pattern,time_slot').eq('id',id).maybeSingle().then(r=>r.data).catch(()=>null);
+  const attQ = uin => sb.from('attendance').select('status').eq('student_uin',uin).then(r=>r.error?null:(r.data||[])).catch(()=>null);
+  const early = { batchId: s.batch_id, uin: s.uin };
+  const batchEarlyP = early.batchId ? batchQ(early.batchId) : null;
+  const attEarlyP = early.uin ? attQ(early.uin) : null;
+  sb.from('batches').select('id,name,trainer_name').order('name').then(({data:bs})=>{
+    window._moveBatches=bs||[];
+    if(!stale()) _stuFillMoveSelects(s, bs);
+  });
   renderStuPay();
+  const full = await fullP;
+  if(stale()) return;
+  if(full) Object.assign(s, full);
+  s._full = true;
+  document.getElementById('stu_name').textContent=s.name;
+  const assignedBatch = s.batch_id ? await (s.batch_id===early.batchId ? batchEarlyP : batchQ(s.batch_id)) : null;
+  if(stale()) return;
+  _stuRenderInfo(s, assignedBatch, false);
+  if (window._moveBatches && window._moveBatches.length) _stuFillMoveSelects(s, window._moveBatches);
+  try{
+    if(!s.uin){ document.getElementById('stu_att').textContent=''; return; }
+    const att = await (s.uin===early.uin ? attEarlyP : attQ(s.uin));
+    if(stale()) return;
+    if(att===null){ document.getElementById('stu_att').textContent=''; return; }
+    _stuRenderAtt(att);
+  }catch(e){ if(!stale()) document.getElementById('stu_att').textContent=''; }
 }
 async function renderStuPay(){
   const s=_stu;if(!s||!s.id)return;
   let plan=null,ent=[];
   try{
-    const r1=await sb.from('payments').select('*').eq('student_id',s.id).maybeSingle();plan=r1.data;
-    const r2=await sb.from('payment_entries').select('*').eq('student_id',s.id).order('paid_at');ent=r2.data||[];
-  }catch(e){document.getElementById('p_summary').textContent='Payments tables missing — run Phase 1 migration.';return;}
+    const [r1,r2]=await Promise.all([
+      sb.from('payments').select('*').eq('student_id',s.id).maybeSingle(),
+      sb.from('payment_entries').select('*').eq('student_id',s.id).order('paid_at')
+    ]);
+    plan=r1.data;ent=r2.data||[];
+  }catch(e){if(_stu===s)document.getElementById('p_summary').textContent='Payments tables missing — run Phase 1 migration.';return;}
+  if(_stu!==s)return;
   const p=plan||{};
   document.getElementById('p_fee').value=p.course_fee||'';
   document.getElementById('p_disc').value=p.discount||'';
