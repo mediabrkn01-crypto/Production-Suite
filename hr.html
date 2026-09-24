@@ -1261,10 +1261,11 @@
                     <!-- Present ÷ Applicable Employees for the selected date — see
                          hrComputeAttendancePctForDate() in shared/common.js. Updates immediately
                          whenever a status is set below (setHRAttendanceStatus re-renders this). -->
-                    <div class="grid grid-cols-3 gap-4 max-w-lg">
-                        <div class="hr-stat-card"><div class="num" id="hr-att-day-pct">—</div><div class="label">Attendance %</div></div>
-                        <div class="hr-stat-card"><div class="num" id="hr-att-day-present">0</div><div class="label">Present</div></div>
-                        <div class="hr-stat-card"><div class="num" id="hr-att-day-applicable">0</div><div class="label">Applicable Employees</div></div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl">
+                        <div class="hr-stat-card" style="border-top:2px solid #ff6b06"><div class="num" id="hr-att-day-pct">—</div><div class="label">Attendance %</div><div class="rp-bar rp-bar-sm" style="margin-top:10px"><span id="hr-att-day-pct-bar" style="width:0%"></span></div></div>
+                        <div class="hr-stat-card" style="border-top:2px solid #10b981"><div class="num" id="hr-att-day-present" style="color:#34d399">0</div><div class="label">Present</div></div>
+                        <div class="hr-stat-card" style="border-top:2px solid #fb923c"><div class="num" id="hr-att-day-unmarked" style="color:#fb923c">0</div><div class="label">Not Marked</div></div>
+                        <div class="hr-stat-card" style="border-top:2px solid #3b82f6"><div class="num" id="hr-att-day-applicable">0</div><div class="label">Applicable Employees</div></div>
                     </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
@@ -1407,15 +1408,6 @@
                     </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
                         <table class="w-full text-sm text-left">
-                            <thead>
-                                <tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                    <th class="py-3 px-4">Leave Type</th>
-                                    <th class="py-3 px-4">Allocated</th>
-                                    <th class="py-3 px-4">Used</th>
-                                    <th class="py-3 px-4">Remaining</th>
-                                    <th class="py-3 px-4 text-center">Actions</th>
-                                </tr>
-                            </thead>
                             <tbody id="hr-leave-balance-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
                     </div>
@@ -4629,6 +4621,9 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
             if (pctEl) pctEl.textContent = dayAtt.pct === null ? '—' : dayAtt.pct + '%';
             if (presentEl) presentEl.textContent = dayAtt.present;
             if (applicableEl) applicableEl.textContent = dayAtt.applicable;
+            const _pb = document.getElementById('hr-att-day-pct-bar'); if (_pb) _pb.style.width = (dayAtt.pct || 0) + '%';
+            const _um = document.getElementById('hr-att-day-unmarked');
+            if (_um) _um.textContent = active.filter(e => !hrAttendance.find(a => a.employee_id === e.id && a.att_date === date) && !(e.portal_email && (window._hrAttendanceLogsCache || []).find(l => (l.employee_email||'').toLowerCase() === e.portal_email && l.log_date === date))).length;
 
             document.getElementById('hr-attendance-rows').innerHTML = active.length ? active.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === date);
@@ -4637,7 +4632,7 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                 return `
                 <tr class="hover:bg-white/[0.02]">
                     <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 24)}<span>${e.full_name}</span></div></td>
-                    <td data-label="Division" class="py-2.5 px-4 text-[#a5adcf] capitalize">${e.division}</td>
+                    <td data-label="Division" class="py-2.5 px-4">${hrDivPill(e.division, ({ education:'Education', production:'Production House', hr:'HR', accounts:'Accounts', sales:'Sales', other:'Administration' })[e.division] || e.division)}</td>
                     <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}"${status==='half_day'&&rec?.reason?` title="Reason: ${(rec.reason||'').replace(/"/g,'&quot;')}${rec.marked_by?' · Marked by: '+rec.marked_by:''}"`:''}>${status==='half_day' ? ('Half Day · ' + (rec?.half_day_type==='morning'?'Morning':rec?.half_day_type==='afternoon'?'Afternoon':'—')) : status.replace('_',' ')}</span>` : '<span class="st-pill st-mute" style="text-transform:none">Not marked</span>'}</td>
                     <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
                     <td data-label="Check-out" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
@@ -5049,11 +5044,11 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                 if (r.leave_type && _types.indexOf(r.leave_type) === -1) _types.unshift(r.leave_type);
                 const typeOpts = _types.map(t => `<option value="${t}"${t===r.leave_type?' selected':''}>${t}</option>`).join('');
                 return `
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:12px">
-                    <div style="display:flex;align-items:flex-start;gap:10px">
-                        ${hrAvatarForEmployeeId(r.employee_id, 30)}
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;padding:12px 14px;border:1px solid rgba(255,255,255,0.06);border-left:3px solid ${badgeKind==='approved'?'#10b981':badgeKind==='rejected'?'#ef4444':'#f59e0b'};border-radius:12px;background:rgba(255,255,255,.015)">
+                    <div style="display:flex;align-items:flex-start;gap:12px">
+                        ${hrAvatarForEmployeeId(r.employee_id, 36)}
                         <div>
-                        <div class="text-white text-sm font-semibold">${hrEmpName(r.employee_id)} — ${r.leave_type}${halfLabel}${r.emergency ? ' <span style="color:#fb923c;font-size:10.5px;font-weight:700">⚡ EMERGENCY</span>' : ''}</div>
+                        <div class="text-white text-sm font-semibold" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${hrEmpName(r.employee_id)} <span class="st-pill ${/home|wfh/i.test(r.leave_type||'')?'st-purple':/sick/i.test(r.leave_type||'')?'st-ok':/half/i.test(r.leave_type||'')?'st-warn':'st-info'}" style="text-transform:none">${r.leave_type}${halfLabel}</span>${r.emergency ? ' <span style="color:#fb923c;font-size:10.5px;font-weight:700">⚡ EMERGENCY</span>' : ''}</div>
                         <div class="text-[#6b74a0] text-xs">${hrNiceRange(r.start_date, r.end_date)} (${r.days || '—'} day${r.days===1?'':'s'})${r.reason ? ' · ' + r.reason : ''}</div>
                         <div class="text-[#6b74a0] text-xs" style="margin-top:2px" title="${submitted.title}">${submitted.label}${submitted.kind === 'late' ? ' <span style="color:#fb923c;font-weight:600">⚠ Submitted after leave date</span>' : submitted.kind === 'same-day' ? ' · <span style="color:#8890b5">Same-day request</span>' : ''}</div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${stageChip('HR', r.hr_status || 'pending')}<span style="font-size:10.5px;color:#6b74a0">Approver: HR only</span></div>
@@ -5168,30 +5163,26 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                 ? bal.casual.buckets.map(b => `${b.cycle_label}: ${b.remaining}/${b.original} left (credited ${b.credit_date}, expires ${b.expiry})`).join(' · ')
                 : 'No active CL credit.';
             const monthLabel = new Date(today+'T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-            tbody.innerHTML = `
-                <tr><td colspan="5" style="padding:10px 14px"><div style="display:flex;gap:8px;flex-wrap:wrap">${stateChips.join('')}</div></td></tr>
-                <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">Sick Leave (SL)</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${bal.sick.entitlement}/month</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${bal.sick.used}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${state.onProbation||state.onNotice ? '0 (not eligible)' : bal.sick.remaining}</td>
-                    <td class="py-2.5 px-4 text-[#6b74a0] text-xs">Lapses ${bal.sick.expiry} (no carry-forward)</td>
-                </tr>
-                <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">Casual Leave (CL)</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${bal.casual.currentCredit} this cycle${bal.casual.carriedForward ? ` + ${bal.casual.carriedForward} carried` : ''}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">—</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">${state.onProbation||state.onNotice ? '0 (not eligible)' : bal.casual.remaining}</td>
-                    <td class="py-2.5 px-4 text-[#6b74a0] text-xs">Next expiry ${bal.casual.nextExpiry || '—'}</td>
-                </tr>
-                <tr><td colspan="5" style="padding:4px 16px 10px" class="text-[#6b74a0] text-xs">CL buckets (oldest used first): ${clBucketRows}</td></tr>
-                <tr class="hover:bg-white/[0.02]">
-                    <td class="py-2.5 px-4 text-white font-semibold">LOP — ${monthLabel}</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">—</td>
-                    <td class="py-2.5 px-4 text-[#f87171] font-semibold">${pay.totalDeductionDays} day(s)</td>
-                    <td class="py-2.5 px-4 text-[#a5adcf]">—</td>
-                    <td class="py-2.5 px-4 text-[#6b74a0] text-xs">${pay.incidents && pay.incidents.count ? pay.incidents.count + ' late/early incident(s)' : ''}${pay.buckets.lopDouble ? ` · ${pay.buckets.lopDouble} double-deduction` : ''} — feeds payroll</td>
-                </tr>`;
+            const _eligible = !(state.onProbation || state.onNotice);
+            const _slRem = _eligible ? bal.sick.remaining : 0, _clRem = _eligible ? bal.casual.remaining : 0;
+            const _slTot = +bal.sick.entitlement || 0, _clTot = (+bal.casual.currentCredit || 0) + (+bal.casual.carriedForward || 0);
+            const _card = (col, title, big, bigSub, pct, lines) => `<div style="flex:1;min-width:230px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-top:2px solid ${col};border-radius:12px;padding:16px 18px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${col}">${title}</div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px"><span style="font-size:30px;font-weight:800;color:#fff;line-height:1;font-variant-numeric:tabular-nums">${big}</span><span style="font-size:12px;color:#6b74a0">${bigSub}</span></div>
+                ${pct != null ? `<div class="rp-bar rp-bar-sm" style="margin-top:10px"><span style="width:${Math.max(0,Math.min(100,pct))}%;background:${col}"></span></div>` : ''}
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px">${lines.map(l => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:#6b74a0">${l[0]}</span><span style="color:#e6e9f5;font-weight:600;text-align:right">${l[1]}</span></div>`).join('')}</div>
+            </div>`;
+            const _buckets = (bal.casual.buckets || []);
+            tbody.innerHTML = `<tr><td colspan="5" style="padding:16px">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${stateChips.join('')}</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    ${_card('#10b981', 'Sick Leave (SL)', _slRem, _eligible ? 'remaining this month' : 'not eligible', _slTot ? _slRem / _slTot * 100 : 0, [['Allowance', _slTot + ' / month'], ['Used', bal.sick.used], ['Lapses', (bal.sick.expiry || '—') + ' · no carry-forward']])}
+                    ${_card('#3b82f6', 'Casual Leave (CL)', _clRem, _eligible ? 'remaining' : 'not eligible', _clTot ? _clRem / _clTot * 100 : 0, [['This cycle', bal.casual.currentCredit + (bal.casual.carriedForward ? ' + ' + bal.casual.carriedForward + ' carried' : '')], ['Next expiry', bal.casual.nextExpiry || '—']])}
+                    ${_card('#f87171', 'Loss of Pay — ' + monthLabel, pay.totalDeductionDays, 'day(s) · feeds payroll', null, [['Late / early incidents', (pay.incidents && pay.incidents.count) || 0], ['Double deductions', pay.buckets.lopDouble || 0]])}
+                </div>
+                <div style="margin-top:14px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0;margin-bottom:6px">CL credit buckets · oldest used first</div>
+                    <div class="ui-chips">${_buckets.length ? _buckets.map(b => `<span class="ui-chip" style="font-size:11px;padding:4px 9px">${b.cycle_label}: <b style="color:#fff">${b.remaining}/${b.original}</b> left · expires ${b.expiry}</span>`).join('') : '<span class="ui-muted" style="font-size:12px">No active CL credit.</span>'}</div></div>
+            </td></tr>`;
         }
 
 // ── renderHRLeaveCalendar (orig line 9820) ──
@@ -6165,17 +6156,13 @@ async function populateHRJobDeptOptions() {
                                 : `${r.work.enrolled} students enrolled · ${r.work.inProgress} in progress · ${r.work.completed} completed`;
                             const pctColor = r.pct === null ? 'text-[#4a5182]' : r.pct >= 90 ? 'text-green-400' : r.pct >= 75 ? 'text-yellow-400' : 'text-red-400';
                             return `<tr>
-                                <td class="py-2 pr-3 text-white flex items-center gap-2">${hrAvatarHTML(e, 22)}${esc(e.full_name)}</td>
-                                <td class="py-2 pr-3">${divisionLabel[e.division] || e.division || '—'}</td>
-                                <td class="py-2 pr-3">${esc(hrRoleDisplay(e))}</td>
-                                <td class="py-2 pr-3">${e.joining_date || '—'}</td>
+                                <td class="py-2.5 pr-3 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 26)}${esc(e.full_name)}</div></td>
+                                <td class="py-2.5 pr-3">${hrDivPill(e.division, divisionLabel[e.division] || e.division || '—')}</td>
+                                <td class="py-2.5 pr-3 text-[#a5adcf]">${esc(hrRoleDisplay(e))}</td>
+                                <td class="py-2.5 pr-3 text-[#a5adcf]" style="white-space:nowrap">${e.joining_date ? new Date(e.joining_date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</td>
                                 <td class="py-2 pr-3"><span class="hr-badge ${e.employment_status==='active'?'hr-badge-active':'hr-badge-inactive'}">${esc(e.employment_status||'—')}</span></td>
-                                <td class="py-2 pr-3">${r.presentDays}</td>
-                                <td class="py-2 pr-3">${r.lateCount}</td>
-                                <td class="py-2 pr-3">${r.afternoonCount}</td>
-                                <td class="py-2 pr-3">${r.leaveDays}</td>
-                                <td class="py-2 pr-3">${r.absentDays}</td>
-                                <td class="py-2 pr-3 font-bold ${pctColor}">${r.pct === null ? '—' : r.pct + '%'}</td>
+                                ${[r.presentDays, r.lateCount, r.afternoonCount, r.leaveDays, r.absentDays].map((v, ix) => `<td class="py-2.5 pr-3 ui-num" style="font-weight:600;color:${!v ? 'rgba(255,255,255,.25)' : ix === 0 ? '#34d399' : ix === 4 ? '#f87171' : ix === 3 ? '#a78bfa' : '#fbbf24'}">${v}</td>`).join('')}
+                                <td class="py-2.5 pr-3">${r.pct === null ? '<span class="text-[#4a5182]">—</span>' : `<div style="display:flex;align-items:center;gap:8px;min-width:110px"><span class="font-bold ui-num ${pctColor}" style="min-width:34px">${r.pct}%</span><span class="rp-bar rp-bar-sm" style="flex:1;margin:0;max-width:80px"><span style="width:${r.pct}%;background:${r.pct>=90?'#10b981':r.pct>=75?'#f59e0b':'#ef4444'}"></span></span></div>`}</td>
                                 <td class="py-2 pr-3">${r.avgHours === null ? '—' : r.avgHours.toFixed(1) + 'h'}</td>
                                 <td class="py-2 pr-3 text-[#a5adcf]">${workText}</td>
                                 <td class="py-2 pr-3">${r.payrollRow ? '₹' + (r.payrollRow.net_salary || 0).toLocaleString('en-IN') : '—'}</td>
@@ -6890,19 +6877,21 @@ async function populateHRJobDeptOptions() {
                 const pendSum = rows.filter(p => p.payment_status !== 'paid').reduce((s, p) => s + (+p.net_salary || 0), 0);
                 const sent = rows.filter(p => p.published).length;
                 const fmt = n => '₹' + Math.round(n).toLocaleString('en-IN');
+                const _k = (col, icon, label, val, cls, bar) => `<div class="pr-kpi" style="border-top:2px solid ${col}"><div style="display:flex;align-items:center;justify-content:space-between"><div class="k">${label}</div><span style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:${col};background:${col}1a">${icon}</span></div><div class="v ${cls||''}">${val}</div>${bar!=null?`<div class="rp-bar rp-bar-sm" style="margin-top:8px"><span style="width:${bar}%;background:${col}"></span></div>`:''}</div>`;
+                const _pp = total ? Math.round(paidSum/total*100) : 0, _sp = rows.length ? Math.round(sent/rows.length*100) : 0;
                 kpiEl.innerHTML =
-                    `<div class="pr-kpi"><div class="k">Total Payroll</div><div class="v">${fmt(total)}</div></div>` +
-                    `<div class="pr-kpi"><div class="k">Paid</div><div class="v green">${fmt(paidSum)}</div></div>` +
-                    `<div class="pr-kpi"><div class="k">Pending</div><div class="v amber">${fmt(pendSum)}</div></div>` +
-                    `<div class="pr-kpi"><div class="k">Employees</div><div class="v">${rows.length}</div></div>` +
-                    `<div class="pr-kpi"><div class="k">Payslips Sent</div><div class="v">${sent} / ${rows.length}</div></div>`;
+                    _k('#ff6b06', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>', 'Total Payroll', fmt(total)) +
+                    _k('#10b981', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>', 'Paid', fmt(paidSum), 'green', _pp) +
+                    _k('#f59e0b', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Pending', fmt(pendSum), 'amber', total ? 100-_pp : 0) +
+                    _k('#3b82f6', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Employees', rows.length) +
+                    _k('#a78bfa', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>', 'Payslips Sent', `${sent} / ${rows.length}`, '', _sp);
             }
 
             const num = (v, extra) => `<td class="py-2.5 px-4 pr-num text-[#a5adcf]">${_prMoney(v)}${extra || ''}</td>`;
             document.getElementById('hr-payroll-rows').innerHTML = rows.length ? rows.map(p => `
                 <tr>
                     <td class="py-2.5 px-4"><input type="checkbox" ${hrSelectedPayrollIds.has(p.id) ? 'checked' : ''} onchange="toggleHRPayrollSelection('${p.id}', this.checked); renderHRPayroll()"></td>
-                    <td class="py-2.5 px-4 text-white font-semibold">${hrEmpName(p.employee_id)}</td>
+                    <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:9px">${hrAvatarForEmployeeId(p.employee_id, 28)}<span>${hrEmpName(p.employee_id)}</span></div></td>
                     ${num(p.basic)}${num(p.allowances)}${num(p.overtime)}${num(p.bonuses)}
                     <td class="py-2.5 px-4 pr-num ${(+p.leave_deduction||0) ? 'text-red-300' : ''}">${_prMoney(p.leave_deduction)}${p.unpaid_leave_days ? ` <span class="text-[#6b74a0]">(${p.unpaid_leave_days}d)</span>` : ''}</td>
                     ${num(p.deductions)}${num(p.advances)}
