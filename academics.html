@@ -1338,7 +1338,7 @@ details[open] .rawsum::before{content:'▾ '}
               <option value="coach_az">Sort: Coach Name A → Z</option>
             </select>
           </div>
-          <table><thead><tr><th>Name</th><th>Batch</th><th>Course</th><th>Coach</th><th>Status</th><th>Payment</th><th>Enrolled</th><th>Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Batch</th><th>Course</th><th>Coach</th><th>Counselor</th><th>Status</th><th>Payment</th><th>Enrolled</th><th>Actions</th></tr></thead>
             <tbody id="studentsList"></tbody></table>
           <!-- Server-side pagination (production scalability refactor, Phase 5/20) — empty/
                hidden in fallback mode (pre-migration), populated by _acadStuPager() once the
@@ -6642,6 +6642,7 @@ function _acadStuRow(s, lifecycle, payStatus){
   const crmBadge = s.crm_source && s.crm_source !== 'manual' ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:rgba(139,92,246,.15);color:#a78bfa;margin-left:6px;vertical-align:middle;letter-spacing:.03em">CRM</span>' : '';
   return `<tr><td data-label="Name"><div style="display:flex;align-items:center;gap:9px"><span class="acad-avatar-dot">${esc((s.name||'?').trim().charAt(0).toUpperCase())}</span><div><div>${esc(s.name)}${crmBadge}</div>${s.contact?`<div style="font-size:10.5px;color:var(--tx3)">${esc(s.contact)}</div>`:''}</div></div></td>
   <td data-label="Batch">${s.batch_id?esc(s.batch_name||'—'):'—'}</td><td data-label="Course">${esc(s.programme||'—')}</td><td data-label="Coach">${s.batch_id?esc(s.trainer_name||'—'):'—'}</td>
+  <td data-label="Counselor">${esc(s.source_counsellor||'—')}</td>
   <td data-label="Status"><span ${badgeStyle}>${esc(lifecycle)}</span></td>
   <td data-label="Payment">${_acadStuPayBadge(payStatus)}</td>
   <td data-label="Enrolled">${s.enrolled_date||'—'}</td>
@@ -6728,7 +6729,7 @@ async function renderStudentsTable(){
       if (countEl) countEl.textContent = _acadStudentsTotal;
       document.getElementById('studentsList').innerHTML = _acadStudentsPageRows.length
         ? _acadStudentsPageRows.map(s => _acadStuRow(s, s.computed_status, s.payment_status)).join('')
-        : `<tr><td colspan="8" class="empty">${(q||statusF||paymentF||batchF||courseF)?'No students match your search/filter.':'No students yet.'}</td></tr>`;
+        : `<tr><td colspan="9" class="empty">${(q||statusF||paymentF||batchF||courseF)?'No students match your search/filter.':'No students yet.'}</td></tr>`;
       _acadStuPager(_acadStudentsPage, _ACAD_STUDENTS_PAGE_SIZE, _acadStudentsTotal);
       return;
     }
@@ -6798,7 +6799,7 @@ async function renderStudentsTable(){
   const start = (_acadStudentsPage-1)*_ACAD_STUDENTS_PAGE_SIZE;
   const pageRows = rows.slice(start, start + _ACAD_STUDENTS_PAGE_SIZE);
   document.getElementById('studentsList').innerHTML = pageRows.length ? pageRows.map(s => _acadStuRow(s, _acadStudentLifecycleStatus(s), _acadStudentPaymentStatus(s))).join('')
-    : `<tr><td colspan="8" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
+    : `<tr><td colspan="9" class="empty">${_allStudents.length?'No students match your search/filter.':'No students yet.'}</td></tr>`;
   _acadStuPager(_acadStudentsPage, _ACAD_STUDENTS_PAGE_SIZE, total);
 }
 let _acadFallbackLoaded = false;
