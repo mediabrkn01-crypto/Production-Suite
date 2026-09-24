@@ -2727,7 +2727,7 @@ function hrOfficialEventFor(employee, dateStr) {
             await ensureHRDataLoaded();
             const me = myHREmployeeRecord();
             const el = document.getElementById('my-payslips-rows');
-            if (!me) { el.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No HR employee record is linked to your login yet.</td></tr>`; return; }
+            if (!me) { el.innerHTML = `<tr><td colspan="4"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No HR employee record is linked to your login yet.</div></div></td></tr>`; return; }
             // Access control: only payslips (a) belonging to this employee AND (b) explicitly
             // Sent by HR (published === true). A generated-but-not-yet-sent payslip is a draft
             // that even the employee it belongs to can't see — matches "HR controls when the
@@ -2750,7 +2750,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     <td data-label="Status" class="py-2.5 px-4"><span class="hr-badge hr-badge-${p.payment_status}">${p.payment_status}</span></td>
                     <td data-label="Action" class="py-2.5 px-4 text-center"><button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn">Download</button></td>
                 </tr>
-            `).join('') : `<tr><td colspan="4" class="py-8 text-center text-[#4a5182] text-xs">No payslips yet.</td></tr>`;
+            `).join('') : `<tr><td colspan="4"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No payslips yet.</div></div></td></tr>`;
         }
 
 // ── Clock In/Out engine + activity log — genuinely shared: index.html AND hr.html both
