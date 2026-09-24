@@ -2531,8 +2531,8 @@ function hrOfficialEventFor(employee, dateStr) {
                 hrProfileField('Level', myRoleInfo.level || '—') +
                 hrProfileField('Additional Roles', myRoleInfo.additional.length ? myRoleInfo.additional.join(', ') : '—') +
                 hrProfileField('Designation', me.designation) +
-                hrProfileField('Joining Date', me.joining_date) +
-                hrProfileField('Date of Birth', me.dob) +
+                hrProfileField('Joining Date', me.joining_date ? new Date(me.joining_date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '') +
+                hrProfileField('Date of Birth', me.dob ? new Date(me.dob + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '') +
                 hrProfileField('Phone', me.phone) +
                 hrProfileField('Portal Email', me.portal_email) +
                 hrProfileField('Manager (portal email)', me.manager_email) +
@@ -2618,9 +2618,9 @@ function hrOfficialEventFor(employee, dateStr) {
                         const slR = (st.onProbation||st.onNotice) ? 0 : bal.sick.remaining;
                         const clR = (st.onProbation||st.onNotice) ? 0 : bal.casual.remaining;
                         balEl.innerHTML =
-                            `<div class="hr-stat-card"><div class="num">${slR}</div><div class="label">Sick Leave (this month)</div></div>` +
-                            `<div class="hr-stat-card"><div class="num">${clR}</div><div class="label">Casual Leave${bal.casual.carriedForward ? ' (incl. '+bal.casual.carriedForward+' carried)' : ''}</div></div>` +
-                            `<div class="hr-stat-card"><div class="num" style="color:#f87171">${pay.totalDeductionDays}</div><div class="label">LOP days (this month)</div></div>` +
+                            `<div class="hr-stat-card" style="border-top:2px solid #10b981"><div class="num" style="color:#34d399">${slR}</div><div class="label">Sick Leave (this month)</div></div>` +
+                            `<div class="hr-stat-card" style="border-top:2px solid #3b82f6"><div class="num" style="color:#60a5fa">${clR}</div><div class="label">Casual Leave${bal.casual.carriedForward ? ' (incl. '+bal.casual.carriedForward+' carried)' : ''}</div></div>` +
+                            `<div class="hr-stat-card" style="border-top:2px solid #f87171"><div class="num" style="color:#f87171">${pay.totalDeductionDays}</div><div class="label">LOP days (this month)</div></div>` +
                             (st.onProbation ? `<div class="col-span-3 text-[#fb923c] text-xs">Probation until ${st.confirmationDate||'—'} — leave is LOP, no weekly-off.</div>` : '') +
                             (st.onNotice ? `<div class="col-span-3 text-[#f87171] text-xs">Notice period — CL/SL/weekly-off not applicable; absence is LOP.</div>` : '');
                     } catch (e) { balEl.innerHTML = '<p class="text-[#4a5182] text-xs col-span-3">Balances unavailable right now.</p>'; }
@@ -2633,14 +2633,18 @@ function hrOfficialEventFor(employee, dateStr) {
                 const kind = r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : r.status === 'cancelled' ? 'rejected' : 'pending';
                 const canCancel = r.status !== 'cancelled' && r.status !== 'rejected' && r.start_date > today;
                 return `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:10px">
-                    <span class="text-sm text-[#a5adcf]">${r.leave_type} — ${r.start_date} → ${r.end_date}${r.emergency ? ' ⚡' : ''}</span>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-left:3px solid ${kind==='approved'?'#10b981':kind==='rejected'?'#ef4444':'#f59e0b'};border-radius:10px;background:rgba(255,255,255,.015)">
+                    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+                        <span style="width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#a5adcf"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span>
+                        <div style="min-width:0"><div class="text-sm text-white font-semibold" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${r.leave_type}${r.emergency ? '<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;color:#fb923c;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3)">Emergency</span>' : ''}</div>
+                        <div class="text-[11.5px] text-[#8890b5]">${(function(a,b){ var f=function(x){ var d=new Date(String(x).slice(0,10)+'T00:00:00'); return isNaN(d)?x:d.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'}); }; return (!b||a===b)?f(a):f(a)+' → '+f(b); })(r.start_date, r.end_date)}${r.days ? ' · ' + r.days + ' day' + (r.days === 1 ? '' : 's') : ''}${r.reason ? ' · ' + r.reason : ''}</div></div>
+                    </div>
                     <div style="display:flex;align-items:center;gap:6px">
                         <span class="hr-badge hr-badge-${kind}">${label}</span>
                         ${canCancel ? `<button onclick="cancelLeaveRequest('${r.id}').then(r=>{if(r)initMyLeave()})" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>` : ''}
                     </div>
                 </div>`;
-            }).join('') : '<p class="text-[#4a5182] text-xs">No requests yet.</p>';
+            }).join('') : '<div class="dsh-empty" style="min-height:130px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></div><div class="dsh-empty-t">No leave requests yet</div><div class="dsh-empty-s">Requests you submit above will appear here with their status.</div></div>';
         }
 
 // ── submitMyLeave (orig line 11563) ──

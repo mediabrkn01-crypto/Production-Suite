@@ -2112,12 +2112,12 @@
                 <!-- My Details — read straight from hr_employees (the exact record HR edits),
                      so anything HR saves shows up here automatically. Read-only: HR stays the
                      single editor of this data, same as before. -->
-                <div class="card glass-card p-4 md:p-6 rounded-2xl max-w-2xl">
+                <div class="card glass-card p-4 md:p-6 rounded-2xl max-w-4xl">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 mb-1 flex items-center gap-2">
                         <i data-lucide="id-card" class="w-4 h-4 text-white/70"></i> My Details
                     </h3>
                     <p class="text-[10px] text-[#4a5182] mb-3">Set by HR — updates here automatically whenever HR saves a change.</p>
-                    <div id="my-profile-details-body" class="divide-y divide-white/[0.05]"></div>
+                    <div id="my-profile-details-body" class="grid grid-cols-1 sm:grid-cols-2" style="column-gap:32px"></div>
                 </div>
             </div>
 
@@ -5691,9 +5691,9 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 tbody.innerHTML += `
                     <tr class="hover:bg-transparent/40 transition">
                         <td class="py-3 px-4 font-bold text-white">${t.topic}</td>
-                        <td class="py-3 px-4 text-[#6b74a0]">${t.type}</td>
-                        <td class="py-3 px-4 text-gray-300">${t.assignedTo}</td>
-                        <td class="py-3 px-4 font-mono text-[#6b74a0]">${t.assignedDate || '—'}</td>
+                        <td class="py-3 px-4"><span class="whitespace-nowrap" style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:#c7cbe0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)">${t.type}</span></td>
+                        <td class="py-3 px-4" title="${t.employeeEmail || ''}"><div style="display:flex;align-items:center;gap:8px">${(typeof hrAvatarHTML === 'function') ? hrAvatarHTML(((typeof hrEmployees !== 'undefined' && Array.isArray(hrEmployees)) ? hrEmployees.find(e => (e.portal_email || '').toLowerCase() === String(t.employeeEmail || '').toLowerCase()) : null) || t.assignedTo || '?', 26) : ''}<span class="text-white font-medium whitespace-nowrap">${t.assignedTo}</span></div></td>
+                        <td class="py-3 px-4 text-[#a5adcf] whitespace-nowrap">${(function(iso){ if(!iso) return '—'; var d=new Date(String(iso).slice(0,10)+'T00:00:00'); return isNaN(d)?String(iso):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); })(t.assignedDate)}</td>
                         <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">✓ Completed</span></td>
                         <td class="py-3 px-4">${delivery}</td>
                         ${managerCol}
@@ -5721,8 +5721,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                         </div>
                         <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#6b74a0]">
                             <span>${t.type}</span>
-                            <span>👤 ${t.assignedTo}</span>
-                            <span class="font-mono">${t.assignedDate || ''}</span>
+                            <span>${t.assignedTo}</span>
+                            <span>${(function(iso){ if(!iso) return '—'; var d=new Date(String(iso).slice(0,10)+'T00:00:00'); return isNaN(d)?String(iso):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); })(t.assignedDate)}</span>
                         </div>
                         <div class="pt-1">${delivery}</div>
                         ${mobileActions}
@@ -9424,20 +9424,27 @@ async function saveLeave(){
     var all=awFilteredSorted(), per=_awFilter.per, total=all.length, pages=Math.max(1,Math.ceil(total/per));
     if(_awFilter.page>pages) _awFilter.page=pages;
     var start=(_awFilter.page-1)*per, rows=all.slice(start,start+per);
-    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl" style="padding:30px;text-align:center;color:#6b74a0;font-size:13px">No approved work matches these filters.</div>'; if(pager) pager.innerHTML=''; return; }
+    if(!total){ body.innerHTML='<div class="card glass-card rounded-2xl"><div class="dsh-empty" style="min-height:150px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></div><div class="dsh-empty-t">No approved work matches these filters</div><div class="dsh-empty-s">Try clearing a filter or search term.</div></div></div>'; if(pager) pager.innerHTML=''; return; }
     body.innerHTML=rows.map(function(a){
       var hasDeliv=beParseDelivery(a.asset_link).length>0;
       var dlBtn=hasDeliv?'<button onclick="awDownload('+a.id+')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#e5e9f5;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Download</button>':'';
       var viewBtn=hasDeliv?'<button onclick="mhViewDelivery('+a.id+',{approved:true})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>':'<span style="color:#6b74a0;font-size:11px">No delivery</span>';
-      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02)">'
-        +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div style="min-width:240px;flex:1">'
-        +'<div style="font-weight:700;color:#fff;font-size:15px">'+esc(a.topic||'Untitled')+' <span style="color:#6b74a0;font-weight:600;font-size:11px">· '+esc(a.type||'')+'</span> <span style="font-size:10px;font-weight:800;color:#22c55e;background:#22c55e22;border:1px solid #22c55e55;padding:2px 8px;border-radius:999px">Approved</span> '+bePriorityBadge(a)+'</div>'
-        +'<div style="color:#8890b5;font-size:12px;margin-top:4px">Employee: '+esc(waEmpName(a))+' · Target '+esc(a.date||'—')+'</div>'
-        +'<div style="color:#8890b5;font-size:11px;margin-top:3px">Submitted: '+esc(beFmtDT(waSubIso(a)))+'</div>'
-        +'<div style="color:#8890b5;font-size:11px;margin-top:2px">Approved: '+esc(beFmtDT(a.approved_at))+' · by '+esc(a.approved_by||'—')+'</div>'
-        +(waNote(a)?'<div style="color:#a5adcf;font-size:12px;margin-top:6px">'+esc(waNote(a))+'</div>':'')
-        +'<div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">'+viewBtn+dlBtn+'</div>'
-        +'</div></div></div>';
+      var _emp=(typeof hrEmployees!=='undefined'&&Array.isArray(hrEmployees))?hrEmployees.find(function(e){return (e.portal_email||'').toLowerCase()===String(a.employee_email||'').toLowerCase();}):null;
+      var _av=(typeof hrAvatarHTML==='function')?hrAvatarHTML(_emp||waEmpName(a)||'?',38):'';
+      var _meta=function(lbl,val){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;white-space:nowrap">'+val+'</div></div>'; };
+      var _note=waNote(a); var _showNote=_note && _note.trim().toLowerCase()!==String(a.topic||'').trim().toLowerCase();
+      return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);border-left:3px solid #22c55e;padding:15px 17px;background:rgba(255,255,255,.02)">'
+        +'<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start">'
+        +'<div style="display:flex;gap:12px;min-width:260px;flex:1"><span style="flex-shrink:0">'+_av+'</span><div style="min-width:0;flex:1">'
+        +'<div style="font-weight:700;color:#fff;font-size:15px;line-height:1.35">'+esc(a.topic||'Untitled')+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px"><span style="font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;color:#c7cbe0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)">'+esc(a.type||'—')+'</span><span style="font-size:10px;font-weight:800;color:#22c55e;background:#22c55e22;border:1px solid #22c55e55;padding:2px 8px;border-radius:999px">Approved</span>'+bePriorityBadge(a)+'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,max-content));gap:6px 24px;margin-top:10px">'
+        +_meta('Employee',esc(waEmpName(a)))+_meta('Target',esc((function(iso){ if(!iso) return '—'; var d=new Date(String(iso).slice(0,10)+'T00:00:00'); return isNaN(d)?String(iso):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); })(a.date)))+_meta('Submitted',esc(beFmtDT(waSubIso(a))))+_meta('Approved',esc(beFmtDT(a.approved_at))+' <span style="color:#6b74a0;font-weight:500">· '+esc(a.approved_by||'—')+'</span>')
+        +'</div>'
+        +(_showNote?'<div style="color:#a5adcf;font-size:12px;margin-top:9px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">'+esc(_note)+'</div>':'')
+        +'</div></div>'
+        +'<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-start">'+viewBtn+dlBtn+'</div>'
+        +'</div></div>';
     }).join('');
     if(pager){
       var html='<button onclick="awGoPage('+Math.max(1,_awFilter.page-1)+')" '+(_awFilter.page<=1?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_awFilter.page<=1?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700;cursor:'+(_awFilter.page<=1?'not-allowed':'pointer')+'">Prev</button>';
@@ -9704,7 +9711,7 @@ async function saveLeave(){
       if(s==='completed' && twTaskInDate(a)){ sum.completed++; sum[twType(a)]++; } });
     var cards=[['Total Team',sum.team,'all','#a5adcf'],['Active Work',sum.active,'active','#38bdf8'],['Pending',sum.pending,'pending','#fbbf24'],['In Progress',sum.inprogress,'inprogress','#60a5fa'],['Waiting Approval',sum.approval,'approval','#38bdf8'],['Rework',sum.rework,'rework','#fb923c'],['Overdue',sum.overdue,'overdue','#f87171'],['Completed',sum.completed,'completed','#22c55e']];
     if(cardsEl) cardsEl.innerHTML=cards.map(function(c){ var on=_twFilter.status===c[2]; return '<button onclick="twCardFilter(\''+c[2]+'\')" class="card glass-card rounded-xl" style="border:1px solid '+(on?c[3]+'88':'rgba(255,255,255,.07)')+';padding:11px 12px;background:rgba(255,255,255,.02);text-align:left;cursor:pointer"><div style="font-size:20px;font-weight:800;color:'+c[3]+'">'+c[1]+'</div><div style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#8890b5;text-transform:uppercase;margin-top:2px">'+c[0]+'</div></button>'; }).join('');
-    if(outEl) outEl.innerHTML='<div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#6b74a0;margin-bottom:8px">TEAM OUTPUT'+(_twFilter.date!=='all'?' · selected period':'')+'</div><div style="display:flex;flex-wrap:wrap;gap:8px 22px"><span style="font-size:13px;color:#fff;font-weight:700">🎬 '+sum.video+' <span style="color:#8890b5;font-weight:500;font-size:11px">Videos</span></span><span style="font-size:13px;color:#fff;font-weight:700">🖼 '+sum.thumb+' <span style="color:#8890b5;font-weight:500;font-size:11px">Thumbnails</span></span><span style="font-size:13px;color:#fff;font-weight:700">🎨 '+sum.poster+' <span style="color:#8890b5;font-weight:500;font-size:11px">Posters</span></span><span style="font-size:13px;color:#fff;font-weight:700">📦 '+sum.other+' <span style="color:#8890b5;font-weight:500;font-size:11px">Other</span></span></div>';
+    if(outEl) outEl.innerHTML='<div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:#6b74a0;margin-bottom:8px">TEAM OUTPUT'+(_twFilter.date!=='all'?' · selected period':'')+'</div><div style="display:flex;flex-wrap:wrap;gap:8px 22px"><span style="font-size:13px;color:#fff;font-weight:700"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#a78bfa;margin-right:7px;vertical-align:1px"></span>'+sum.video+' <span style="color:#8890b5;font-weight:500;font-size:11px">Videos</span></span><span style="font-size:13px;color:#fff;font-weight:700"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#38bdf8;margin-right:7px;vertical-align:1px"></span>'+sum.thumb+' <span style="color:#8890b5;font-weight:500;font-size:11px">Thumbnails</span></span><span style="font-size:13px;color:#fff;font-weight:700"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f472b6;margin-right:7px;vertical-align:1px"></span>'+sum.poster+' <span style="color:#8890b5;font-weight:500;font-size:11px">Posters</span></span><span style="font-size:13px;color:#fff;font-weight:700"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#94a3b8;margin-right:7px;vertical-align:1px"></span>'+sum.other+' <span style="color:#8890b5;font-weight:500;font-size:11px">Other</span></span></div>';
     // filter employees
     var q=_twFilter.q.trim().toLowerCase();
     var rows=keys.map(function(k){ return groups[k]; }).filter(function(g){
@@ -9726,15 +9733,17 @@ async function saveLeave(){
       var desig=(g.rec&&g.rec.designation)||''; var ph=twPhoto(g.rec);
       var avatar=ph?'<img src="'+esc(ph)+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover">':'<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:15px">'+esc((g.name||'?').charAt(0).toUpperCase())+'</div>';
       var current=g.tasks.filter(function(a){ return twActive(twStat(a)); }).sort(function(a,b){ return String(a.date||'~').localeCompare(String(b.date||'~')); }).slice(0,3);
-      var curHtml=current.length?current.map(function(a){ return '<div style="font-size:11px;color:#a5adcf">• '+esc(a.topic||'Untitled')+' — '+esc(a.type||'')+' — Due '+esc(a.date||'—')+' '+bePriorityBadge(a)+'</div>'; }).join(''):'<div style="font-size:11px;color:#4a5182">No active work</div>';
+      var _dueChip=function(iso){ if(!iso) return ''; var t=new Date(); t.setHours(0,0,0,0); var d=new Date(String(iso).slice(0,10)+'T00:00:00'); if(isNaN(d)) return ''; var n=Math.round((d-t)/86400000); var c=n<0?'#f87171':n<=3?'#fbbf24':'#8890b5'; return '<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;color:'+c+';background:'+c+'1a;border:1px solid '+c+'40;white-space:nowrap">'+(n<0?'Overdue '+(-n)+'d':n===0?'Due today':n===1?'Due tomorrow':'Due '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}))+'</span>'; };
+      var curHtml=current.length?current.map(function(a){ return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid rgba(255,255,255,.04)"><span style="font-size:12px;font-weight:600;color:#e6e9f5">'+esc(a.topic||'Untitled')+'</span><span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;color:#a5adcf;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">'+esc(a.type||'')+'</span>'+_dueChip(a.date)+bePriorityBadge(a)+'</div>'; }).join(''):'<div style="font-size:11px;color:#4a5182">No active work</div>';
+      var _outChip=function(n,lbl,col){ return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#a5adcf"><span style="width:7px;height:7px;border-radius:50%;background:'+col+'"></span><b style="color:#fff">'+n+'</b>'+lbl+'</span>'; };
       function box(lbl,val,col){ return '<div style="text-align:center;min-width:52px"><div style="font-size:15px;font-weight:800;color:'+col+'">'+val+'</div><div style="font-size:8px;font-weight:700;letter-spacing:.04em;color:#6b74a0;text-transform:uppercase">'+lbl+'</div></div>'; }
-      return '<div class="card glass-card rounded-2xl" onclick="twOpenEmployee(\''+g.key.replace(/'/g,"\\'")+'\')" style="border:1px solid rgba(255,255,255,.07);padding:15px 17px;background:rgba(255,255,255,.02);cursor:pointer">'
+      return '<div class="card glass-card rounded-2xl" onclick="twOpenEmployee(\''+g.key.replace(/'/g,"\\'")+'\')" style="border:1px solid rgba(255,255,255,.07);border-left:3px solid '+wl.c+';padding:15px 17px;background:rgba(255,255,255,.02);cursor:pointer">'
         +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
         +'<div style="display:flex;gap:11px;min-width:200px;flex:1">'+avatar+'<div><div style="font-weight:800;color:#fff;font-size:14px">'+esc(g.name)+'</div><div style="font-size:11px;color:#8890b5">'+esc(desig||'Media Team')+'</div>'
         +'<span style="display:inline-block;margin-top:5px;font-size:9px;font-weight:800;color:'+wl.c+';background:'+wl.c+'22;border:1px solid '+wl.c+'55;padding:2px 8px;border-radius:999px">'+wl.t+'</span></div></div>'
         +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+box('Active',c.active,'#38bdf8')+box('Pending',c.pending,'#fbbf24')+box('Progress',c.inprogress,'#60a5fa')+box('Approval',c.approval,'#38bdf8')+box('Rework',c.rework,'#fb923c')+box('Done',c.completed,'#22c55e')+'</div></div>'
         +'<div style="margin-top:11px;display:flex;gap:22px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:4px">CURRENT WORK</div>'+curHtml+'</div>'
-        +'<div><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:4px">OUTPUT'+(_twFilter.date!=='all'?' (period)':'')+'</div><div style="font-size:11px;color:#a5adcf">🎬 '+c.video+' Videos · 🖼 '+c.thumb+' Thumbs · 🎨 '+c.poster+' Posters</div></div></div></div>';
+        +'<div><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#6b74a0;margin-bottom:4px">OUTPUT'+(_twFilter.date!=='all'?' (period)':'')+'</div><div style="display:flex;gap:14px;flex-wrap:wrap">'+_outChip(c.video,'Videos','#a78bfa')+_outChip(c.thumb,'Thumbs','#38bdf8')+_outChip(c.poster,'Posters','#f472b6')+'</div></div></div></div>';
     }).join('');
     if(pager){ if(pages<=1){ pager.innerHTML=''; } else {
       var h='<button onclick="twGoPage('+Math.max(1,_twFilter.page-1)+')" '+(_twFilter.page<=1?'disabled':'')+' style="padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:'+(_twFilter.page<=1?'#4a5182':'#a5adcf')+';font-size:12px;font-weight:700">Prev</button>';
