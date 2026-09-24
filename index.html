@@ -2531,6 +2531,7 @@
     <script src="common.js"></script>
     <script src="policy-config.js"></script>
     <script src="leave-policy.js"></script>
+    <script src="dynamic-tabs.js"></script>
     <script>
         // Configuration Parameters
         // [moved to shared/common.js or hr/index.html: original lines 2560-2561]
@@ -3415,6 +3416,7 @@
                 }
             }).catch(() => {});
             ensureHRDataLoaded().then(() => { if (typeof renderTableRows === 'function') renderTableRows(); }).catch(() => {});
+            if (typeof DynamicTabs !== 'undefined' && dbInstance) DynamicTabs.init(dbInstance, 'production', activeRole || 'employee');
 
             // Deep-link support — lets other pages in the same app (academics.html's My
             // Workspace links, for example) land the user on a specific tab here instead of
@@ -3673,6 +3675,7 @@
             document.getElementById('tab-content-work-approvals')?.classList.add('hidden');
             document.getElementById('tab-content-approved-works')?.classList.add('hidden');
             document.getElementById('tab-content-team-workflow')?.classList.add('hidden');
+            document.querySelectorAll('[id^="tab-content-custom-"]').forEach(el => el.classList.add('hidden'));
 
             // Employee briefing banner belongs to the Pipeline (dashboard) tab only —
             // force it hidden by default on every tab switch, then re-show it (if applicable)
@@ -3771,6 +3774,10 @@
                 document.getElementById('nav-team').classList.add('active');
                 document.getElementById('tab-content-team').classList.remove('hidden');
                 initMyTeam();
+            } else if (targetTab.startsWith('custom-')) {
+                document.getElementById('nav-' + targetTab)?.classList.add('active');
+                var customEl = document.getElementById('tab-content-' + targetTab);
+                if (customEl) customEl.classList.remove('hidden');
             }
         }
 
