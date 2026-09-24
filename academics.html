@@ -3597,14 +3597,17 @@ async function openSessionHistoryFor(batchName){
     const { data: batchRow } = await sb.from('batches').select('id').eq('name', batchName).maybeSingle();
     const batchId = batchRow ? batchRow.id : null;
     const [attRows,{data:logRows}] = await Promise.all([
-      _acadFetchAllRows('attendance','session_date,status,marked_by',q=>q.eq('batch_name',batchName)),
-      batchId ? sb.from('sessions').select('session_date,notes,logged_by').eq('batch_id', batchId).order('session_date',{ascending:false}) : Promise.resolve({data:[]})
+      _acadFetchAllRows('attendance','session_date,status,marked_by,created_at,edited_by,edited_at',q=>q.eq('batch_name',batchName)),
+      batchId ? sb.from('sessions').select('session_date,notes,logged_by,created_at').eq('batch_id', batchId).order('session_date',{ascending:false}) : Promise.resolve({data:[]})
     ]);
+    const showTs = typeof isCurrentlyAcademicHead === 'function' && isCurrentlyAcademicHead();
     const byDate = {};
     (attRows||[]).forEach(r => {
       const d = byDate[r.session_date] = byDate[r.session_date] || { present:0, absent:0, marked_by: r.marked_by };
       if (r.status === 'present') d.present++; else if (r.status === 'absent') d.absent++;
       if (!d.marked_by) d.marked_by = r.marked_by;
+      if (r.created_at && (!d.recordedAt || r.created_at > d.recordedAt)) d.recordedAt = r.created_at;
+      if (r.edited_at && (!d.editedAt || r.edited_at > d.editedAt)) { d.editedAt = r.edited_at; d.editedBy = r.edited_by; }
     });
     // Multiple sessions rows can exist for the same date (old per-student ad-hoc "Log a
     // Session" entries, from before this was merged into Mark Attendance) \u2014 concatenated
@@ -3613,6 +3616,7 @@ async function openSessionHistoryFor(batchName){
       const d = byDate[r.session_date] = byDate[r.session_date] || {present:0,absent:0,marked_by:r.logged_by};
       d.notes = d.notes ? d.notes + ' \u00b7 ' + (r.notes||'') : (r.notes||'');
       if (!d.marked_by) d.marked_by = r.logged_by;
+      if (r.created_at && (!d.logAt || r.created_at > d.logAt)) d.logAt = r.created_at;
     });
     const dates = Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
     list.innerHTML = dates.length ? dates.map(d => {
@@ -3626,6 +3630,7 @@ async function openSessionHistoryFor(batchName){
         </div>
         ${attSummary ? `<div style="font-size:12px;color:var(--tx2);margin-top:4px">${esc(attSummary)}</div>` : ''}
         ${info.notes ? `<div style="font-size:12.5px;color:var(--tx);margin-top:6px;white-space:pre-wrap">${esc(info.notes)}</div>` : '<div style="font-size:11px;color:var(--tx3);margin-top:6px;font-style:italic">No class log recorded for this date.</div>'}
+        ${showTs && (info.recordedAt || info.logAt || info.editedAt) ? `<div style="font-size:10px;color:var(--tx3);margin-top:6px">${info.recordedAt ? 'Attendance recorded: '+esc(_ovFmtTS(info.recordedAt)) : ''}${info.editedAt ? (info.recordedAt?' · ':'')+'Edited'+(info.editedBy?' by '+esc(info.editedBy):'')+': '+esc(_ovFmtTS(info.editedAt)) : ''}${info.logAt ? ((info.recordedAt||info.editedAt)?' · ':'')+'Class log: '+esc(_ovFmtTS(info.logAt)) : ''}</div>` : ''}
       </div>`;
     }).join('') : '<div class="empty">No sessions recorded yet for this batch.</div>';
   } catch(e) { list.innerHTML = '<div class="empty">Could not load session history: '+esc(e.message)+'</div>'; }
@@ -8483,6 +8488,7 @@ function _ovMonthBounds(m){ var p=m.split('-').map(Number); var start=m+'-01'; v
 function _ovClassType(b){ return (Number(b.capacity)===1)?'1:1':'group'; }
 function _ovDur(b){ var d=Number(b&&b.class_duration_minutes); return d>0?d:60; } // duration from batch, never from attendance row
 function _ovFmt(min){ if(min==null)return ''; var h=Math.floor(min/60),m=min%60,ap=h<12?'AM':'PM',h12=((h+11)%12)+1; return h12+':'+String(m).padStart(2,'0')+ap; }
+function _ovFmtTS(iso){ if(!iso)return ''; var d=new Date(iso); if(isNaN(d))return ''; return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
 function _ovFmtDT(iso){ if(!iso)return ''; var d=new Date(iso); if(isNaN(d))return ''; return d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 // Time-aware resolver — called at RENDER time so status stays live.
 // nowMin = current local time in minutes since midnight (0-1439).
@@ -8622,7 +8628,7 @@ async function ovLoad(){
     });
     // Include completed OTO sessions in teaching hours/payroll
     try {
-      const { data: otoRows } = await sb.from('oto_sessions').select('trainer_id,session_date,start_time,duration_minutes,status,batch_id').eq('status','completed').gte('session_date',rangeStart).lte('session_date',rangeEnd);
+      const { data: otoRows } = await sb.from('oto_sessions').select('trainer_id,session_date,start_time,duration_minutes,status,batch_id,marked_by,marked_at,created_at,students(name)').eq('status','completed').gte('session_date',rangeStart).lte('session_date',rangeEnd);
       (otoRows||[]).forEach(function(o){
         var trRec = trById[String(o.trainer_id)];
         if(!trRec) return;
@@ -8633,7 +8639,9 @@ async function ovLoad(){
         if(o.start_time){ var pts=o.start_time.split(':'); sMin=parseInt(pts[0])*60+parseInt(pts[1]||0); }
         var dur = o.duration_minutes || 30;
         var tk = String(trRec.id);
-        sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:bName+' (1:1)',course:cName,ctype:'1:1 session',date:o.session_date,startMin:sMin,dur:dur,att:{p:1,ab:0,markedBy:'',markedAt:''},lv:false,present:1,absent:0,markedBy:'',markedAt:'',_isOTO:true});
+        var oBy = o.marked_by || '', oAt = o.marked_at || o.created_at || '';
+        var oStu = o.students && o.students.name ? ' · ' + o.students.name : '';
+        sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:bName+' (1:1)'+oStu,course:cName,ctype:'1:1 session',date:o.session_date,startMin:sMin,dur:dur,att:{p:1,ab:0,markedBy:oBy,markedAt:oAt},lv:false,present:1,absent:0,markedBy:oBy,markedAt:oAt,_isOTO:true});
       });
     } catch(e){ console.warn('OTO overview:', e); }
     _ovData={ sessions:sessions, unassigned:unassigned, courses:Object.keys(courses).sort(), rangeStart:rangeStart, rangeEnd:rangeEnd };
@@ -8843,7 +8851,7 @@ function _ovRenderDD(){
   }
   var emptyMsg=isToday?'No sessions on '+periodLabel:'No sessions in '+periodLabel;
   var listHtml=allSess.length?'<div style="overflow-x:auto;margin-top:16px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:rgba(255,255,255,.35);text-align:left">'+
-    ['Date','Time','Batch','Course','Type','Status','P / A','Marked By / At'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
+    ['Date','Time','Batch','Course','Type','Status','P / A','Marked By','Timestamp'].map(function(h){return '<th style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
     allSess.map(function(s){ var st=_OV[s.status]||_OV.scheduled;
       var paStr=(s.status==='completed'||s.status==='absent'||s.status==='inprogress')&&(s.present+s.absent>0)?(s.present+' / '+s.absent):'—';
       return '<tr style="border-bottom:1px solid rgba(255,255,255,.04)">'+
@@ -8854,7 +8862,8 @@ function _ovRenderDD(){
         '<td style="padding:7px 8px;color:rgba(255,255,255,.45);white-space:nowrap">'+s.ctype+'</td>'+
         '<td style="padding:7px 8px"><span class="ov-pill" style="background:'+st.c+'22;color:'+st.c+'">'+st.l+'</span></td>'+
         '<td style="padding:7px 8px;color:rgba(255,255,255,.55)">'+paStr+'</td>'+
-        '<td style="padding:7px 8px;color:rgba(255,255,255,.4);white-space:nowrap">'+(s.markedAt?(esc(s.markedBy||'—')+' · '+_ovFmtDT(s.markedAt)):'—')+'</td></tr>';
+        '<td style="padding:7px 8px;color:rgba(255,255,255,.4);white-space:nowrap">'+esc(s.markedBy||'—')+'</td>'+
+        '<td style="padding:7px 8px;color:rgba(255,255,255,.4);white-space:nowrap">'+(s.markedAt?esc(_ovFmtTS(s.markedAt)):'—')+'</td></tr>';
     }).join('')+'</tbody></table></div>':'<div style="text-align:center;padding:40px 20px;color:rgba(255,255,255,.3)">'+emptyMsg+'</div>';
   document.getElementById('ov-dd-body').innerHTML=cal+listHtml;
   document.getElementById('ov-dd-body').scrollTop=0;
@@ -8967,7 +8976,7 @@ window._ovExportPDF=function(trainerKey){
         var dStr=s.date.slice(8)+' '+new Date(s.date+'T00:00:00').toLocaleDateString('en',{month:'short'});
         var row=[dStr,_ovFmt(s.startMin)+' – '+_ovFmt(s.startMin+s.dur)];
         if(!trainerKey)row.push(s.trainer);
-        row.push(s.batch,s.course||'—',s.ctype,statusLabels[s.status]||s.status,paStr,s.markedBy||'—',s.markedAt?_ovFmtDT(s.markedAt):'—');
+        row.push(s.batch,s.course||'—',s.ctype,statusLabels[s.status]||s.status,paStr,s.markedBy||'—',s.markedAt?_ovFmtTS(s.markedAt):'—');
         return row;
       }),
       styles:{fontSize:7.5,cellPadding:2},
