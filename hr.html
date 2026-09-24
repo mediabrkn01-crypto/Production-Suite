@@ -947,6 +947,12 @@
                     </button>
 
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">SETTINGS</div>
+                    <button id="hrtree-policy" onclick="switchHRSubtab('policy')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="shield-check" style="width:14px;height:14px"></i> Company Policies
+                    </button>
+                    <button id="hrtree-tab-builder" onclick="switchHRSubtab('tab-builder')" class="sidebar-link" style="width:100%;text-align:left">
+                        <i data-lucide="layout-template" style="width:14px;height:14px"></i> Tab Builder
+                    </button>
                     <button id="hrtree-settings" onclick="switchHRSubtab('accounts')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="sliders" style="width:14px;height:14px"></i> HR Settings
                     </button>
@@ -1658,6 +1664,20 @@
                         <button onclick="hrClearAllNotifications()" class="text-[11px] font-bold text-[#6b74a0] hover:text-white" style="background:none;border:none;cursor:pointer">Clear All</button>
                     </div>
                     <div id="hr-notifications-list" class="space-y-2"></div>
+                </div>
+
+                <div id="hr-sub-policy" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between pt-2">
+                        <h1 class="text-xl font-bold tracking-tight">Company Policies</h1>
+                    </div>
+                    <div id="hr-policy-content"></div>
+                </div>
+
+                <div id="hr-sub-tab-builder" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between pt-2">
+                        <h1 class="text-xl font-bold tracking-tight">Tab Builder</h1>
+                    </div>
+                    <div id="hr-tab-builder-content"></div>
                 </div>
             </div>
         </main>
@@ -2380,6 +2400,7 @@
     <script src="common.js"></script>
     <script src="policy-config.js"></script>
     <script src="leave-policy.js"></script>
+    <script src="tab-builder.js"></script>
     <script>
         // ══════════════════════════════════════════════════════════════
         // ══════════════════════════ HR PANEL (admin-only) ═══════════════
@@ -2389,7 +2410,7 @@
             production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators', 'Graphic Designers', 'Designers'],
             other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
         };
-        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','policy','tab-builder','accounts'];
         const HR_DOCUMENT_TYPES = ['ID Card / Government ID', 'Address Proof', 'Educational Certificates', 'Experience Certificates', 'Resume', 'Employment Documents', 'Other'];
         const HR_APPLICANT_STATUSES = ['Applied','Shortlisted','Interview','Selected','Rejected','Joined'];
         const HR_PAYROLL_OPTIONAL_COLUMNS = {
@@ -2864,6 +2885,8 @@
             else if (tab === 'hr-reports') renderHRReports();
             else if (tab === 'announcements') hrRenderAnnouncementsAdminList();
             else if (tab === 'notifications') renderHRNotifications();
+            else if (tab === 'policy') renderHRPolicyTab();
+            else if (tab === 'tab-builder') { TabBuilder.init(dbInstance); TabBuilder.renderList(); }
             if (window.lucide) lucide.createIcons();
         }
 
@@ -2880,6 +2903,270 @@
                 await loadHRData();
                 alert('Weekly off settings saved.');
             } catch (e) { alert('Could not save settings: ' + e.message); }
+        }
+
+// ── renderHRPolicyTab — Company Policy Management UI ──
+        var _policyLoaded = false;
+        async function renderHRPolicyTab() {
+            var el = document.getElementById('hr-policy-content');
+            if (!el) return;
+            if (_policyLoaded) return;
+            _policyLoaded = false;
+            el.innerHTML = '<div style="text-align:center;padding:40px;color:#808a9d">Loading policies...</div>';
+            try {
+                var { data: rows, error } = await dbInstance.from('hr_policy_config')
+                    .select('*')
+                    .eq('policy_key', 'leave')
+                    .order('version', { ascending: false });
+                if (error) { el.innerHTML = '<div style="color:#f87171;padding:20px">Error loading policies: ' + error.message + '</div>'; return; }
+                var active = (rows || []).find(r => r.status === 'active');
+                var history = (rows || []).filter(r => r.id !== (active && active.id));
+                _renderPolicyUI(el, active, history);
+                _policyLoaded = true;
+            } catch (e) { el.innerHTML = '<div style="color:#f87171;padding:20px">Error: ' + e.message + '</div>'; }
+        }
+
+        var _policyEditing = false;
+        function _renderPolicyUI(el, active, history) {
+            var s = active ? active.settings : {};
+            var fields = [
+                { key: 'PROBATION_MONTHS', label: 'Probation Period (months)', type: 'number' },
+                { key: 'CL_PER_CYCLE', label: 'Casual Leave per Cycle', type: 'number' },
+                { key: 'CL_CYCLE_MONTHS', label: 'CL Cycle Length (months)', type: 'number' },
+                { key: 'CL_CARRY_MONTHS', label: 'CL Carry-Forward (months)', type: 'number' },
+                { key: 'CL_VALIDITY_MONTHS', label: 'CL Validity (months)', type: 'number' },
+                { key: 'SL_PER_MONTH', label: 'Sick Leave per Month', type: 'number' },
+                { key: 'MAX_CONSECUTIVE', label: 'Max Consecutive Leave Days', type: 'number' },
+                { key: 'INCIDENT_HALFDAY_AT', label: 'Incidents for Half-Day Deduction', type: 'number' },
+                { key: 'INCIDENT_FULLDAY_AT', label: 'Incidents for Full-Day Deduction', type: 'number' },
+                { key: 'WORK_START', label: 'Work Start Time', type: 'time' },
+                { key: 'WORK_END', label: 'Work End Time', type: 'time' },
+                { key: 'LEAVE_SYSTEM_START', label: 'Leave System Start Date', type: 'date' }
+            ];
+
+            var html = '<div style="display:grid;gap:16px">';
+
+            // Active policy card
+            html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+            html += '<div><h2 style="font-size:16px;font-weight:700;color:#f1f5f9;margin:0">Leave Policy</h2>';
+            html += '<div style="font-size:11px;color:#808a9d;margin-top:2px">Version ' + (active ? active.version : '—') + ' · Effective ' + (active ? active.effective_date : '—') + '</div></div>';
+            html += '<div style="display:flex;gap:8px">';
+            if (!_policyEditing) {
+                html += '<button onclick="_policyStartEdit()" style="padding:6px 14px;font-size:11px;font-weight:600;border-radius:8px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.1);color:#3b82f6;cursor:pointer">Edit Policy</button>';
+            }
+            html += '</div></div>';
+
+            // Settings grid
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+            fields.forEach(function (f) {
+                var val = s[f.key] !== undefined ? s[f.key] : '';
+                html += '<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px">';
+                html += '<div style="font-size:10px;color:#808a9d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">' + f.label + '</div>';
+                if (_policyEditing) {
+                    html += '<input id="pol-' + f.key + '" type="' + f.type + '" value="' + val + '" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:13px">';
+                } else {
+                    html += '<div style="font-size:14px;font-weight:600;color:#f1f5f9">' + val + '</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+
+            // Edit controls
+            if (_policyEditing) {
+                html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)">';
+                html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
+                html += '<label style="font-size:11px;color:#808a9d;white-space:nowrap">Effective Date</label>';
+                html += '<input id="pol-effective-date" type="date" value="' + new Date().toISOString().slice(0, 10) + '" min="' + new Date().toISOString().slice(0, 10) + '" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:12px">';
+                html += '<label style="font-size:11px;color:#808a9d;white-space:nowrap">Notes (optional)</label>';
+                html += '<input id="pol-notes" type="text" placeholder="Reason for change..." style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:12px">';
+                html += '</div>';
+                html += '<div style="display:flex;gap:8px;justify-content:flex-end">';
+                html += '<button onclick="_policyCancelEdit()" style="padding:6px 14px;font-size:11px;font-weight:600;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:#808a9d;cursor:pointer">Cancel</button>';
+                html += '<button onclick="_policySaveDraft()" style="padding:6px 14px;font-size:11px;font-weight:600;border-radius:8px;border:1px solid rgba(245,158,11,.3);background:rgba(245,158,11,.1);color:#f59e0b;cursor:pointer">Save as Draft</button>';
+                html += '<button onclick="_policyActivate()" style="padding:6px 14px;font-size:11px;font-weight:600;border-radius:8px;border:1px solid rgba(16,185,129,.3);background:rgba(16,185,129,.1);color:#10b981;cursor:pointer">Save &amp; Activate</button>';
+                html += '</div></div>';
+            }
+            html += '</div>';
+
+            // Weekly off card (migrated from Settings)
+            html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px">';
+            html += '<h2 style="font-size:16px;font-weight:700;color:#f1f5f9;margin:0 0 12px">Weekly Off</h2>';
+            html += '<div style="display:flex;gap:20px;align-items:center">';
+            html += '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#f1f5f9;cursor:pointer"><input type="checkbox" id="hr-wo-sunday-pol" ' + (hrCompanySettings.weekly_off_sunday ? 'checked' : '') + ' onchange="_policySaveWeeklyOff()"> Sunday</label>';
+            html += '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#f1f5f9;cursor:pointer"><input type="checkbox" id="hr-wo-saturday-pol" ' + (hrCompanySettings.weekly_off_saturday ? 'checked' : '') + ' onchange="_policySaveWeeklyOff()"> Saturday</label>';
+            html += '</div></div>';
+
+            // Version history
+            if (history.length > 0) {
+                html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px">';
+                html += '<h2 style="font-size:16px;font-weight:700;color:#f1f5f9;margin:0 0 12px">Version History</h2>';
+                html += '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">';
+                html += '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.08)">';
+                html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Version</th>';
+                html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Effective</th>';
+                html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Status</th>';
+                html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Created By</th>';
+                html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Date</th>';
+                html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Actions</th>';
+                html += '</tr></thead><tbody>';
+                history.forEach(function (r) {
+                    var statusColor = r.status === 'draft' ? '#f59e0b' : r.status === 'superseded' ? '#808a9d' : '#10b981';
+                    html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">';
+                    html += '<td style="padding:6px 8px;color:#f1f5f9">v' + r.version + '</td>';
+                    html += '<td style="padding:6px 8px;color:#f1f5f9">' + r.effective_date + '</td>';
+                    html += '<td style="padding:6px 8px"><span style="color:' + statusColor + ';font-weight:600;text-transform:capitalize">' + r.status + '</span></td>';
+                    html += '<td style="padding:6px 8px;color:#808a9d">' + (r.created_by || '—') + '</td>';
+                    html += '<td style="padding:6px 8px;color:#808a9d">' + (r.created_at ? new Date(r.created_at).toLocaleDateString() : '—') + '</td>';
+                    html += '<td style="padding:6px 8px">';
+                    if (r.status === 'draft') {
+                        html += '<button onclick="_policyActivateDraft(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(16,185,129,.3);background:rgba(16,185,129,.08);color:#10b981;cursor:pointer;margin-right:4px">Activate</button>';
+                        html += '<button onclick="_policyDeleteDraft(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.08);color:#f87171;cursor:pointer">Delete</button>';
+                    } else if (r.status === 'superseded') {
+                        html += '<button onclick="_policyRevert(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.08);color:#3b82f6;cursor:pointer">Revert to This</button>';
+                    }
+                    html += '</td></tr>';
+                });
+                html += '</tbody></table></div></div>';
+            }
+
+            html += '</div>';
+            el.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function _policyStartEdit() { _policyEditing = true; _policyLoaded = false; renderHRPolicyTab(); }
+        function _policyCancelEdit() { _policyEditing = false; _policyLoaded = false; renderHRPolicyTab(); }
+
+        function _policyCollectSettings() {
+            var keys = ['PROBATION_MONTHS','CL_PER_CYCLE','CL_CYCLE_MONTHS','CL_CARRY_MONTHS','CL_VALIDITY_MONTHS','SL_PER_MONTH','MAX_CONSECUTIVE','INCIDENT_HALFDAY_AT','INCIDENT_FULLDAY_AT','WORK_START','WORK_END','LEAVE_SYSTEM_START'];
+            var settings = {};
+            keys.forEach(function (k) {
+                var inp = document.getElementById('pol-' + k);
+                if (!inp) return;
+                var v = inp.value;
+                if (inp.type === 'number') v = Number(v);
+                settings[k] = v;
+            });
+            return settings;
+        }
+
+        async function _policySaveDraft() {
+            var settings = _policyCollectSettings();
+            var effDate = document.getElementById('pol-effective-date').value;
+            var notes = (document.getElementById('pol-notes').value || '').trim();
+            if (!effDate) { alert('Effective date required.'); return; }
+            var { data: latest } = await dbInstance.from('hr_policy_config').select('version').eq('policy_key', 'leave').order('version', { ascending: false }).limit(1);
+            var nextVer = (latest && latest[0]) ? latest[0].version + 1 : 1;
+            var { error } = await dbInstance.from('hr_policy_config').insert([{
+                policy_key: 'leave', version: nextVer, settings: settings,
+                effective_date: effDate, status: 'draft',
+                created_by: activeEmail || 'unknown', notes: notes || null
+            }]);
+            if (error) { alert('Error saving draft: ' + error.message); return; }
+            await dbInstance.from('hr_policy_audit').insert([{
+                action: 'created', actor_email: activeEmail || 'unknown',
+                new_settings: settings, reason: notes || 'Draft created'
+            }]);
+            _policyEditing = false; _policyLoaded = false;
+            renderHRPolicyTab();
+        }
+
+        async function _policyActivate() {
+            var settings = _policyCollectSettings();
+            var effDate = document.getElementById('pol-effective-date').value;
+            var notes = (document.getElementById('pol-notes').value || '').trim();
+            if (!effDate) { alert('Effective date required.'); return; }
+            var { data: current } = await dbInstance.from('hr_policy_config').select('*').eq('policy_key', 'leave').eq('status', 'active').maybeSingle();
+            var prevSettings = current ? current.settings : null;
+            if (current) {
+                await dbInstance.from('hr_policy_config').update({ status: 'superseded', superseded_at: new Date().toISOString() }).eq('id', current.id);
+            }
+            var { data: latest } = await dbInstance.from('hr_policy_config').select('version').eq('policy_key', 'leave').order('version', { ascending: false }).limit(1);
+            var nextVer = (latest && latest[0]) ? latest[0].version + 1 : 1;
+            var { data: newRow, error } = await dbInstance.from('hr_policy_config').insert([{
+                policy_key: 'leave', version: nextVer, settings: settings,
+                effective_date: effDate, status: 'active',
+                created_by: activeEmail || 'unknown',
+                approved_by: activeEmail || 'unknown',
+                approved_at: new Date().toISOString(), notes: notes || null
+            }]).select().single();
+            if (error) { alert('Error activating policy: ' + error.message); return; }
+            await dbInstance.from('hr_policy_audit').insert([{
+                policy_config_id: newRow ? newRow.id : null,
+                action: 'activated', actor_email: activeEmail || 'unknown',
+                prev_settings: prevSettings, new_settings: settings,
+                reason: notes || 'Policy activated'
+            }]);
+            if (typeof PolicyConfig !== 'undefined') { await PolicyConfig.refresh(); }
+            if (typeof LeavePolicy !== 'undefined' && LeavePolicy.reloadPolicy) LeavePolicy.reloadPolicy();
+            _policyEditing = false; _policyLoaded = false;
+            renderHRPolicyTab();
+        }
+
+        async function _policyActivateDraft(draftId) {
+            if (!confirm('Activate this draft version? The current active policy will be superseded.')) return;
+            var { data: draft } = await dbInstance.from('hr_policy_config').select('*').eq('id', draftId).maybeSingle();
+            if (!draft) { alert('Draft not found.'); return; }
+            var { data: current } = await dbInstance.from('hr_policy_config').select('*').eq('policy_key', 'leave').eq('status', 'active').maybeSingle();
+            if (current) {
+                await dbInstance.from('hr_policy_config').update({ status: 'superseded', superseded_at: new Date().toISOString() }).eq('id', current.id);
+            }
+            await dbInstance.from('hr_policy_config').update({
+                status: 'active', approved_by: activeEmail || 'unknown', approved_at: new Date().toISOString()
+            }).eq('id', draftId);
+            await dbInstance.from('hr_policy_audit').insert([{
+                policy_config_id: draftId, action: 'activated',
+                actor_email: activeEmail || 'unknown',
+                prev_settings: current ? current.settings : null,
+                new_settings: draft.settings,
+                reason: 'Draft v' + draft.version + ' activated'
+            }]);
+            if (typeof PolicyConfig !== 'undefined') { await PolicyConfig.refresh(); }
+            if (typeof LeavePolicy !== 'undefined' && LeavePolicy.reloadPolicy) LeavePolicy.reloadPolicy();
+            _policyLoaded = false; renderHRPolicyTab();
+        }
+
+        async function _policyDeleteDraft(draftId) {
+            if (!confirm('Delete this draft?')) return;
+            await dbInstance.from('hr_policy_config').delete().eq('id', draftId).eq('status', 'draft');
+            _policyLoaded = false; renderHRPolicyTab();
+        }
+
+        async function _policySaveWeeklyOff() {
+            var sun = document.getElementById('hr-wo-sunday-pol').checked;
+            var sat = document.getElementById('hr-wo-saturday-pol').checked;
+            try {
+                if (hrCompanySettings.id) {
+                    await dbInstance.from('hr_company_settings').update({ weekly_off_sunday: sun, weekly_off_saturday: sat }).eq('id', hrCompanySettings.id);
+                } else {
+                    await dbInstance.from('hr_company_settings').insert([{ weekly_off_sunday: sun, weekly_off_saturday: sat }]);
+                }
+                hrCompanySettings.weekly_off_sunday = sun;
+                hrCompanySettings.weekly_off_saturday = sat;
+                var sunOld = document.getElementById('hr-wo-sunday'); if (sunOld) sunOld.checked = sun;
+                var satOld = document.getElementById('hr-wo-saturday'); if (satOld) satOld.checked = sat;
+            } catch (e) { alert('Could not save: ' + e.message); }
+        }
+
+        async function _policyRevert(versionId) {
+            if (!confirm('Create a new draft from this version? You can review it before activating.')) return;
+            var { data: old } = await dbInstance.from('hr_policy_config').select('*').eq('id', versionId).maybeSingle();
+            if (!old) { alert('Version not found.'); return; }
+            var { data: latest } = await dbInstance.from('hr_policy_config').select('version').eq('policy_key', 'leave').order('version', { ascending: false }).limit(1);
+            var nextVer = (latest && latest[0]) ? latest[0].version + 1 : 1;
+            await dbInstance.from('hr_policy_config').insert([{
+                policy_key: 'leave', version: nextVer, settings: old.settings,
+                effective_date: new Date().toISOString().slice(0, 10), status: 'draft',
+                created_by: activeEmail || 'unknown',
+                notes: 'Reverted from v' + old.version
+            }]);
+            await dbInstance.from('hr_policy_audit').insert([{
+                action: 'reverted', actor_email: activeEmail || 'unknown',
+                new_settings: old.settings,
+                reason: 'Reverted from v' + old.version
+            }]);
+            _policyLoaded = false; renderHRPolicyTab();
         }
 
 // ── renderHRDashboard (orig line 8890) ──
