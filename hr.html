@@ -1177,9 +1177,10 @@
                             <h3 class="text-sm font-bold uppercase tracking-wider text-white/70">Today's Workforce</h3>
                             <button onclick="switchHRSubtab('employees')" class="text-xs font-bold px-3 py-1.5 rounded-lg" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);color:#c7cbe0">View All Employees</button>
                         </div>
+                        <div id="hr-dash-workforce-summary" class="px-4 md:px-6 pt-3" style="display:flex;gap:8px;flex-wrap:wrap"></div>
                         <table class="w-full text-sm text-left mt-2">
                             <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Role</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4">Designation</th><th class="py-3 px-4"></th>
+                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Role</th><th class="py-3 px-4">Status</th><th class="py-3 px-4">Check-in</th><th class="py-3 px-4"></th>
                             </tr></thead>
                             <tbody id="hr-dash-workforce-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
@@ -3335,7 +3336,8 @@
 
             // Today's Workforce
             const activeEmps = hrEmployees.filter(e => e.employment_status === 'active');
-            document.getElementById('hr-dash-workforce-rows').innerHTML = activeEmps.length ? activeEmps.map(e => {
+            const _divLbl = { education:'Education', production:'Production House', hr:'HR', accounts:'Accounts', sales:'Sales', other:'Administration' };
+            const _wf = activeEmps.map(e => {
                 const rec = hrAttendance.find(a => a.employee_id === e.id && a.att_date === todayStr);
                 const portalLog = hrPortalLogFor(e, todayStr);
                 // WFH is its own resolved status, never folded into "On Leave" (same
@@ -3345,16 +3347,24 @@
                 const effectiveStatus = rec ? rec.status : (portalLog ? 'present' : null);
                 const status = isWFH ? 'WFH' : onLeave ? 'On Leave' : effectiveStatus ? effectiveStatus.replace('_',' ') : 'Not marked';
                 const badgeClass = isWFH ? 'hr-badge-wfh' : onLeave ? 'hr-badge-pending' : effectiveStatus ? 'hr-badge-' + effectiveStatus : '';
-                const checkIn = rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+                const inTs = rec?.clock_in_time || portalLog?.log_in_time || null;
+                const checkIn = inTs ? new Date(inTs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+                const rank = !badgeClass ? 0 : (onLeave || isWFH) ? 1 : 2;
+                return { e, status, badgeClass, checkIn, inTs, rank, isWFH, onLeave };
+            }).sort((a, b) => a.rank - b.rank || (a.inTs && b.inTs ? new Date(a.inTs) - new Date(b.inTs) : 0) || (a.e.full_name||'').localeCompare(b.e.full_name||''));
+            const _sum = el => { if (!el) return; const n = f => _wf.filter(f).length; const chip = (lbl, v, col) => `<span style="display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;border:1px solid ${col}40;background:${col}14;font-size:11.5px;font-weight:600;color:${col}"><span style="width:7px;height:7px;border-radius:50%;background:${col}"></span>${lbl}<b style="color:#fff;font-variant-numeric:tabular-nums">${v}</b></span>`;
+                el.innerHTML = chip('Present', n(x => x.rank === 2), '#10b981') + chip('Not marked', n(x => x.rank === 0), '#fb923c') + chip('On leave', n(x => x.onLeave), '#f59e0b') + chip('WFH', n(x => x.isWFH), '#a78bfa') + `<span style="margin-left:auto;font-size:11.5px;color:#6b74a0;align-self:center">${_wf.length} active employees</span>`; };
+            _sum(document.getElementById('hr-dash-workforce-summary'));
+            document.getElementById('hr-dash-workforce-rows').innerHTML = _wf.length ? _wf.map(({ e, status, badgeClass, checkIn, rank }) => {
+                const c = HR_DIV_COLOR[e.division] || '#94a3b8';
                 return `<tr class="hover:bg-white/[0.02]">
-                    <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(e, 26)}<span>${e.full_name}</span></div></td>
-                    <td data-label="Role" class="py-2.5 px-4 text-[#a5adcf]">${hrRoleDisplay(e)}</td>
-                    <td data-label="Status" class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="text-[#4a5182] text-xs">${status}</span>`}</td>
-                    <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${checkIn}</td>
-                    <td data-label="Designation" class="py-2.5 px-4 text-[#a5adcf]">${e.designation || '—'}</td>
+                    <td data-label="Employee" class="py-2.5 px-4" style="box-shadow:inset 3px 0 0 ${rank === 0 ? '#fb923c' : 'transparent'}"><div style="display:flex;align-items:center;gap:10px">${hrAvatarHTML(e, 32)}<div style="min-width:0"><div class="text-white font-semibold">${e.full_name}</div><div class="text-[11px] text-[#6b74a0]">${e.designation || '—'}</div></div></div></td>
+                    <td data-label="Role" class="py-2.5 px-4"><div class="text-[#c7cbe0]">${hrRoleDisplay(e)}</div><div style="margin-top:4px">${hrDivPill(e.division, _divLbl[e.division] || e.division || '—')}</div></td>
+                    <td data-label="Status" class="py-2.5 px-4">${badgeClass ? `<span class="hr-badge ${badgeClass}">${status}</span>` : `<span class="st-pill st-mute" style="text-transform:none">Not marked</span>`}</td>
+                    <td data-label="Check-in" class="py-2.5 px-4 ui-num" style="color:${checkIn === '—' ? 'rgba(255,255,255,.25)' : '#e6e9f5'};font-weight:600">${checkIn}</td>
                     <td class="py-2.5 px-4 text-right"><button onclick="openHREmployeeProfile('${e.id}')" title="View profile" class="text-[#6b74a0] hover:text-white p-1 rounded"><i data-lucide="more-vertical" class="w-4 h-4"></i></button></td>
                 </tr>`;
-            }).join('') : `<tr><td colspan="6"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No active employees yet.</div></div></td></tr>`;
+            }).join('') : `<tr><td colspan="5"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No active employees yet.</div></div></td></tr>`;
         }
 
         // HR Overview stat cards — click-through detail (spec item 5). Every category here
@@ -4524,7 +4534,7 @@
             }
         }
 
-const HR_DIV_COLOR = { education:'#10b981', production:'#7c3aed', sales:'#f59e0b', hr:'#3b82f6', accounts:'#06b6d4', other:'#94a3b8' };
+var HR_DIV_COLOR = { education:'#10b981', production:'#7c3aed', sales:'#f59e0b', hr:'#3b82f6', accounts:'#06b6d4', other:'#94a3b8' };
 function hrDivPill(div, label) { const c = HR_DIV_COLOR[div] || '#94a3b8'; return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:${c};background:${c}1a;border:1px solid ${c}40;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${c}"></span>${label}</span>`; }
 function hrDateChip(iso, past) { const d = new Date(String(iso).slice(0,10)+'T00:00:00'); if (isNaN(d)) return iso || '—'; return `<div style="display:flex;align-items:center;gap:12px;${past?'opacity:.5':''}"><div style="width:42px;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.1);text-align:center;flex-shrink:0"><div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,107,6,.15);color:#ff8a3d;padding:2px 0">${d.toLocaleDateString('en-IN',{month:'short'})}</div><div style="font-size:16px;font-weight:800;color:#fff;padding:3px 0 4px;line-height:1">${d.getDate()}</div></div><div><div style="color:#fff;font-weight:600;font-size:13px">${d.toLocaleDateString('en-IN',{weekday:'long'})}</div><div style="color:#6b74a0;font-size:11px">${d.getFullYear()}${past?' · passed':''}</div></div></div>`; }
 function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice(0,10)+'T00:00:00'); return isNaN(d) ? x : d.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'}); }; return !b || a === b ? f(a) : f(a) + ' → ' + f(b); }
