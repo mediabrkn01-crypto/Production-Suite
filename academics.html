@@ -3915,7 +3915,13 @@ async function boot(){
   if (typeof renderLiveBatchCards === 'function') renderLiveBatchCards();
   if (isHead) { buildDayChips(); typeChanged(); } // prime the Create Batch tab so it's ready on first visit
   initClock();
-  if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
+  _acadApplyHeaderAvatars();
+  if (!window._acadAvatarVisHook) {
+    window._acadAvatarVisHook = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { _myHREmployeeRecord = null; _acadApplyHeaderAvatars(); }
+    });
+  }
   // PERFORMANCE: every loadXTab() call that used to sit here (Availability, Classes,
   // Students, Schedule, Reports, Delegation, My Profile, Announcements, Documents,
   // Payslips, Team, My Leave [+ its own inner My Balances/My Requests], My Attendance
@@ -5112,6 +5118,18 @@ async function _acadGetMyHREmployeeRecord(){
   const { data } = await mediaHrDB.from('hr_employees').select('*').eq('portal_email', currentUser.username.trim().toLowerCase()).maybeSingle();
   _myHREmployeeRecord = data || null;
   return _myHREmployeeRecord;
+}
+async function _acadApplyHeaderAvatars(){
+  try {
+    const me = await _acadGetMyHREmployeeRecord();
+    if (!me) return;
+    const wrap = document.getElementById('acad-user-avatar-wrap');
+    if (wrap) wrap.innerHTML = _acadAvatarHTML(me, 28);
+    const top = document.getElementById('acad-topbar-account-avatar');
+    if (top) top.innerHTML = _acadAvatarHTML(me, 30);
+    const mtb = document.getElementById('mtb-acad-account-avatar');
+    if (mtb) mtb.innerHTML = _acadAvatarHTML(me, 34);
+  } catch (e) { console.warn('_acadApplyHeaderAvatars failed:', e.message); }
 }
 function _acadProfileField(label, value){
   if (value === undefined || value === null || value === '') value = '—';
