@@ -367,6 +367,10 @@ async function checkDeptLeaveNotifications() {
 // Attendance/Leave/Payslips/Profile pages and the notification poll.
 async function loadMyHRData() {
     if (!activeEmail) { myHRDataLoaded = true; return; }
+    if (typeof PolicyConfig !== 'undefined' && dbInstance) {
+        await PolicyConfig.load(dbInstance);
+        if (typeof LeavePolicy !== 'undefined' && LeavePolicy.reloadPolicy) LeavePolicy.reloadPolicy();
+    }
     try {
         let lookup = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
         let me = lookup.data && lookup.data[0];

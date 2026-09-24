@@ -16,7 +16,11 @@
   'use strict';
 
   // ---- Policy constants (the new PDF, nothing from the old system) ----------
-  var P = {
+  // P_DEFAULTS are the hardcoded fallback. If policy-config.js loaded an active
+  // hr_policy_config row before this IIFE ran, those DB values override via
+  // Object.assign. If PolicyConfig isn't available (script missing, DB down),
+  // these exact values remain — zero-risk migration.
+  var P_DEFAULTS = {
     WORK_START: '09:00',        // §7 official working hours
     WORK_END:   '17:30',        // 5:30 PM
     SL_PER_MONTH: 1,            // §2.1 1 Sick Leave/month, no carry-forward
@@ -29,6 +33,9 @@
     INCIDENT_HALFDAY_AT: 2,     // §7 2 late/early instances → half-day deduction
     INCIDENT_FULLDAY_AT: 4      // §7 4+ instances → full-day deduction
   };
+  var P = Object.assign({}, P_DEFAULTS,
+    (typeof global !== 'undefined' && global.PolicyConfig) ? global.PolicyConfig.getLeavePolicy() : {}
+  );
 
   // Canonical resolved attendance codes (§18). Keep existing valid codes.
   var CODES = { P:'P', L:'L', WFH:'WFH', SL:'SL', CL:'CL', ML:'ML', LOP:'LOP', WO:'WO', H:'H', OE:'OE' };
@@ -69,7 +76,7 @@
   // calendar half-year). First cycle = 2026-09 → 2027-02; next = 2027-03 → 2027-08; etc.
   // A date before the anchor clamps to cycle 0 (so pre-system credits count as CURRENT, never a
   // fabricated prior carry-forward — §5). `index` is the stable cycle number for comparisons.
-  var LEAVE_SYSTEM_START = '2026-09-01';
+  var LEAVE_SYSTEM_START = P.LEAVE_SYSTEM_START || '2026-09-01';
   function clCycleFor(dateStr) {
     var start = new Date(LEAVE_SYSTEM_START.slice(0,10) + 'T00:00:00');
     var d = new Date((dateStr || '').slice(0, 10) + 'T00:00:00');
@@ -570,8 +577,18 @@
     return db;
   }
 
+  function reloadPolicy() {
+    if (typeof global !== 'undefined' && global.PolicyConfig) {
+      var db = global.PolicyConfig.getLeavePolicy();
+      Object.keys(db).forEach(function (k) { P[k] = db[k]; });
+      LEAVE_SYSTEM_START = P.LEAVE_SYSTEM_START || '2026-09-01';
+    }
+  }
+
   var LeavePolicy = {
     P: P, CODES: CODES,
+    P_DEFAULTS: P_DEFAULTS,
+    reloadPolicy: reloadPolicy,
     normType: normType,
     clCycleFor: clCycleFor,
     getEmployeeWorkSchedule: getEmployeeWorkSchedule,
