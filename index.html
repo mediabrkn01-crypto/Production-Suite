@@ -497,20 +497,6 @@
             backdrop-filter: blur(20px) !important;
         }
 
-        /* ── Corner FABs ── */
-        #corner-bell-btn, #corner-search-btn {
-            border-radius: 6px !important;
-            background: rgba(22,28,45,0.8) !important;
-            border: 1px solid var(--panel-border) !important;
-            width: 30px !important; height: 30px !important;
-            transition: all 0.18s !important;
-            color: var(--text-muted) !important;
-        }
-        #corner-bell-btn:hover, #corner-search-btn:hover {
-            border-color: rgba(255,6,82,0.35) !important;
-            color: #fff !important;
-        }
-
         /* ── Voice bars ── */
         @keyframes voiceBarBounce { 0%,100%{height:4px} 50%{height:22px} }
         .voice-bar { width:3px;min-height:4px;background:linear-gradient(to top,var(--brand-1),var(--brand-3));border-radius:3px;animation:voiceBarBounce 0.6s ease-in-out infinite;animation-delay:var(--d,0s); }
@@ -676,6 +662,7 @@
     <link rel="stylesheet" href="dashboard-metrics.css">
     <script src="dashboard-metrics.js"></script>
     <script src="shared-greeting.js"></script>
+    <script src="be-shell.js"></script>
 <link rel="stylesheet" href="be-timepicker.css">
 <script src="be-timepicker.js"></script>
 
@@ -1258,6 +1245,40 @@
 
         <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" style="background:var(--bg-base)">
 
+            <!-- Common dashboard header — shared be-shell.js component (same on HR, Academic,
+                 Sales, Manager). Existing ids kept, so the notification badge, avatar photo and
+                 account menu code below keep driving it unchanged. -->
+            <div id="be-shell-header"></div>
+            <script>
+            BEShell.header('#be-shell-header', {
+              ids: { bell: 'corner-bell-btn', badge: 'notif-badge-corner', account: 'topbar-account-btn', avatar: 'topbar-account-avatar', date: 'header-date-text' },
+              searchPlaceholder: 'Search tasks, videos, thumbnails, creators…',
+              onSearch: () => toggleGlobalSearch(),
+              onBell: () => toggleNotifPanel(),
+              getUser: () => ({
+                name: (typeof activeUser !== 'undefined' && activeUser) || '',
+                role: (document.getElementById('sidebar-user-role') || {}).textContent || ''
+              }),
+            });
+            // Wired to BOTH the header avatar and the mobile sticky app-bar avatar
+            // (#mtb-account-btn) — same data/handlers, one shared dropdown component.
+            (function(){
+              var _amOpts = {
+                getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
+                getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
+                onSwitchAccount: (email) => switchToAccount(email),
+                onRemoveAccount: (email) => removeSavedAccount(email),
+                onAddAccount: () => startAddAccountFlow(),
+                onLogout: () => logoutPortal(),
+                getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
+              };
+              if (typeof initAccountMenu === 'function') {
+                initAccountMenu(Object.assign({ trigger: '#topbar-account-btn' }, _amOpts));
+                initAccountMenu(Object.assign({ trigger: '#mtb-account-btn' }, _amOpts));
+              }
+            })();
+            </script>
+
             <!-- Notification Panel -->
             <!-- Floating corner bell — replaces the sidebar Notifications tab -->
 
@@ -1298,18 +1319,6 @@
                 </div>
             </div>
             
-            <div id="employee-notification-banner" class="hidden bg-blue-900/40 border border-blue-500/40 rounded-xl p-4 flex items-start gap-3 animate-item">
-                <div class="bg-blue-500/20 text-blue-400 p-2 rounded-lg shrink-0">
-                    <i data-lucide="bell" class="w-5 h-5"></i>
-                </div>
-                <div class="flex-1">
-                    <h4 class="text-white font-bold text-sm">Employee Briefing Alert</h4>
-                    <p id="employee-notification-text" class="text-xs text-gray-300 mt-0.5">Scanning live tracking data...</p>
-                </div>
-                <button onclick="dismissEmployeeBriefBanner()" title="Hide this brief" class="text-blue-400 hover:text-white transition-colors shrink-0 p-1 rounded-lg hover:bg-blue-500/20">
-                    <i data-lucide="x" class="w-4 h-4"></i>
-                </button>
-            </div>
 
             <!-- The old mobile identity/switcher/Sync/Logout card that used to live here was
                  removed — it duplicated the mobile app-bar's own avatar menu (Switch Account/
@@ -1471,112 +1480,74 @@
             </div>
 
             <div id="tab-content-dashboard" class="space-y-6">
-                <!-- Celebration banner slot (common.js's Celebration Engine renders designer
-                     artwork here when a birthday/anniversary/festival banner is active) — part
-                     of the dashboard content area itself, not a floating toast (spec item 16).
-                     Empty/collapsed whenever nothing is active. -->
-                <div id="celebration-banner-slot" class="be-celeb-banner-slot"></div>
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <!-- Live time-of-day greeting (shared-greeting.js) — small on purpose,
-                             sits above the real page title so it never competes with it (spec
-                             item 5). Rendered immediately with a neutral "Good Afternoon!" the
-                             instant this element exists, not gated on any data load; updates in
-                             place once the real name resolves and once a minute after that so
-                             the greeting itself flips Morning→Afternoon→Evening→Night live. -->
-                        <p id="live-greeting" class="text-xs font-semibold text-[#8b93b8] mb-1"></p>
-                        <script>
-                        if (typeof initLiveGreeting === 'function') {
-                          // Name priority (spec item 6): employee display name → profile full
-                          // name → auth display name → safe fallback. activeUser (common.js,
-                          // loaded later in this same document) already resolves to the real
-                          // HR/user_roster display name by the time login completes — same
-                          // value the sidebar/topbar avatar's own name label already shows, not
-                          // a second name source. Not yet declared at THIS point in page load
-                          // (common.js hasn't loaded yet) — that's fine, the neutral "Good
-                          // Afternoon!" shows first, window._beRefreshGreeting (called from
-                          // launchSession() once login resolves, see there) updates it live.
-                          window._beRefreshGreeting = initLiveGreeting({
-                            mount: '#live-greeting',
-                            getName: () => (typeof activeUser !== 'undefined' && activeUser) || null,
-                          });
-                        }
-                        </script>
-                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Media Production Matrix</h1>
-                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Live overview tracking dashboard metrics and workflow ledgers.</p>
+                <!-- Shared top stack (be-shell.js): banner → welcome → attendance, same order
+                     and spacing on every department dashboard. -->
+                <div class="bes-top">
+                    <!-- Celebration banner slot (common.js's Celebration Engine renders designer
+                         artwork here when a birthday/anniversary/festival banner is active).
+                         Empty/collapsed whenever nothing is active. -->
+                    <div id="celebration-banner-slot" class="be-celeb-banner-slot bes-banner"></div>
+                    <div class="bes-welcome">
+                        <div class="bes-welcome-main">
+                            <p id="live-greeting" class="bes-greet"></p>
+                            <script>
+                            if (typeof initLiveGreeting === 'function') {
+                              // Name priority (spec item 6): employee display name → profile full
+                              // name → auth display name → safe fallback. activeUser (common.js,
+                              // loaded later in this same document) already resolves to the real
+                              // HR/user_roster display name by the time login completes — same
+                              // value the sidebar/topbar avatar's own name label already shows, not
+                              // a second name source. Not yet declared at THIS point in page load
+                              // (common.js hasn't loaded yet) — that's fine, the neutral "Good
+                              // Afternoon!" shows first, window._beRefreshGreeting (called from
+                              // launchSession() once login resolves, see there) updates it live.
+                              window._beRefreshGreeting = initLiveGreeting({
+                                mount: '#live-greeting',
+                                getName: () => (typeof activeUser !== 'undefined' && activeUser) || null,
+                              });
+                            }
+                            </script>
+                            <h1 class="bes-title">Media Production Matrix</h1>
+                            <p class="bes-sub">Live overview tracking dashboard metrics and workflow ledgers.</p>
+                        </div>
+                        <div class="bes-actions">
+                            <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2 admin-only">
+                                <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button onclick="downloadWorkbookCSV()" class="glass-button glass-button-brand text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
+                                    <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
+                                </button></span>
+                                <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="glass-button text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
+                                    <i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet
+                                </button></span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2 flex-wrap justify-end">
-                        <!-- Calendar/month chip — always visible -->
-                        <div id="header-date-chip" class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default;color:#808a9d">
-                            <i data-lucide="calendar" style="width:13px;height:13px"></i>
-                            <span id="header-date-text"></span>
+                    <div id="attendance-clock-card" class="hidden bes-att">
+                        <div class="bes-att-l">
+                            <div class="bes-att-ic"><i data-lucide="clock-4"></i></div>
+                            <div>
+                                <p class="bes-att-lbl">Attendance</p>
+                                <p id="attendance-status-text" class="bes-att-st">Checking today's status...</p>
+                            </div>
                         </div>
-                        <div id="admin-download-wrapper" class="hidden flex flex-wrap gap-2 admin-only">
-                            <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button onclick="downloadWorkbookCSV()" class="glass-button glass-button-brand text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
-                                <i data-lucide="download" class="w-4 h-4"></i> Export Master Workbook
-                            </button></span>
-                            <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="sync-sheet-btn" onclick="manualSyncToSheet()" class="glass-button text-white text-xs font-bold px-5 py-3 rounded-full uppercase tracking-wider flex items-center justify-center gap-2">
-                                <i data-lucide="sheet" class="w-4 h-4"></i> Sync to Sheet
-                            </button></span>
+                        <div class="bes-att-r">
+                            <button id="attendance-clockin-btn" onclick="handleClockIn()" class="bes-clk bes-clk-in"><i data-lucide="log-in"></i> Clock In</button>
+                            <button id="attendance-clockout-btn" onclick="handleClockOut()" class="hidden bes-clk bes-clk-out"><i data-lucide="log-out"></i> Clock Out</button>
                         </div>
-                        <!-- Search + Bell inline with header buttons — matches reference layout -->
-                        <span class="glass-button-wrap rounded-full"><span class="glass-button-shadow rounded-full"></span><button id="corner-search-btn" onclick="toggleGlobalSearch()" title="Search" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
-                            <i data-lucide="search" class="w-4 h-4"></i>
-                        </button></span>
-                        <span class="glass-button-wrap rounded-full" style="position:relative"><span class="glass-button-shadow rounded-full"></span><button id="corner-bell-btn" onclick="toggleNotifPanel()" title="Notifications" class="glass-button w-10 h-10 rounded-full flex items-center justify-center text-white">
-                            <i data-lucide="bell" class="w-4 h-4"></i>
-                        </button>
-                        <span id="notif-badge-corner" class="hidden" style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 4px;z-index:10;box-shadow:0 2px 6px rgba(255,5,82,0.4)"></span></span>
-                        <!-- Top-right profile/account menu — Switch Account/Add Another
-                             Account/Logout now live here (closed by default), replacing the
-                             old always-mounted sidebar panel. See account-menu.js. Kept
-                             separate from the bell above (spec: never merge notifications
-                             into account switching). -->
-                        <button id="topbar-account-btn" class="glass-button" style="width:36px;height:36px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;position:relative">
-                            <span id="topbar-account-avatar" style="display:flex;width:30px;height:30px;border-radius:50%;overflow:hidden"><div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#ff6b06,#f9182f);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">?</div></span>
-                        </button>
-                        <script>
-                        // Wired to BOTH the desktop header avatar and the mobile sticky app-bar
-                        // avatar (#mtb-account-btn) — same data/handlers, one shared dropdown
-                        // component, not a second account menu.
-                        (function(){
-                          var _amOpts = {
-                            getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
-                            getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
-                            onSwitchAccount: (email) => switchToAccount(email),
-                            onRemoveAccount: (email) => removeSavedAccount(email),
-                            onAddAccount: () => startAddAccountFlow(),
-                            onLogout: () => logoutPortal(),
-                            getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
-                          };
-                          if (typeof initAccountMenu === 'function') {
-                            initAccountMenu(Object.assign({ trigger: '#topbar-account-btn' }, _amOpts));
-                            initAccountMenu(Object.assign({ trigger: '#mtb-account-btn' }, _amOpts));
-                          }
-                        })();
-                        </script>
                     </div>
                 </div>
 
-
-                <div id="attendance-clock-card" class="hidden card p-4 md:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div class="flex items-center gap-3">
-                        <div class="p-2.5 rounded-lg bg-orange-500/10 text-white/70 shrink-0">
-                            <i data-lucide="clock-4" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <p class="text-xs font-bold text-white uppercase tracking-wider">Attendance</p>
-                            <p id="attendance-status-text" class="text-[11px] text-[#6b74a0] mt-0.5">Checking today's status...</p>
-                        </div>
+                <!-- Employee briefing — Media-specific, so it sits below the shared top stack. -->
+                <div id="employee-notification-banner" class="hidden bg-blue-900/40 border border-blue-500/40 rounded-xl p-4 flex items-start gap-3 animate-item">
+                    <div class="bg-blue-500/20 text-blue-400 p-2 rounded-lg shrink-0">
+                        <i data-lucide="bell" class="w-5 h-5"></i>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button id="attendance-clockin-btn" onclick="handleClockIn()" class="text-xs font-bold px-4 py-2 rounded-md uppercase tracking-wide flex items-center gap-1.5 cursor-pointer transition" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-family:Inter,sans-serif">
-                            <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
-                        </button>
-                        <button id="attendance-clockout-btn" onclick="handleClockOut()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
-                            <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
-                        </button>
+                    <div class="flex-1">
+                        <h4 class="text-white font-bold text-sm">Employee Briefing Alert</h4>
+                        <p id="employee-notification-text" class="text-xs text-gray-300 mt-0.5">Scanning live tracking data...</p>
                     </div>
+                    <button onclick="dismissEmployeeBriefBanner()" title="Hide this brief" class="text-blue-400 hover:text-white transition-colors shrink-0 p-1 rounded-lg hover:bg-blue-500/20">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
                 </div>
 
                 <div id="metrics-counter-container" class="grid grid-cols-2 lg:grid-cols-5 gap-3">

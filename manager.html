@@ -15,6 +15,7 @@
 <script src="account-menu.js"></script>
 <script src="photo-preview.js"></script>
 <script src="shared-greeting.js"></script>
+<script src="be-shell.js"></script>
 <style>
   :root{ --bg:#08070b; --panel:#0f0d14; --panel2:#141019; --bd:rgba(255,255,255,0.07);
          --tx:#f4f4f8; --tx2:rgba(255,255,255,0.55); --tx3:rgba(255,255,255,0.30);
@@ -36,21 +37,10 @@
   .navsep{font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);padding:16px 12px 6px}
   .aside .tagline{margin-top:auto;padding:14px 10px 4px;font-size:11px;color:var(--tx3);line-height:1.5;font-style:italic}
   .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-  .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;
-    padding:16px 26px;border-bottom:1px solid var(--bd);background:var(--panel);flex-shrink:0}
-  .topbar .greet{font-size:12px;color:var(--tx2);font-weight:600}
-  .topbar h1{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:2px 0 3px}
-  .topbar .sub{font-size:12.5px;color:var(--tx2)}
-  .hdr-right{display:flex;align-items:center;gap:12px}
-  .clockchip{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--bd);border-radius:11px;padding:8px 13px;font-size:12px;color:var(--tx2)}
-  .bell,.avatar{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
-  .bell{background:var(--panel2);border:1px solid var(--bd);color:var(--tx2)} .bell:hover{color:#fff}
-  .bell .dot{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:99px;background:var(--gk);color:#fff;font-size:9px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 4px}
-  .avatar{border-radius:50%;background:var(--gk);font-weight:800;color:#fff;overflow:hidden;font-size:13px}
-  .avatar img{width:100%;height:100%;object-fit:cover}
+  .mgr-hdr{padding:16px 26px 0;flex-shrink:0}
+  .mgr-hdr .bes-header{margin-bottom:0}
   .content{flex:1;min-height:0;position:relative;overflow:auto}
   .dash{padding:20px 26px 60px;display:flex;flex-direction:column;gap:16px}
-  #celebration-banner-slot:empty{display:none}
   .deptgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
   @media(max-width:1050px){.deptgrid{grid-template-columns:1fr}}
   .deptcard{background:var(--panel);border:1px solid var(--bd);border-radius:18px;padding:16px 18px}
@@ -100,7 +90,7 @@
   .empty{font-size:12px;color:var(--tx3);padding:10px 2px}
   .frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
   [hidden]{display:none!important}
-  @media(max-width:768px){ .aside{display:none} .dash{padding:14px 14px 90px} .topbar{padding:12px 14px} .topbar h1{font-size:21px} }
+  @media(max-width:768px){ .aside{display:none} .dash{padding:14px 14px 90px} .mgr-hdr{padding:12px 14px 0} }
 </style>
 </head>
 <body class="role-manager">
@@ -122,22 +112,38 @@
     </aside>
 
     <main class="main">
-      <div class="topbar">
-        <div>
-          <div class="greet" id="greeting">Welcome</div>
-          <h1 id="mgr-section-title">Manager Command Center</h1>
-          <div class="sub">Company-wide overview — Media, HR, Academics &amp; Sales.</div>
-        </div>
-        <div class="hdr-right">
-          <div class="clockchip" id="mgr-datetime">—</div>
-          <div class="bell" onclick="mgrSection('dashboard'); document.getElementById('mgr-ann')?.scrollIntoView({behavior:'smooth'})" title="Notifications"><i data-lucide="bell"></i><span class="dot" id="mgr-bell-dot"></span></div>
-          <div class="avatar" id="mgr-account-btn" title="Account">M</div>
-        </div>
+      <!-- Common dashboard header — shared be-shell.js component (same on Media, HR, Academic,
+           Sales). Stays visible above every section; embedded department pages hide their own
+           copy (.be-embed) so it never doubles up. No separate mobile bar here, so it stays on
+           phones in compact form. -->
+      <div class="mgr-hdr">
+        <div id="be-shell-header"></div>
+        <script>
+        BEShell.header('#be-shell-header', {
+          ids: { bell: 'mgr-bell', badge: 'mgr-bell-dot', account: 'mgr-account-trigger', avatar: 'mgr-account-btn', date: 'mgr-datetime' },
+          searchPlaceholder: 'Search sections — Media, HR, Academics, Sales…',
+          navSelector: '.navlink[data-sec]',
+          onBell: () => { mgrSection('dashboard'); document.getElementById('mgr-ann')?.scrollIntoView({ behavior: 'smooth' }); },
+          mobileCompact: true,
+          getUser: () => window._mgrEmp ? { name: window._mgrEmp.full_name || '', role: window._mgrEmp.designation || 'Manager' } : null,
+        });
+        </script>
       </div>
 
       <div class="content" id="mgr-content">
         <div class="dash" id="mgr-dash">
-          <div id="celebration-banner-slot"></div>
+          <!-- Shared top stack (be-shell.js): banner → welcome, same order and spacing as
+               every department dashboard. -->
+          <div class="bes-top">
+            <div id="celebration-banner-slot" class="bes-banner"></div>
+            <div class="bes-welcome">
+              <div class="bes-welcome-main">
+                <p class="bes-greet" id="greeting">Welcome</p>
+                <h1 class="bes-title" id="mgr-section-title">Manager Command Center</h1>
+                <p class="bes-sub">Company-wide overview — Media, HR, Academics &amp; Sales.</p>
+              </div>
+            </div>
+          </div>
 
           <div class="deptgrid">
             <!-- MEDIA -->
@@ -323,8 +329,8 @@
     try{ if(typeof runCelebrationQueue==='function') runCelebrationQueue(me); }catch(e){} })();
 
   try { if (typeof initLiveGreeting==='function') initLiveGreeting({ mount:'#greeting', getName:function(){ return (window._mgrEmp&&window._mgrEmp.full_name)||'Manager'; } }); } catch(e){}
-  (function clock(){ var el=document.getElementById('mgr-datetime'); function t(){ if(!el)return; el.textContent=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})+' · '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); } t(); setInterval(t,1000); })();
-  try { if (typeof initAccountMenu==='function') initAccountMenu({ trigger:'#mgr-account-btn',
+  // Date chip: owned by the shared be-shell.js header (same format on every page).
+  try { if (typeof initAccountMenu==='function') initAccountMenu({ trigger:'#mgr-account-trigger',
       getCurrentUser:function(){ return { name:(window._mgrEmp&&window._mgrEmp.full_name)||'Manager', role:(sysRole==='founder'?'Founder':'Manager'), email:email }; },
       getSavedAccounts:function(){ try{ return JSON.parse(localStorage.getItem('be_saved_accounts')||'[]'); }catch(_){ return []; } },
       onSwitchAccount:function(e){ location.href='index.html?e='+encodeURIComponent(e); }, onAddAccount:function(){ location.href='index.html'; },

@@ -44,6 +44,7 @@
     <link rel="stylesheet" href="dashboard-metrics.css">
     <script src="dashboard-metrics.js"></script>
     <script src="shared-greeting.js"></script>
+    <script src="be-shell.js"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -991,84 +992,102 @@
         <script>if (typeof initSidebarCollapse === 'function') initSidebarCollapse('#be-sidebar');</script>
 
         <main class="flex-1 overflow-y-auto" style="padding:20px 24px">
-            <!-- Top bar — search is cosmetic (filters nothing yet), bell reuses the existing
-                 HR notification count, avatar reuses the existing session name/role. -->
-            <div class="flex items-center justify-between gap-4 mb-5">
-                <div class="relative flex-1 max-w-xs hidden sm:block">
-                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b74a0]"></i>
-                    <input id="hr-topbar-search" type="text" placeholder="Search employees, departments..." onclick="switchHRSubtab('employees')" readonly class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl pl-9 pr-12 py-2 text-xs text-white placeholder:text-[#6b74a0] cursor-pointer" style="pointer-events:auto">
-                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-[#4a5182] border border-white/[0.08] rounded px-1.5 py-0.5">⌘K</span>
-                </div>
-                <div class="flex items-center gap-3 ml-auto">
-                    <button id="hr-topbar-bell-btn" onclick="switchHRSubtab('notifications')" class="relative w-9 h-9 rounded-xl flex items-center justify-center text-white/70 hover:text-white transition" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border)">
-                        <i data-lucide="bell" class="w-4 h-4"></i>
-                        <span id="hr-topbar-notif-badge" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center px-1" style="background:linear-gradient(135deg,var(--brand-1),var(--brand-3))"></span>
-                    </button>
-                    <button id="hr-topbar-account-btn" class="flex items-center gap-2 pl-2 border-l border-white/[0.06]" style="background:transparent;border-top:none;border-right:none;border-bottom:none;cursor:pointer;position:relative">
-                        <div id="hr-topbar-avatar" class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style="background:linear-gradient(135deg,var(--brand-1),var(--brand-3))"></div>
-                        <div class="hidden md:block leading-tight">
-                            <div id="hr-topbar-name" class="text-xs font-bold text-white"></div>
-                            <div id="hr-topbar-role" class="text-[10px] text-[#6b74a0]"></div>
-                        </div>
-                    </button>
-                    <script>
-                    // Wired to BOTH the desktop header avatar and the mobile sticky app-bar
-                    // avatar (#mtb-hr-account-btn) — same data/handlers, one shared dropdown,
-                    // not a second account menu.
-                    (function(){
-                      var _amOpts = {
-                        getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
-                        getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
-                        onSwitchAccount: (email) => switchToAccount(email),
-                        onRemoveAccount: (email) => removeSavedAccount(email),
-                        onAddAccount: () => startAddAccountFlow(),
-                        onLogout: () => logoutFromHR(),
-                        getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
-                      };
-                      if (typeof initAccountMenu === 'function') {
-                        initAccountMenu(Object.assign({ trigger: '#hr-topbar-account-btn' }, _amOpts));
-                        initAccountMenu(Object.assign({ trigger: '#mtb-hr-account-btn' }, _amOpts));
-                      }
-                    })();
-                    </script>
-                </div>
-            </div>
+            <!-- Common dashboard header — shared be-shell.js component (same on Media, Academic,
+                 Sales, Manager). Existing ids kept, so the HR notification badge / avatar /
+                 name / role code keeps driving it unchanged. -->
+            <div id="be-shell-header"></div>
+            <script>
+            BEShell.header('#be-shell-header', {
+              ids: { search: 'hr-topbar-search', bell: 'hr-topbar-bell-btn', badge: 'hr-topbar-notif-badge', account: 'hr-topbar-account-btn', avatar: 'hr-topbar-avatar', name: 'hr-topbar-name', role: 'hr-topbar-role', date: 'hr-header-date-text' },
+              searchPlaceholder: 'Search employees, departments…',
+              onSearch: () => switchHRSubtab('employees'),
+              onBell: () => switchHRSubtab('notifications'),
+              getUser: () => ({ name: (typeof activeUser !== 'undefined' && activeUser) || '' }),
+            });
+            </script>
+            <script>
+            // Wired to BOTH the desktop header avatar and the mobile sticky app-bar
+            // avatar (#mtb-hr-account-btn) — same data/handlers, one shared dropdown,
+            // not a second account menu.
+            (function(){
+              var _amOpts = {
+                getCurrentUser: () => ({ name: typeof activeUser !== 'undefined' ? activeUser : '', role: typeof activeRole !== 'undefined' ? activeRole : '', email: typeof activeEmail !== 'undefined' ? activeEmail : '' }),
+                getSavedAccounts: () => (typeof getSavedAccounts === 'function' ? getSavedAccounts() : []),
+                onSwitchAccount: (email) => switchToAccount(email),
+                onRemoveAccount: (email) => removeSavedAccount(email),
+                onAddAccount: () => startAddAccountFlow(),
+                onLogout: () => logoutFromHR(),
+                getPhotos: async (emails) => (typeof _loadSwitcherPhotos === 'function' ? await _loadSwitcherPhotos(emails) : {}),
+              };
+              if (typeof initAccountMenu === 'function') {
+                initAccountMenu(Object.assign({ trigger: '#hr-topbar-account-btn' }, _amOpts));
+                initAccountMenu(Object.assign({ trigger: '#mtb-hr-account-btn' }, _amOpts));
+              }
+            })();
+            </script>
 
             <!-- ====== HR WORKSPACE TAB ====== -->
             <div id="tab-content-hr" class="space-y-6">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <!-- Live time-of-day greeting (shared-greeting.js) — same component
-                             index.html/academics.html use, small on purpose so it never
-                             competes with the real page title (spec item 5). -->
-                        <p id="live-greeting" class="text-xs font-semibold text-[#8b93b8] mb-1"></p>
-                        <script>
-                        if (typeof initLiveGreeting === 'function') {
-                          // activeUser (common.js, loaded later in this document) resolves to
-                          // the real HR/user_roster display name — same value the topbar's own
-                          // name label already shows, not a second name source. Not yet
-                          // declared this early — fine, neutral greeting shows first,
-                          // window._beRefreshGreeting (called once login resolves, see there)
-                          // updates it live.
-                          window._beRefreshGreeting = initLiveGreeting({
-                            mount: '#live-greeting',
-                            getName: () => (typeof activeUser !== 'undefined' && activeUser) || null,
-                          });
-                        }
-                        </script>
-                        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">HR Management</h1>
-                        <p class="text-[#6b74a0] text-xs md:text-sm mt-1">Employee management, attendance, leave, payroll and workforce overview.</p>
+                <!-- Shared top stack (be-shell.js): banner → welcome → attendance, same order
+                     and spacing on every department dashboard. Banner + attendance are
+                     Dashboard-only (.bes-dash-only, toggled by switchHRSubtab); the welcome
+                     title stays on every HR subtab as before. -->
+                <div class="bes-top">
+                    <!-- Celebration banner slot — see common.js's Celebration Engine
+                         (runCelebrationQueue/renderCelebrationBanners). Empty/collapsed by default. -->
+                    <div id="celebration-banner-slot" class="be-celeb-banner-slot bes-banner bes-dash-only"></div>
+                    <div class="bes-welcome">
+                        <div class="bes-welcome-main">
+                            <p id="live-greeting" class="bes-greet"></p>
+                            <script>
+                            if (typeof initLiveGreeting === 'function') {
+                              // activeUser (common.js, loaded later in this document) resolves to
+                              // the real HR/user_roster display name — same value the topbar's own
+                              // name label already shows, not a second name source. Not yet
+                              // declared this early — fine, neutral greeting shows first,
+                              // window._beRefreshGreeting (called once login resolves, see there)
+                              // updates it live.
+                              window._beRefreshGreeting = initLiveGreeting({
+                                mount: '#live-greeting',
+                                getName: () => (typeof activeUser !== 'undefined' && activeUser) || null,
+                              });
+                            }
+                            </script>
+                            <h1 class="bes-title">HR Management</h1>
+                            <p class="bes-sub">Employee management, attendance, leave, payroll and workforce overview.</p>
+                        </div>
                     </div>
-                    <!-- Date/time chip — same component (markup + live-updating clock) as
-                         index.html's Pipeline Matrix and academics.html's Academic Command
-                         Center headers. This page previously had no header controls at all,
-                         the one real design gap between the three otherwise-matching headers
-                         (search/notifications are Pipeline-specific functionality, not part
-                         of the shared design language, so intentionally not added here). -->
-                    <div class="flex items-center gap-2 flex-wrap justify-end">
-                        <div id="hr-header-date-chip" class="glass-button flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium" style="cursor:default;color:#808a9d">
-                            <i data-lucide="calendar" style="width:13px;height:13px"></i>
-                            <span id="hr-header-date-text"></span>
+                    <!-- Clock-In is for everyone, HR included — same attendanceLogs/hr_attendance
+                         record as Media's and Academic's cards, kept in sync by
+                         refreshAttendanceClockCard(). The donut on the right is HR-specific: a
+                         company-wide metric (% of active employees marked today). -->
+                    <div class="bes-att bes-dash-only">
+                        <div class="bes-att-l">
+                            <div class="bes-att-ic"><i data-lucide="clock-4"></i></div>
+                            <div class="min-w-0 flex-1">
+                                <p class="bes-att-lbl">Attendance</p>
+                                <p id="hr-attendance-status-text" class="bes-att-st">Checking today's status...</p>
+                                <div class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-2 max-w-xs">
+                                    <div id="hr-dash-att-progress" class="h-full rounded-full transition-all duration-500" style="width:0%;background:linear-gradient(90deg,var(--brand-3),var(--brand-1))"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bes-att-r">
+                            <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="bes-clk bes-clk-in"><i data-lucide="log-in"></i> Clock In</button>
+                            <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bes-clk bes-clk-out"><i data-lucide="log-out"></i> Clock Out</button>
+                        <div class="flex items-center gap-3 pl-4 border-l border-white/[0.06]">
+                            <svg width="52" height="52" viewBox="0 0 52 52" class="shrink-0">
+                                <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5"></circle>
+                                <circle id="hr-dash-att-donut" cx="26" cy="26" r="22" fill="none" stroke="url(#hrDashDonutGrad)" stroke-width="5" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2" transform="rotate(-90 26 26)"></circle>
+                                <defs><linearGradient id="hrDashDonutGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="var(--brand-1)"/><stop offset="100%" stop-color="var(--brand-3)"/></linearGradient></defs>
+                                <text id="hr-dash-att-donut-pct" x="26" y="30" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">—</text>
+                            </svg>
+                            <div>
+                                <div class="text-xs font-bold text-white">Workforce Marked</div>
+                                <div id="hr-dash-att-donut-label" class="text-[11px] text-[#6b74a0]">—</div>
+                            </div>
+                        </div>
+                        <button onclick="switchHRSubtab('attendance')" class="hidden md:flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg shrink-0" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);color:#c7cbe0">View Attendance <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
                         </div>
                     </div>
                 </div>
@@ -1080,10 +1099,6 @@
 
                 <!-- HR: DASHBOARD -->
                 <div id="hr-sub-dashboard" class="space-y-6">
-                    <!-- Celebration banner slot — see common.js's Celebration Engine
-                         (runCelebrationQueue/renderCelebrationBanners). Part of the dashboard
-                         content area, not a floating toast. Empty/collapsed by default. -->
-                    <div id="celebration-banner-slot" class="be-celeb-banner-slot"></div>
                     <!-- "Heads up" banner — only shown when there's something to act on -->
                     <div id="hr-dash-pending-banner" class="hidden rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style="background:linear-gradient(90deg,rgba(255,107,6,0.12),rgba(255,5,82,0.05));border:1px solid rgba(255,107,6,0.25)">
                         <div class="flex items-center gap-2.5">
@@ -1099,49 +1114,6 @@
                     <div id="hr-dash-birthday-banner" class="hidden rounded-2xl p-4 flex items-center gap-3" style="background:linear-gradient(90deg,rgba(236,72,153,0.14),rgba(124,58,237,0.05));border:1px solid rgba(236,72,153,0.3)">
                         <div class="text-2xl shrink-0">🎉</div>
                         <div id="hr-dash-birthday-text" class="text-xs text-white/90"></div>
-                    </div>
-
-                    <!-- Clock-In is for everyone, HR included (req: available everywhere, same
-                         design/behavior) — same attendanceLogs/hr_attendance record as
-                         Pipeline's card and Academic's card, kept in sync by
-                         refreshAttendanceClockCard(). Admin previously had no clock-in UI at
-                         all since they don't land on the Pipeline dashboard; this is that fix.
-                         The donut is a separate, company-wide metric (% of active employees
-                         marked today) — not the same thing as this card's own clock status. -->
-                    <div class="card p-4 md:p-5 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                        <div class="flex items-center gap-3 flex-1 min-w-0">
-                            <div class="p-2.5 rounded-lg shrink-0" style="background:rgba(124,58,237,0.15);color:var(--purple)"><i data-lucide="clock-4" class="w-5 h-5"></i></div>
-                            <div class="min-w-0 flex-1">
-                                <p class="text-xs font-bold text-white uppercase tracking-wider">Attendance</p>
-                                <p id="hr-attendance-status-text" class="text-[11px] text-[#6b74a0] mt-0.5">Checking today's status...</p>
-                                <div class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-2 max-w-xs">
-                                    <div id="hr-dash-att-progress" class="h-full rounded-full transition-all duration-500" style="width:0%;background:linear-gradient(90deg,var(--brand-3),var(--brand-1))"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4 shrink-0">
-                            <div class="flex items-center gap-2">
-                                <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="text-xs font-bold px-4 py-2 rounded-md uppercase tracking-wide flex items-center gap-1.5 cursor-pointer transition" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;font-family:Inter,sans-serif">
-                                    <i data-lucide="log-in" class="w-4 h-4"></i> Clock In
-                                </button>
-                                <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider transition flex items-center gap-2 active:scale-95">
-                                    <i data-lucide="log-out" class="w-4 h-4"></i> Clock Out
-                                </button>
-                            </div>
-                            <div class="flex items-center gap-3 pl-4 border-l border-white/[0.06]">
-                                <svg width="52" height="52" viewBox="0 0 52 52" class="shrink-0">
-                                    <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5"></circle>
-                                    <circle id="hr-dash-att-donut" cx="26" cy="26" r="22" fill="none" stroke="url(#hrDashDonutGrad)" stroke-width="5" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2" transform="rotate(-90 26 26)"></circle>
-                                    <defs><linearGradient id="hrDashDonutGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="var(--brand-1)"/><stop offset="100%" stop-color="var(--brand-3)"/></linearGradient></defs>
-                                    <text id="hr-dash-att-donut-pct" x="26" y="30" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">—</text>
-                                </svg>
-                                <div>
-                                    <div class="text-xs font-bold text-white">Workforce Marked</div>
-                                    <div id="hr-dash-att-donut-label" class="text-[11px] text-[#6b74a0]">—</div>
-                                </div>
-                            </div>
-                            <button onclick="switchHRSubtab('attendance')" class="hidden md:flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg shrink-0" style="background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);color:#c7cbe0">View Attendance <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
-                        </div>
                     </div>
 
                     <div>
@@ -2854,6 +2826,8 @@
                 document.getElementById('hrtree-' + (t === 'accounts' ? 'settings' : t))?.classList.toggle('active', t === tab);
                 document.getElementById('hr-sub-' + t)?.classList.toggle('hidden', t !== tab);
             });
+            // Shared top stack: banner + attendance card belong to the Dashboard only.
+            document.querySelectorAll('.bes-dash-only').forEach(el => el.classList.toggle('bes-off', tab !== 'dashboard'));
             console.log('[HR INIT] switchHRSubtab(', tab, '), hrEmployees.length=', hrEmployees.length, 'hrLoaded=', hrLoaded);
             if (tab === 'dashboard') renderHRDashboard();
             else if (tab === 'employees') { populateHREmployeeFilterOptions(); renderHREmployees(); }
