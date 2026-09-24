@@ -3314,12 +3314,12 @@
             if (window.lucide) lucide.createIcons();
 
             const pendingRows = hrLeaveRequests.filter(r => r.status === 'pending').slice(0, 8);
-            document.getElementById('hr-dash-pending-leave').innerHTML = pendingRows.length ? pendingRows.map(r => `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-                    <span>${hrEmpName(r.employee_id)} — ${r.leave_type} (${r.start_date} → ${r.end_date})</span>
-                    <span class="hr-badge hr-badge-pending">Pending</span>
-                </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">No pending requests.</p>';
+            document.getElementById('hr-dash-pending-leave').innerHTML = pendingRows.length ? '<div class="dsh-list">' + pendingRows.map(r => `
+                <div class="dsh-item is-link" onclick="switchHRSubtab('leave')">
+                    <span class="dsh-av">${hrAvatarForEmployeeId(r.employee_id, 34)}</span>
+                    <div class="dsh-main"><div class="dsh-title" style="display:flex;align-items:center;gap:8px">${hrEmpName(r.employee_id)} <span class="st-pill ${/home|wfh/i.test(r.leave_type||'')?'st-purple':'st-info'}" style="text-transform:none">${r.leave_type}</span></div><div class="dsh-sub">${hrNiceRange(r.start_date, r.end_date)}${r.days ? ' · ' + r.days + ' day' + (r.days === 1 ? '' : 's') : ''}</div></div>
+                    <span class="st-pill st-warn">Pending</span>
+                </div>`).join('') + '</div>' : '<div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></div><div class="dsh-empty-t">No pending leave requests</div><div class="dsh-empty-s">New requests that need your review will appear here.</div></div>';
 
             // birthdays & anniversaries in next 30 days
             const events = [];
@@ -3328,11 +3328,17 @@
                 if (e.joining_date) events.push(hrNextOccurrence(e.joining_date, e.full_name, 'Work Anniversary', e));
             });
             const upcoming = events.filter(ev => ev && ev.daysAway <= 30).sort((a,b) => a.daysAway - b.daysAway).slice(0, 8);
-            document.getElementById('hr-dash-events').innerHTML = upcoming.length ? upcoming.map(ev => `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-                    <span style="display:flex;align-items:center;gap:8px">${hrAvatarHTML(ev.emp || ev.name, 22)}${ev.name} — ${ev.label}</span><span class="text-[#6b74a0]">${ev.daysAway === 0 ? 'Today' : ev.daysAway + 'd'}</span>
-                </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs">None in the next 30 days.</p>';
+            document.getElementById('hr-dash-events').innerHTML = upcoming.length ? '<div class="dsh-list">' + upcoming.map(ev => {
+                const isBday = ev.label === 'Birthday', col = isBday ? '#f472b6' : '#fbbf24';
+                const when = ev.daysAway === 0 ? 'Today' : ev.daysAway === 1 ? 'Tomorrow' : 'in ' + ev.daysAway + ' days';
+                const icon = isBday
+                    ? '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/>'
+                    : '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>';
+                return `<div class="dsh-item">
+                    <span class="dsh-av">${hrAvatarHTML(ev.emp || ev.name, 34)}</span>
+                    <div class="dsh-main"><div class="dsh-title">${ev.name}</div><div class="dsh-sub" style="display:flex;align-items:center;gap:6px"><span style="color:${col};display:inline-flex"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></span>${ev.label}${ev.next ? ' · ' + ev.next.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' }) : ''}</div></div>
+                    <span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;color:${ev.daysAway <= 1 ? col : '#a5adcf'};background:${ev.daysAway <= 1 ? col + '1a' : 'rgba(255,255,255,.04)'};border:1px solid ${ev.daysAway <= 1 ? col + '40' : 'rgba(255,255,255,.08)'}">${when}</span>
+                </div>`; }).join('') + '</div>' : '<div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></div><div class="dsh-empty-t">Nothing in the next 30 days</div><div class="dsh-empty-s">Birthdays and work anniversaries will show up here.</div></div>';
 
             // Today's Workforce
             const activeEmps = hrEmployees.filter(e => e.employment_status === 'active');
@@ -3458,7 +3464,7 @@
             let next = new Date(now.getFullYear(), d.getMonth(), d.getDate());
             if (next < now) next = new Date(now.getFullYear()+1, d.getMonth(), d.getDate());
             const daysAway = Math.round((next - now) / 86400000);
-            return { name, label, daysAway, emp };
+            return { name, label, daysAway, emp, next };
         }
 
 // ── renderHREmpRoleChips (orig line 8979) ──
