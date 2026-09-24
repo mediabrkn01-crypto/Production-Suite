@@ -23,6 +23,7 @@
 <script src="shared-greeting.js"></script>
 <script src="policy-config.js"></script>
 <script src="leave-policy.js"></script>
+<script src="my-workspace.js"></script>
 <script src="dynamic-tabs.js"></script>
 <style>
 :root{
@@ -432,50 +433,25 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
     </div>
 
     <!-- ATTENDANCE -->
-    <div class="tab" id="tab-attendance">
-      <div class="section"><h2>My Attendance · This Month</h2><div id="attStats" class="row" style="margin-bottom:12px"></div>
-        <div id="attCal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px"></div>
-      </div>
-    </div>
+    <div class="tab" id="tab-attendance"><div id="mw-attendance"></div></div>
 
     <!-- MY PROFILE -->
-    <div class="tab" id="tab-profile">
-      <div class="section"><h2>My Profile</h2><div id="profileBody"><div class="empty">Loading…</div></div></div>
-    </div>
+    <div class="tab" id="tab-profile"><div id="mw-profile"></div></div>
 
     <!-- ANNOUNCEMENTS -->
-    <div class="tab" id="tab-announcements">
-      <div class="section"><h2>Announcements</h2><div id="annList"><div class="empty">Loading…</div></div></div>
-    </div>
+    <div class="tab" id="tab-announcements"><div id="mw-announcements"></div></div>
 
     <!-- MY LEAVE -->
-    <div class="tab" id="tab-leave">
-      <div class="section"><h2>Request Leave</h2>
-        <div class="row" style="flex-direction:column;align-items:stretch;gap:10px;max-width:520px">
-          <label class="fld">Leave type<select id="lv_type" onchange="salesLeaveTypeChanged()"><option>Casual Leave</option><option>Sick Leave</option><option>Paid Leave</option><option>Unpaid Leave</option><option>Work From Home</option><option>Half Day</option></select></label>
-          <label class="fld" id="lv_half_wrap" style="display:none">Half type<select id="lv_half_type"><option value="morning">Morning Half (off first half, work second)</option><option value="afternoon">Afternoon Half (work first half, off second)</option></select></label>
-          <div class="row" id="lv_dates_row"><label class="fld">From<input id="lv_from" type="date"/></label><label class="fld">To<input id="lv_to" type="date"/></label></div>
-          <label class="fld">Reason<textarea id="lv_reason" rows="2"></textarea></label>
-          <div><button class="btn" onclick="submitLeave()">Submit request</button></div>
-        </div>
-      </div>
-      <div class="section"><h2>My Leave History</h2><div id="lvBalances" class="row" style="margin-bottom:10px"></div><div id="lvList"><div class="empty">Loading…</div></div></div>
-    </div>
+    <div class="tab" id="tab-leave"><div id="mw-leave"></div></div>
 
     <!-- MY DOCUMENTS -->
-    <div class="tab" id="tab-documents">
-      <div class="section"><h2>My Documents</h2><div class="sub">Documents HR has shared on your employee record.</div><div id="docList"><div class="empty">Loading…</div></div></div>
-    </div>
+    <div class="tab" id="tab-documents"><div id="mw-documents"></div></div>
 
     <!-- MY PAYSLIPS -->
-    <div class="tab" id="tab-payslips">
-      <div class="section"><h2>My Payslips</h2><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Net</th><th>Status</th><th>Paid</th></tr></thead><tbody id="payRows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody></table></div></div>
-    </div>
+    <div class="tab" id="tab-payslips"><div id="mw-payslips"></div></div>
 
     <!-- TEAM MEMBERS -->
-    <div class="tab" id="tab-team-members">
-      <div class="section"><h2>Team Members · Sales</h2><div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>Designation</th><th>Contact</th></tr></thead><tbody id="teamMemRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody></table></div></div>
-    </div>
+    <div class="tab" id="tab-team-members"><div id="mw-team"></div></div>
 
     <div class="tab" id="tab-avail-batches">
       <div class="section">
@@ -1146,32 +1122,9 @@ async function clockToggle(){
     initClock();loadAttendance();
   }catch(e){showToast('error','Clock action failed.');}
 }
-async function loadAttendance(){
-  try{const now=new Date();const y=now.getFullYear(),m=now.getMonth()+1;const monthStr=`${y}-${String(m).padStart(2,'0')}`;const dim=new Date(y,m,0).getDate();
-    const [{data:att},{data:lv}]=await Promise.all([
-      sb.from('hr_attendance').select('*').eq('employee_id',ME.id).gte('att_date',monthStr+'-01').lte('att_date',monthStr+'-'+String(dim).padStart(2,'0')),
-      sb.from('hr_leave_requests').select('*').eq('employee_id',ME.id).eq('status','approved')
-    ]);
-    const byDate=new Map((att||[]).map(r=>[r.att_date,r.status||'present']));
-    const onLeave=d=>(lv||[]).some(l=>l.start_date<=d&&l.end_date>=d);
-    let present=0,leave=0,absent=0;const dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const cells=dow.map(d=>`<div style="text-align:center;font-size:10px;color:var(--tx3);font-weight:700">${d}</div>`);
-    const first=new Date(y,m-1,1).getDay();for(let i=0;i<first;i++)cells.push('<div></div>');
-    const today=now.toISOString().slice(0,10);
-    // Full attendance row per date (need status + half_day_type for the Half-Day code, not
-    // just "does a row exist"). Half Day shows its own HD-M/HD-A, still counted as present
-    // (worked part of the day) not absent.
-    const recByDate=new Map((att||[]).map(r=>[r.att_date,r]));
-    for(let d=1;d<=dim;d++){const ds=`${monthStr}-${String(d).padStart(2,'0')}`;let code='',col='var(--tx3)';const rec=recByDate.get(ds);
-      if(onLeave(ds)){code='L';col='var(--yellow)';leave++;}
-      else if(rec&&rec.status==='half_day'){code=rec.half_day_type==='morning'?'HD-M':rec.half_day_type==='afternoon'?'HD-A':'HD';col='#fde047';present++;}
-      else if(byDate.has(ds)){code='P';col='var(--green)';present++;}else if(ds<today){code='A';col='var(--brand-3)';absent++;}
-      cells.push(`<div style="border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center;min-height:42px;${ds===today?'border-color:var(--brand-1)':''}"><div style="font-size:10px;color:var(--tx3)">${d}</div><div style="font-weight:700;color:${col}">${code||'—'}</div></div>`);
-    }
-    document.getElementById('attCal').innerHTML=cells.join('');
-    document.getElementById('attStats').innerHTML=`<span class="badge b-green">Present ${present}</span><span class="badge b-amber">Leave ${leave}</span><span class="badge b-red">Absent ${absent}</span>`;
-  }catch(e){}
-}
+// My Attendance lives in the shared My Workspace module (my-workspace.js); this only
+// refreshes it after clock in/out when the tab is on screen.
+function loadAttendance(){ const t=document.getElementById('tab-attendance'); if(window.MyWorkspace&&t&&t.classList.contains('on'))MyWorkspace.open('attendance'); }
 
 /* ---------- REALTIME ---------- */
 function subscribeRealtime(){
@@ -1193,12 +1146,7 @@ function switchTab(tab){
   document.querySelectorAll('.sidebar-link[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   if(tab==='routing')loadRules();
   if(tab==='eod')renderEod();
-  if(tab==='profile')loadProfile();
-  if(tab==='announcements')loadAnnouncements();
-  if(tab==='leave')loadLeave();
-  if(tab==='documents')loadDocuments();
-  if(tab==='payslips')loadPayslips();
-  if(tab==='team-members')loadTeamMembers();
+  if(window.MyWorkspace&&MW_PANEL_BY_TAB[tab])MyWorkspace.open(MW_PANEL_BY_TAB[tab]);
   if(tab==='availability')loadAvailability();
   if(tab==='avail-batches')loadAvailBatches();
   if(typeof lucide!=='undefined')lucide.createIcons();
@@ -1307,110 +1255,12 @@ async function salesFindFreeTrainers(){
   }catch(e){out.innerHTML='<div class="empty">Lookup failed.</div>';}
 }
 
-/* ---------- MY WORKSPACE — shared HR features (same tables HR/Academics use) ---------- */
-function loadProfile(){
-  const r=ME.rec||{};
-  const rows=[['Name',ME.name],['Employee ID',r.employee_id],['Designation',r.designation],['Department',r.department],['Division',r.division],['Email',ME.email],['Phone',r.phone],['Joining date',r.joining_date],['Status',r.employment_status||'active']];
-  const photo=r.photo_base64||r.photo_url;
-  document.getElementById('profileBody').innerHTML=
-    `<div class="row" style="gap:14px;margin-bottom:14px">
-      <div style="width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--gk);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:#fff">${photo?`<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover">`:esc((ME.name||'?').charAt(0))}</div>
-      <div><div style="font-size:18px;font-weight:800">${esc(ME.name)}</div><div class="sub" style="margin:0">${esc(r.designation||'Sales')}${ME.isHead?' · Sales Head':''}</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr;gap:0">${rows.map(([k,v])=>`<div class="qrow" style="margin-bottom:6px"><span class="sub" style="margin:0">${esc(k)}</span><b>${esc(v||'—')}</b></div>`).join('')}</div>`;
-}
-async function loadAnnouncements(){
-  const el=document.getElementById('annList');
-  try{
-    const {data}=await sb.from('hr_announcements').select('*').order('created_at',{ascending:false});
-    const now=new Date().toISOString();
-    const mine=(data||[]).filter(a=>{
-      if(a.start_at&&a.start_at>now)return false; if(a.end_at&&a.end_at<now)return false;
-      if(a.audience==='all'||!a.audience)return true;
-      if(a.audience==='division')return true; // shown to all divisions here; HR scopes precisely
-      if(a.audience==='selected')return (a.audience_employee_ids||[]).map(String).includes(String(ME.id));
-      return true;
-    });
-    el.innerHTML=mine.length?mine.map(a=>{
-      const pr=a.priority==='urgent'?'b-red':a.priority==='important'?'b-amber':'';
-      return `<div class="section" style="margin-bottom:10px;background:rgba(255,255,255,.02)"><div class="row" style="justify-content:space-between"><b>${esc(a.title||'Announcement')}</b>${pr?`<span class="badge ${pr}">${esc(a.priority)}</span>`:''}</div><div class="sub" style="margin:6px 0;color:var(--tx2);white-space:pre-wrap">${esc(a.message||'')}</div><div class="sub" style="margin:0;font-size:11px">${a.created_at?new Date(a.created_at).toLocaleString('en-IN'):''}${a.created_by?' · '+esc(a.created_by):''}</div></div>`;
-    }).join(''):'<div class="empty">No announcements.</div>';
-  }catch(e){el.innerHTML='<div class="empty">Could not load announcements.</div>';}
-}
-async function loadLeave(){
-  try{
-    const [{data:reqs},{data:bal}]=await Promise.all([
-      sb.from('hr_leave_requests').select('*').eq('employee_id',ME.id).order('requested_at',{ascending:false}),
-      sb.from('hr_leave_balances').select('*').eq('employee_id',ME.id)
-    ]);
-    document.getElementById('lvBalances').innerHTML=(bal||[]).map(b=>`<span class="badge b-blue">${esc(b.leave_type)}: ${(b.allotted||0)-(b.used||0)} left</span>`).join('')||'<span class="sub" style="margin:0">No balances set.</span>';
-    const today=new Date().toISOString().slice(0,10);
-    document.getElementById('lvList').innerHTML=(reqs&&reqs.length)?reqs.map(r=>{
-      const canCancel=r.status!=='cancelled'&&r.status!=='rejected'&&r.start_date>today;
-      return `<div class="qrow"><span class="dsh-ic"><i data-lucide="calendar-days" style="width:16px;height:16px"></i></span><div style="flex:1;min-width:0"><b>${esc(r.leave_type)}</b><div class="sub" style="margin:0">${r.start_date===r.end_date?esc(_uiDate(r.start_date)):esc(_uiDate(r.start_date))+' → '+esc(_uiDate(r.end_date))}${r.days?' · '+r.days+'d':''}</div></div><div style="display:flex;align-items:center;gap:6px"><span class="badge ${r.status==='approved'?'b-green':(r.status==='rejected'||r.status==='cancelled')?'b-red':'b-amber'}">${esc(r.status||'pending')}</span>${canCancel?`<button onclick="salesCancelLeave('${r.id}')" style="font-size:11px;color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:2px 8px;cursor:pointer">Cancel</button>`:''}</div></div>`;
-    }).join(''):_uiEmpty('calendar-days','No leave requests yet','Requests you submit will appear here with their HR status.');_uiIcons();
-  }catch(e){document.getElementById('lvList').innerHTML='<div class="empty">Could not load leave.</div>';}
-}
-// Half Day is a single-day request — hide the To date, show the half-type picker.
-function salesLeaveTypeChanged(){
-  const isHalf=document.getElementById('lv_type').value==='Half Day';
-  document.getElementById('lv_half_wrap').style.display=isHalf?'flex':'none';
-  const toWrap=document.getElementById('lv_to').closest('.fld'); if(toWrap)toWrap.style.display=isHalf?'none':'';
-}
-async function submitLeave(){
-  const type=document.getElementById('lv_type').value,from=document.getElementById('lv_from').value,reason=document.getElementById('lv_reason').value.trim();
-  const isHalf=type==='Half Day';
-  const to=isHalf?from:document.getElementById('lv_to').value;
-  if(!from||!to){showToast('warning',isHalf?'Pick the date.':'Pick both dates.');return;}
-  const days=isHalf?0.5:Math.max(1,Math.round((new Date(to)-new Date(from))/86400000)+1);
-  const rec={employee_id:ME.id,leave_type:type,start_date:from,end_date:to,days,reason:reason||null,status:'pending',requested_at:new Date().toISOString()};
-  if(isHalf)rec.half_day_type=document.getElementById('lv_half_type').value;
-  const {error}=await sb.from('hr_leave_requests').insert(rec);
-  if(error){showToast('error',error.message);return;}
-  document.getElementById('lv_reason').value='';showToast('success',(isHalf?'Half-day':'Leave')+' request submitted — HR will review.');loadLeave();
-}
-async function salesCancelLeave(id){
-  const{data}=await sb.from('hr_leave_requests').select('*').eq('id',id).maybeSingle();
-  if(!data){showToast('error','Request not found.');return;}
-  const today=new Date().toISOString().slice(0,10);
-  if(data.start_date<=today&&data.status==='approved'){showToast('error','Cannot cancel leave that has already started.');return;}
-  if(data.status==='cancelled'||data.status==='rejected'){showToast('error','Already '+data.status+'.');return;}
-  const confirmed=await beConfirm({title:'Cancel Leave Request',message:'Are you sure you want to cancel this leave request?',detail:esc(data.leave_type||'Leave')+' &nbsp;·&nbsp; '+esc(data.start_date)+' → '+esc(data.end_date),confirmLabel:'Yes, Cancel Leave',cancelLabel:'Keep Leave',confirmColor:'#ef4444'});
-  if(!confirmed)return;
-  const nowIso=new Date().toISOString();
-  const{error}=await sb.from('hr_leave_requests').update({status:'cancelled',cancelled_at:nowIso,cancelled_by:ME.name||'Employee'}).eq('id',id);
-  if(error){if(window._beConfirmDismiss)window._beConfirmDismiss();showToast('error','Could not cancel: '+error.message);return;}
-  if(window._beConfirmDismiss)window._beConfirmDismiss();
-  if(data.hr_status==='approved'||data.manager_status==='approved'){
-    const start=new Date(data.start_date),end=new Date(data.end_date);
-    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-      const ds=d.toISOString().slice(0,10);
-      if(ds>=today){try{await sb.from('hr_attendance').delete().eq('employee_id',data.employee_id).eq('att_date',ds).in('status',['on_leave','half_day','wfh']);}catch(e){}}
-    }
-  }
-  if(/casual/i.test(data.leave_type||'')&&data.days){
-    try{const{data:buckets}=await sb.from('hr_cl_buckets').select('*').eq('employee_id',data.employee_id).order('credit_date',{ascending:true});if(buckets&&buckets.length){let restore=Number(data.days);for(let i=buckets.length-1;i>=0&&restore>0;i--){const b=buckets[i];const used=Number(b.original_amount)-Number(b.remaining_amount);if(used>0){const give=Math.min(used,restore);await sb.from('hr_cl_buckets').update({remaining_amount:Number(b.remaining_amount)+give}).eq('id',b.id);restore-=give;}}}}catch(e){}
-  }
-  if(/sick/i.test(data.leave_type||'')&&data.days){
-    try{const period=data.start_date.slice(0,7);const{data:sl}=await sb.from('hr_sl_ledger').select('*').eq('employee_id',data.employee_id).eq('period',period).maybeSingle();if(sl&&Number(sl.used)>0){await sb.from('hr_sl_ledger').update({used:Math.max(0,Number(sl.used)-Number(data.days))}).eq('id',sl.id);}}catch(e){}
-  }
-  showToast('success','Leave cancelled. Balance restored.');
-  loadLeave();
-}
-function loadDocuments(){
-  const links=(ME.rec&&ME.rec.document_links)||'';
-  const arr=String(links).split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
-  document.getElementById('docList').innerHTML=arr.length?arr.map((l,i)=>`<div class="qrow"><span class="dsh-ic"><i data-lucide="file-text" style="width:16px;height:16px"></i></span><div style="flex:1;min-width:0"><b>Document ${i+1}</b><div class="sub" style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l)}</div></div><a class="btn-ghost btn-sm" href="${esc(l)}" target="_blank" rel="noopener">Open</a></div>`).join(''):_uiEmpty('folder-open','No documents yet','Documents HR shares on your record will appear here.');_uiIcons();
-}
-async function loadPayslips(){
-  try{
-    const {data}=await sb.from('hr_payroll').select('*').eq('employee_id',ME.id).eq('published',true).order('month',{ascending:false});
-    document.getElementById('payRows').innerHTML=(data&&data.length)?data.map(p=>`<tr><td><span style="font-weight:600;color:var(--tx)">${esc(/^\d{4}-\d{2}$/.test(p.month||'')?new Date(p.month+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'}):p.month)}</span></td><td class="ui-num" style="font-weight:700;color:var(--tx)">₹${p.net_salary!=null?Number(p.net_salary).toLocaleString('en-IN'):'—'}</td><td><span class="badge ${p.payment_status==='paid'?'b-green':'b-amber'}">${esc(p.payment_status||'pending')}</span></td><td>${p.payment_date||'—'}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">No published payslips yet.</td></tr>';
-  }catch(e){document.getElementById('payRows').innerHTML='<tr><td colspan="4" class="empty">Could not load payslips.</td></tr>';}
-}
-function loadTeamMembers(){
-  document.getElementById('teamMemRows').innerHTML=COUNSELLORS.length?COUNSELLORS.map(c=>`<tr><td><div style="display:flex;align-items:center;gap:10px">${_uiAv(c.full_name)}<span style="font-weight:600;color:var(--tx)">${esc(c.full_name)}</span></div></td><td>${esc(c.designation||'—')}</td><td>${esc(c.department||'—')}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No Sales team members synced from HR yet.</td></tr>';
-}
+/* ---------- MY WORKSPACE — shared module (my-workspace.js), same UI/logic as Academic + Media ---------- */
+const MW_PANEL_BY_TAB={profile:'profile',announcements:'announcements',attendance:'attendance',leave:'leave',documents:'documents',payslips:'payslips','team-members':'team'};
+const MW_TAB_BY_PANEL={profile:'profile',announcements:'announcements',attendance:'attendance',leave:'leave',documents:'documents',payslips:'payslips',team:'team-members'};
+if(window.MyWorkspace)MyWorkspace.init({db:sb,getEmail:()=>ME&&ME.email,getName:()=>ME&&ME.name,
+  mounts:{profile:'mw-profile',announcements:'mw-announcements',attendance:'mw-attendance',leave:'mw-leave',documents:'mw-documents',payslips:'mw-payslips',team:'mw-team'},
+  navigate:p=>switchTab(MW_TAB_BY_PANEL[p])});
 function openModal(id){document.getElementById(id).classList.add('on');}
 function closeModal(id){document.getElementById(id).classList.remove('on');}
 
