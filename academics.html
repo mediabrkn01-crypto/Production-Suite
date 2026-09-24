@@ -5016,6 +5016,7 @@ async function loadAcadDashboard(){
       lucide.createIcons();
       document.getElementById('acadOnLeaveSection').style.display = 'none';
       document.getElementById('acadUpcomingAvailSection').style.display = 'none';
+      const _lar = document.getElementById('dashLeaveAvailRow'); if (_lar) _lar.style.display = 'none';
     }
 
     // "Today's Schedule" — generated from each active batch's RECURRING schedule (day_pattern +
@@ -5492,12 +5493,19 @@ async function loadTeamTab(){
     // request's own leave_type, not any specific employee's name.
     const wfhRows = allRows.filter(r => r.leave.leave_type === 'Work From Home');
     const leaveRows = allRows.filter(r => r.leave.leave_type !== 'Work From Home');
-    const row = (r, isWfh) => `<div class="acad-leave-row"><span class="acad-avatar-dot">${esc((r.emp.full_name||'?').slice(0,1).toUpperCase())}</span><span style="flex:1">${esc(r.emp.full_name)}</span><span class="badge ${isWfh?'':'b-inactive'}" style="${isWfh?'background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)':''}">${isWfh?'Work From Home':'On Leave'}</span></div>`;
+    // Photos: same hr_employees.photo_base64/photo_url source _acadAvatarHTML renders
+    // elsewhere, fetched only for the people actually listed.
+    const photoById = {};
+    const ids = [...new Set(allRows.map(r => r.emp.id))];
+    if (ids.length) { try { const { data: ph } = await mediaHrDB.from('hr_employees').select('id,photo_base64,photo_url').in('id', ids); (ph||[]).forEach(p => { photoById[p.id] = p; }); } catch(_) {} }
+    const range = l => l.start_date === l.end_date ? _dshDate(l.start_date) : _dshDate(l.start_date) + ' → ' + _dshDate(l.end_date);
+    const row = (r, isWfh) => `<div class="dsh-item"><span class="dsh-av">${_acadAvatarHTML(Object.assign({ full_name: r.emp.full_name }, photoById[r.emp.id] || {}), 34)}</span><div class="dsh-main"><div class="dsh-title">${esc(r.emp.full_name)}</div><div class="dsh-sub">${esc(range(r.leave))}</div></div><div class="dsh-meta"><span class="badge ${isWfh?'':'b-inactive'}" style="${isWfh?'background:rgba(124,58,237,.12);color:var(--purple);border:1px solid rgba(124,58,237,.28)':''}">${isWfh?'Work From Home':'On Leave'}</span></div></div>`;
     let html = '';
-    if (leaveRows.length) html += '<div class="subhead" style="margin:0 0 8px">On Leave Today</div>' + leaveRows.map(r=>row(r,false)).join('');
-    if (wfhRows.length) html += '<div class="subhead" style="margin:'+(leaveRows.length?'18px':'0')+' 0 8px">Working From Home Today</div>' + wfhRows.map(r=>row(r,true)).join('');
-    el.innerHTML = html || '<div class="empty">No one on your team is on leave today.</div>';
-  } catch(e) { el.innerHTML = '<div class="empty">Could not load team status: '+esc(e.message)+'</div>'; }
+    if (leaveRows.length) html += '<div class="subhead" style="margin:0 0 8px">On Leave Today</div><div class="dsh-list">' + leaveRows.map(r=>row(r,false)).join('') + '</div>';
+    if (wfhRows.length) html += '<div class="subhead" style="margin:'+(leaveRows.length?'18px':'0')+' 0 8px">Working From Home Today</div><div class="dsh-list">' + wfhRows.map(r=>row(r,true)).join('') + '</div>';
+    _dshSet('teamOnLeaveList', html || _dshEmpty('user-check', 'Full team in today', 'No one on your team is on leave today.'));
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch(e) { _dshSet('teamOnLeaveList', '<div class="empty">Could not load team status: '+esc(e.message)+'</div>'); }
 }
 
 // ============================================================================
@@ -6707,8 +6715,9 @@ async function loadClassesTab(){
     const todaysEl = document.getElementById('classesToday');
     const upcomingEl = document.getElementById('classesUpcoming');
     if (!rows.length) {
-      if (todaysEl) todaysEl.innerHTML = '<div class="empty">No classes scheduled for you today.</div>';
-      if (upcomingEl) upcomingEl.innerHTML = '<div class="empty">No upcoming classes assigned to you.</div>';
+      _dshSet('classesToday', _dshEmpty('calendar', 'No classes today', 'No classes scheduled for you today.'));
+      _dshSet('classesUpcoming', _dshEmpty('calendar-range', 'Nothing upcoming', 'No upcoming classes assigned to you.'));
+      if (typeof lucide !== 'undefined') lucide.createIcons();
       return;
     }
     let allOccurrences = [];
@@ -6720,13 +6729,11 @@ async function loadClassesTab(){
     const card = o => {
       const b = o.batch;
       const dateLabel = new Date(o.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
-      return `<div class="dash-row" style="cursor:pointer" onclick="openBatchDetails('${b.id}')">
-        <span><b style="color:var(--tx)">${esc(DOW_LABEL[o.dow])}, ${esc(dateLabel)}</b> — ${esc(b.name)}${b.programme?' · '+esc(b.programme):''}</span>
-        <span style="color:var(--tx3)">${esc(b.time_slot||'')}</span>
-      </div>`;
+      return `<div class="dsh-item is-link" onclick="openBatchDetails('${b.id}')"><span class="dsh-dot"></span><div class="dsh-main"><div class="dsh-title">${esc(b.name)}</div>${b.programme?`<div class="dsh-sub">${esc(b.programme)}</div>`:''}</div><div class="dsh-meta"><span class="dsh-meta-lbl">${esc(DOW_LABEL[o.dow])}, ${esc(dateLabel)}</span><span class="dsh-meta-val">${esc(b.time_slot||'—')}</span></div></div>`;
     };
-    if (todaysEl) todaysEl.innerHTML = todays.length ? todays.map(card).join('') : '<div class="empty">No classes scheduled for you today.</div>';
-    if (upcomingEl) upcomingEl.innerHTML = upcoming.length ? upcoming.map(card).join('') : '<div class="empty">No upcoming classes assigned to you.</div>';
+    if (todaysEl) _dshSet('classesToday', todays.length ? '<div class="dsh-list">'+todays.map(card).join('')+'</div>' : _dshEmpty('calendar', 'No classes today', 'No classes scheduled for you today.'));
+    if (upcomingEl) _dshSet('classesUpcoming', upcoming.length ? '<div class="dsh-list">'+upcoming.map(card).join('')+'</div>' : _dshEmpty('calendar-range', 'Nothing upcoming', 'No upcoming classes assigned to you.'));
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }catch(e){ console.warn('Classes tab failed to load:', e.message); }
 }
 
