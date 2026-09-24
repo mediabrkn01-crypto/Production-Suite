@@ -3007,7 +3007,12 @@ async function confirmCompleteGroupClasses(){
   const btn = document.getElementById('cgc_confirm_btn');
   btn.disabled = true;
   try {
-    const {error} = await sb.from('batches').update({group_classes_completed_at: new Date().toISOString()}).eq('id',batchId);
+    // Use the last actual group attendance date as the effective completion date,
+    // not today's timestamp — prevents phantom "Attendance Not Marked" entries
+    // for days between the last real class and the button-click date.
+    const {data:lastAtt} = await sb.from('attendance').select('session_date').eq('batch_name',b.raw).order('session_date',{ascending:false}).limit(1).maybeSingle();
+    const effectiveDate = lastAtt && lastAtt.session_date ? lastAtt.session_date+'T23:59:59Z' : new Date().toISOString();
+    const {error} = await sb.from('batches').update({group_classes_completed_at: effectiveDate}).eq('id',batchId);
     if(error){ showToast('error','Could not complete group classes: '+error.message); return; }
     showToast('success','Group classes completed for '+b.name+'. One-on-One sessions remain active.');
     closeModal('completeGroupClasses');
@@ -8538,6 +8543,19 @@ async function ovLoad(){
     ]);
     if(res[0].error) throw new Error('batches: '+(res[0].error.message||JSON.stringify(res[0].error)));
     var batches=(res[0].data||[]).filter(function(b){ return !b.deleted_at && b.status!=='cancelled' && b.status!=='completed'; });
+    // Self-heal: if group_classes_completed_at was stored as button-click timestamp
+    // rather than last-attendance date, correct it so phantom occurrences aren't generated.
+    var _gcHeal=[];
+    batches.forEach(function(b){
+      if(!b.group_classes_completed_at) return;
+      _gcHeal.push(sb.from('attendance').select('session_date').eq('batch_name',b.name).order('session_date',{ascending:false}).limit(1).maybeSingle().then(function(r){
+        if(r.data&&r.data.session_date){
+          var lastReal=r.data.session_date, stored=b.group_classes_completed_at.slice(0,10);
+          if(lastReal<stored){ b.group_classes_completed_at=lastReal+'T23:59:59Z'; sb.from('batches').update({group_classes_completed_at:lastReal+'T23:59:59Z'}).eq('id',b.id); }
+        }
+      }));
+    });
+    if(_gcHeal.length) await Promise.all(_gcHeal);
     var trainers=res[1].data||[], att=res[2]||[], leaves=(res[3].data||[]);
     // Build attendance map keyed batch_name|session_date
     var attByKey={};
