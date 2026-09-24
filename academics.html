@@ -202,6 +202,38 @@ aside{background:rgba(10,14,23,0.9)!important;border-right:1px solid var(--panel
 .dsh-empty-ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.04);border:1px solid var(--panel-border);color:var(--tx2)}
 .dsh-empty-t{font-size:12.5px;font-weight:600;color:var(--tx2)}
 .dsh-empty-s{font-size:11px;color:var(--tx3);max-width:260px;line-height:1.5}
+.crs-table td{vertical-align:middle}
+.crs-num{font-variant-numeric:tabular-nums;color:var(--tx)}
+.crs-muted{color:var(--tx3)}
+.crs-rec{color:var(--tx2);background:rgba(255,255,255,.05);border-color:var(--panel-border)}
+.crs-days{display:flex;flex-wrap:wrap;gap:4px;max-width:240px}
+.crs-day{font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.05);border:1px solid var(--panel-border);color:var(--tx2)}
+.crs-mc{color:var(--yellow);background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3)}
+.crs-legacy td{opacity:.55}
+.crs-legacy td:last-child{opacity:1}
+.crs-del{color:#f87171;border-color:rgba(239,68,68,.3)}
+.crs-del:hover{background:rgba(239,68,68,.1)}
+.tt-table{table-layout:fixed;border-collapse:separate;border-spacing:0}
+.tt-table th{text-align:center;font-size:10.5px;letter-spacing:.1em;color:var(--tx3);padding:8px 4px 10px;border-bottom:1px solid var(--panel-border)}
+.tt-table th.tt-today{color:var(--tx)}
+.tt-today-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--k1);margin-left:6px;vertical-align:middle}
+.tt-table tbody tr + tr td{border-top:1px solid rgba(255,255,255,.04)}
+.tt-time{color:var(--tx2);font-size:11px;font-weight:700;white-space:nowrap;padding:12px 10px 8px 0;vertical-align:top;font-variant-numeric:tabular-nums}
+.tt-cell{vertical-align:top;padding:8px 5px}
+.tt-cell-today{background:rgba(255,255,255,.018)}
+.tt-card{position:relative;background:color-mix(in srgb,var(--tt) 9%,transparent);border:1px solid color-mix(in srgb,var(--tt) 28%,transparent);border-left:3px solid var(--tt);border-radius:8px;padding:7px 9px;margin-bottom:5px;font-size:11px;cursor:pointer;transition:background .15s}
+.tt-card:hover{background:color-mix(in srgb,var(--tt) 16%,transparent)}
+.tt-name{font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tt-sub{color:var(--tx2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tt-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px}
+.tt-prog{color:var(--tt);font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tt-n{display:inline-flex;align-items:center;gap:3px;color:var(--tx3);font-size:10px;flex-shrink:0}
+.tt-n svg{display:inline-block}
+.tt-empty{height:100%;min-height:52px;border-radius:8px;border:1px dashed rgba(255,255,255,.05)}
+.tt-off{min-height:52px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,.02);color:var(--tx3);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.ov-tr{transition:background .15s}
+.ov-tr:hover{background:rgba(255,255,255,.025)}
+.ov-tr-miss td:first-child{box-shadow:inset 3px 0 0 #fb923c}
 .bcard{transition:border-color .15s}
 .bcard:hover{border-color:rgba(255,255,255,.14)}
 .bcard-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
@@ -1053,7 +1085,7 @@ details[open] .rawsum::before{content:'▾ '}
         <div class="section">
           <h2>Courses <button onclick="openCourse()" class="role-head-only hidden">+ Define Course</button></h2>
           <div class="mhint" style="margin-bottom:12px">Define once, reuse for every batch. Sessions, duration, capacity and default days — all editable anytime, even midway through a running course.</div>
-          <table><thead><tr><th>Course</th><th>Type</th><th>Sessions</th><th>Duration</th><th>Capacity</th><th>Default Days</th><th>Status</th><th>Actions</th></tr></thead>
+          <table class="crs-table"><thead><tr><th>Course</th><th>Type</th><th>Sessions</th><th>Duration</th><th>Capacity</th><th>1:1 Sessions</th><th>Default Days</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
             <tbody id="courseTable"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -7184,21 +7216,27 @@ async function loadScheduleTab(){
     // real classes exactly like any other day rather than hiding them behind an "Off" label.
     const sundayHasClasses = rows.some(b => _acadEffectiveDayPattern(b).split(',').map(s=>s.trim().replace(/\s*·.*$/,'')).includes('Sun'));
 
-    const classCard = (b) => `<div style="background:rgba(255,107,6,.1);border:1px solid rgba(255,107,6,.28);border-radius:8px;padding:6px 8px;margin-bottom:5px;font-size:11px;cursor:pointer" onclick="openBatchDetails('${b.id}')">
-      <div style="font-weight:700;color:var(--tx)">${esc(b.name)}</div>
-      <div style="color:var(--tx3);margin-top:1px">${esc(b.time_slot||'')}${b.students?.length!=null?' · '+b.students.length+' students':''}</div>
-    </div>`;
+    // Colour per course, drawn from accents this file already uses — same course, same colour
+    // across the whole week so a timetable reads at a glance.
+    const _ttPal = ['#3b82f6','#7c3aed','#10b981','#f59e0b','#ec4899','#06b6d4','#ff6b06'];
+    const _ttCol = {}; [...new Set(rows.map(b => b.programme || b.name))].sort().forEach((k,i) => { _ttCol[k] = _ttPal[i % _ttPal.length]; });
+    const classCard = (b) => { const c = _ttCol[b.programme || b.name] || '#3b82f6'; const n = b.students?.length; return `<div class="tt-card" style="--tt:${c}" onclick="openBatchDetails('${b.id}')">
+      <div class="tt-name">${esc(b.name)}</div>
+      <div class="tt-sub">${esc(b.time_slot||'')}</div>
+      <div class="tt-foot"><span class="tt-prog">${esc(b.programme||'')}</span>${n!=null?`<span class="tt-n"><i data-lucide="users" style="width:11px;height:11px"></i>${n}</span>`:''}</div>
+    </div>`; };
+    const _todayDow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
 
     // Desktop — time rows × day columns (spec item 9).
     if (desktopEl) {
       desktopEl.innerHTML = times.length ? `
         <div style="overflow-x:auto">
-        <table class="acad-matrix-table" style="min-width:900px"><thead><tr><th></th>${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
-        <tbody>${times.map(t => `<tr><td style="color:var(--tx3);font-size:11px;white-space:nowrap;padding:8px 10px 8px 0">${_formatTime12(t)}</td>${
+        <table class="acad-matrix-table tt-table" style="min-width:900px"><colgroup><col style="width:78px">${DAYS.map(()=>'<col>').join('')}</colgroup><thead><tr><th></th>${DAYS.map(d=>`<th class="${d===_todayDow?'tt-today':''}">${d}${d===_todayDow?'<span class="tt-today-dot"></span>':''}</th>`).join('')}</tr></thead>
+        <tbody>${times.map(t => `<tr><td class="tt-time">${_formatTime12(t)}</td>${
           DAYS.map(day => {
-            if (day === 'Sun' && !sundayHasClasses) return `<td style="vertical-align:top;padding:8px 6px"><div class="empty" style="padding:6px 0;font-size:10px;color:var(--tx3)">Weekly Off</div></td>`;
+            if (day === 'Sun' && !sundayHasClasses) return `<td class="tt-cell"><div class="tt-off">Weekly Off</div></td>`;
             const list = byDayTime[day+'|'+t] || [];
-            return `<td style="vertical-align:top;padding:8px 6px">${list.length ? list.map(classCard).join('') : '<div class="empty" style="padding:6px 0;font-size:10px">—</div>'}</td>`;
+            return `<td class="tt-cell${day===_todayDow?' tt-cell-today':''}">${list.length ? list.map(classCard).join('') : '<div class="tt-empty"></div>'}</td>`;
           }).join('')
         }</tr>`).join('')}</tbody></table>
         </div>
@@ -7227,6 +7265,7 @@ async function loadScheduleTab(){
       if (desktopEl) desktopEl.innerHTML += note;
       if (mobileEl) mobileEl.innerHTML += note;
     }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   }catch(e){ console.warn('Schedule tab failed to load:', e.message); }
 }
 
@@ -7539,19 +7578,21 @@ async function loadCourses(){
 }
 function renderCourseTable(){
   const el=document.getElementById('courseTable'); if(!el)return;
+  const _dash='<span class="crs-muted">—</span>';
+  const _days=c=>{ const d=(c.default_days||'').split(',').map(x=>x.trim()).filter(Boolean); if(!d.length&&!c.mc_day) return _dash; return '<div class="crs-days">'+d.map(x=>'<span class="crs-day">'+esc(x)+'</span>').join('')+(c.mc_day?'<span class="crs-day crs-mc">MC '+esc(c.mc_day)+'</span>':'')+'</div>'; };
   el.innerHTML=COURSE_ROWS.map(c=>`
-    <tr><td data-label="Course">${esc(c.name)}</td>
-    <td data-label="Type">${c.type==='one-on-one'?'1:1':(c.type==='recorded'?'Recorded':'Group')}</td>
-    <td data-label="Sessions">${c.type==='recorded'?'—':(c.sessions_total||'—')}</td>
-    <td data-label="Duration">${c.duration_days?c.duration_days+'d'+(c.type==='recorded'?' validity':''):'—'}</td>
-    <td data-label="Capacity">${c.type==='recorded'?'—':(c.type==='one-on-one'?'1':(c.max_students||'—'))}</td>
-    <td data-label="1:1 Sessions">${c.type==='group'&&c.oto_sessions_required?c.oto_sessions_required+'/student':'—'}</td>
-    <td data-label="Default Days">${esc(c.default_days||'—')}${c.mc_day?' · MC '+esc(c.mc_day):''}</td>
+    <tr class="${c.active===false?'crs-legacy':''}"><td data-label="Course"><span style="font-weight:600;color:var(--tx)">${esc(c.name)}</span></td>
+    <td data-label="Type">${c.type==='one-on-one'?'<span class="tr-type tr-pt">1:1</span>':(c.type==='recorded'?'<span class="tr-type crs-rec">Recorded</span>':'<span class="tr-type tr-ft">Group</span>')}</td>
+    <td data-label="Sessions" class="crs-num">${c.type==='recorded'?_dash:(c.sessions_total||_dash)}</td>
+    <td data-label="Duration" class="crs-num">${c.duration_days?c.duration_days+'d'+(c.type==='recorded'?' validity':''):_dash}</td>
+    <td data-label="Capacity" class="crs-num">${c.type==='recorded'?_dash:(c.type==='one-on-one'?'1':(c.max_students||_dash))}</td>
+    <td data-label="1:1 Sessions" class="crs-num">${c.type==='group'&&c.oto_sessions_required?c.oto_sessions_required+'<span class="crs-muted"> / student</span>':_dash}</td>
+    <td data-label="Default Days">${_days(c)}</td>
     <td data-label="Status"><span class="badge ${c.active===false?'b-inactive':'b-active'}">${c.active===false?'Legacy':'Active'}</span></td>
-    <td data-label="Actions"><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
+    <td data-label="Actions" style="text-align:right;white-space:nowrap"><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
     <button class="act-btn" onclick="toggleCourse('${c.id}')">${c.active===false?'Enable':'Disable'}</button>
-    <button class="act-btn" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>
-  `).join('')||'<tr><td colspan="8" class="empty">No courses yet — define your first course.</td></tr>';
+    <button class="act-btn crs-del" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>
+  `).join('')||'<tr><td colspan="9" class="empty">No courses yet — define your first course.</td></tr>';
 }
 function populateCourseSelect(){
   const sel=document.getElementById('m_b_type'); if(!sel)return;
@@ -8993,23 +9034,24 @@ window.ovRender=function(){
   // Trainer table — includes inprogress column
   var head='<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(255,255,255,.07);overflow:hidden">'+
     '<table style="width:100%;border-collapse:collapse"><thead><tr>'+
-    ['Trainer','Type','Sched.','Done','In Progress','Missing','Absent','Leave','Payroll','Hrs',''].map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>';
+    ['Trainer','Type','Sched.','Done','In Progress','Missing','Absent','Leave','Payroll','Hrs',''].map(function(h,ix){return '<th style="'+(ix>=2&&ix<=9?'text-align:center':'')+'">'+h+'</th>';}).join('')+'</tr></thead><tbody>';
   var trhtml=rows.length?rows.map(function(r){
     var pill=function(n,k){return n>0?'<span class="ov-pill" style="background:'+_OV[k].c+'1a;color:'+_OV[k].c+'">'+n+'</span>':'<span style="color:rgba(255,255,255,.15)">–</span>';};
     var typeBadge=r.type==='pt'?'<span style="font-size:9.5px;font-weight:700;background:rgba(99,102,241,.15);color:#818cf8;border-radius:5px;padding:2px 6px">PT</span>':
       r.type==='ft'?'<span style="font-size:9.5px;font-weight:700;background:rgba(16,185,129,.12);color:#34d399;border-radius:5px;padding:2px 6px">FT</span>':'<span style="color:rgba(255,255,255,.15)">—</span>';
-    return '<tr>'+
+    var cc='padding:9px 12px;text-align:center';
+    return '<tr class="ov-tr'+(r.missing>0?' ov-tr-miss':'')+'">'+
       '<td style="color:#f1f5f9;font-weight:600;padding:9px 12px">'+esc(r.name)+'</td>'+
       '<td style="padding:9px 12px">'+typeBadge+'</td>'+
-      '<td style="padding:9px 12px;color:rgba(255,255,255,.55)">'+r.total+'</td>'+
-      '<td style="padding:9px 12px">'+pill(r.completed,'completed')+'</td>'+
-      '<td style="padding:9px 12px">'+pill(r.inprogress,'inprogress')+'</td>'+
-      '<td style="padding:9px 12px">'+pill(r.missing,'missing')+'</td>'+
-      '<td style="padding:9px 12px">'+pill(r.absent,'absent')+'</td>'+
-      '<td style="padding:9px 12px">'+pill(r.leave,'leave')+'</td>'+
-      '<td style="padding:9px 12px;font-weight:700;font-size:13px;color:#38bdf8;font-variant-numeric:tabular-nums">'+r.payable+'</td>'+
-      '<td style="padding:9px 12px;color:rgba(255,255,255,.38);font-variant-numeric:tabular-nums">'+(r.minutes/60).toFixed(1)+'h</td>'+
-      '<td style="padding:9px 12px"><button class="act-btn" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">View →</button></td></tr>';
+      '<td style="'+cc+';color:rgba(255,255,255,.7);font-weight:600;font-variant-numeric:tabular-nums">'+r.total+'</td>'+
+      '<td style="'+cc+'">'+pill(r.completed,'completed')+'</td>'+
+      '<td style="'+cc+'">'+pill(r.inprogress,'inprogress')+'</td>'+
+      '<td style="'+cc+'">'+pill(r.missing,'missing')+'</td>'+
+      '<td style="'+cc+'">'+pill(r.absent,'absent')+'</td>'+
+      '<td style="'+cc+'">'+pill(r.leave,'leave')+'</td>'+
+      '<td style="'+cc+';font-weight:700;font-size:13px;color:'+(r.payable?'#38bdf8':'rgba(255,255,255,.25)')+';font-variant-numeric:tabular-nums">'+r.payable+'</td>'+
+      '<td style="'+cc+';color:'+(r.minutes?'rgba(255,255,255,.6)':'rgba(255,255,255,.25)')+';font-variant-numeric:tabular-nums">'+(r.minutes/60).toFixed(1)+'h</td>'+
+      '<td style="padding:9px 12px;text-align:right"><button class="act-btn" style="margin:0" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">View →</button></td></tr>';
   }).join(''):'<tr><td colspan="11" class="empty" style="padding:28px">No scheduled sessions for this period.</td></tr>';
   var bodyEl=document.getElementById('ov-body'); if(bodyEl) bodyEl.innerHTML=head+trhtml+'</tbody></table></div>';
   // Today's Classes: chronological list with live status
