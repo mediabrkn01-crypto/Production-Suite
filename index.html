@@ -285,6 +285,31 @@
             font-size: 15px !important; font-weight: 500; color: #f1f5f9 !important; height: 26px;
         }
         #global-search-overlay #global-search-input::placeholder { color: #6b74a0 !important; }
+        #global-search-results { padding: 6px; }
+        #global-search-results .gs-head { padding: 6px 10px 8px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #4a5182; }
+        #global-search-results .gs-empty { padding: 28px 16px; text-align: center; font-size: 12.5px; color: #4a5182; }
+        #global-search-results .gs-row { display: flex; align-items: flex-start; gap: 12px; padding: 11px 12px; border-radius: 12px; cursor: pointer; border: 1px solid transparent; transition: background .12s, border-color .12s; }
+        #global-search-results .gs-row + .gs-row { margin-top: 2px; }
+        #global-search-results .gs-row.on { background: rgba(255,107,6,.07); border-color: rgba(255,107,6,.18); }
+        #global-search-results .gs-ic { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); color: #9aa3c7; }
+        #global-search-results .gs-ic svg { width: 17px; height: 17px; }
+        #global-search-results .gs-ic-video { color: #60a5fa; background: rgba(59,130,246,.1); border-color: rgba(59,130,246,.22); }
+        #global-search-results .gs-ic-image { color: #fb923c; background: rgba(255,107,6,.1); border-color: rgba(255,107,6,.22); }
+        #global-search-results .gs-ic-headphones { color: #c084fc; background: rgba(124,58,237,.12); border-color: rgba(124,58,237,.25); }
+        #global-search-results .gs-main { flex: 1; min-width: 0; }
+        #global-search-results .gs-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        #global-search-results .gs-title { margin: 0; font-size: 13.5px; font-weight: 700; color: #f1f5f9; line-height: 1.35; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #global-search-results .gs-hl { background: rgba(255,107,6,.22); color: #ffb877; border-radius: 3px; padding: 0 1px; }
+        #global-search-results .gs-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 3px; font-size: 11.5px; color: #6b74a0; }
+        #global-search-results .gs-dot { width: 3px; height: 3px; border-radius: 50%; background: #3a4166; display: inline-block; }
+        #global-search-results .gs-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        #global-search-results .gs-file { display: inline-flex; align-items: center; gap: 5px; max-width: 260px; padding: 4px 9px; border-radius: 8px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.08); color: #c7cbe0; font-size: 11px; font-weight: 500; text-decoration: none; transition: border-color .12s, color .12s; }
+        #global-search-results .gs-file:hover { border-color: rgba(255,107,6,.4); color: #fff; }
+        #global-search-results .gs-file svg { width: 12px; height: 12px; color: #fb923c; flex-shrink: 0; }
+        #global-search-results .gs-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #global-search-results .gs-more { font-size: 11px; color: #6b74a0; align-self: center; }
+        #global-search-results .gs-go { width: 16px; height: 16px; color: #4a5182; flex-shrink: 0; margin-top: 10px; transition: color .12s, transform .12s; }
+        #global-search-results .gs-row.on .gs-go { color: #fb923c; transform: translateX(2px); }
         select option { background: #0d1118; }
 
         /* ── Table ── */
@@ -1300,15 +1325,15 @@
                         <i data-lucide="search" class="w-4 h-4 shrink-0" style="color:#6b74a0"></i>
                         <input id="global-search-input" type="text" placeholder="Search tasks, videos, thumbnails, creators…"
                             oninput="runGlobalSearch(this.value)"
-                            onkeydown="if(event.key==='Escape')closeGlobalSearch()"
+                            onkeydown="_gsKey(event)"
                             class="flex-1 text-sm text-white placeholder-gray-500" style="background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;padding:0!important;font-weight:500">
                         <button onclick="closeGlobalSearch()" class="text-[#4a5182] hover:text-white transition shrink-0">
                             <i data-lucide="x" class="w-4 h-4"></i>
                         </button>
                     </div>
                     <!-- Results -->
-                    <div id="global-search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-white/[0.05]">
-                        <p class="text-center text-[#4a5182] text-xs py-7">Start typing to search…</p>
+                    <div id="global-search-results" class="max-h-[60vh] overflow-y-auto">
+                        <p class="gs-empty">Start typing to search tasks, files and people…</p>
                     </div>
                 </div>
             </div>
@@ -7130,7 +7155,7 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             overlay.classList.toggle('hidden');
             if (isHidden) {
                 document.getElementById('global-search-results').innerHTML =
-                    '<p class="text-center text-[#4a5182] text-xs py-7">Start typing to search…</p>';
+                    '<p class="gs-empty">Start typing to search tasks, files and people…</p>';
                 document.getElementById('global-search-input').value = '';
                 setTimeout(() => document.getElementById('global-search-input')?.focus(), 80);
                 if (window.lucide) lucide.createIcons();
@@ -7139,12 +7164,44 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
         function closeGlobalSearch() {
             document.getElementById('global-search-overlay')?.classList.add('hidden');
         }
+        // Global search (Media) — tasks from assignmentsList. Rows: type icon, highlighted
+        // title, type · owner · date, status pill, and each attached file as a named chip
+        // (assetLink "name|url ;; name|url" — same parse openSearchResult uses). ↑/↓ + Enter.
+        function _gsParseLinks(raw) {
+            return String(raw || '').split(/\s*;;\s*|,/).map(x => x.trim()).filter(Boolean).map(x => {
+                const i = x.indexOf('|');
+                const name = i > -1 ? x.slice(0, i).trim() : '', url = (i > -1 ? x.slice(i + 1) : x).trim();
+                let label = name;
+                if (!label) { try { const h = new URL(url).hostname.replace(/^www\./, ''); label = /drive\.google/.test(h) ? 'Google Drive file' : /supabase/.test(h) ? 'Uploaded file' : h; } catch (_) { label = 'Link'; } }
+                return { name: label, url };
+            }).filter(l => /^https?:\/\//i.test(l.url));
+        }
+        function _gsMark(text, q) {
+            const t = String(text || ''), i = t.toLowerCase().indexOf(q);
+            if (!q || i < 0) return esc(t);
+            return esc(t.slice(0, i)) + '<mark class="gs-hl">' + esc(t.slice(i, i + q.length)) + '</mark>' + esc(t.slice(i + q.length));
+        }
+        function _gsKey(e) {
+            if (e.key === 'Escape') { closeGlobalSearch(); return; }
+            const rows = [...document.querySelectorAll('#global-search-results .gs-row')];
+            if (!rows.length) return;
+            let cur = rows.findIndex(r => r.classList.contains('on'));
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                cur = e.key === 'ArrowDown' ? Math.min(cur + 1, rows.length - 1) : Math.max(cur - 1, 0);
+                rows.forEach((r, i) => r.classList.toggle('on', i === cur));
+                rows[cur].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                (rows[cur] || rows[0]).click();
+            }
+        }
         function runGlobalSearch(query) {
             const results = document.getElementById('global-search-results');
             if (!results) return;
             const q = (query || '').trim().toLowerCase();
             if (!q) {
-                results.innerHTML = '<p class="text-center text-[#4a5182] text-xs py-7">Start typing to search…</p>';
+                results.innerHTML = '<p class="gs-empty">Start typing to search tasks, files and people…</p>';
                 return;
             }
             // Search across assignmentsList (all tasks — active + history)
@@ -7158,42 +7215,28 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 (t.status || '').toLowerCase().includes(q)
             );
             if (matches.length === 0) {
-                results.innerHTML = '<p class="text-center text-[#4a5182] text-xs italic py-6">No results found.</p>';
+                results.innerHTML = '<p class="gs-empty">No tasks match “' + esc(query.trim()) + '”.</p>';
                 return;
             }
-            const statusColors = {
-                'Completed':'text-green-400','In Progress':'text-blue-400',
-                'Pending':'text-yellow-400','Rework Required':'text-white/70','Rejected':'text-red-400'
-            };
-            results.innerHTML = matches.slice(0, 30).map(t => {
-                const statusCls = statusColors[t.status] || 'text-[#6b74a0]';
-                const hasAsset = t.assetLink && t.assetLink !== 'null' && t.assetLink.trim() !== '';
-                const assetLinks = hasAsset
-                    ? t.assetLink.split(',').map(u => u.trim()).filter(Boolean)
-                    : [];
-                const typeIcon = (t.type || '').toLowerCase().includes('video') ? 'video'
-                    : (t.type || '').toLowerCase().includes('thumb') ? 'image'
-                    : (t.type || '').toLowerCase().includes('poster') ? 'image'
-                    : (t.type || '').toLowerCase().includes('audio') ? 'headphones'
-                    : 'file';
-                return `<div class="flex items-start gap-3 px-4 py-3 hover:bg-transparent transition cursor-pointer"
-                        onclick="openSearchResult(${t.id})">
-                    <div class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <i data-lucide="${typeIcon}" class="w-4 h-4 text-white/70"></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-xs font-bold text-white leading-snug break-words">${t.topic || '—'}</p>
-                        <div class="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span class="text-[10px] text-[#6b74a0]">${t.type || ''}</span>
-                            <span class="text-[10px] text-gray-600">·</span>
-                            <span class="text-[10px] text-[#6b74a0]">${t.assignedTo || ''}</span>
-                            <span class="text-[10px] text-gray-600">·</span>
-                            <span class="text-[10px] font-bold ${statusCls}">${t.status || ''}</span>
-                        </div>
-                        ${assetLinks.length > 0 ? `<div class="flex flex-wrap gap-1 mt-1.5">${assetLinks.map(u => `<a href="${u}" target="_blank" onclick="event.stopPropagation()" class="text-[10px] text-orange-400 hover:text-orange-300 underline break-all">${u.length > 40 ? u.slice(0,40)+'…' : u}</a>`).join('')}</div>` : ''}
-                    </div>
-                    <i data-lucide="external-link" class="w-3.5 h-3.5 text-gray-600 shrink-0 mt-1"></i>
-                </div>`;
+            // Title matches first, then newest assigned.
+            const rank = t => (t.topic || '').toLowerCase().includes(q) ? 0 : 1;
+            matches.sort((x, y) => rank(x) - rank(y) || String(y.assignedDate || '').localeCompare(String(x.assignedDate || '')));
+            const statusPill = { 'Completed': 'st-ok', 'Approved': 'st-ok', 'Posted': 'st-ok', 'Published': 'st-ok', 'In Progress': 'st-info', 'Pending': 'st-warn', 'Rework Required': 'st-purple', 'Rejected': 'st-bad' };
+            const shown = matches.slice(0, 30);
+            results.innerHTML = '<div class="gs-head">' + matches.length + ' result' + (matches.length === 1 ? '' : 's') + (matches.length > 30 ? ' · showing 30' : '') + '</div>' + shown.map((t, idx) => {
+                const ty = (t.type || '').toLowerCase();
+                const icon = ty.includes('video') ? 'video' : (ty.includes('thumb') || ty.includes('poster')) ? 'image' : ty.includes('audio') ? 'headphones' : 'file-text';
+                const links = _gsParseLinks(t.assetLink);
+                const date = t.assignedDate ? new Date(t.assignedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
+                const meta = [t.type, t.assignedTo, date].filter(Boolean).map(x => '<span>' + _gsMark(x, q) + '</span>').join('<i class="gs-dot"></i>');
+                const chips = links.slice(0, 3).map(l => '<a class="gs-file" href="' + esc(l.url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="' + esc(l.url) + '"><i data-lucide="paperclip"></i><span>' + esc(l.name) + '</span></a>').join('')
+                    + (links.length > 3 ? '<span class="gs-more">+' + (links.length - 3) + ' more</span>' : '');
+                return '<div class="gs-row' + (idx === 0 ? ' on' : '') + '" onclick="openSearchResult(\'' + esc(String(t.id)) + '\')" onmouseenter="document.querySelectorAll(\'#global-search-results .gs-row\').forEach(r=>r.classList.toggle(\'on\', r===this))">'
+                    + '<div class="gs-ic gs-ic-' + icon + '"><i data-lucide="' + icon + '"></i></div>'
+                    + '<div class="gs-main"><div class="gs-top"><p class="gs-title">' + _gsMark(t.topic || '—', q) + '</p>' + (t.status ? '<span class="st-pill ' + (statusPill[t.status] || 'st-mute') + '">' + esc(t.status) + '</span>' : '') + '</div>'
+                    + '<div class="gs-meta">' + meta + '</div>'
+                    + (chips ? '<div class="gs-files">' + chips + '</div>' : '')
+                    + '</div><i data-lucide="chevron-right" class="gs-go"></i></div>';
             }).join('');
             if (window.lucide) lucide.createIcons();
         }
