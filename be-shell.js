@@ -106,12 +106,13 @@
       'body{overflow-x:hidden}' +
       'img,video{max-width:100%}' +
       '.space-y-6 > .bes-header,.space-y-6 > .bes-top{margin-bottom:0!important}' +
-      '.space-y-6 > :not([hidden]) ~ :not([hidden]){margin-top:12px!important}' +
-      '.bes-top{gap:12px;margin:0 0 12px}' +
+      '.space-y-6 > :not([hidden]) ~ :not([hidden]){margin-top:20px!important}' +
+      '.bes-top{gap:16px;margin:4px 0 20px}' +
       '.bes-welcome{gap:10px;align-items:flex-start}' +
-      '.bes-greet{font-size:11px;margin:0 0 2px}' +
-      '.bes-title{font-size:20px!important;line-height:1.2!important;margin:0!important;overflow-wrap:anywhere}' +
-      '.bes-sub{font-size:12px;line-height:1.4;margin:3px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}' +
+      '.bes-greet{font-size:12px;margin:0 0 3px}' +
+      '.bes-greet[data-date]::after{content:" · " attr(data-date);color:#6b74a0;font-weight:500}' +
+      '.bes-title{font-size:22px!important;line-height:1.2!important;margin:0!important;overflow-wrap:anywhere}' +
+      '.bes-sub{display:none!important}' +
       '.bes-actions{width:100%;justify-content:flex-start}' +
       '.be-celeb-banner-slot{max-width:100%;box-sizing:border-box;overflow:hidden;border-radius:12px}' +
       '.be-celeb-banner-slot .be-celeb-banner-item{height:auto!important;max-width:100%;margin-bottom:8px;border-radius:12px;box-sizing:border-box}' +
@@ -123,12 +124,14 @@
       '.bes-att-l{gap:10px;flex:1 1 170px}' +
       '.bes-att-ic{width:34px;height:34px;border-radius:10px}' +
       '.bes-att-ic svg,.bes-att-ic i{width:17px;height:17px}' +
-      '.bes-att-lbl{font-size:10px}' +
+      '.bes-att-lbl{font-size:12.5px;letter-spacing:0;text-transform:none}' +
       '.bes-att-st{font-size:11.5px;line-height:1.35;margin-top:2px}' +
       '.bes-att-r{width:auto;flex:0 1 auto;gap:10px;flex-wrap:wrap;max-width:100%;min-width:0}' +
       '.bes-att-r > *{min-width:0}' +
       '.bes-att-r .bes-clk{flex:0 0 auto;height:38px;padding:0 14px;font-size:11px;border-radius:10px}' +
       '.bes-att-r > .pl-4{padding-left:10px!important}' +
+      '.dsh-empty{min-height:0!important;padding:14px 12px!important;gap:6px!important}' +
+      '.dsh-empty-ic{width:32px;height:32px;border-radius:10px}' +
     '}',
     /* ── jump-to palette ── */
     '@media(max-width:767px){.bes-pal{padding:10vh 12px 12px}.bes-pal-item{padding:12px}}',
@@ -258,9 +261,23 @@
       '.bes-header .bes-icon{width:38px;height:38px;border-radius:11px}' +
       '.bes-header .bes-account{height:38px;padding:0 2px;margin:0}.bes-header .bes-account > svg,.bes-header .bes-who{display:none}' +
       '.bes-header .bes-av{width:32px;height:32px}' +
-      (cfg.mobileCompact ? '' : '.bes-header .bes-icon,.bes-header .bes-account{display:none}') +
+      (cfg.mobileCompact ? '' : '.bes-header .bes-icon,.bes-header .bes-account{display:none}.bes-header{display:none!important}') +
       '}';
     document.head.appendChild(mq);
+
+    // Phones: search lives in the page's sticky top bar as one icon (same action as the header
+    // search), so the header row isn't a second row of chrome. Skipped if the bar already has one.
+    if (!cfg.mobileCompact) {
+      var bar = document.getElementById('mobile-topbar') || document.getElementById('sales-mobile-appbar');
+      var actions = bar && (bar.querySelector('.ma-actions') || bar.children[bar.children.length - 1]);
+      if (actions && !actions.querySelector('[title="Search"]')) {
+        var sb = document.createElement('button');
+        sb.type = 'button'; sb.className = 'be-mtb-icon-btn'; sb.title = 'Search'; sb.setAttribute('aria-label', 'Search');
+        sb.innerHTML = ICON.search;
+        sb.addEventListener('click', function () { doSearch(); });
+        actions.insertBefore(sb, actions.firstChild);
+      }
+    }
 
     var search = el.querySelector('.bes-search');
     function doSearch() { if (typeof cfg.onSearch === 'function') cfg.onSearch(); else openPalette(cfg.navSelector); }
@@ -274,6 +291,7 @@
       var now = new Date();
       dateEl.textContent = formatDate(now);
       shortEl.textContent = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+      document.querySelectorAll('.bes-greet').forEach(function (g) { if (g.getAttribute('data-date') !== shortEl.textContent) g.setAttribute('data-date', shortEl.textContent); });
       if (typeof cfg.getUser === 'function') {
         var u = null;
         try { u = cfg.getUser(); } catch (_) {}
