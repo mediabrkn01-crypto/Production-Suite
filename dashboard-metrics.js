@@ -15,7 +15,7 @@ function metricStripHTML(items) {
             + '<div class="metric-body">'
                 + '<div class="metric-value">' + m.value + '</div>'
                 + '<div class="metric-label" title="' + m.label + '">' + m.label + '</div>'
-                + '<div class="metric-status"><span class="metric-dot"></span>' + m.status + '</div>'
+                + (m.status ? '<div class="metric-status"><span class="metric-dot"></span>' + m.status + '</div>' : '')
             + '</div>'
             + chevron
         + '</div>';

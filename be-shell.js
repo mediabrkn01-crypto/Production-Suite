@@ -75,7 +75,7 @@
     '.bes-greet{font-size:12px;font-weight:600;color:#8b93b8;margin:0 0 4px}',
     '.bes-greet:empty{display:none}',
     '.bes-title{font-size:30px;line-height:1.15;font-weight:700;letter-spacing:-.02em;color:#f1f5f9;margin:0}',
-    '.bes-sub{font-size:13px;color:#6b74a0;margin:5px 0 0}',
+    '.bes-sub{display:none}', /* descriptive subtitles removed — the title says it */
     '.bes-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
     '.bes-actions:empty{display:none}',
     '@media(max-width:767px){.bes-title{font-size:23px}.bes-sub{font-size:12px}}',
@@ -160,7 +160,7 @@
 
   function formatDate(now) {
     return now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
-      '  ·  ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      '  ·  ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   }
 
   // ── default search: jump to any section the current user can actually see ──

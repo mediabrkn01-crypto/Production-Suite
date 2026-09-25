@@ -3424,7 +3424,7 @@
                 if (!el) return;
                 const now = new Date();
                 const date = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-                const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                 el.textContent = date + '  ·  ' + time;
             }
             updateHeaderDateTime();
@@ -3564,9 +3564,9 @@
                 container.className = "";
                 container.innerHTML = metricStripHTML([
                     { icon: 'clock', color: '#3b82f6', label: 'ACTIVE QUEUE', value: pending, status: 'tasks pending', onclick: "switchTab('pipeline')" },
-                    { icon: 'clapperboard', color: '#10b981', label: 'DONE VIDEOS', value: compVideos, status: 'Completed', onclick: "switchTab('history')" },
-                    { icon: 'image', color: '#06b6d4', label: 'DONE THUMBS', value: compThumbs, status: 'Completed', onclick: "switchTab('history')" },
-                    { icon: 'palette', color: '#f97316', label: 'DONE POSTERS', value: compPosters, status: 'Completed', onclick: "switchTab('history')" },
+                    { icon: 'clapperboard', color: '#10b981', label: 'DONE VIDEOS', value: compVideos, status: '', onclick: "switchTab('history')" },
+                    { icon: 'image', color: '#06b6d4', label: 'DONE THUMBS', value: compThumbs, status: '', onclick: "switchTab('history')" },
+                    { icon: 'palette', color: '#f97316', label: 'DONE POSTERS', value: compPosters, status: '', onclick: "switchTab('history')" },
                     { icon: 'refresh-cw', color: '#ec4899', label: 'REWORK PHASE', value: reworks, status: 'flagged', onclick: null },
                 ]);
             } else {
@@ -6349,8 +6349,31 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 mobileContainer.appendChild(mobileCard);
             });
 
+            _pmHideEmptyColumns(tbody);
             loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
             lucide.createIcons();
+        }
+        // Pipeline table: the optional columns (Explanation Log, Delivery Output, Reference File)
+        // are usually "—" for every visible task, which only widens the table into a sideways
+        // scroll. Hide such a column while it is empty for ALL rows shown; it comes back the
+        // moment any row has content. Display only — no data touched.
+        function _pmHideEmptyColumns(tbody) {
+            const table = tbody && tbody.closest('table');
+            if (!table) return;
+            const heads = [...table.querySelectorAll('thead th')];
+            const rows = [...tbody.querySelectorAll('tr')];
+            ['Explanation Log', 'Delivery Output', 'Reference File'].forEach(name => {
+                const idx = heads.findIndex(th => th.textContent.trim() === name);
+                if (idx < 0) return;
+                const empty = rows.length > 0 && rows.every(tr => {
+                    const td = tr.children[idx];
+                    if (!td) return true;
+                    if (td.querySelector('a,button,img,video')) return false;
+                    return /^(|—|-|none|no delivery link|no reference file)$/i.test(td.textContent.replace(/\s+/g, ' ').trim());
+                });
+                heads[idx].classList.toggle('hidden', empty);
+                rows.forEach(tr => { if (tr.children[idx]) tr.children[idx].classList.toggle('hidden', empty); });
+            });
         }
 
         // ============================================================
