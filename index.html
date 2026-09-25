@@ -285,6 +285,47 @@
             font-size: 15px !important; font-weight: 500; color: #f1f5f9 !important; height: 26px;
         }
         #global-search-overlay #global-search-input::placeholder { color: #6b74a0 !important; }
+        /* Pipeline phone cards (renderTableRows → #production-matrix-mobile-cards) */
+        #production-matrix-mobile-cards { display: flex; flex-direction: column; gap: 10px; }
+        #production-matrix-mobile-cards > * + * { margin-top: 0 !important; }
+        .pm-card { background: linear-gradient(180deg, rgba(20,26,40,.6), rgba(13,17,28,.6)); border: 1px solid rgba(255,255,255,.07); border-radius: 16px; padding: 13px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .pm-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+        .pm-title { margin: 0; font-size: 14px; font-weight: 700; line-height: 1.35; color: #f1f5f9; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .pm-top .st-pill { flex-shrink: 0; margin-top: 1px; }
+        .pm-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -4px; }
+        .pm-type { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #9aa3c7; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); padding: 3px 8px; border-radius: 6px; }
+        .pm-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0 0; border-top: 1px solid rgba(255,255,255,.06); }
+        .pm-who { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; }
+        .pm-av { flex-shrink: 0; display: flex; }
+        .pm-who-t { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+        .pm-who-t b { font-size: 12.5px; font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pm-who-t small { font-size: 10.5px; color: #6b74a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pm-dates { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .pm-dates > div { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+        .pm-dates > div:first-child { align-items: flex-start; }
+        .pm-dates small { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #4a5182; }
+        .pm-dates b { font-size: 12px; font-weight: 600; color: #e2e6f3; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .pm-dates svg { width: 12px; height: 12px; color: #4a5182; }
+        .pm-due { display: flex; align-items: center; gap: 8px; margin-top: -4px; }
+        .pm-due > span:first-child { margin-top: 0 !important; }
+        .pm-by { font-size: 11px; color: #8890b5; }
+        .pm-desc { background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06); border-radius: 11px; padding: 9px 11px; cursor: pointer; }
+        .pm-desc p { margin: 0; font-size: 12px; line-height: 1.5; color: #c7cbe0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+        .pm-block { border-radius: 11px; padding: 9px 11px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06); min-width: 0; overflow: hidden; }
+        .pm-ref { border-color: rgba(59,130,246,.25); }
+        .pm-note { border-color: rgba(234,179,8,.2); }
+        .pm-note-ok { border-color: rgba(16,185,129,.25); background: rgba(16,185,129,.05); }
+        .pm-note-t { margin: 0; font-size: 11.5px; line-height: 1.45; color: #fcd34d; font-style: italic; }
+        .pm-note-ok .pm-note-t { color: #6ee7b7; }
+        .pm-lbl { margin: 0 0 5px; font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6b74a0; }
+        .pm-foot { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.06); }
+        .pm-foot .pm-lbl { margin: 0; flex-shrink: 0; }
+        .pm-ctrl { flex: 1; min-width: 0; display: flex; }
+        .pm-ctrl > * { width: 100%; }
+        .pm-ctrl select, .pm-ctrl .be-sel-trigger { width: 100% !important; height: 38px !important; font-size: 12.5px !important; border-radius: 10px !important; padding: 0 10px !important; }
+        .pm-del { flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #f87171; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); }
+        .pm-del svg { width: 16px; height: 16px; }
+        @media (max-width: 359px) { .pm-meta { flex-wrap: wrap; } .pm-dates { width: 100%; justify-content: space-between; } }
         @media (max-width: 767px) {
             #employee-notification-banner { padding: 12px !important; gap: 10px !important; }
             #employee-notification-banner h4 { font-size: 12.5px !important; }
@@ -6257,46 +6298,37 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 `;
                 tbody.appendChild(desktopRow);
 
+                // Phone card (md:hidden list) — compact: title + status, type/priority tags,
+                // one meta line (creator · assigned → due), clamped instructions (tap for full),
+                // delivery/reference/notes only when present, full-width status control.
+                const _pmPill = { 'Completed': 'st-ok', 'Approved': 'st-ok', 'In Progress': 'st-info', 'Pending': 'st-warn', 'Rework Required': 'st-purple', 'Rejected': 'st-bad' }[t.status] || 'st-mute';
+                const _pmHasAsset = t.assetLink && t.assetLink !== 'null' && String(t.assetLink).trim() !== '';
+                const _pmHasNote = t.explanation && t.explanation !== 'None';
                 let mobileCard = document.createElement('div');
-                mobileCard.className = `card p-4 rounded-xl space-y-2 text-xs border border-white/[0.06] ${isNewRealtimeItem ? 'flash-update' : ''}`;
+                mobileCard.className = `pm-card ${isNewRealtimeItem ? 'flash-update' : ''}`;
                 mobileCard.innerHTML = `
-                    <div class="flex justify-between items-start border-b border-white/[0.06]/60 pb-2">
-                        <div>
-                            <h4 class="text-white font-bold text-sm">${t.topic}</h4>
-                            <span class="text-[10px] uppercase text-[#6b74a0] font-medium tracking-wider bg-[#1d2038] px-2 py-0.5 rounded mt-1 inline-block">${t.type}</span>
+                    <div class="pm-top">
+                        <h4 class="pm-title">${t.topic}</h4>
+                        <span class="st-pill ${_pmPill}">${t.status}</span>
+                    </div>
+                    <div class="pm-tags"><span class="pm-type">${t.type}</span>${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}</div>
+                    <div class="pm-meta">
+                        <div class="pm-who"><span class="pm-av">${_creatorAv}</span><div class="pm-who-t"><b>${t.assignedTo}</b><small>${creatorDesignation || ((activeRole === 'employee' && t.assignedBy) ? 'Assigned by ' + t.assignedBy : 'Creator')}</small></div></div>
+                        <div class="pm-dates">
+                            <div><small>Assigned</small><b>${_pmDate(t.assignedDate)}</b></div>
+                            <i data-lucide="arrow-right"></i>
+                            <div><small>Due</small><b>${_pmDate(t.date)}</b></div>
                         </div>
-                        <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold ${badgeColor}">${t.status}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-y-2 gap-x-1 pt-1 text-gray-300">
-                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Creator</p><p class="font-medium">${t.assignedTo}</p></div>
-                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Assigned On</p><p>${_pmDate(t.assignedDate)}</p></div>
-                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Target Deadline</p><p class="text-white font-semibold">${_pmDate(t.date)}</p>${_pmDue(t.date, t.status)}</div>
-                        <div><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Delivery Link</p><div class="mt-1">${outputLinkBtn}</div></div>
-                        ${(activeRole === 'employee' && t.assignedBy) ? `<div class="col-span-2"><p class="text-[#4a5182] text-[10px] uppercase font-semibold">Assigned By</p><p class="font-medium text-white/70/80">${t.assignedBy}</p></div>` : ''}
-                    </div>
-                    ${t.referenceFile ? `
-                    <div class="bg-transparent p-2.5 rounded-lg border border-blue-500/20">
-                        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-wide mb-1.5">Reference File from Manager:</p>
-                        ${buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`)}
-                    </div>` : ''}
-                    <div class="bg-transparent p-2.5 rounded-lg border border-white/[0.06]/40 space-y-1">
-                        <p class="text-[#6b74a0] font-bold text-[10px] uppercase tracking-wide">Work Instructions:</p>
-                        <p class="text-gray-300 text-[11px] leading-relaxed">${t.description}</p>
-                    </div>
-                    <div class="${t.status === 'Completed' && t.explanation !== 'None' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-transparent border-yellow-500/10'} p-2.5 rounded-lg border space-y-1 ${t.explanation === 'None' ? 'hidden' : ''}">
-                        <p class="${t.status === 'Completed' ? 'text-emerald-400' : 'text-yellow-500'} font-bold text-[10px] uppercase tracking-wide">Evaluation Review Notes:</p>
-                        <p class="${t.status === 'Completed' ? 'text-emerald-300/90' : 'text-yellow-400/90'} text-[11px] italic leading-relaxed">${t.explanation}</p>
-                    </div>
-                    <div class="flex items-center justify-between pt-2 border-t border-white/[0.06]/40">
-                        <div class="flex items-center gap-1.5 w-full">
-                            <span class="text-[#6b74a0] text-[10px] uppercase font-bold">Action Control:</span>
-                            ${inputActionSelectorMarkup}
-                        </div>
-                        ${activeRole === 'admin' ? `
-                            <button onclick="deleteAssignment(${t.id})" class="text-red-400 hover:text-red-500 p-1">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        ` : ''}
+                    ${_pmDue(t.date, t.status) ? `<div class="pm-due">${_pmDue(t.date, t.status)}${(creatorDesignation && activeRole === 'employee' && t.assignedBy) ? `<span class="pm-by">by ${t.assignedBy}</span>` : ''}</div>` : ((creatorDesignation && activeRole === 'employee' && t.assignedBy) ? `<div class="pm-due"><span class="pm-by">by ${t.assignedBy}</span></div>` : '')}
+                    ${t.description ? `<div class="pm-desc" onclick="openDescriptionModal(${t.id})"><p>${t.description}</p></div>` : ''}
+                    ${t.referenceFile ? `<div class="pm-block pm-ref"><p class="pm-lbl">Reference file</p>${buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`)}</div>` : ''}
+                    ${_pmHasAsset ? `<div class="pm-block"><p class="pm-lbl">Delivery</p>${outputLinkBtn}</div>` : ''}
+                    ${_pmHasNote ? `<div class="pm-block ${t.status === 'Completed' ? 'pm-note-ok' : 'pm-note'}"><p class="pm-lbl">Review notes</p><p class="pm-note-t">${t.explanation}</p></div>` : ''}
+                    <div class="pm-foot">
+                        <span class="pm-lbl">Status</span>
+                        <div class="pm-ctrl">${inputActionSelectorMarkup}</div>
+                        ${activeRole === 'admin' ? `<button onclick="deleteAssignment(${t.id})" class="pm-del" title="Delete"><i data-lucide="trash-2"></i></button>` : ''}
                     </div>
                 `;
                 mobileContainer.appendChild(mobileCard);
