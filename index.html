@@ -3014,7 +3014,16 @@
                         assignedDate: t.assigned_date,
                         date: t.date,
                         status: t.status,
-                        explanation: t.explanation,
+                        // Explanation Log shows the review note. The Work Approvals flow saves
+                        // "send back for rework" / "reject" notes in rework_reason /
+                        // rejection_reason (explanation stays 'None'), so fall back to those —
+                        // otherwise the creator never sees why the work came back.
+                        explanation: (t.explanation && t.explanation !== 'None') ? t.explanation
+                            : (t.status === 'Rework Required' && t.rework_reason) ? t.rework_reason
+                            : (t.status === 'Rejected' && t.rejection_reason) ? t.rejection_reason
+                            : (t.explanation || 'None'),
+                        reworkReason: t.rework_reason || '',
+                        rejectionReason: t.rejection_reason || '',
                         assetLink: t.asset_link,
                         referenceFile: t.reference_file,
                         assignedBy: t.assigned_by || '',
