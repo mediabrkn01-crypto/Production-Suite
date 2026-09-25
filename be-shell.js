@@ -315,5 +315,19 @@
     active.doSearch();
   });
 
+  // Celebration banners are rendered with loading="lazy". On phones the banner takes the
+  // artwork's own height (height:auto), so before it loads it is 0px tall — and a browser never
+  // lazy-loads a zero-height image, so it stayed blank forever. Banners sit at the top of the
+  // page anyway: load them eagerly, on every page, whichever engine rendered them.
+  function eagerBanners(root) {
+    (root.querySelectorAll ? root.querySelectorAll('.be-celeb-banner-item img[loading="lazy"]') : []).forEach(function (img) { img.loading = 'eager'; });
+  }
+  try {
+    new MutationObserver(function (muts) {
+      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.matches && n.matches('.be-celeb-banner-item img[loading="lazy"]')) n.loading = 'eager'; else eagerBanners(n); } }); });
+    }).observe(document.documentElement, { childList: true, subtree: true });
+    if (document.body) eagerBanners(document.body);
+  } catch (_) {}
+
   window.BEShell = { header: header, openPalette: openPalette, formatDate: formatDate };
 })();
