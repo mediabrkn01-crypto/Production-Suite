@@ -9746,6 +9746,31 @@ async function saveLeave(){
     waRender();
   };
 
+  // Employee record (for avatar photos) by portal email. hrEmployees on this page only holds
+  // the viewer's own HR scope, so a teammate like the creator of an approved work may be
+  // missing — fetch those few records once (cached), then re-render the list that asked.
+  if (!window.beEmpForEmail) {
+    var _beEmpCache = {}, _beEmpPending = {}, _beEmpQueue = [], _beEmpTimer = null, _beEmpRerender = [];
+    window.beEmpForEmail = function (email, rerender) {
+      var key = String(email || '').toLowerCase();
+      if (!key) return null;
+      var hit = (typeof hrEmployees !== 'undefined' && Array.isArray(hrEmployees)) ? hrEmployees.find(function (e) { return (e.portal_email || '').toLowerCase() === key; }) : null;
+      if (hit && (hit.photo_base64 || hit.photo_url)) return hit;
+      if (key in _beEmpCache) return _beEmpCache[key] || hit;
+      if (!_beEmpPending[key]) { _beEmpPending[key] = 1; _beEmpQueue.push(key); }
+      if (typeof rerender === 'function' && _beEmpRerender.indexOf(rerender) < 0) _beEmpRerender.push(rerender);
+      if (!_beEmpTimer) _beEmpTimer = setTimeout(async function () {
+        var keys = _beEmpQueue.splice(0), fns = _beEmpRerender.splice(0); _beEmpTimer = null;
+        try {
+          var r = await dbInstance.from('hr_employees').select('full_name,portal_email,photo_base64,photo_url').in('portal_email', keys);
+          (r.data || []).forEach(function (e) { _beEmpCache[(e.portal_email || '').toLowerCase()] = e; });
+        } catch (_) {}
+        keys.forEach(function (k) { if (!(k in _beEmpCache)) _beEmpCache[k] = null; delete _beEmpPending[k]; });
+        fns.forEach(function (fn) { try { fn(); } catch (_) {} });
+      }, 30);
+      return hit;
+    };
+  }
   // ── APPROVED WORKS: permanent archive of approved deliveries (separate tab) ──
   // Priority: normalized low|medium|very_high (missing → medium). Shared badge for every view.
   window.bePriorityOf=function(a){ var p=((a&&a.priority)||'medium').toLowerCase(); return (p==='low'||p==='very_high')?p:'medium'; };
@@ -9825,7 +9850,7 @@ async function saveLeave(){
       var hasDeliv=beParseDelivery(a.asset_link).length>0;
       var dlBtn=hasDeliv?'<button onclick="awDownload('+a.id+')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#e5e9f5;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Download</button>':'';
       var viewBtn=hasDeliv?'<button onclick="mhViewDelivery('+a.id+',{approved:true})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>':'<span style="color:#6b74a0;font-size:11px">No delivery</span>';
-      var _emp=(typeof hrEmployees!=='undefined'&&Array.isArray(hrEmployees))?hrEmployees.find(function(e){return (e.portal_email||'').toLowerCase()===String(a.employee_email||'').toLowerCase();}):null;
+      var _emp=beEmpForEmail(a.employee_email, awRender);
       var _av=(typeof hrAvatarHTML==='function')?hrAvatarHTML(_emp||waEmpName(a)||'?',38):'';
       var _meta=function(lbl,val){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;white-space:nowrap" class="be-meta-v">'+val+'</div></div>'; };
       var _note=waNote(a); var _showNote=_note && _note.trim().toLowerCase()!==String(a.topic||'').trim().toLowerCase();
@@ -10264,7 +10289,7 @@ async function saveLeave(){
       var _fd=function(iso){ if(!iso) return '—'; var d=new Date(String(iso).slice(0,10)+'T00:00:00'); return isNaN(d)?String(iso):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}); };
       var _due=''; if(a.date && (st.key==='Pending'||st.key==='In Progress'||st.key==='Rework Required'||st.key==='uploading'||st.key==='pendingreview')){ var _t=new Date(); _t.setHours(0,0,0,0); var _dd=new Date(String(a.date).slice(0,10)+'T00:00:00'); if(!isNaN(_dd)){ var _n=Math.round((_dd-_t)/86400000); var _dc=_n<0?'#f87171':_n<=3?'#fbbf24':'#8890b5'; _due='<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;color:'+_dc+';background:'+_dc+'1a;border:1px solid '+_dc+'40;white-space:nowrap">'+(_n<0?'Overdue '+(-_n)+'d':_n===0?'Due today':_n===1?'Due tomorrow':'In '+_n+' days')+'</span>'; } }
       var _pr=String(a.priority||'').toLowerCase(), _edge=_pr==='very_high'?'#f87171':_pr==='medium'?'#fbbf24':_pr==='low'?'#60a5fa':'rgba(255,255,255,.12)';
-      var _emp=(typeof hrEmployees!=='undefined'&&Array.isArray(hrEmployees))?hrEmployees.find(function(e){return (e.portal_email||'').toLowerCase()===String(a.employee_email||'').toLowerCase();}):null;
+      var _emp=beEmpForEmail(a.employee_email, agwRender);
       var _av=(typeof hrAvatarHTML==='function')?hrAvatarHTML(_emp||waEmpName(a)||'?',38):'';
       var _meta=function(lbl,val,extra){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap" class="be-meta-v">'+val+(extra||'')+'</div></div>'; };
       return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);border-left:3px solid '+_edge+';padding:14px 16px;background:rgba(255,255,255,.02)">'
