@@ -328,6 +328,18 @@
         .pm-del { flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #f87171; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); }
         .pm-del svg { width: 16px; height: 16px; }
         @media (max-width: 359px) { .pm-meta { flex-wrap: wrap; } .pm-dates { width: 100%; justify-content: space-between; } }
+        /* Phones: Media Head archive cards (Work Approvals / Approved Works / Team Workflow /
+           History) were built with desktop minimum widths and no-wrap values, which made <main>
+           scroll sideways and shifted the whole tab left. Let them shrink and wrap. */
+        @media (max-width: 767px) {
+            main { overflow-x: clip; }
+            main [style*="min-width:200px"], main [style*="min-width:220px"], main [style*="min-width:260px"] { min-width: 0 !important; flex: 1 1 100% !important; }
+            main [style*="minmax(120px,max-content)"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px 12px !important; }
+            main .be-meta-v { white-space: normal !important; overflow-wrap: anywhere; }
+            main select[style*="min-width"] { min-width: 0 !important; flex: 1 1 calc(50% - 4px); }
+            main .flex-wrap > .be-sel-wrap:has(> select[style*="min-width"]) { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; width: auto !important; }
+            main .card[style*="border-left:3px solid"] { padding: 12px 13px !important; }
+        }
         @media (max-width: 767px) {
             #employee-notification-banner { padding: 12px !important; gap: 10px !important; }
             #employee-notification-banner h4 { font-size: 12.5px !important; }
@@ -9382,7 +9394,7 @@ async function saveLeave(){
       var viewBtn=hasDeliv?'<button onclick="mhViewDelivery('+a.id+',{approved:true})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>':'<span style="color:#6b74a0;font-size:11px">No delivery</span>';
       var _emp=(typeof hrEmployees!=='undefined'&&Array.isArray(hrEmployees))?hrEmployees.find(function(e){return (e.portal_email||'').toLowerCase()===String(a.employee_email||'').toLowerCase();}):null;
       var _av=(typeof hrAvatarHTML==='function')?hrAvatarHTML(_emp||waEmpName(a)||'?',38):'';
-      var _meta=function(lbl,val){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;white-space:nowrap">'+val+'</div></div>'; };
+      var _meta=function(lbl,val){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;white-space:nowrap" class="be-meta-v">'+val+'</div></div>'; };
       var _note=waNote(a); var _showNote=_note && _note.trim().toLowerCase()!==String(a.topic||'').trim().toLowerCase();
       return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);border-left:3px solid #22c55e;padding:15px 17px;background:rgba(255,255,255,.02)">'
         +'<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start">'
@@ -9821,7 +9833,7 @@ async function saveLeave(){
       var _pr=String(a.priority||'').toLowerCase(), _edge=_pr==='very_high'?'#f87171':_pr==='medium'?'#fbbf24':_pr==='low'?'#60a5fa':'rgba(255,255,255,.12)';
       var _emp=(typeof hrEmployees!=='undefined'&&Array.isArray(hrEmployees))?hrEmployees.find(function(e){return (e.portal_email||'').toLowerCase()===String(a.employee_email||'').toLowerCase();}):null;
       var _av=(typeof hrAvatarHTML==='function')?hrAvatarHTML(_emp||waEmpName(a)||'?',38):'';
-      var _meta=function(lbl,val,extra){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap">'+val+(extra||'')+'</div></div>'; };
+      var _meta=function(lbl,val,extra){ return '<div style="min-width:0"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+lbl+'</div><div style="font-size:12px;font-weight:600;color:#e6e9f5;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap" class="be-meta-v">'+val+(extra||'')+'</div></div>'; };
       return '<div class="card glass-card rounded-2xl" style="border:1px solid rgba(255,255,255,.07);border-left:3px solid '+_edge+';padding:14px 16px;background:rgba(255,255,255,.02)">'
         +'<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start">'
         +'<div style="display:flex;gap:12px;min-width:260px;flex:1"><span style="flex-shrink:0">'+_av+'</span><div style="min-width:0;flex:1">'
