@@ -45,6 +45,7 @@
     '.bes-right{display:flex;align-items:center;gap:10px;margin-left:auto;flex-shrink:0}',
     '.bes-date{height:40px;display:flex;align-items:center;gap:8px;padding:0 13px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);color:#8b93b8;font-size:12px;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}',
     '.bes-date svg{color:#6b74a0;flex-shrink:0}',
+    '.bes-date-short{display:none;font-style:normal}',
     '.bes-icon{position:relative;width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);color:rgba(255,255,255,.72);cursor:pointer;transition:all .15s;padding:0}',
     '.bes-icon:hover{color:#fff;border-color:rgba(255,107,6,.35);background:rgba(255,255,255,.05)}',
     '.bes-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;border-radius:999px;background:linear-gradient(135deg,#ff6b06,#f9182f,#ff0552);color:#fff;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 2px 6px rgba(255,5,82,.4)}',
@@ -60,7 +61,7 @@
     '.bes-account > svg{color:#6b74a0;flex-shrink:0}',
     '@media(max-width:1100px){.bes-who{display:none}}',
     '@media(max-width:900px){.bes-date span{display:none}.bes-date{width:40px;padding:0;justify-content:center}}',
-    '@media(max-width:767px){.bes-header.bes-compact{gap:8px}.bes-header.bes-compact .bes-search{flex:0 0 40px;width:40px;padding:0;justify-content:center}.bes-header.bes-compact .bes-search span,.bes-header.bes-compact .bes-search kbd{display:none}}',
+    '@media(max-width:380px){.bes-header.bes-compact .bes-search{flex:0 0 38px;width:38px;padding:0;justify-content:center}.bes-header.bes-compact .bes-search span{display:none}}',
     '.be-embed .bes-header{display:none!important}',
     /* shared top stack: banner → welcome → attendance, one rhythm on every page */
     '.bes-top{display:flex;flex-direction:column;gap:18px;margin:0 0 18px}',
@@ -100,7 +101,37 @@
     '.bes-clk-out{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.45);color:#f87171}',
     '.bes-clk-out:hover:not(:disabled){filter:brightness(1.15)}',
     '@media(max-width:767px){.bes-att{padding:14px 16px}.bes-att-r{width:100%}.bes-att-r .bes-clk{flex:1;height:46px;font-size:13px}}',
+    /* ── phones: compact top stack, banner kept inside its frame, no sideways scroll ── */
+    '@media(max-width:767px){' +
+      'body{overflow-x:hidden}' +
+      'img,video{max-width:100%}' +
+      '.space-y-6 > .bes-header,.space-y-6 > .bes-top{margin-bottom:0!important}' +
+      '.space-y-6 > :not([hidden]) ~ :not([hidden]){margin-top:12px!important}' +
+      '.bes-top{gap:12px;margin:0 0 12px}' +
+      '.bes-welcome{gap:10px;align-items:flex-start}' +
+      '.bes-greet{font-size:11px;margin:0 0 2px}' +
+      '.bes-title{font-size:20px!important;line-height:1.2!important;margin:0!important;overflow-wrap:anywhere}' +
+      '.bes-sub{font-size:12px;line-height:1.4;margin:3px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}' +
+      '.bes-actions{width:100%;justify-content:flex-start}' +
+      '.be-celeb-banner-slot{max-width:100%;box-sizing:border-box;overflow:hidden;border-radius:12px}' +
+      '.be-celeb-banner-slot .be-celeb-banner-item{height:auto!important;max-width:100%;margin-bottom:8px;border-radius:12px;box-sizing:border-box}' +
+      '.be-celeb-banner-slot .be-celeb-banner-item:last-child{margin-bottom:0}' +
+      /* the artwork's own aspect ratio — whole image visible, never cropped or stretched */
+      '.be-celeb-banner-slot .be-celeb-banner-item img,.be-celeb-banner-slot .be-celeb-banner-item video{display:block;width:100%!important;height:auto!important;max-width:100%;object-fit:contain}' +
+      '.be-celeb-banner-close{width:26px;height:26px;top:6px;right:6px;font-size:13px}' +
+      '.bes-att{padding:11px 12px;gap:10px;border-radius:14px}' +
+      '.bes-att-l{gap:10px;flex:1 1 170px}' +
+      '.bes-att-ic{width:34px;height:34px;border-radius:10px}' +
+      '.bes-att-ic svg,.bes-att-ic i{width:17px;height:17px}' +
+      '.bes-att-lbl{font-size:10px}' +
+      '.bes-att-st{font-size:11.5px;line-height:1.35;margin-top:2px}' +
+      '.bes-att-r{width:auto;flex:0 1 auto;gap:10px;flex-wrap:wrap;max-width:100%;min-width:0}' +
+      '.bes-att-r > *{min-width:0}' +
+      '.bes-att-r .bes-clk{flex:0 0 auto;height:38px;padding:0 14px;font-size:11px;border-radius:10px}' +
+      '.bes-att-r > .pl-4{padding-left:10px!important}' +
+    '}',
     /* ── jump-to palette ── */
+    '@media(max-width:767px){.bes-pal{padding:10vh 12px 12px}.bes-pal-item{padding:12px}}',
     '.bes-pal{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px 16px}',
     '.bes-pal-box{width:100%;max-width:520px;background:#0b0d19;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 30px 70px rgba(0,0,0,.7);overflow:hidden;font-family:Inter,system-ui,sans-serif}',
     '.bes-pal-in{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);color:#6b74a0}',
@@ -130,9 +161,12 @@
   }
 
   // ── default search: jump to any section the current user can actually see ──
+  // Permission-gated = hidden. Walks up to (not including) the sidebar root, so the sidebar's
+  // own display:none on phones doesn't hide every item, while a hidden role group still does.
   function isShown(el) {
-    for (var n = el; n && n !== document.body; n = n.parentElement) {
-      if (n.hidden) return false;
+    var root = el.closest('#be-sidebar, #aside, aside') || document.body;
+    for (var n = el; n && n !== root && n !== document.body; n = n.parentElement) {
+      if (n.hidden || n.classList.contains('hidden')) return false;
       var cs = getComputedStyle(n);
       if (cs.display === 'none' || cs.visibility === 'hidden') return false;
     }
@@ -203,7 +237,7 @@
       '<button type="button" class="bes-search"' + idAttr(ids.search) + ' aria-label="Search">' + ICON.search +
         '<span>' + esc(cfg.searchPlaceholder || 'Search…') + '</span><kbd>⌘K</kbd></button>' +
       '<div class="bes-right">' +
-        '<div class="bes-date" title="Today">' + ICON.calendar + '<span' + idAttr(ids.date) + '></span></div>' +
+        '<div class="bes-date" title="Today">' + ICON.calendar + '<span' + idAttr(ids.date) + '></span><em class="bes-date-short"></em></div>' +
         '<button type="button" class="bes-icon"' + idAttr(ids.bell) + ' title="Notifications" aria-label="Notifications">' + ICON.bell +
           '<span class="bes-badge hidden" style="display:none"' + idAttr(ids.badge) + '></span></button>' +
         '<button type="button" class="bes-account"' + idAttr(ids.account) + ' title="Account" aria-label="Account menu">' +
@@ -213,11 +247,20 @@
       '</div>';
     host.replaceWith(el);
 
-    if (bp && !cfg.mobileCompact) {
-      var mq = document.createElement('style');
-      mq.textContent = '@media(max-width:' + bp + 'px){.bes-header{display:none!important}}';
-      document.head.appendChild(mq);
-    }
+    var mq = document.createElement('style');
+    mq.textContent = '@media(max-width:' + (bp || 767) + 'px){' +
+      '.bes-header{min-height:0;gap:8px;margin:0 0 12px!important;padding:0;border-bottom:0}' +
+      '.bes-header .bes-search{height:38px;max-width:none;border-radius:11px;font-size:12.5px;padding:0 12px}' +
+      '.bes-header .bes-search kbd{display:none}' +
+      '.bes-header .bes-date{height:38px;width:auto;padding:0 11px;border-radius:11px;gap:6px;font-size:11.5px}' +
+      '.bes-header .bes-date span{display:none}.bes-header .bes-date .bes-date-short{display:inline}' +
+      '.bes-header .bes-right{gap:8px}' +
+      '.bes-header .bes-icon{width:38px;height:38px;border-radius:11px}' +
+      '.bes-header .bes-account{height:38px;padding:0 2px;margin:0}.bes-header .bes-account > svg,.bes-header .bes-who{display:none}' +
+      '.bes-header .bes-av{width:32px;height:32px}' +
+      (cfg.mobileCompact ? '' : '.bes-header .bes-icon,.bes-header .bes-account{display:none}') +
+      '}';
+    document.head.appendChild(mq);
 
     var search = el.querySelector('.bes-search');
     function doSearch() { if (typeof cfg.onSearch === 'function') cfg.onSearch(); else openPalette(cfg.navSelector); }
@@ -225,10 +268,12 @@
     var bell = el.querySelector('.bes-icon');
     bell.addEventListener('click', function (e) { if (typeof cfg.onBell === 'function') { e.stopPropagation(); cfg.onBell(e); } });
 
-    var dateEl = el.querySelector('.bes-date span');
+    var dateEl = el.querySelector('.bes-date span'), shortEl = el.querySelector('.bes-date-short');
     var nameEl = el.querySelector('.bes-who b'), roleEl = el.querySelector('.bes-who small');
     function tick() {
-      dateEl.textContent = formatDate(new Date());
+      var now = new Date();
+      dateEl.textContent = formatDate(now);
+      shortEl.textContent = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
       if (typeof cfg.getUser === 'function') {
         var u = null;
         try { u = cfg.getUser(); } catch (_) {}
