@@ -63,6 +63,9 @@
     '@media(max-width:900px){.bes-date span{display:none}.bes-date{width:40px;padding:0;justify-content:center}}',
     '@media(max-width:380px){.bes-header.bes-compact .bes-search{flex:0 0 38px;width:38px;padding:0;justify-content:center}.bes-header.bes-compact .bes-search span{display:none}}',
     '.be-embed .bes-header{display:none!important}',
+    /* number fields: no browser up/down spinner (type a value instead) */
+    'input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;appearance:none;margin:0}',
+    'input[type=number]{-moz-appearance:textfield;appearance:textfield}',
     /* shared top stack: banner → welcome → attendance, one rhythm on every page */
     '.bes-top{display:flex;flex-direction:column;gap:18px;margin:0 0 18px}',
     '.bes-top > *{margin:0!important}',

@@ -950,6 +950,12 @@ details[open] .rawsum::before{content:'▾ '}
           <h2>Batches <span class="tag" id="batchesCount">0</span> <button onclick="acadSwitchTab('createbatch')">+ Create Batch</button></h2>
           <div class="sec-sub">Add or edit students from the Students tab.</div>
           <input id="batch_table_search" type="text" placeholder="Search batches by name, trainer, course, student…" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none;margin-bottom:12px" oninput="_acadBatchSearchChanged()"/>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <select id="bt_f_trainer" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="_acadBatchSearchChanged()"><option value="">All trainers</option></select>
+            <select id="bt_f_course" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="_acadBatchSearchChanged()"><option value="">All courses</option></select>
+            <select id="bt_f_type" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="_acadBatchSearchChanged()"><option value="">Group &amp; 1:1</option><option value="group">Group</option><option value="one">1:1</option></select>
+            <select id="bt_f_status" style="flex:1;min-width:140px;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;color:var(--tx);font-size:13px;outline:none" onchange="_acadBatchSearchChanged()"><option value="">Active &amp; frozen</option><option value="active">Active</option><option value="frozen">Frozen</option></select>
+          </div>
           <div style="overflow-x:auto"><table><thead><tr><th>Batch</th><th>Trainer</th><th>Schedule</th><th>Students</th><th>Status</th><th>Dates</th><th style="text-align:right">Actions</th></tr></thead>
             <tbody id="batchTable"></tbody></table></div>
           <div id="batch_pager" class="be-pager" style="margin-top:10px"></div>
@@ -964,8 +970,9 @@ details[open] .rawsum::before{content:'▾ '}
       <div class="acad-tab" id="tab-acad-previous">
         <div class="section">
           <h2>Finished Batches</h2>
-          <div class="lv-note">Batches that have reached their full session count. Attendance, class logs, and student history are all preserved — nothing here is deleted.</div>
+          <div class="sec-sub">Completed batches — attendance, class logs and student history stay saved.</div>
           <div id="previousClasses" class="loading">Loading…</div>
+          <div id="previousPager" class="be-pager" style="margin-top:12px"></div>
         </div>
       </div>
 
@@ -2797,11 +2804,21 @@ function renderLiveBatchCards(){
   const prevEl = document.getElementById('previousClasses');
   if (prevEl) {
     const shownPrev = previous.map((b,i) => ({b,i})).filter(x => _acadBatchMatchesSearch(x.b, term));
-    prevEl.innerHTML = shownPrev.length ? shownPrev.map(x => card(x.b, active.length + x.i, true)).join('')
+    const pSize = window._prevBatchPageSize || 10, pPages = Math.max(1, Math.ceil(shownPrev.length / pSize));
+    if (!window._prevBatchPage || window._prevBatchPage > pPages) window._prevBatchPage = Math.min(window._prevBatchPage || 1, pPages);
+    const pStart = (window._prevBatchPage - 1) * pSize;
+    prevEl.innerHTML = shownPrev.length ? shownPrev.slice(pStart, pStart + pSize).map(x => card(x.b, active.length + x.i, true)).join('')
       : `<div class="empty">${term ? 'No completed batches match "'+esc(term)+'".' : 'No completed batches yet.'}</div>`;
+    const pagerEl = document.getElementById('previousPager');
+    if (pagerEl) {
+      const sizeSel = `<select class="be-pager-size" onchange="_prevSetPageSize(this.value)">${[10,20,50].map(n=>`<option value="${n}" ${n===pSize?'selected':''}>${n} / page</option>`).join('')}</select>`;
+      pagerEl.innerHTML = shownPrev.length > 10 || pSize !== 10 ? _acadPagerHTML(window._prevBatchPage, pSize, shownPrev.length, '_prevGoPage', sizeSel) : '';
+    }
   }
   if (typeof renderAcadActionRequired === 'function') renderAcadActionRequired();
 }
+function _prevGoPage(n){ if (n < 1) return; window._prevBatchPage = n; renderLiveBatchCards(); const s = document.getElementById('tab-acad-previous'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function _prevSetPageSize(v){ window._prevBatchPageSize = parseInt(v, 10) || 10; window._prevBatchPage = 1; renderLiveBatchCards(); }
 // Live Batches pagination — custom BE-styled control (no native pager). Slices the already-
 // filtered list; page size 10/20/50; page 1 reset handled in renderLiveBatchCards on filter change.
 function _liveGoPage(n){ window._liveBatchPage = n; renderLiveBatchCards(); const s=document.getElementById('liveSection'); if(s) s.scrollIntoView({behavior:'smooth',block:'start'}); }
@@ -7216,7 +7233,24 @@ function _acadBatchGoPage(p){ if (p<1) return; _acadBatchPage = p; renderBatchTa
 function _acadBatchSetPageSize(v){ _ACAD_BATCH_PAGE_SIZE = parseInt(v,10)||20; _acadBatchPage = 1; renderBatchTable(); }
 function renderBatchTable(){
   const term = (document.getElementById('batch_table_search')?.value || '').trim();
-  const all = (window._allBatchesFull || []).filter(b => _acadBatchRowMatches(b, term));
+  // Batches tab = running batches only (finished ones live in Finished Batches, upcoming ones
+  // in Upcoming Batches). Filters: trainer / course / group-vs-1:1 / active-vs-frozen.
+  const _fin = window._acadFinishedBatchNames;
+  const running = (window._allBatchesFull || []).filter(b => {
+    const st = String(b.status || 'active').toLowerCase();
+    if (st !== 'active' && st !== 'frozen') return false;
+    return !(st === 'active' && _fin && _fin.has(b.name));
+  });
+  const _fv = id => (document.getElementById(id) || {}).value || '';
+  const _fill = (id, vals) => { const el = document.getElementById(id); if (!el || el.options.length > 1) return; vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); }); };
+  _fill('bt_f_trainer', [...new Set(running.map(b => b.trainers?.name).filter(Boolean))].sort());
+  _fill('bt_f_course', [...new Set(running.map(b => b.courses?.name || courseLabel(b.batch_type)).filter(Boolean))].sort());
+  const fT = _fv('bt_f_trainer'), fC = _fv('bt_f_course'), fY = _fv('bt_f_type'), fS = _fv('bt_f_status');
+  const all = running.filter(b => _acadBatchRowMatches(b, term)
+    && (!fT || (b.trainers?.name || '') === fT)
+    && (!fC || (b.courses?.name || courseLabel(b.batch_type)) === fC)
+    && (!fY || (fY === 'one' ? +b.capacity === 1 : +b.capacity !== 1))
+    && (!fS || String(b.status || 'active').toLowerCase() === fS));
   // Client-side pagination: the full batch set stays loaded (the Availability engine, Create
   // Batch conflict checks and checkBatchTrainerConflict all read window._allBatchesFull), so this
   // slices the already-filtered list for display rather than a separate fetch — the count and
@@ -7253,7 +7287,7 @@ function renderBatchTable(){
     <td data-label="Status"><span class="st-pill ${_pill}">${esc(_stLabel)}</span></td>
     <td data-label="Dates">${(b.start_date||b.expected_completion_date)?`<div class="bt-dates">${_d(b.start_date)} <i>→</i> ${_d(b.expected_completion_date)}</div>`:'<span style="color:var(--tx3)">—</span>'}</td>
     <td data-label="Actions"><div class="bt-acts"><button class="act-btn" onclick="openBatchDetails('${b.id}')">View</button><button class="act-btn" onclick="openBatchEdit('${b.id}')">Edit</button>${_live?`<button class="act-btn" onclick="openManageStudents('${b.id}')">Students</button>`:''}<button class="act-btn danger" onclick="deleteBatch('${b.id}','${esc(b.name)}')">Delete</button></div></td></tr>`;
-  }).join('') || `<tr><td colspan="7" class="empty">${term ? 'No batches match "'+esc(term)+'".' : 'No batches yet'}</td></tr>`;
+  }).join('') || `<tr><td colspan="7" class="empty">${(term || _fv('bt_f_trainer') || _fv('bt_f_course') || _fv('bt_f_type') || _fv('bt_f_status')) ? 'No active batches match these filters.' : 'No active batches.'}</td></tr>`;
 }
 async function loadHeadView(){
   await loadTrainersTable();
