@@ -6377,6 +6377,22 @@ function removeBookingInline(trainerId, startTime, endTime){
 // 24h value only at confirm time.
 let _clockTarget = null, _clockMode = 'hour', _clockHour = 12, _clockMinute = 0, _clockPeriod = 'AM';
 function openClockPicker(targetId){
+  // Same shared clock dialog as every other page (be-timepicker.js). Writes the picked time
+  // exactly as before (dataset.time24 + 12h label + optional one-shot callback).
+  if (window.BETimePicker && typeof BETimePicker.pick === 'function') {
+    _clockTarget = targetId;
+    const el = document.getElementById(targetId);
+    BETimePicker.pick({
+      value: (el && el.dataset.time24) || '',
+      title: targetId === 'm_b_time_custom_hidden' || targetId === 'be_time_custom_hidden' ? 'Batch time' : 'Select time',
+      onConfirm: function(time24){
+        const input = document.getElementById(targetId);
+        if (input) { input.dataset.time24 = time24; input.value = _formatTime12(time24); }
+        if (typeof window._clockPickerOnConfirm === 'function') { const cb = window._clockPickerOnConfirm; window._clockPickerOnConfirm = null; cb(time24); }
+      }
+    });
+    return;
+  }
   _clockTarget = targetId;
   const existing = document.getElementById(targetId)?.dataset.time24;
   if (existing) {
