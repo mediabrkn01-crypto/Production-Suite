@@ -715,6 +715,33 @@
 .wt-chip.extra{color:#4ade80;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25)}
 .wt-chip.ok{color:#a5adcf;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
 .wt-dur{color:#e6e9f5;font-weight:700;font-variant-numeric:tabular-nums;font-size:12.5px}
+.ec-card{position:relative;display:flex;flex-direction:column;gap:14px;padding:18px;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));border:1px solid rgba(255,255,255,.07);cursor:pointer;transition:border-color .16s,transform .16s,box-shadow .16s;min-width:0}
+.ec-card:hover{border-color:rgba(255,107,6,.35);transform:translateY(-2px);box-shadow:0 14px 34px rgba(0,0,0,.35)}
+.ec-card:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:2px}
+.ec-card.st-exited,.ec-card.st-inactive,.ec-card.st-terminated{opacity:.62}
+.ec-head{display:flex;align-items:center;gap:12px;min-width:0}
+.ec-av{position:relative;flex-shrink:0}
+.ec-dot{position:absolute;right:0;bottom:1px;width:11px;height:11px;border-radius:50%;background:#4ade80;border:2px solid #0f121a}
+.ec-card:not(.st-active) .ec-dot{background:#6b74a0}
+.ec-id{flex:1;min-width:0}
+.ec-name{color:#fff;font-weight:700;font-size:15px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ec-role{color:#8890b5;font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ec-more{color:#ff8a3c;font-weight:700;font-size:11px}
+.ec-meta{display:flex;flex-wrap:wrap;gap:6px}
+.ec-chip{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:#a5adcf;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);white-space:nowrap}
+.ec-foot{display:flex;align-items:center;gap:10px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.ec-code{font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#6b74a0;letter-spacing:.04em}
+.ec-access{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;white-space:nowrap}
+.ec-access::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.ec-access.on{color:#4ade80}.ec-access.off{color:#f87171}.ec-access.warn{color:#fbbf24}.ec-access.none{color:#4a5182}
+.ec-acts{margin-left:auto;display:flex;align-items:center;gap:4px}
+.ec-btn{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;color:#8890b5;background:transparent;border:1px solid transparent;cursor:pointer;transition:all .14s}
+.ec-btn:hover{color:#fff;background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
+.ec-btn.danger:hover{color:#f87171;background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3)}
+.ec-btn:focus-visible{outline:2px solid rgba(255,138,60,.6)}
+.ec-go{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;color:#6b74a0;transition:all .16s}
+.ec-card:hover .ec-go{color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f)}
+@media(hover:none){.ec-card:hover{transform:none}}
 </style>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
@@ -4290,29 +4317,47 @@
                 (!q || [e.full_name, e.employee_id, e.department].join(' ').toLowerCase().includes(q))
             );
             const divisionLabel = { education: 'Education', production: 'Production House', hr: 'HR', accounts: 'Accounts', sales: 'Sales', other: 'Administration' };
-            document.getElementById('hr-employees-cards').innerHTML = rows.length ? rows.map(e => `
-                <div class="card glass-card p-4 rounded-2xl space-y-2">
-                    <div class="flex items-start justify-between">
-                        <div style="display:flex;align-items:center;gap:10px">
-                            ${hrAvatarHTML(e, 40)}
-                            <div>
-                                <p class="text-white font-bold text-sm">${e.full_name}</p>
-                                <p class="text-[10px] text-[#6b74a0] uppercase tracking-wider mt-0.5">${e.employee_id || 'No ID'}</p>
-                            </div>
+            const ic = {
+                edit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+                docs: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>',
+                del: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>',
+                arrow: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
+            };
+            const joined = d => { if (!d) return ''; const t = new Date(d); return isNaN(t) ? '' : 'Joined ' + t.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }); };
+            document.getElementById('hr-employees-cards').innerHTML = rows.length ? rows.map(e => {
+                const st = e.employment_status || 'active';
+                const extra = hrRoleInfo(e).additional;
+                const flex = (typeof LeavePolicy !== 'undefined' && LeavePolicy.isFlexibleTime) ? LeavePolicy.isFlexibleTime(e) : !e.work_schedule_type || e.work_schedule_type === 'flexible';
+                const access = e.portal_email
+                    ? (e.portal_access_enabled === false ? '<span class="ec-access off">Sign-in off</span>' : '<span class="ec-access on">Can sign in</span>')
+                    : (e.division === 'education' ? '<span class="ec-access warn" title="Add a login so they can open Academics">No sign-in yet</span>' : '<span class="ec-access none">No sign-in</span>');
+                const j = joined(e.joining_date);
+                return `
+                <div class="ec-card st-${st}" role="button" tabindex="0" onclick="openHREmployeeProfile('${e.id}')" onkeydown="if(event.key==='Enter')openHREmployeeProfile('${e.id}')">
+                    <div class="ec-head">
+                        <div class="ec-av">${hrAvatarHTML(e, 46)}<i class="ec-dot"></i></div>
+                        <div class="ec-id">
+                            <p class="ec-name">${e.full_name}</p>
+                            <p class="ec-role">${hrRoleDisplay(e)}${extra.length ? ` <span class="ec-more" title="${extra.join(', ').replace(/"/g,'&quot;')}">+${extra.length}</span>` : ''}</p>
                         </div>
-                        <span class="hr-badge hr-badge-${e.employment_status}">${e.employment_status}</span>
+                        <span class="hr-badge hr-badge-${st}">${st}</span>
                     </div>
-                    <p class="text-xs text-[#a5adcf]">${divisionLabel[e.division] || e.division} · ${hrRoleDisplay(e)}</p>
-                    ${hrRoleInfo(e).additional.length ? `<p class="text-[10px] text-[#6b74a0]">+ ${hrRoleInfo(e).additional.join(', ')}</p>` : ''}
-                    ${e.portal_email ? `<p class="text-[10px] ${e.portal_access_enabled === false ? 'text-red-400' : 'text-green-400'}">● Panel Access: ${e.portal_access_enabled === false ? 'Disabled' : 'Enabled'}</p>` : (e.division === 'education' ? `<p class="text-[10px] text-amber-400">⚠ No login set — can't access Academic Module yet</p>` : `<p class="text-[10px] text-[#4a5182]">No portal login linked</p>`)}
-                    <div class="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
-                        <button onclick="openHREmployeeProfile('${e.id}')" class="hr-icon-btn">View Profile</button>
-                        <button onclick="openHREmployeeModal('${e.id}')" class="hr-icon-btn">Edit</button>
-                        <button onclick="openHREmployeeProfile('${e.id}','documents')" class="hr-icon-btn">Documents</button>
-                        <button onclick="deleteHREmployee('${e.id}')" class="hr-icon-btn" style="margin-left:auto;color:#f87171">Del</button>
+                    <div class="ec-meta">
+                        ${hrDivPill(e.division, divisionLabel[e.division] || e.division || '—')}
+                        <span class="ec-chip">${flex ? 'Flexible time' : 'Fixed time'}</span>
+                        ${j ? `<span class="ec-chip">${j}</span>` : ''}
                     </div>
-                </div>
-            `).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No employees found.</p>';
+                    <div class="ec-foot">
+                        <span class="ec-code">${e.employee_id || 'No ID'}</span>${access}
+                        <div class="ec-acts" onclick="event.stopPropagation()">
+                            <button type="button" class="ec-btn" title="Edit" aria-label="Edit ${e.full_name}" onclick="openHREmployeeModal('${e.id}')">${ic.edit}</button>
+                            <button type="button" class="ec-btn" title="Documents" aria-label="Documents" onclick="openHREmployeeProfile('${e.id}','documents')">${ic.docs}</button>
+                            <button type="button" class="ec-btn danger" title="Delete" aria-label="Delete ${e.full_name}" onclick="deleteHREmployee('${e.id}')">${ic.del}</button>
+                            <span class="ec-go" aria-hidden="true">${ic.arrow}</span>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('') : '<p class="text-[#4a5182] text-xs col-span-full text-center py-8">No employees found.</p>';
         }
 
         // ── MANAGEMENT (leadership accounts) ──
