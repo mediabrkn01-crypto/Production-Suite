@@ -2892,6 +2892,7 @@
         var _policyEditing = false;
         function _renderPolicyUI(el, active, history) {
             var s = active ? active.settings : {};
+            _policyActiveSettings = Object.assign({}, s);
             var fields = [
                 { key: 'PROBATION_MONTHS', label: 'Probation Period (months)', type: 'number' },
                 { key: 'CL_PER_CYCLE', label: 'Casual Leave per Cycle', type: 'number' },
@@ -2904,8 +2905,14 @@
                 { key: 'INCIDENT_FULLDAY_AT', label: 'Incidents for Full-Day Deduction', type: 'number' },
                 { key: 'WORK_START', label: 'Work Start Time', type: 'time' },
                 { key: 'WORK_END', label: 'Work End Time', type: 'time' },
-                { key: 'LEAVE_SYSTEM_START', label: 'Leave System Start Date', type: 'date' }
+                { key: 'LEAVE_SYSTEM_START', label: 'Policy start date', type: 'date' },
+                { key: 'SL_IN_PROBATION', label: 'Sick leave during probation', type: 'bool' },
+                { key: 'CL_IN_PROBATION', label: 'Casual leave during probation', type: 'bool' },
+                { key: 'LEAVE_IN_NOTICE', label: 'Paid leave during notice period', type: 'bool' }
             ];
+            // Engine defaults fill any key the stored version doesn't have yet (so every rule shows).
+            var _def = (typeof LeavePolicy !== 'undefined' && LeavePolicy.P_DEFAULTS) ? LeavePolicy.P_DEFAULTS : {};
+            s = Object.assign({}, _def, s || {});
 
             var html = '<div style="display:grid;gap:16px">';
 
@@ -2922,13 +2929,14 @@
 
             // Settings — grouped by topic, same inputs/ids as before so edit + save are unchanged.
             var _groups = [
-                { title: 'Probation', color: '#f59e0b', keys: { PROBATION_MONTHS: ['Probation period', 'months'] } },
+                { title: 'Probation & Notice', color: '#f59e0b', keys: { PROBATION_MONTHS: ['Probation period', 'months'], SL_IN_PROBATION: ['Sick leave in probation', ''], CL_IN_PROBATION: ['Casual leave in probation', ''], LEAVE_IN_NOTICE: ['Paid leave in notice period', ''] } },
                 { title: 'Casual Leave', color: '#3b82f6', keys: { CL_PER_CYCLE: ['Leaves per cycle', 'days'], CL_CYCLE_MONTHS: ['Cycle length', 'months'], CL_CARRY_MONTHS: ['Carry-forward', 'months'], CL_VALIDITY_MONTHS: ['Validity', 'months'] } },
                 { title: 'Sick Leave & Limits', color: '#10b981', keys: { SL_PER_MONTH: ['Sick leave', 'per month'], MAX_CONSECUTIVE: ['Max consecutive leave', 'days'] } },
                 { title: 'Late / Incident Deductions', color: '#f87171', keys: { INCIDENT_HALFDAY_AT: ['Half-day deduction after', 'incidents'], INCIDENT_FULLDAY_AT: ['Full-day deduction after', 'incidents'] } },
-                { title: 'Work Hours & System', color: '#a78bfa', keys: { WORK_START: ['Work starts', ''], WORK_END: ['Work ends', ''], LEAVE_SYSTEM_START: ['Leave system start', ''] } }
+                { title: 'Work Hours & Start', color: '#a78bfa', keys: { WORK_START: ['Work starts', ''], WORK_END: ['Work ends', ''], LEAVE_SYSTEM_START: ['Policy starts on', ''] } }
             ];
             var _fmtVal = function (f, v) {
+                if (f.type === 'bool') { var on = v === true || v === 'true'; return '<span style="color:' + (on ? '#10b981' : '#f87171') + '">' + (on ? 'Allowed' : 'Not allowed') + '</span>'; }
                 if (v === '' || v == null) return '<span style="color:#4a5182">—</span>';
                 if (f.type === 'time') { var p = String(v).split(':'); var h = +p[0]; return ((h + 11) % 12 + 1) + ':' + (p[1] || '00') + ' ' + (h < 12 ? 'AM' : 'PM'); }
                 if (f.type === 'date') { var d = new Date(v + 'T00:00:00'); return isNaN(d) ? v : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
@@ -2942,10 +2950,13 @@
                     var meta = g.keys[f.key], val = s[f.key] !== undefined ? s[f.key] : '';
                     html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;' + (i ? 'border-top:1px solid rgba(255,255,255,0.05)' : '') + '">';
                     html += '<span style="font-size:12.5px;color:#a5adcf">' + meta[0] + '</span>';
-                    if (_policyEditing) {
+                    if (_policyEditing && f.type === 'bool') {
+                        var _on = val === true || val === 'true';
+                        html += '<select id="pol-' + f.key + '" data-bool="1" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:13px"><option value="true"' + (_on ? ' selected' : '') + '>Allowed</option><option value="false"' + (_on ? '' : ' selected') + '>Not allowed</option></select>';
+                    } else if (_policyEditing) {
                         html += '<span style="display:flex;align-items:center;gap:6px"><input id="pol-' + f.key + '" type="' + f.type + '" value="' + val + '" style="width:' + (f.type === 'number' ? '80px' : '150px') + ';background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;color:#f1f5f9;font-size:13px;text-align:right">' + (meta[1] ? '<span style="font-size:11px;color:#6b74a0">' + meta[1] + '</span>' : '') + '</span>';
                     } else {
-                        html += '<span style="font-size:14px;font-weight:700;color:#f1f5f9;font-variant-numeric:tabular-nums;white-space:nowrap">' + _fmtVal(f, val) + (meta[1] && val !== '' ? ' <span style="font-size:11px;font-weight:500;color:#6b74a0">' + meta[1] + '</span>' : '') + '</span>';
+                        html += '<span style="font-size:14px;font-weight:700;color:#f1f5f9;font-variant-numeric:tabular-nums;white-space:nowrap">' + _fmtVal(f, val) + (meta[1] && val !== '' && f.type !== 'bool' ? ' <span style="font-size:11px;font-weight:500;color:#6b74a0">' + meta[1] + '</span>' : '') + '</span>';
                     }
                     html += '</div>';
                 });
@@ -2992,7 +3003,7 @@
                 html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">Actions</th>';
                 html += '</tr></thead><tbody>';
                 history.forEach(function (r) {
-                    var statusColor = r.status === 'draft' ? '#f59e0b' : r.status === 'superseded' ? '#808a9d' : '#10b981';
+                    var statusColor = r.status === 'draft' ? '#f59e0b' : r.status === 'scheduled' ? '#60a5fa' : r.status === 'superseded' ? '#808a9d' : '#10b981';
                     html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">';
                     html += '<td style="padding:6px 8px;color:#f1f5f9">v' + r.version + '</td>';
                     html += '<td style="padding:6px 8px;color:#f1f5f9">' + r.effective_date + '</td>';
@@ -3003,6 +3014,8 @@
                     if (r.status === 'draft') {
                         html += '<button onclick="_policyActivateDraft(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(16,185,129,.3);background:rgba(16,185,129,.08);color:#10b981;cursor:pointer;margin-right:4px">Activate</button>';
                         html += '<button onclick="_policyDeleteDraft(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.08);color:#f87171;cursor:pointer">Delete</button>';
+                    } else if (r.status === 'scheduled') {
+                        html += '<button onclick="_policyDeleteDraft(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.08);color:#f87171;cursor:pointer">Cancel</button>';
                     } else if (r.status === 'superseded') {
                         html += '<button onclick="_policyRevert(\'' + r.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.08);color:#3b82f6;cursor:pointer">Revert to This</button>';
                     }
@@ -3019,14 +3032,16 @@
         function _policyStartEdit() { _policyEditing = true; _policyLoaded = false; renderHRPolicyTab(); }
         function _policyCancelEdit() { _policyEditing = false; _policyLoaded = false; renderHRPolicyTab(); }
 
+        var _policyActiveSettings = {};
         function _policyCollectSettings() {
-            var keys = ['PROBATION_MONTHS','CL_PER_CYCLE','CL_CYCLE_MONTHS','CL_CARRY_MONTHS','CL_VALIDITY_MONTHS','SL_PER_MONTH','MAX_CONSECUTIVE','INCIDENT_HALFDAY_AT','INCIDENT_FULLDAY_AT','WORK_START','WORK_END','LEAVE_SYSTEM_START'];
-            var settings = {};
-            keys.forEach(function (k) {
-                var inp = document.getElementById('pol-' + k);
-                if (!inp) return;
+            // Start from the current version so no setting is ever dropped, then apply the edits.
+            var settings = Object.assign({}, _policyActiveSettings || {});
+            document.querySelectorAll('#hr-policy-content [id^="pol-"]').forEach(function (inp) {
+                var k = inp.id.slice(4);
+                if (k === 'effective-date' || k === 'notes') return;
                 var v = inp.value;
-                if (inp.type === 'number') v = Number(v);
+                if (inp.dataset.bool) v = (v === 'true');
+                else if (inp.type === 'number') v = Number(v);
                 settings[k] = v;
             });
             return settings;
@@ -3058,6 +3073,22 @@
             var effDate = document.getElementById('pol-effective-date').value;
             var notes = (document.getElementById('pol-notes').value || '').trim();
             if (!effDate) { alert('Effective date required.'); return; }
+            var _today = new Date().toISOString().slice(0, 10);
+            if (effDate > _today) {
+                // Future effective date: store as scheduled; it replaces the current version
+                // automatically on that date (PolicyConfig picks the version by date).
+                var { data: latestS } = await dbInstance.from('hr_policy_config').select('version').eq('policy_key', 'leave').order('version', { ascending: false }).limit(1);
+                var { data: schedRow, error: schedErr } = await dbInstance.from('hr_policy_config').insert([{
+                    policy_key: 'leave', version: (latestS && latestS[0]) ? latestS[0].version + 1 : 1, settings: settings,
+                    effective_date: effDate, status: 'scheduled', created_by: activeEmail || 'unknown',
+                    approved_by: activeEmail || 'unknown', approved_at: new Date().toISOString(), notes: notes || null
+                }]).select().single();
+                if (schedErr) { alert('Error scheduling policy: ' + schedErr.message); return; }
+                await dbInstance.from('hr_policy_audit').insert([{ policy_config_id: schedRow ? schedRow.id : null, action: 'created', actor_email: activeEmail || 'unknown', new_settings: settings, reason: (notes ? notes + ' · ' : '') + 'Scheduled for ' + effDate }]);
+                _policyEditing = false; _policyLoaded = false; renderHRPolicyTab();
+                alert('Saved. These settings take effect on ' + effDate + '.');
+                return;
+            }
             var { data: current } = await dbInstance.from('hr_policy_config').select('*').eq('policy_key', 'leave').eq('status', 'active').maybeSingle();
             var prevSettings = current ? current.settings : null;
             if (current) {
@@ -3109,8 +3140,8 @@
         }
 
         async function _policyDeleteDraft(draftId) {
-            if (!confirm('Delete this draft?')) return;
-            await dbInstance.from('hr_policy_config').delete().eq('id', draftId).eq('status', 'draft');
+            if (!confirm('Delete this draft / cancel this scheduled version?')) return;
+            await dbInstance.from('hr_policy_config').delete().eq('id', draftId).in('status', ['draft', 'scheduled']);
             _policyLoaded = false; renderHRPolicyTab();
         }
 
@@ -5156,8 +5187,9 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                 ? bal.casual.buckets.map(b => `${b.cycle_label}: ${b.remaining}/${b.original} left (credited ${b.credit_date}, expires ${b.expiry})`).join(' · ')
                 : 'No active CL credit.';
             const monthLabel = new Date(today+'T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-            const _eligible = !(state.onProbation || state.onNotice);
-            const _slRem = _eligible ? bal.sick.remaining : 0, _clRem = _eligible ? bal.casual.remaining : 0;
+            const _why = u => u === 'probation' ? 'not in probation' : u === 'notice' ? 'not in notice period' : null;
+            const _slNo = _why(bal.sick.unavailable), _clNo = _why(bal.casual.unavailable);
+            const _slRem = bal.sick.remaining, _clRem = bal.casual.remaining;
             const _slTot = +bal.sick.entitlement || 0, _clTot = (+bal.casual.currentCredit || 0) + (+bal.casual.carriedForward || 0);
             const _card = (col, title, big, bigSub, pct, lines) => `<div style="flex:1;min-width:230px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-top:2px solid ${col};border-radius:12px;padding:16px 18px">
                 <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${col}">${title}</div>
@@ -5169,8 +5201,8 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
             tbody.innerHTML = `<tr><td colspan="5" style="padding:16px">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${stateChips.join('')}</div>
                 <div style="display:flex;gap:12px;flex-wrap:wrap">
-                    ${_card('#10b981', 'Sick Leave (SL)', _slRem, _eligible ? 'remaining this month' : 'not eligible', _slTot ? _slRem / _slTot * 100 : 0, [['Allowance', _slTot + ' / month'], ['Used', bal.sick.used], ['Lapses', (bal.sick.expiry || '—') + ' · no carry-forward']])}
-                    ${_card('#3b82f6', 'Casual Leave (CL)', _clRem, _eligible ? 'remaining' : 'not eligible', _clTot ? _clRem / _clTot * 100 : 0, [['This cycle', bal.casual.currentCredit + (bal.casual.carriedForward ? ' + ' + bal.casual.carriedForward + ' carried' : '')], ['Next expiry', bal.casual.nextExpiry || '—']])}
+                    ${_card('#10b981', 'Sick Leave (SL)', _slRem, _slNo || 'remaining this month', _slTot ? _slRem / _slTot * 100 : 0, [['Allowance', _slTot + ' / month'], ['Used', bal.sick.used], ['Lapses', (bal.sick.expiry || '—') + ' · no carry-forward']])}
+                    ${_card('#3b82f6', 'Casual Leave (CL)', _clRem, _clNo || 'remaining', _clTot ? _clRem / _clTot * 100 : 0, [['This cycle', bal.casual.currentCredit + (bal.casual.carriedForward ? ' + ' + bal.casual.carriedForward + ' carried' : '')], ['Next expiry', bal.casual.nextExpiry || '—']])}
                     ${_card('#f87171', 'Loss of Pay — ' + monthLabel, pay.totalDeductionDays, 'day(s) · feeds payroll', null, [['Late / early incidents', (pay.incidents && pay.incidents.count) || 0], ['Double deductions', pay.buckets.lopDouble || 0]])}
                 </div>
                 <div style="margin-top:14px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0;margin-bottom:6px">CL credit buckets · oldest used first</div>

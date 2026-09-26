@@ -248,14 +248,16 @@
       try {
         var t = todayStr(), ctx = await LP.db.buildContext(e, { now: new Date(), date: t });
         var bal = LP.resolveLeaveBalance(ctx), st = LP.getEmployeePolicyState(e, t), pay = LP.resolvePayrollDeduction(ctx, t.slice(0, 7));
-        var elig = !(st.onProbation || st.onNotice), sl = elig ? bal.sick.remaining : 0, cl = elig ? bal.casual.remaining : 0;
+        var why = function (u) { return u === 'probation' ? 'not in probation' : u === 'notice' ? 'not in notice period' : null; };
+        var sl = bal.sick.remaining, cl = bal.casual.remaining, slNo = why(bal.sick.unavailable), clNo = why(bal.casual.unavailable);
         var slT = +bal.sick.entitlement || 1, clT = (+bal.casual.currentCredit || 0) + (+bal.casual.carriedForward || 0);
         var card = function (c, t2, n, sub, pct) { return '<div class="mw-bal" style="--c:' + c + '"><div class="mw-bal-t">' + t2 + '</div><div class="mw-bal-n">' + n + '<small>' + sub + '</small></div>' + (pct != null ? '<div class="mw-bar"><span style="width:' + Math.max(0, Math.min(100, pct)) + '%"></span></div>' : '') + '</div>'; };
-        box.innerHTML = '<div class="mw-bals">' + card('#10b981', 'Sick Leave', sl, elig ? 'this month' : 'not eligible', sl / slT * 100)
-          + card('#3b82f6', 'Casual Leave', cl, elig ? (bal.casual.carriedForward ? 'incl. ' + bal.casual.carriedForward + ' carried' : 'remaining') : 'not eligible', clT ? cl / clT * 100 : 0)
+        box.innerHTML = '<div class="mw-bals">' + card('#10b981', 'Sick Leave', sl, slNo || 'this month', sl / slT * 100)
+          + card('#3b82f6', 'Casual Leave', cl, clNo || (bal.casual.carriedForward ? 'incl. ' + bal.casual.carriedForward + ' carried' : 'remaining'), clT ? cl / clT * 100 : 0)
           + card('#f87171', 'LOP days', pay.totalDeductionDays, 'this month', null) + '</div>'
-          + (st.onProbation ? '<div class="mw-note mw-note-warn">Probation until ' + esc(fDate(st.confirmationDate, true)) + ' — leave is LOP, no weekly-off.</div>' : '')
-          + (st.onNotice ? '<div class="mw-note mw-note-bad">Notice period — CL / SL / weekly-off not applicable; absence is LOP.</div>' : '');
+          + (st.onProbation ? '<div class="mw-note mw-note-warn">Probation until ' + esc(fDate(st.confirmationDate, true)) + ' — ' + ([slNo ? 'no sick leave' : '', clNo ? 'no casual leave' : ''].filter(Boolean).join(', ') || 'leave allowed') + '; unpaid leave counts as LOP.</div>' : '')
+          + (st.onNotice ? '<div class="mw-note mw-note-bad">Notice period — ' + (slNo || clNo ? 'paid leave not available; absence is LOP.' : 'leave allowed.') + '</div>' : '')
+          + (LP.isPrePolicy && LP.isPrePolicy(t) ? '<div class="mw-note">New leave policy starts ' + esc(fDate(LP.P.LEAVE_SYSTEM_START, true)) + '.</div>' : '');
       } catch (x) { box.innerHTML = empty('calendar', 'Balances unavailable right now'); }
     })();
     // requests
@@ -506,7 +508,14 @@
   // =================================================================== API
   var RENDER = { profile: renderProfile, announcements: renderAnnouncements, attendance: renderAttendance, leave: renderLeave, documents: renderDocuments, payslips: renderPayslips, team: renderTeam };
   window.MyWorkspace = {
-    init: function (c) { cfg = c || {}; injectCSS(); },
+    init: function (c) {
+      cfg = c || {}; injectCSS();
+      // Pages without common.js (Academic, Sales) still need HR's saved leave policy.
+      try {
+        if (cfg.db && window.PolicyConfig && !PolicyConfig.isLoaded())
+          PolicyConfig.load(cfg.db).then(function () { if (window.LeavePolicy && LeavePolicy.reloadPolicy) LeavePolicy.reloadPolicy(); });
+      } catch (_) {}
+    },
     open: async function (panel) {
       if (!cfg) return;
       var root = el(panel); if (!root || !RENDER[panel]) return;

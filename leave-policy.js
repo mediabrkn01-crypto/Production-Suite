@@ -31,7 +31,15 @@
     MAX_CONSECUTIVE: 2,         // §2.2 max 2 consecutive leave days
     PROBATION_MONTHS: 3,        // §6 first 3 months
     INCIDENT_HALFDAY_AT: 2,     // §7 2 late/early instances → half-day deduction
-    INCIDENT_FULLDAY_AT: 4      // §7 4+ instances → full-day deduction
+    INCIDENT_FULLDAY_AT: 4,     // §7 4+ instances → full-day deduction
+    // Policy start (go-live). Before this date NO new-policy penalty applies: approved leave
+    // stays paid (no balance cap), no late/early incident deductions, no probation/notice LOP.
+    // Also anchors the 6-month CL cycles. HR edits it in Company Policies.
+    LEAVE_SYSTEM_START: '2026-10-01',
+    // HR-editable eligibility switches (Company Policies → Probation & Notice).
+    SL_IN_PROBATION: false,     // sick leave during probation (policy: none)
+    CL_IN_PROBATION: false,     // casual leave during probation (policy: none)
+    LEAVE_IN_NOTICE: false      // paid SL/CL during notice period (policy: none)
   };
   var P = Object.assign({}, P_DEFAULTS,
     (typeof global !== 'undefined' && global.PolicyConfig) ? global.PolicyConfig.getLeavePolicy() : {}
@@ -76,7 +84,9 @@
   // calendar half-year). First cycle = 2026-09 → 2027-02; next = 2027-03 → 2027-08; etc.
   // A date before the anchor clamps to cycle 0 (so pre-system credits count as CURRENT, never a
   // fabricated prior carry-forward — §5). `index` is the stable cycle number for comparisons.
-  var LEAVE_SYSTEM_START = P.LEAVE_SYSTEM_START || '2026-09-01';
+  var LEAVE_SYSTEM_START = P.LEAVE_SYSTEM_START || '2026-10-01';
+  function isPrePolicy(dateStr) { return !!(dateStr && LEAVE_SYSTEM_START && dateStr.slice(0, 10) < LEAVE_SYSTEM_START); }
+  function flag(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
   function clCycleFor(dateStr) {
     var start = new Date(LEAVE_SYSTEM_START.slice(0,10) + 'T00:00:00');
     var d = new Date((dateStr || '').slice(0, 10) + 'T00:00:00');
@@ -205,12 +215,17 @@
     var slRow = (ctx.slLedger || []).find(function (r) { return r.period === period; });
     var slEnt = slRow ? Number(slRow.entitlement) : P.SL_PER_MONTH;
     var slUsed = slRow ? Number(slRow.used) : 0;
+    var st = ctx.employee ? getEmployeePolicyState(ctx.employee, dateStr) : null;
+    var slBlocked = st && ((st.onProbation && !flag(P.SL_IN_PROBATION)) || (st.onNotice && !flag(P.LEAVE_IN_NOTICE)));
+    var clBlocked = st && ((st.onProbation && !flag(P.CL_IN_PROBATION)) || (st.onNotice && !flag(P.LEAVE_IN_NOTICE)));
+    var blockReason = st && st.onProbation ? 'probation' : st && st.onNotice ? 'notice' : null;
     var sick = {
-      entitlement: slEnt,
+      entitlement: slBlocked ? 0 : slEnt,
       used: slUsed,
-      remaining: Math.max(0, slEnt - slUsed),
+      remaining: slBlocked ? 0 : Math.max(0, slEnt - slUsed),
       expiry: monthEnd(period),           // lapses at month end
-      period: period
+      period: period,
+      unavailable: slBlocked ? blockReason : null
     };
 
     // Casual Leave — bucket ledger. Non-expired buckets (expiry_date > date), oldest-first.
@@ -242,8 +257,10 @@
       remaining: clRemaining,
       accrued: accrued,
       nextExpiry: nextExpiry,
-      buckets: buckets               // ordered oldest-first = consumption order
+      buckets: buckets,              // ordered oldest-first = consumption order
+      unavailable: clBlocked ? blockReason : null
     };
+    if (clBlocked) { casual.remaining = 0; casual.currentCredit = 0; casual.carriedForward = 0; }
     return { date: dateStr, sick: sick, casual: casual };
   }
 
@@ -280,9 +297,17 @@
         consumeFrom: null, consecutiveDays: days };
     }
 
-    // §6 probation / §10 notice → no paid leave, absence = LOP.
-    if (state.onProbation) { warnings.push('Employee is in probation (no paid leave) — this leave resolves as LOP.'); return finalize('lop'); }
-    if (state.onNotice) { warnings.push('Employee is serving notice period — CL/SL not eligible, resolves as LOP.'); return finalize('lop'); }
+    // Before the policy start date: approved leave is simply paid (no new-policy rules).
+    if (isPrePolicy(start)) {
+      return { eligible: true, treatment: 'paid', kind: kind, days: days, paidDays: days, lopDays: 0, warnings: warnings,
+        requiresException: false, adjacency: { adjacent: false }, consumeFrom: null, consecutiveDays: days, prePolicy: true };
+    }
+    // §6 probation / §10 notice — per HR switches (policy default: no SL, no CL, no paid leave in notice).
+    if (state.onProbation && ((kind === 'SL' && !flag(P.SL_IN_PROBATION)) || (kind === 'CL' && !flag(P.CL_IN_PROBATION)) || kind === 'OTHER')) {
+      warnings.push((kind === 'SL' ? 'Sick leave' : kind === 'CL' ? 'Casual leave' : 'Paid leave') + ' is not available during probation — this leave will be unpaid (LOP).');
+      return finalize('lop');
+    }
+    if (state.onNotice && !flag(P.LEAVE_IN_NOTICE)) { warnings.push('Employee is serving notice period — paid leave not available, this leave will be unpaid (LOP).'); return finalize('lop'); }
 
     // Balance availability.
     var bal = resolveLeaveBalance(Object.assign({}, ctx, { date: start }));
@@ -429,10 +454,20 @@
   }
 
   function resolveLeaveDay(ctx, dateStr, req, state) {
-    // Probation/notice → any leave = LOP (§6/§10).
-    if (state.onProbation) return code(CODES.LOP, 'Leave during probation → LOP', { payable: false, lop: true });
-    if (state.onNotice) return code(CODES.LOP, 'Leave during notice → LOP', { payable: false, lop: true });
     var kind = req ? normType(req.leave_type) : 'OTHER';
+    // Before the policy start date: approved leave is paid, no balance cap, no probation/notice rule.
+    if (isPrePolicy(dateStr)) {
+      if (kind === 'ML') return code(CODES.ML, 'Maternity Leave', { payable: true, leave: true, maternity: true, prePolicy: true });
+      if (kind === 'WFH') return code(CODES.WFH, 'WFH', { payable: true, worked: true, prePolicy: true });
+      if (kind === 'SL') return code(CODES.SL, 'Sick Leave (before policy start)', { payable: true, leave: true, prePolicy: true });
+      return code(CODES.CL, 'Paid Leave (before policy start)', { payable: true, leave: true, prePolicy: true });
+    }
+    // Probation/notice (§6/§10), per HR switches. Maternity stays governed by its own rule below.
+    if (state.onProbation && kind !== 'ML' && kind !== 'WFH' &&
+        !((kind === 'SL' && flag(P.SL_IN_PROBATION)) || (kind === 'CL' && flag(P.CL_IN_PROBATION))))
+      return code(CODES.LOP, (kind === 'SL' ? 'Sick leave' : kind === 'CL' ? 'Casual leave' : 'Leave') + ' during probation → LOP', { payable: false, lop: true });
+    if (state.onNotice && kind !== 'ML' && kind !== 'WFH' && !flag(P.LEAVE_IN_NOTICE))
+      return code(CODES.LOP, 'Leave during notice → LOP', { payable: false, lop: true });
     // Maternity Leave — approved ML is always PAID / non-LOP (§5). Not subject to SL/CL
     // balance caps, and NEVER auto-converts to LOP (checked before the final_treatment gate).
     if (kind === 'ML') return code(CODES.ML, 'Maternity Leave', { payable: true, leave: true, maternity: true });
@@ -466,6 +501,7 @@
       var endThresh = sched.end ? addMin(sched.end, -sched.graceMin) : null;
       (ctx.attendance || []).forEach(function (a) {
         var d = a.att_date && a.att_date.slice(0, 10); if (!d || d.slice(0, 7) !== monthStr) return;
+        if (isPrePolicy(d)) return;   // no late/early deductions before the policy start date
         if (['absent', 'on_leave', 'holiday'].indexOf(a.status) >= 0) return; // only worked days
         var ci = hhmm(a.clock_in_time), co = hhmm(a.clock_out_time);
         if (ci && timeGt(ci, startThresh)) incidents.push({ date: d, type: 'late_login', at: ci });
@@ -581,7 +617,7 @@
     if (typeof global !== 'undefined' && global.PolicyConfig) {
       var db = global.PolicyConfig.getLeavePolicy();
       Object.keys(db).forEach(function (k) { P[k] = db[k]; });
-      LEAVE_SYSTEM_START = P.LEAVE_SYSTEM_START || '2026-09-01';
+      LEAVE_SYSTEM_START = P.LEAVE_SYSTEM_START || '2026-10-01';
     }
   }
 
@@ -601,6 +637,7 @@
     detectAdjacency: detectAdjacency,
     planCLConsumption: planCLConsumption,
     isApproved: isApproved,
+    isPrePolicy: isPrePolicy,
     clAccruedToDate: clAccruedToDate,
     makeDb: makeDb,
     // convenience: attach a live sb client

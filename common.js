@@ -1732,10 +1732,12 @@ function hrOfficialEventFor(employee, dateStr) {
                     switch (r.code) {
                         case 'P': case 'L': case 'WFH': present++; break;
                         case 'SL':
+                            if (r.prePolicy) { sl++; break; }   // before policy start: paid, no cap
                             if (slLeft >= 1) { sl++; slLeft -= 1; }
                             else { leaveLop++; addLop(dateStr, 'Sick Leave balance exhausted'); }
                             break;
                         case 'CL':
+                            if (r.prePolicy) { cl++; break; }   // before policy start: paid, no cap
                             if (clLeft >= 1) { cl++; clLeft -= 1; }
                             else { leaveLop++; addLop(dateStr, 'Casual Leave balance exhausted'); }
                             break;
