@@ -1167,7 +1167,7 @@
                          refreshAttendanceClockCard(). The donut on the right is HR-specific: a
                          company-wide metric (% of active employees marked today). -->
                     <div class="bes-att bes-dash-only">
-                        <div class="bes-att-l">
+                        <div class="bes-att-l be-personal">
                             <div class="bes-att-ic"><i data-lucide="clock-4"></i></div>
                             <div class="min-w-0 flex-1">
                                 <p class="bes-att-lbl">Attendance</p>
@@ -1178,8 +1178,8 @@
                             </div>
                         </div>
                         <div class="bes-att-r">
-                            <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="bes-clk bes-clk-in"><i data-lucide="log-in"></i> Clock In</button>
-                            <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bes-clk bes-clk-out"><i data-lucide="log-out"></i> Clock Out</button>
+                            <button id="hr-attendance-clockin-btn" onclick="handleClockIn()" class="bes-clk bes-clk-in be-personal"><i data-lucide="log-in"></i> Clock In</button>
+                            <button id="hr-attendance-clockout-btn" onclick="handleClockOut()" class="hidden bes-clk bes-clk-out be-personal"><i data-lucide="log-out"></i> Clock Out</button>
                         <div class="flex items-center gap-3 pl-4 border-l border-white/[0.06]">
                             <svg width="52" height="52" viewBox="0 0 52 52" class="shrink-0">
                                 <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5"></circle>
@@ -2803,7 +2803,15 @@
                 // still receive company announcements/notifications (audience-based, not roster).
                 var _hrRawEmp = emp.data || [];
                 hrManagement = _hrRawEmp.filter(e => (e.account_type || '') === 'management');
-                hrEmployees = _hrRawEmp.filter(e => (e.account_type || '') !== 'management');
+                // Master Admin (account_type 'system') is a system-control account, not an
+                // employee — also split out, so it never enters attendance, hours, leave or payroll.
+                window._hrSystemIds = _hrRawEmp.filter(e => e.account_type === 'system').map(e => e.id);
+                hrEmployees = _hrRawEmp.filter(e => (e.account_type || '') !== 'management' && e.account_type !== 'system');
+                if (typeof beSetSystemAccount === 'function') {
+                    const _meRow = _hrRawEmp.find(e => (e.portal_email || '').toLowerCase() === String(activeEmail || '').trim().toLowerCase());
+                    beSetSystemAccount(!!(_meRow && _meRow.account_type === 'system'));
+                    if (typeof refreshAttendanceClockCard === 'function') refreshAttendanceClockCard();
+                }
                 console.log('[HR INIT] hrEmployees set, count=', hrEmployees.length, 'management=', hrManagement.length);
                 // Leave Policy v2 ledgers (all employees, HR admin scope) — payroll + balance
                 // resolvers read these so paid/LOP is computed from the real SL/CL entitlement.
@@ -4151,7 +4159,7 @@
                 system_role: document.getElementById('hr-emp-system-role').value || null,
                 // Leadership roles (or the Add-Management flow) classify the account as
                 // 'management' → split out of the Employees list at load.
-                account_type: (function(){ var sr=(document.getElementById('hr-emp-system-role').value||'').toLowerCase(); return (window._hrForceManagement || ['manager','founder','co_founder','managing_director','director'].indexOf(sr)>-1) ? 'management' : 'employee'; })(),
+                account_type: (function(){ if (hrEditingEmployeeId && (window._hrSystemIds || []).includes(hrEditingEmployeeId)) return 'system'; var sr=(document.getElementById('hr-emp-system-role').value||'').toLowerCase(); return (window._hrForceManagement || ['manager','founder','co_founder','managing_director','director'].indexOf(sr)>-1) ? 'management' : 'employee'; })(),
                 portal_email: loginEmail,
                 manager_email: document.getElementById('hr-emp-manager-email').value.trim().toLowerCase(),
                 portal_access_enabled: document.getElementById('hr-emp-portal-access').checked,

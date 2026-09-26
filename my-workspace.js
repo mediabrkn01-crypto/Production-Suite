@@ -194,8 +194,11 @@
     } catch (x) {}
     return ctx;
   }
+  // Master Admin (account_type 'system') is not an employee — no personal attendance or leave.
+  function notTracked(title) { return header(title, '') + '<div class="mw-card">' + empty('clock', 'Not tracked for this account', 'Master Admin isn\'t an employee — attendance, working hours and leave don\'t apply.') + '</div>'; }
   async function renderAttendance(root) {
     var e = await me(); if (!e) { root.innerHTML = noLink('My Attendance'); return; }
+    if (e.account_type === 'system') { root.innerHTML = notTracked('My Attendance'); return; }
     if (!_attMonth) _attMonth = todayStr().slice(0, 7);
     var month = _attMonth, p = month.split('-').map(Number), label = new Date(p[0], p[1] - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
     root.innerHTML = header('My Attendance', 'Your own attendance — present days, leave, weekly offs, holidays and LOP.',
@@ -225,6 +228,7 @@
   var LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Maternity Leave', 'Exceptional WFH', 'Half Day'];
   async function renderLeave(root) {
     var e = await me(true); if (!e) { root.innerHTML = noLink('My Leave'); return; }
+    if (e.account_type === 'system') { root.innerHTML = notTracked('My Leave'); return; }
     root.innerHTML = header('My Leave', 'Request leave and track your balance — reviewed by HR.')
       + '<div class="mw-grid2"><div class="mw-card"><div class="mw-card-t">Request leave</div>'
       + '<div class="mw-form">'

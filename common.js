@@ -373,6 +373,23 @@ async function checkDeptLeaveNotifications() {
 // Fetches ONLY the current employee's own rows — never the full company roster,
 // applicants, or other employees' salary history/documents. Used by the My
 // Attendance/Leave/Payslips/Profile pages and the notification poll.
+// Master Admin / system-control accounts (hr_employees.account_type = 'system') are not
+// employees: no personal clock-in/out, attendance, working hours or leave. Pages add the
+// 'be-personal' class to personal-only widgets; html.be-system-account hides them.
+function beIsSystemAccount() { return !!window._beSystemAccount; }
+function beSetSystemAccount(on) {
+    window._beSystemAccount = !!on;
+    try {
+        if (on && !document.getElementById('be-sys-acct-css')) {
+            const st = document.createElement('style'); st.id = 'be-sys-acct-css';
+            st.textContent = 'html.be-system-account .be-personal{display:none!important}';
+            document.head.appendChild(st);
+        }
+        document.documentElement.classList.toggle('be-system-account', !!on);
+    } catch (_) {}
+}
+window.beIsSystemAccount = beIsSystemAccount; window.beSetSystemAccount = beSetSystemAccount;
+
 async function loadMyHRData() {
     if (!activeEmail) { myHRDataLoaded = true; return; }
     if (typeof PolicyConfig !== 'undefined' && dbInstance) {
@@ -385,6 +402,11 @@ async function loadMyHRData() {
         if (!me && activeUser) {
             const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
             me = byName.data && byName.data[0];
+        }
+        beSetSystemAccount(!!(me && me.account_type === 'system'));
+        if (beIsSystemAccount()) {
+            me = null; // not an employee → no personal attendance / leave / payroll data
+            if (typeof refreshAttendanceClockCard === 'function') refreshAttendanceClockCard();
         }
         if (!me) {
             hrEmployees = []; hrAttendance = []; hrLeaveRequests = []; hrLeaveBalances = [];
@@ -466,8 +488,9 @@ async function loadMyHRData() {
         async function hrSyncClockToAttendance(email, kind, whenIso) {
             try {
                 const cleanEmail = (email || '').toLowerCase().trim();
-                const empRes = await dbInstance.from('hr_employees').select('id').eq('portal_email', cleanEmail).limit(1);
+                const empRes = await dbInstance.from('hr_employees').select('id,account_type').eq('portal_email', cleanEmail).limit(1);
                 let emp = empRes.data && empRes.data[0];
+                if (emp && emp.account_type === 'system') return; // system account: never an attendance row
                 if (!emp) {
                     // No HR record linked by email — try matching by name instead, same fallback
                     // hrFetchAndApplyMyPhoto() already uses, so a clock-in from someone whose HR
@@ -2543,6 +2566,11 @@ function hrOfficialEventFor(employee, dateStr) {
         // Academic dashboard, HR dashboard — from the one attendance record. Each lookup is
         // null-safe, so this works fine on a page that only has one (or none) of the three.
         function refreshAttendanceClockCard() {
+            if (beIsSystemAccount()) {
+                ['attendance-clockin-btn','attendance-clockout-btn','acad-attendance-clockin-btn','acad-attendance-clockout-btn','hr-attendance-clockin-btn','hr-attendance-clockout-btn']
+                    .forEach(id => document.getElementById(id)?.classList.add('hidden'));
+                return;
+            }
             myActiveAttendanceRecord = findMyOpenAttendanceRecord();
 
             const apply = (statusEl, inBtn, outBtn) => {
@@ -2582,6 +2610,7 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
         async function handleClockIn() {
+            if (beIsSystemAccount()) return;
             const existing = findMyOpenAttendanceRecord();
             if (existing) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
 
@@ -2623,6 +2652,7 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
         async function handleClockOut() {
+            if (beIsSystemAccount()) return;
             const existing = findMyOpenAttendanceRecord();
             if (!existing || existing.log_out_time) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
 
