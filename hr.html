@@ -703,7 +703,19 @@
 .acadx-mrow{display:flex;gap:9px}
 .acadx-mrow>*{flex:1}
 .acadx-mhint{font-size:10.5px;color:rgba(255,255,255,.28);margin:-4px 0 10px;line-height:1.5}
-    </style>
+    .wt-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.wt-seg button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);color:#a5adcf;cursor:pointer;text-align:left;transition:all .15s}
+.wt-seg button b{font-size:13px;font-weight:700;color:#e6e9f5}
+.wt-seg button span{font-size:11px;color:#6b74a0}
+.wt-seg button:hover{border-color:rgba(255,255,255,.18)}
+.wt-seg button.on{border-color:rgba(255,107,6,.55);background:linear-gradient(135deg,rgba(255,107,6,.14),rgba(249,24,47,.08));box-shadow:0 0 0 1px rgba(255,107,6,.25) inset}
+.wt-seg button.on b{color:#ff8a3c}
+.wt-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;white-space:nowrap}
+.wt-chip.low{color:#fbbf24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25)}
+.wt-chip.extra{color:#4ade80;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25)}
+.wt-chip.ok{color:#a5adcf;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.wt-dur{color:#e6e9f5;font-weight:700;font-variant-numeric:tabular-nums;font-size:12.5px}
+</style>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
 <script>
@@ -1249,6 +1261,7 @@
                                     <th class="py-3 px-4">Status</th>
                                     <th class="py-3 px-4">Check-in</th>
                                     <th class="py-3 px-4">Check-out</th>
+                                    <th class="py-3 px-4">Hours Worked</th>
                                     <th class="py-3 px-4 text-center">Set</th>
                                 </tr>
                             </thead>
@@ -1873,12 +1886,16 @@
             <div class="hr-emp-panel" data-panel="sched">
               <div class="hr-emp-grid3">
                 <div class="hr-emp-block">
-                    <p class="hr-emp-block-title">Work Schedule <span style="color:#6b74a0;font-weight:400;text-transform:none;letter-spacing:0">— drives Late / Early Logout for THIS employee. Leave Flexible if they have no fixed hours (never auto-marked Late).</span></p>
-                    <div class="hr-emp-grid3">
-                        <div><label class="hr-field-label">Schedule Type</label>
-                            <select id="hr-emp-sched-type" class="hr-select w-full" onchange="renderHREmpScheduleFields()">
-                                <option value="flexible">Flexible / Not Configured</option>
-                                <option value="fixed">Fixed</option>
+                    <p class="hr-emp-block-title">Working Time Type</p>
+                    <input type="hidden" id="hr-emp-sched-type" value="flexible">
+                    <div class="wt-seg" role="group" aria-label="Working Time Type">
+                        <button type="button" data-wt="fixed" onclick="hrSetWorkTimeType('fixed')"><b>Fixed Time</b><span>Set start &amp; end times</span></button>
+                        <button type="button" data-wt="flexible" onclick="hrSetWorkTimeType('flexible')"><b>Flexible Time</b><span>Any hours · 8h day tracked</span></button>
+                    </div>
+                    <div class="hr-emp-grid3" style="margin-top:12px">
+                        <div id="hr-emp-sched-pattern-wrap"><label class="hr-field-label">Schedule</label>
+                            <select id="hr-emp-sched-pattern" class="hr-select w-full" onchange="document.getElementById('hr-emp-sched-type').value=this.value;renderHREmpScheduleFields()">
+                                <option value="fixed">Full-time</option>
                                 <option value="custom">Part-time / Custom</option>
                                 <option value="class">Class / Shift Based</option>
                             </select>
@@ -3978,16 +3995,25 @@
             }).join('');
         }
         function hrToggleSchedDay(dow) { if (hrEmpSchedDays.has(dow)) hrEmpSchedDays.delete(dow); else hrEmpSchedDays.add(dow); hrRenderSchedDayChips(); }
+        function hrSetWorkTimeType(t) {
+            const hid = document.getElementById('hr-emp-sched-type');
+            if (t === 'flexible') hid.value = 'flexible';
+            else if (hid.value === 'flexible') hid.value = document.getElementById('hr-emp-sched-pattern').value || 'fixed';
+            renderHREmpScheduleFields();
+        }
         function renderHREmpScheduleFields() {
-            const type = document.getElementById('hr-emp-sched-type').value;
+            const type = document.getElementById('hr-emp-sched-type').value || 'flexible';
             const flexible = type === 'flexible';
-            ['hr-emp-sched-start-wrap','hr-emp-sched-end-wrap','hr-emp-sched-grace-wrap','hr-emp-sched-days-wrap'].forEach(id => {
+            document.querySelectorAll('.wt-seg [data-wt]').forEach(b => b.classList.toggle('on', (b.dataset.wt === 'flexible') === flexible));
+            const pat = document.getElementById('hr-emp-sched-pattern');
+            if (pat && !flexible && pat.value !== type) { pat.value = type; }
+            ['hr-emp-sched-pattern-wrap','hr-emp-sched-start-wrap','hr-emp-sched-end-wrap','hr-emp-sched-grace-wrap','hr-emp-sched-days-wrap'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.style.display = flexible ? 'none' : '';
             });
             const note = document.getElementById('hr-emp-sched-note');
             if (note) note.textContent = flexible
-                ? 'Flexible: this employee is never auto-marked Late or Early Logout — no expected start/end is used.'
-                : 'Late = clock-in after Expected Start + grace. Early Logout = clock-out before Expected End − grace. Only these count toward the monthly incident deduction.';
+                ? 'Flexible Time: no fixed start or end. Daily hours worked are shown against an 8-hour day (below 8 hours / extra hours). Never marked Late or Early Logout, and nothing is deducted.'
+                : 'Late = check-in after Start time + grace. Early Logout = check-out before End time − grace.';
         }
 
         function hrSysRoleHint() {
@@ -4633,6 +4659,19 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
             } catch (e) { alert('Could not update attendance: ' + e.message); }
         }
 
+function hrTodayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+// ── Hours worked cell (Flexible Time: vs 8h day; tracking only, no action) ──
+        function hrWorkedCellHTML(emp, inIso, outIso, dateStr) {
+            if (typeof LeavePolicy === 'undefined' || !LeavePolicy.resolveWorkedDuration) return '—';
+            const w = LeavePolicy.resolveWorkedDuration(inIso, outIso);
+            if (!w) return inIso && !outIso ? `<span style="color:#6b74a0">${dateStr && dateStr < hrTodayStr() ? 'No check-out' : 'In progress'}</span>` : '—';
+            if (!LeavePolicy.isFlexibleTime(emp)) return `<span class="wt-dur">${w.label}</span>`;
+            const chip = w.belowTarget ? `<span class="wt-chip low" title="Short by ${LeavePolicy.fmtDuration(w.shortMinutes, true)}">Below 8 hours</span>`
+                : w.extraMinutes ? `<span class="wt-chip extra">+${w.extraLabel} extra</span>`
+                : '<span class="wt-chip ok">8h day</span>';
+            return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px"><span class="wt-dur">${w.label}</span>${chip}</div>`;
+        }
+
 // ── renderHRAttendance (orig line 9515) ──
         function renderHRAttendance() {
             const date = document.getElementById('hr-att-date').value;
@@ -4660,6 +4699,7 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                     <td data-label="Status" class="py-2.5 px-4">${status ? `<span class="hr-badge hr-badge-${status}"${status==='half_day'&&rec?.reason?` title="Reason: ${(rec.reason||'').replace(/"/g,'&quot;')}${rec.marked_by?' · Marked by: '+rec.marked_by:''}"`:''}>${status==='half_day' ? ('Half Day · ' + (rec?.half_day_type==='morning'?'Morning':rec?.half_day_type==='afternoon'?'Afternoon':'—')) : status.replace('_',' ')}</span>` : '<span class="st-pill st-mute" style="text-transform:none">Not marked</span>'}</td>
                     <td data-label="Check-in" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_in_time ? new Date(rec.clock_in_time).toLocaleTimeString() : portalLog?.log_in_time ? new Date(portalLog.log_in_time).toLocaleTimeString() : '—'}</td>
                     <td data-label="Check-out" class="py-2.5 px-4 text-[#a5adcf] text-xs">${rec?.clock_out_time ? new Date(rec.clock_out_time).toLocaleTimeString() : portalLog?.log_out_time ? new Date(portalLog.log_out_time).toLocaleTimeString() : '—'}</td>
+                    <td data-label="Hours Worked" class="py-2.5 px-4">${hrWorkedCellHTML(e, rec?.clock_in_time || portalLog?.log_in_time, rec?.clock_in_time ? rec?.clock_out_time : portalLog?.log_out_time, date)}</td>
                     <td data-label="Set" class="py-2.5 px-4 text-center">
                         <select class="hr-select" onchange="setHRAttendanceStatus('${e.id}', this.value)">
                             <option value="">Set…</option>
@@ -4682,7 +4722,7 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                         </select>
                     </td>
                 </tr>`;
-            }).join('') : `<tr><td colspan="6"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No active employees yet — add employees first.</div></div></td></tr>`;
+            }).join('') : `<tr><td colspan="7"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No active employees yet — add employees first.</div></div></td></tr>`;
         }
 
 // ── shiftHRAttReportMonth (orig line 9539) ──
@@ -4746,7 +4786,13 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                     const fmt = secs => { const h = Math.floor(secs/3600), mi = Math.round((secs%3600)/60); const ampm = h>=12?'PM':'AM'; const h12 = ((h+11)%12)+1; return `${String(h12).padStart(2,'0')}:${String(mi).padStart(2,'0')} ${ampm}`; };
                     avgIn = fmt(avgSecIn); avgOut = fmt(avgSecOut);
                 }
-                return { emp: e, codes, present, absent, late, avgHours, avgIn, avgOut };
+                // Flexible Time: days under 8h + total extra time this month (display only).
+                let flex = null;
+                if (typeof LeavePolicy !== 'undefined' && LeavePolicy.isFlexibleTime && LeavePolicy.isFlexibleTime(e)) {
+                    flex = { below: 0, extra: 0 };
+                    recs.forEach(r => { const w = LeavePolicy.resolveWorkedDuration(r.clock_in_time, r.clock_out_time); if (!w) return; if (w.belowTarget) flex.below++; flex.extra += w.extraMinutes; });
+                }
+                return { emp: e, codes, present, absent, late, avgHours, avgIn, avgOut, flex };
             });
 
             // Daily aggregate rows — 'PL'/'UL' (leave) and 'WO'/'H' are correctly excluded
@@ -4888,7 +4934,7 @@ function hrNiceRange(a, b) { const f = x => { const d = new Date(String(x).slice
                                 <td style="color:#4ade80;font-weight:700">${r.present}</td>
                                 <td style="color:#f87171;font-weight:700">${r.absent}</td>
                                 <td style="color:#facc15;font-weight:700">${r.late}</td>
-                                <td style="color:#a5adcf">${r.avgHours}</td>
+                                <td style="color:#a5adcf">${r.avgHours}${r.flex && (r.flex.below || r.flex.extra) ? `<div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;align-items:center">${r.flex.below ? `<span class="wt-chip low">${r.flex.below} day${r.flex.below>1?'s':''} below 8h</span>` : ''}${r.flex.extra ? `<span class="wt-chip extra">+${LeavePolicy.fmtDuration(r.flex.extra, true)} extra</span>` : ''}</div>` : ''}</td>
                                 <td style="color:#a5adcf">${r.avgIn}</td>
                                 <td style="color:#a5adcf">${r.avgOut}</td>
                             </tr>

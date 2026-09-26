@@ -137,6 +137,31 @@
     return { type: type, start: start, end: end, graceMin: grace || 0, workDays: days, hasExpected: !!(configured && start) };
   }
 
+  // Flexible Time = work_schedule_type 'flexible' (or not set). Tracking only: worked duration
+  // vs an 8-hour day. Never feeds status, incidents, leave or payroll.
+  var FLEX_TARGET_MIN = 480;
+  function isFlexibleTime(emp) { return getEmployeeWorkSchedule(emp).type === 'flexible'; }
+  function fmtDuration(mins, compact) {
+    mins = Math.max(0, Math.round(mins || 0));
+    var h = Math.floor(mins / 60), m = mins % 60;
+    if (compact) return !h ? m + 'm' : !m ? h + 'h' : h + 'h ' + m + 'm';
+    return h + 'h ' + String(m).padStart(2, '0') + 'm';
+  }
+  // resolveWorkedDuration(inIso, outIso) → null when either time is missing/invalid, else
+  // { minutes, label, belowTarget, shortMinutes, extraMinutes, extraLabel }.
+  function resolveWorkedDuration(inIso, outIso, targetMin) {
+    if (!inIso || !outIso) return null;
+    var a = new Date(inIso).getTime(), b = new Date(outIso).getTime();
+    if (isNaN(a) || isNaN(b) || b <= a) return null;
+    var t = targetMin || FLEX_TARGET_MIN;
+    var mins = Math.floor((b - a) / 60000);
+    return {
+      minutes: mins, label: fmtDuration(mins),
+      belowTarget: mins < t, shortMinutes: Math.max(0, t - mins),
+      extraMinutes: Math.max(0, mins - t), extraLabel: mins > t ? fmtDuration(mins - t, true) : ''
+    };
+  }
+
   // =========================================================================
   // 1. getEmployeePolicyState(employee, date)
   // =========================================================================
@@ -628,6 +653,9 @@
     normType: normType,
     clCycleFor: clCycleFor,
     getEmployeeWorkSchedule: getEmployeeWorkSchedule,
+    isFlexibleTime: isFlexibleTime,
+    resolveWorkedDuration: resolveWorkedDuration,
+    fmtDuration: fmtDuration,
     getEmployeePolicyState: getEmployeePolicyState,
     resolveLeaveBalance: resolveLeaveBalance,
     resolveLeaveEligibility: resolveLeaveEligibility,
