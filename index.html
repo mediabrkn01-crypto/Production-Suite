@@ -1745,7 +1745,7 @@
 
                 <div id="admin-assignment-panel" class="card glass-card space-y-5 p-5 md:p-6 rounded-2xl hidden" style="border-left:3px solid rgba(255,107,6,0.4);animation-duration:0.25s">
                     <h3 class="text-sm font-bold uppercase tracking-wider text-white/70 flex items-center gap-2">
-                        <i data-lucide="file-plus" class="w-4 h-4"></i> Create & Assign Work Task
+                        <i data-lucide="file-plus" class="w-4 h-4"></i> <span id="wa-form-title">Create & Assign Work Task</span>
                     </h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
                         <div class="md:col-span-3">
@@ -1779,6 +1779,10 @@
                             <label class="text-[#6b74a0] text-[11px] block mb-1">Target Deadline Date</label>
                             <input type="date" id="task-date" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-orange-500 transition-colors duration-200">
                         </div>
+                        <div class="md:col-span-2 hidden" id="task-assigned-date-wrap">
+                            <label class="text-[#6b74a0] text-[11px] block mb-1">Assigned Date</label>
+                            <input type="date" id="task-assigned-date" class="w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-orange-500 transition-colors duration-200">
+                        </div>
                     </div>
                     <div>
                         <label class="text-[#6b74a0] text-[11px] block mb-1">Work Instructions & Description Details</label>
@@ -1792,10 +1796,16 @@
                             <input type="file" id="task-ref-file" accept="image/*,.pdf,video/*,audio/*" class="hidden" multiple onchange="handleRefFileSelect()"/>
                         </label>
                         <div id="task-ref-preview-list" class="mt-2 space-y-1.5 max-h-36 overflow-y-auto"></div>
+                        <div id="task-ref-existing-wrap" class="hidden mt-3">
+                            <label class="text-[#6b74a0] text-[11px] block mb-1">Current references</label>
+                            <div id="task-ref-existing" class="space-y-1.5 max-h-36 overflow-y-auto"></div>
+                            <input type="url" id="task-ref-link" placeholder="Add a reference link (optional) — https://…" class="mt-2 w-full bg-transparent border border-white/[0.06] glass-input rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 transition-colors duration-200">
+                        </div>
                     </div>
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-1">
                         <p class="text-[10px] text-[#4a5182] italic">Assign tasks to your team members with optional reference files.</p>
-                        <button onclick="createWorkAssignment()" class="w-full sm:w-auto brand-gradient text-white text-xs font-bold px-6 py-2.5 rounded-xl uppercase tracking-wider transition duration-200 active:scale-95 shadow-lg" style="box-shadow:0 4px 16px rgba(255,45,120,0.3)">
+                        <button type="button" id="wa-cancel-edit" onclick="beCancelAssignmentEdit()" class="hidden w-full sm:w-auto text-xs font-bold px-5 py-2.5 rounded-xl uppercase tracking-wider text-[#c7cbe0] bg-white/[0.05] border border-white/10 hover:bg-white/[0.09] transition">Cancel Edit</button>
+                        <button id="wa-submit-btn" onclick="createWorkAssignment()" class="w-full sm:w-auto brand-gradient text-white text-xs font-bold px-6 py-2.5 rounded-xl uppercase tracking-wider transition duration-200 active:scale-95 shadow-lg" style="box-shadow:0 4px 16px rgba(255,45,120,0.3)">
                             Assign Work Project
                         </button>
                     </div>
@@ -4427,7 +4437,136 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             return parts.join(';;');
         }
 
+        // ── EDIT ASSIGNMENT (Media Head / Admin) — the SAME Create & Assign form in edit mode.
+        // Saves back to the same assignments row (same id), never inserts.
+        let _waEdit = null;   // { id, row, refs:[{name,url,folder}], removed:false }
+        function beCanEditAssignments() {
+            const r = window._systemRole || '';
+            return r === 'media_head' || ['manager','founder','co_founder','managing_director','director'].indexOf(r) > -1 || activeRole === 'admin';
+        }
+        function _waParseRefs(str) {
+            return String(str || '').split(';;').filter(Boolean).map(p => {
+                const k = p.indexOf('|'); const name = k > -1 ? p.slice(0, k) : 'Reference'; const url = k > -1 ? p.slice(k + 1) : p;
+                return { name, url, folder: name === '__folder__' };
+            }).filter(r => r.url);
+        }
+        function _waRenderExistingRefs() {
+            const box = document.getElementById('task-ref-existing'); if (!box || !_waEdit) return;
+            const files = _waEdit.refs.filter(r => !r.folder);
+            box.innerHTML = files.length ? files.map((r, i) => `
+                <div class="flex items-center justify-between gap-2 text-[#c7cbe0] px-3 py-2 rounded-xl border border-white/[0.08] text-xs">
+                    <a href="${r.url}" target="_blank" rel="noopener" class="flex items-center gap-2 truncate hover:text-white"><i data-lucide="paperclip" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate">${String(r.name).replace(/</g,'&lt;')}</span></a>
+                    <button type="button" onclick="_waRemoveExistingRef(${i})" class="text-[#4a5182] hover:text-red-400 shrink-0" title="Remove"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>`).join('') : '<div class="text-[11px] text-[#4a5182]">No reference files on this assignment.</div>';
+            if (window.lucide) lucide.createIcons();
+        }
+        function _waRemoveExistingRef(i) {
+            if (!_waEdit) return;
+            const files = _waEdit.refs.filter(r => !r.folder);
+            const gone = files[i]; if (!gone) return;
+            _waEdit.refs = _waEdit.refs.filter(r => r !== gone);
+            _waEdit.removed = true;
+            _waRenderExistingRefs();
+        }
+        function _waSetEditUI(on) {
+            const t = document.getElementById('wa-form-title');
+            if (t) t.textContent = on ? ('Edit Assignment — ' + ((_waEdit && _waEdit.row.topic) || '')) : 'Create & Assign Work Task';
+            const btn = document.getElementById('wa-submit-btn'); if (btn) btn.innerText = on ? 'Save Changes' : 'Assign Work Project';
+            ['wa-cancel-edit', 'task-assigned-date-wrap', 'task-ref-existing-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', !on); });
+            const panel = document.getElementById('admin-assignment-panel');
+            if (panel) panel.style.borderLeft = on ? '3px solid rgba(56,189,248,.55)' : '3px solid rgba(255,107,6,0.4)';
+        }
+        function _waResetForm() {
+            ['task-topic', 'task-description', 'task-date', 'task-assigned-date', 'task-ref-link'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            if (document.getElementById('task-priority')) document.getElementById('task-priority').value = 'medium';
+            const emp = document.getElementById('task-assigned-employee'); if (emp) emp.value = '';
+            clearRefFile();
+            const box = document.getElementById('task-ref-existing'); if (box) box.innerHTML = '';
+        }
+        window.beEditAssignment = function (row) {
+            if (!beCanEditAssignments()) { if (window.showToast) showToast('error', 'Only the Media Head can edit assignments.'); return; }
+            if (!row || !row.id) return;
+            _waEdit = { id: row.id, row: row, refs: _waParseRefs(row.reference_file), removed: false };
+            _waResetForm();
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+            set('task-topic', row.topic);
+            const typeSel = document.getElementById('task-type');
+            if (typeSel && row.type && ![...typeSel.options].some(o => o.value === row.type)) typeSel.add(new Option(row.type, row.type));
+            set('task-type', row.type);
+            populateDropdownSelectors();
+            const empSel = document.getElementById('task-assigned-employee');
+            if (empSel && row.assigned_to && ![...empSel.options].some(o => o.value === row.assigned_to)) empSel.add(new Option(row.assigned_to, row.assigned_to));
+            set('task-assigned-employee', row.assigned_to);
+            set('task-priority', (row.priority === 'low' || row.priority === 'very_high') ? row.priority : 'medium');
+            set('task-date', String(row.date || '').slice(0, 10));
+            set('task-assigned-date', String(row.assigned_date || '').slice(0, 10));
+            set('task-description', row.description);
+            _waSetEditUI(true);
+            _waRenderExistingRefs();
+            if (typeof switchTab === 'function' && document.getElementById('tab-content-work-assignment')?.classList.contains('hidden')) switchTab('work-assignment');
+            document.getElementById('admin-assignment-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(() => document.getElementById('task-topic')?.focus(), 350);
+        };
+        window.beCancelAssignmentEdit = function () { _waEdit = null; _waResetForm(); _waSetEditUI(false); };
+        async function _waSaveAssignmentEdit() {
+            if (!beCanEditAssignments()) { if (window.showToast) showToast('error', 'Only the Media Head can edit assignments.'); return; }
+            const ed = _waEdit; if (!ed) return;
+            const topic = document.getElementById('task-topic').value.trim();
+            const type = document.getElementById('task-type').value;
+            const empName = document.getElementById('task-assigned-employee').value;
+            const description = document.getElementById('task-description').value.trim();
+            const target = document.getElementById('task-date').value;
+            const assignedDate = document.getElementById('task-assigned-date').value;
+            const priority = document.getElementById('task-priority')?.value || 'medium';
+            const link = (document.getElementById('task-ref-link')?.value || '').trim();
+            if (!topic || !empName || !target || !description) { if (window.showToast) showToast('error', 'Topic, creator, target date and description are required.'); return; }
+            if (assignedDate && target < assignedDate) { if (window.showToast) showToast('error', 'Target date can\'t be before the assigned date.'); return; }
+            if (link && !/^https?:\/\//i.test(link)) { if (window.showToast) showToast('error', 'Reference link must start with http:// or https://'); return; }
+            const btn = document.getElementById('wa-submit-btn');
+            btn.disabled = true;
+            try {
+                // Re-check the live row: still exists, still active (never reopen finished/cancelled work).
+                const { data: live, error: le } = await dbInstance.from('assignments').select('*').eq('id', ed.id).maybeSingle();
+                if (le || !live) { if (window.showToast) showToast('error', 'This assignment no longer exists.'); return; }
+                if (live.status === 'cancelled' || live.manager_approved || live.status === 'Rejected') { if (window.showToast) showToast('error', 'This work is already closed, so it can\'t be edited.'); return; }
+                const empObj = userRoster.find(u => u.name === empName);
+                const newEmail = empObj ? String(empObj.email || '').toLowerCase() : (empName === live.assigned_to ? live.employee_email : '');
+                if (!newEmail) { if (window.showToast) showToast('error', 'Pick a creator from the list.'); return; }
+                // References: kept existing entries (+ folder link only if nothing was removed), new uploads, optional link.
+                let refs = ed.refs.filter(r => !r.folder || !ed.removed);
+                if (taskRefFilesQueue.length) {
+                    const grouped = await uploadRefFilesGrouped(taskRefFilesQueue, `${topic} - Reference Files`, pct => { btn.innerHTML = `Uploading references ${pct}%…`; });
+                    if (!refs.some(r => r.folder) && grouped.folderUrl) refs.unshift({ name: '__folder__', url: grouped.folderUrl, folder: true });
+                    grouped.files.forEach(f => { if (f.url) refs.push({ name: f.name, url: f.url }); });
+                }
+                if (link) refs.push({ name: 'Reference link', url: link });
+                const refStr = refs.map(r => `${r.name}|${r.url}`).join(';;');
+                const patch = { topic, type, assigned_to: empName, employee_email: newEmail, priority, date: target, description, reference_file: refStr };
+                if (assignedDate) patch.assigned_date = assignedDate;
+                if (newEmail !== String(live.employee_email || '').toLowerCase()) patch.assign_approved = !(empObj && empObj.role === 'social_media');
+                const changed = Object.keys(patch).filter(k => String(patch[k] ?? '') !== String(live[k] ?? ''));
+                if (!changed.length) { if (window.showToast) showToast('info', 'No changes to save.'); beCancelAssignmentEdit(); return; }
+                const { data: saved, error } = await dbInstance.from('assignments').update(patch).eq('id', ed.id).select('id');
+                if (error || !saved || !saved.length) { if (window.showToast) showToast('error', 'Could not save changes. ' + ((error && error.message) || 'Please refresh and try again.')); return; }
+                try {
+                    const prev = {}, next = {}; changed.forEach(k => { prev[k] = live[k]; next[k] = patch[k]; });
+                    await dbInstance.from('hr_audit_log').insert([{ actor_email: String(activeEmail || '').toLowerCase(), actor_name: activeUser, action: 'work_assignment_edited', entity: 'assignment', prev_status: live.status, new_status: live.status, meta: { assignment_id: ed.id, topic, changed, previous: prev, updated: next } }]);
+                } catch (_) {}
+                pushLogEntry(`Edited task: "${topic}" (${changed.join(', ')})`).catch(() => {});
+                if (window.showToast) showToast('success', 'Assignment updated.');
+                beCancelAssignmentEdit();
+                await syncLedgerEngine(false);
+                try { if (typeof mhAssignedWorkLiveRefresh === 'function') mhAssignedWorkLiveRefresh(); } catch (e) {}
+                try { if (typeof window._beRenderKanbanIfActive === 'function') window._beRenderKanbanIfActive(); } catch (e) {}
+            } catch (e) {
+                if (window.showToast) showToast('error', 'Could not save changes. ' + (e && e.message ? e.message : ''));
+            } finally {
+                btn.disabled = false; btn.innerText = _waEdit ? 'Save Changes' : 'Assign Work Project';
+            }
+        }
+
         async function createWorkAssignment() {
+            if (_waEdit) return _waSaveAssignmentEdit();
             const topic = document.getElementById('task-topic').value.trim();
             const type = document.getElementById('task-type').value;
             const targetEmpName = document.getElementById('task-assigned-employee').value;
@@ -10243,7 +10382,7 @@ async function saveLeave(){
   }
   async function fetchAssignedWork(){
     var d=db(); if(!d) return [];
-    var r=await d.from('assignments').select('id,topic,type,assigned_to,employee_email,assigned_by,assigned_date,date,status,priority,manager_approved,submitted_at,approved_at,reviewed_at,rejected_at,cancelled_at,cancellation_reason,asset_link,description,explanation').order('id',{ascending:false});
+    var r=await d.from('assignments').select('id,topic,type,assigned_to,employee_email,assigned_by,assigned_date,date,status,priority,manager_approved,submitted_at,approved_at,reviewed_at,rejected_at,cancelled_at,cancellation_reason,asset_link,description,explanation,reference_file').order('id',{ascending:false});
     // ACTIVE / UNFINISHED only — completed/approved live in Approved Works; rejected + cancelled excluded.
     return (r.data||[]).filter(function(a){ return _AGW_ACTIVE[agwState(a).key]; });
   }
@@ -10294,7 +10433,8 @@ async function saveLeave(){
       var chip='<span style="font-size:10px;font-weight:800;color:'+st.c+';background:'+st.c+'22;border:1px solid '+st.c+'55;padding:2px 8px;border-radius:999px">'+esc(st.t)+'</span>';
       var canCancel = st.key==='Pending'||st.key==='In Progress'||st.key==='Rework Required'||st.key==='uploading'||st.key==='pendingreview';
       var strong = st.key==='uploading'||st.key==='pendingreview';
-      var acts='';
+      var acts='<button onclick="agwView('+a.id+')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#c7cbe0;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View</button>'
+        +'<button onclick="agwEdit('+a.id+')" style="background:rgba(255,107,6,.12);border:1px solid rgba(255,107,6,.4);color:#ff8a3d;font-weight:800;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Edit Assignment</button>';
       if(hasDeliv) acts+='<button onclick="mhViewDelivery('+a.id+')" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.4);color:#38bdf8;font-weight:700;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">View Delivery</button>';
       if(canCancel) acts+='<button onclick="agwCancel('+a.id+','+(strong?'true':'false')+')" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800;font-size:11px;padding:5px 12px;border-radius:8px;cursor:pointer">Cancel</button>';
       if(st.key==='cancelled' && a.cancellation_reason) acts+='<span style="font-size:10px;color:#8890b5;align-self:center">Reason: '+esc(a.cancellation_reason)+'</span>';
@@ -10366,6 +10506,32 @@ async function saveLeave(){
       try{ if(typeof triggerPipelineMatrixUpdate==='function') triggerPipelineMatrixUpdate(); }catch(e){}
       try{ if(typeof syncLedgerEngine==='function') syncLedgerEngine(false); }catch(e){}
     };
+  };
+  window.agwEdit=function(id){
+    if(!isMediaHead() && activeRole!=='admin'){ toast('error','Not authorized.'); return; }
+    var a=_agwRowById[id]; if(!a) return;
+    if(typeof window.beEditAssignment==='function') window.beEditAssignment(a);
+  };
+  window.agwView=function(id){
+    var a=_agwRowById[id]; if(!a) return;
+    var m=document.getElementById('agw-view-modal');
+    if(!m){ m=document.createElement('div'); m.id='agw-view-modal'; m.style.cssText='position:fixed;inset:0;z-index:9004;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px'; m.addEventListener('click',function(e){ if(e.target===m) m.style.display='none'; }); document.body.appendChild(m); }
+    var st=agwState(a);
+    var row=function(l,v){ return '<div><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0">'+l+'</div><div style="font-size:13px;font-weight:600;color:#e6e9f5;margin-top:3px">'+v+'</div></div>'; };
+    var refs=(a.reference_file && typeof buildReferenceFileMarkup==='function')?buildReferenceFileMarkup(a.reference_file,'agwv-'+a.id):'<span style="color:#6b74a0;font-size:12px">No reference files.</span>';
+    m.innerHTML='<div style="width:100%;max-width:560px;max-height:90vh;overflow:auto;background:linear-gradient(145deg,#161116,#0a080a);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px" onclick="event.stopPropagation()">'
+      +'<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="font-size:9px;font-weight:800;letter-spacing:.14em;color:#ff6b06">ASSIGNMENT</div><div style="font-size:17px;font-weight:800;color:#fff;margin-top:3px">'+esc(a.topic||'Untitled')+'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px"><span style="font-size:10px;font-weight:800;color:'+st.c+';background:'+st.c+'22;border:1px solid '+st.c+'55;padding:2px 8px;border-radius:999px">'+esc(st.t)+'</span>'+bePriorityBadge(a)+'</div></div>'
+      +'<button onclick="document.getElementById(\'agw-view-modal\').style.display=\'none\'" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#a5adcf;width:32px;height:32px;border-radius:9px;cursor:pointer">✕</button></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px;margin-top:16px">'
+      +row('Category',esc(a.type||'—'))+row('Creator',esc(waEmpName(a)))+row('Assigned by',esc(a.assigned_by||'—'))+row('Assigned',esc(a.assigned_date||'—'))+row('Target',esc(a.date||'—'))+row('Last updated',esc(agwLastUpdated(a)))
+      +'</div>'
+      +'<div style="margin-top:16px"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0;margin-bottom:5px">Description</div><div style="font-size:12.5px;color:#c5cbe8;white-space:pre-wrap;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 12px">'+esc(a.description||'—')+'</div></div>'
+      +'<div style="margin-top:14px"><div style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0;margin-bottom:5px">References</div>'+refs+'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:18px"><button onclick="document.getElementById(\'agw-view-modal\').style.display=\'none\'" style="flex:1;padding:10px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a5adcf;font-weight:700;cursor:pointer">Close</button>'
+      +'<button onclick="document.getElementById(\'agw-view-modal\').style.display=\'none\';agwEdit('+a.id+')" style="flex:1;padding:10px;border-radius:9px;background:linear-gradient(135deg,#ff6b06,#f9182f);border:none;color:#fff;font-weight:800;cursor:pointer">Edit Assignment</button></div></div>';
+    m.style.display='flex';
+    if(window.lucide&&lucide.createIcons){ try{lucide.createIcons();}catch(e){} }
   };
   window.mhRenderAssignedWork=async function(){
     var body=document.getElementById('agw-body'); if(!body) return;
