@@ -8800,7 +8800,7 @@ async function ovLoad(){
   var clEl=document.getElementById('ov-class-list'); if(clEl) clEl.innerHTML='';
   try {
     var res=await Promise.all([
-      sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,freeze_start_date,freeze_resume_date,group_classes_completed_at'),
+      sb.from('batches').select('id,name,capacity,day_pattern,time_slot,programme,trainer_id,trainer_name,class_duration_minutes,start_date,expected_completion_date,status,deleted_at,freeze_start_date,freeze_resume_date,group_classes_completed_at,sessions_total'),
       sb.from('trainers').select('id,name,type,hr_employee_id,status'),
       _acadFetchAllRows('attendance','batch_name,session_date,session_num,status,marked_by,created_at',q=>q.gte('session_date',rangeStart).lte('session_date',rangeEnd)),
       mediaHrDB.from('hr_leave_requests').select('employee_id,start_date,end_date,status').eq('status','approved')
@@ -8820,6 +8820,24 @@ async function ovLoad(){
       }));
     });
     if(_gcHeal.length) await Promise.all(_gcHeal);
+    // Group phase also counts as complete once distinct present-marked sessions reach the
+    // batch's sessions_total (same rule Today's Classes / My Classes use) — even if nobody
+    // pressed "Complete Group Classes". Unmarked days AFTER the last marked group session are
+    // then not real classes, so they must not surface as "Attendance Not Marked".
+    var _gcDoneAfter={};
+    try{
+      var _gcTot={}; (res[0].data||[]).forEach(function(b){ _gcTot[b.name]=+b.sessions_total||0; });
+      var _gcNames=batches.filter(function(b){ return !b.group_classes_completed_at && _gcTot[b.name]; }).map(function(b){ return b.name; });
+      if(_gcNames.length){
+        var _gcAtt=await _acadFetchAllRows('attendance','batch_name,session_date,session_num',function(q){ return q.in('batch_name',_gcNames).eq('status','present'); });
+        var _gcKeys={}, _gcLast={};
+        (_gcAtt||[]).forEach(function(a){
+          (_gcKeys[a.batch_name]=_gcKeys[a.batch_name]||new Set()).add(a.session_date!=null?a.session_date:('num_'+a.session_num));
+          if(a.session_date && (!_gcLast[a.batch_name] || a.session_date>_gcLast[a.batch_name])) _gcLast[a.batch_name]=a.session_date;
+        });
+        _gcNames.forEach(function(n){ if(_gcKeys[n] && _gcKeys[n].size>=_gcTot[n] && _gcLast[n]) _gcDoneAfter[n]=_gcLast[n]; });
+      }
+    }catch(e){ console.warn('[Overview] group-completion check skipped:', e&&e.message); }
     var trainers=res[1].data||[], att=res[2]||[], leaves=(res[3].data||[]);
     // Build attendance map keyed batch_name|session_date
     var attByKey={};
@@ -8857,6 +8875,7 @@ async function ovLoad(){
         // Group phase closed: keep marked group sessions as history, drop unmarked ones so
         // they never surface as pending/"Attendance Not Marked" once only 1:1 remains.
         if(b.group_classes_completed_at && !a) return;
+        if(!a && _gcDoneAfter[b.name] && o.date>_gcDoneAfter[b.name]) return; // all group sessions already done
         var dur=_ovDur(b);
         // Store raw att + leave flag — status computed at RENDER time so it stays live
         sessions.push({tk:tk,trainerRec:trRec,trainer:trRec.name,empType:trRec.type||'',batch:b.name,course:b.programme||'',ctype:_ovClassType(b),date:o.date,startMin:o.startTime,dur:dur,att:a,lv:lv,present:a?a.p:0,absent:a?a.ab:0,markedBy:a?a.markedBy:'',markedAt:a?a.markedAt:''});
