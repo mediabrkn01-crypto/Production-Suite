@@ -11200,6 +11200,9 @@ async function openUbDetail(batchId) {
   if (b.enrollment_status !== 'cancelled') {
     btns += ' <button class="btn-save" style="background:#ef4444" onclick="ubCancelBatch(\'' + batchId + '\',' + enrolled.length + ')">Cancel</button>';
   }
+  if (isCurrentlyAcademicHead()) {
+    btns += ' <button class="btn-cancel" style="color:#f87171;border-color:rgba(248,113,113,.35)" onclick="ubDeleteBatch(\'' + batchId + '\')">Delete</button>';
+  }
   actions.innerHTML = btns;
 }
 
@@ -11246,6 +11249,34 @@ async function ubCancelBatch(batchId, enrolledCount) {
   const { error } = await sb.from('batches').update({ enrollment_status: 'cancelled', status: 'cancelled' }).eq('id', batchId);
   if (error) { showToast('error', error.message); return; }
   showToast('success', 'Batch cancelled.');
+  document.getElementById('mUbDetail').classList.remove('on');
+  loadUpcomingTab();
+}
+
+// Delete an UPCOMING batch that's no longer needed. Same soft delete the Batches tab uses
+// (deleted_at) — every batch list already hides deleted rows, and no linked table is touched.
+// Only status='upcoming' rows with no enrolled students / 1:1 sessions can be deleted.
+async function ubDeleteBatch(batchId) {
+  if (!isCurrentlyAcademicHead()) { showToast('error', 'Only the Academic Head can delete upcoming batches.'); return; }
+  const { data: row, error: rErr } = await sb.from('batches').select('id,name,status,deleted_at').eq('id', batchId).maybeSingle();
+  if (rErr || !row) { showToast('error', 'Could not find this batch.'); return; }
+  if (row.status !== 'upcoming' || row.deleted_at) { showToast('error', 'Only upcoming batches can be deleted here.'); return; }
+  const [{ count: stCount }, { count: otoCount }] = await Promise.all([
+    sb.from('students').select('id', { count: 'exact', head: true }).eq('batch_id', batchId),
+    sb.from('oto_sessions').select('id', { count: 'exact', head: true }).eq('batch_id', batchId)
+  ]);
+  if (stCount) { showToast('error', 'This batch has ' + stCount + ' enrolled student' + (stCount === 1 ? '' : 's') + '. Remove them first, or use Cancel.', 6000); return; }
+  if (otoCount) { showToast('error', 'This batch has 1:1 sessions linked to it, so it can\'t be deleted.', 6000); return; }
+  const okBtn = document.getElementById('simpleConfirmOkBtn'), prevBg = okBtn.style.background;
+  okBtn.style.background = '#ef4444';
+  const ok = await _showSimpleConfirm('Are you sure you want to delete this upcoming batch?\nThis action cannot be undone.', { title: 'Delete Upcoming Batch?', confirmLabel: 'Delete' });
+  okBtn.style.background = prevBg;
+  if (!ok) return;
+  const { data: gone, error } = await sb.from('batches').update({ deleted_at: new Date().toISOString() })
+    .eq('id', batchId).eq('status', 'upcoming').is('deleted_at', null).select('id');
+  if (error) { showToast('error', 'Could not delete batch. ' + error.message, 6000); return; }
+  if (!gone || !gone.length) { showToast('error', 'Batch was not deleted — it may have changed. Refresh and try again.'); return; }
+  showToast('success', 'Upcoming batch deleted.');
   document.getElementById('mUbDetail').classList.remove('on');
   loadUpcomingTab();
 }
