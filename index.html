@@ -6659,6 +6659,12 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                                 <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
                             </select>
                         `;
+                        // Media Head only: hand their OWN active work to a team member.
+                        if (window._systemRole === 'media_head' && t.employeeEmail === activeEmail && !t.managerApproved
+                            && ['Pending', 'In Progress', 'Rework Required'].includes(t.status)) {
+                            inputActionSelectorMarkup = `<div class="flex flex-col gap-1.5 items-start">${inputActionSelectorMarkup}
+                                <button type="button" onclick="mhReassignOpen(${t.id})" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] font-bold uppercase tracking-wide text-[#c7cbe0] border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] hover:text-white transition"><i data-lucide="user-cog" class="w-3.5 h-3.5"></i> Reassign</button></div>`;
+                        }
                     }
                 } else if (activeRole === 'manager') {
                     inputActionSelectorMarkup = `
@@ -10774,6 +10780,106 @@ async function saveLeave(){
     window.setPipeView(saved);
   }
   if (document.readyState!=='loading') setTimeout(init, 600); else document.addEventListener('DOMContentLoaded', function(){ setTimeout(init,600); });
+})();
+</script>
+
+<!-- Media Head → team reassignment (same assignments row; rules enforced by the
+     media_reassign_work database function). -->
+<script>
+(function () {
+  var mhRa = { id: null, team: [], pick: null };
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function toast(type, msg) { if (window.showToast) window.showToast(type, msg); }
+  function avatar(e, px) { try { return (typeof hrAvatarHTML === 'function') ? hrAvatarHTML(e, px) : ''; } catch (_) { return ''; } }
+  function root() {
+    var el = document.getElementById('mh-ra-overlay'); if (el) return el;
+    el = document.createElement('div');
+    el.id = 'mh-ra-overlay';
+    el.className = 'fixed inset-0 z-[210] hidden items-center justify-center p-4';
+    el.style.cssText = 'background:rgba(3,5,10,.7);backdrop-filter:blur(5px)';
+    el.innerHTML =
+      '<div class="w-full max-w-md rounded-2xl border border-white/10 shadow-2xl" style="background:linear-gradient(180deg,#13161f,#0c0e15)">' +
+        '<div class="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-white/[0.06]">' +
+          '<div class="min-w-0"><p class="text-[10.5px] font-bold uppercase tracking-[.12em] text-[#6b74a0]">Reassign work</p>' +
+          '<h3 id="mh-ra-topic" class="text-white font-bold text-base mt-1 leading-snug"></h3>' +
+          '<p id="mh-ra-meta" class="text-[#8890b5] text-xs mt-1"></p></div>' +
+          '<button type="button" onclick="mhReassignClose()" class="text-[#8890b5] hover:text-white p-1" aria-label="Close"><i data-lucide="x" class="w-4 h-4"></i></button>' +
+        '</div>' +
+        '<div class="px-5 py-4">' +
+          '<label class="block text-[10.5px] font-bold uppercase tracking-[.1em] text-[#6b74a0] mb-2">Assign to</label>' +
+          '<div id="mh-ra-list" class="flex flex-col gap-2 max-h-64 overflow-y-auto"></div>' +
+          '<p class="text-[11px] text-[#6b74a0] mt-3">Deadline, priority, status, files and notes stay the same. It leaves your list and moves to theirs.</p>' +
+        '</div>' +
+        '<div class="flex justify-end gap-2 px-5 pb-5">' +
+          '<button type="button" onclick="mhReassignClose()" class="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide text-[#c7cbe0] bg-white/[0.05] border border-white/10 hover:bg-white/[0.09] transition">Cancel</button>' +
+          '<button type="button" id="mh-ra-go" onclick="mhReassignConfirm()" disabled class="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide brand-gradient text-white transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">Reassign Work</button>' +
+        '</div>' +
+      '</div>';
+    el.addEventListener('mousedown', function (e) { if (e.target === el) mhReassignClose(); });
+    document.body.appendChild(el);
+    return el;
+  }
+  function renderList() {
+    var list = document.getElementById('mh-ra-list');
+    if (!mhRa.team.length) { list.innerHTML = '<div class="text-xs text-[#8890b5] py-6 text-center">No active team members to hand this to.</div>'; return; }
+    list.innerHTML = mhRa.team.map(function (e) {
+      var on = mhRa.pick && mhRa.pick.portal_email === e.portal_email;
+      return '<button type="button" data-em="' + esc(e.portal_email) + '" class="mh-ra-opt flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-xl border transition ' +
+        (on ? 'border-orange-500/60 bg-orange-500/10' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]') + '">' +
+        '<span class="shrink-0">' + avatar(e, 32) + '</span>' +
+        '<span class="min-w-0 flex-1"><span class="block text-sm font-semibold ' + (on ? 'text-[#ff8a3c]' : 'text-white') + ' truncate">' + esc(e.full_name) + '</span>' +
+        '<span class="block text-[11px] text-[#8890b5] truncate">' + esc(e.designation || String(e.department || '').split(',')[0] || '') + '</span></span>' +
+        (on ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-[#ff8a3c]"></i>' : '') + '</button>';
+    }).join('');
+    list.querySelectorAll('.mh-ra-opt').forEach(function (b) {
+      b.onclick = function () { mhRa.pick = mhRa.team.find(function (e) { return e.portal_email === b.dataset.em; }) || null; renderList(); document.getElementById('mh-ra-go').disabled = !mhRa.pick; };
+    });
+    if (window.lucide) lucide.createIcons();
+  }
+  window.mhReassignOpen = async function (taskId) {
+    if (window._systemRole !== 'media_head') return;
+    var t = (window.assignmentsList || (typeof assignmentsList !== 'undefined' ? assignmentsList : [])).find(function (x) { return String(x.id) === String(taskId); });
+    if (!t) return;
+    var el = root();
+    mhRa.id = taskId; mhRa.pick = null; mhRa.team = [];
+    document.getElementById('mh-ra-topic').textContent = t.topic || 'Work';
+    document.getElementById('mh-ra-meta').textContent = [t.type, t.status, t.date ? 'Due ' + t.date : ''].filter(Boolean).join(' · ');
+    document.getElementById('mh-ra-go').disabled = true;
+    document.getElementById('mh-ra-list').innerHTML = '<div class="text-xs text-[#8890b5] py-6 text-center">Loading team…</div>';
+    el.classList.remove('hidden'); el.classList.add('flex');
+    if (window.lucide) lucide.createIcons();
+    try {
+      var me = String(activeEmail || '').toLowerCase();
+      var mine = await dbInstance.from('hr_employees').select('division').ilike('portal_email', me).limit(1);
+      var div = mine.data && mine.data[0] && mine.data[0].division;
+      if (!div) { mhRa.team = []; renderList(); return; }
+      var r = await dbInstance.from('hr_employees')
+        .select('id,full_name,portal_email,designation,department,photo_base64,photo_url,employment_status,account_type,portal_access_enabled')
+        .eq('division', div).eq('employment_status', 'active');
+      mhRa.team = (r.data || []).filter(function (e) {
+        return e.portal_email && e.portal_email.toLowerCase() !== me && (e.account_type || 'employee') === 'employee' && e.portal_access_enabled !== false;
+      }).sort(function (a, b) { return String(a.full_name).localeCompare(String(b.full_name)); });
+      renderList();
+    } catch (e) {
+      document.getElementById('mh-ra-list').innerHTML = '<div class="text-xs text-red-400 py-6 text-center">Could not load your team. Please try again.</div>';
+    }
+  };
+  window.mhReassignClose = function () { var el = document.getElementById('mh-ra-overlay'); if (el) { el.classList.add('hidden'); el.classList.remove('flex'); } mhRa.id = null; mhRa.pick = null; };
+  window.mhReassignConfirm = async function () {
+    if (!mhRa.id || !mhRa.pick) return;
+    var btn = document.getElementById('mh-ra-go'); btn.disabled = true; btn.textContent = 'Reassigning…';
+    try {
+      var res = await dbInstance.rpc('media_reassign_work', { p_assignment_id: mhRa.id, p_actor_email: activeEmail, p_new_email: mhRa.pick.portal_email });
+      var out = res.data || {};
+      if (res.error || !out.ok) { toast('error', (out && out.error) || 'Could not reassign this work. Please try again.'); return; }
+      var t = (typeof assignmentsList !== 'undefined' ? assignmentsList : []).find(function (x) { return String(x.id) === String(mhRa.id); });
+      if (typeof pushLogEntry === 'function') pushLogEntry('Reassigned task: "' + ((t && t.topic) || mhRa.id) + '" -> ' + out.assigned_to + ' (by ' + activeUser + ')').catch(function () {});
+      toast('success', 'Work reassigned to ' + out.assigned_to + '.');
+      mhReassignClose();
+      if (typeof _beScheduleRealtimeSync === 'function') _beScheduleRealtimeSync();
+    } finally { btn.textContent = 'Reassign Work'; if (mhRa.id) btn.disabled = !mhRa.pick; }
+  };
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && mhRa.id) mhReassignClose(); });
 })();
 </script>
 </body>
