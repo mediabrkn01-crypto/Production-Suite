@@ -3030,7 +3030,13 @@
                 if (e.name === 'AbortError' || (signal && signal.aborted)) throw _beAbortErr();
                 const er = new Error('Connection to the upload server was lost'); er.retryable = true; throw er;
             }
-            if (!r.ok) { const er = new Error('Upload server returned HTTP ' + r.status); er.retryable = r.status >= 500 || r.status === 429; throw er; }
+            if (!r.ok) {
+                // Apps Script web apps briefly answer 404/408 while Google redeploys or scales
+                // them — same as a 5xx: back off and retry instead of failing the upload.
+                console.warn('[upload] script HTTP ' + r.status + ' for ' + (payload && payload.action));
+                const er = new Error("Couldn't reach the upload server. Please retry.");
+                er.retryable = r.status >= 500 || r.status === 429 || r.status === 404 || r.status === 408; er.status = r.status; throw er;
+            }
             try { return await r.json(); }
             catch (_) { const er = new Error('Unexpected response from the upload server'); er.retryable = true; throw er; }
         }
