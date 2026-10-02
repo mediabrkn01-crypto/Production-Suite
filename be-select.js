@@ -422,12 +422,25 @@
   function toISO(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
   function parseISO(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v || ''); return m ? { y: +m[1], m: +m[2] - 1, d: +m[3] } : null; }
   function fmtDisplay(v) { var p = parseISO(v); return p ? pad(p.d) + '/' + pad(p.m + 1) + '/' + p.y : ''; }
+  // <input type="month"> support: value 'YYYY-MM', same dark picker opened on its month grid.
+  function isMonth(input) { return !!input && input.type === 'month'; }
+  function parseYM(v) { var m = /^(\d{4})-(\d{2})/.exec(v || ''); return m ? { y: +m[1], m: +m[2] - 1, d: 1 } : null; }
+  function parseFor(input, v) { return isMonth(input) ? parseYM(v) : parseISO(v); }
+  function displayFor(input) {
+    if (isMonth(input)) { var p = parseYM(input.value); return p ? MONTHS[p.m] + ' ' + p.y : ''; }
+    return fmtDisplay(input.value);
+  }
+  function placeholderFor(input) { return isMonth(input) ? 'Select month' : 'dd/mm/yyyy'; }
+  function monthDisabled(y, m, input) {
+    var mn = parseYM(input.min), mx = parseYM(input.max), v = y * 100 + m;
+    return (mn && v < mn.y * 100 + mn.m) || (mx && v > mx.y * 100 + mx.m);
+  }
 
   function refreshTrigger(input) {
     var t = input.__beDateTrigger; if (!t) return;
     var val = t.querySelector('.be-date-val');
-    var disp = fmtDisplay(input.value);
-    val.textContent = disp || 'dd/mm/yyyy';
+    var disp = displayFor(input);
+    val.textContent = disp || placeholderFor(input);
     if (disp) val.removeAttribute('data-placeholder'); else val.setAttribute('data-placeholder', '');
     if (input.disabled) { t.setAttribute('aria-disabled', 'true'); t.setAttribute('tabindex', '-1'); }
     else { t.removeAttribute('aria-disabled'); t.setAttribute('tabindex', '0'); }
@@ -449,7 +462,11 @@
     cal.querySelector('[data-prev]').addEventListener('click', function () { navPrev(); });
     cal.querySelector('[data-next]').addEventListener('click', function () { navNext(); });
     cal.querySelector('[data-clear]').addEventListener('click', function () { setValue(''); closeCal(); });
-    cal.querySelector('[data-today]').addEventListener('click', function () { var n = new Date(); viewY = n.getFullYear(); viewM = n.getMonth(); calView = 'days'; pick(n.getFullYear(), n.getMonth(), n.getDate()); });
+    cal.querySelector('[data-today]').addEventListener('click', function () {
+      var n = new Date();
+      if (isMonth(openInput)) { setValue(n.getFullYear() + '-' + pad(n.getMonth() + 1)); closeCal(); return; }
+      viewY = n.getFullYear(); viewM = n.getMonth(); calView = 'days'; pick(n.getFullYear(), n.getMonth(), n.getDate());
+    });
     cal.addEventListener('mousedown', function (e) { e.preventDefault(); });
   }
 
@@ -520,7 +537,8 @@
     calGrid.innerHTML = '';
     calGrid.className = 'be-cal-mgrid';
     calGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 0;';
-    var sel = parseISO(openInput ? openInput.value : '');
+    var monthMode = isMonth(openInput);
+    var sel = openInput ? parseFor(openInput, openInput.value) : null;
     var now = new Date();
     for (var i = 0; i < 12; i++) {
       var el = document.createElement('div');
@@ -528,14 +546,18 @@
       el.textContent = MONTHS_SHORT[i];
       if (now.getFullYear() === viewY && now.getMonth() === i) el.setAttribute('data-current', '');
       if (sel && sel.y === viewY && sel.m === i) el.setAttribute('data-selected', '');
-      (function (month) { el.addEventListener('click', function () { viewM = month; calView = 'days'; renderCal(); }); })(i);
+      if (monthMode && monthDisabled(viewY, i, openInput)) { el.style.opacity = '.3'; el.style.cursor = 'not-allowed'; calGrid.appendChild(el); continue; }
+      (function (month) { el.addEventListener('click', function () {
+        if (monthMode) { setValue(viewY + '-' + pad(month + 1)); closeCal(); return; }
+        viewM = month; calView = 'days'; renderCal();
+      }); })(i);
       calGrid.appendChild(el);
     }
   }
 
   function renderYearsView() {
     calTitle.innerHTML = '<button type="button" class="be-cal-back" data-back-days>&#8592; Back</button>';
-    calTitle.querySelector('[data-back-days]').addEventListener('click', function () { calView = 'days'; renderCal(); });
+    calTitle.querySelector('[data-back-days]').addEventListener('click', function () { calView = isMonth(openInput) ? 'months' : 'days'; renderCal(); });
     calGrid.innerHTML = '';
     calGrid.className = '';
     calGrid.style.cssText = '';
@@ -548,7 +570,7 @@
     var grid = document.createElement('div');
     grid.className = 'be-cal-ygrid';
     grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:4px 0;';
-    var sel = parseISO(openInput ? openInput.value : '');
+    var sel = openInput ? parseFor(openInput, openInput.value) : null;
     var now = new Date();
     var centerY = viewY;
     var startY = centerY - 50, endY = centerY + 20;
@@ -601,9 +623,10 @@
     if (input.disabled) return;
     if (!cal) buildCal();
     openInput = input;
-    calView = 'days';
-    var p = parseISO(input.value) || (function () { var n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; })();
+    calView = isMonth(input) ? 'months' : 'days';
+    var p = parseFor(input, input.value) || (function () { var n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; })();
     viewY = p.y; viewM = p.m;
+    var todayBtn = cal.querySelector('[data-today]'); if (todayBtn) todayBtn.textContent = isMonth(input) ? 'This month' : 'Today';
     input.__beDateTrigger.setAttribute('data-open', '');
     cal.setAttribute('data-open', '');
     renderCal();
@@ -629,12 +652,12 @@
   function onKey(e) {
     if (!openInput) return;
     if (e.key === 'Escape') { e.preventDefault(); closeCal(); }
-    else if (e.key === 'PageUp') { e.preventDefault(); shift(-1); }
-    else if (e.key === 'PageDown') { e.preventDefault(); shift(1); }
+    else if (e.key === 'PageUp') { e.preventDefault(); navPrev(); }
+    else if (e.key === 'PageDown') { e.preventDefault(); navNext(); }
   }
 
   function enhance(input) {
-    if (!input || input.tagName !== 'INPUT' || input.type !== 'date') return;
+    if (!input || input.tagName !== 'INPUT' || (input.type !== 'date' && input.type !== 'month')) return;
     if (input.hasAttribute('data-native')) return;
     if (input.__beDate) return;
     input.__beDate = true;
@@ -673,16 +696,16 @@
     input.addEventListener('change', function () { refreshTrigger(input); });
   }
 
-  function scan(root) { var n = (root || document).querySelectorAll ? (root || document).querySelectorAll('input[type="date"]') : []; for (var i = 0; i < n.length; i++) enhance(n[i]); }
+  function scan(root) { var n = (root || document).querySelectorAll ? (root || document).querySelectorAll('input[type="date"],input[type="month"]') : []; for (var i = 0; i < n.length; i++) enhance(n[i]); }
   function boot() {
     scan(document);
     new MutationObserver(function (muts) {
-      for (var i = 0; i < muts.length; i++) { var a = muts[i].addedNodes; for (var j = 0; j < a.length; j++) { var x = a[j]; if (x.nodeType !== 1) continue; if (x.tagName === 'INPUT' && x.type === 'date') enhance(x); else if (x.querySelectorAll) scan(x); } }
+      for (var i = 0; i < muts.length; i++) { var a = muts[i].addedNodes; for (var j = 0; j < a.length; j++) { var x = a[j]; if (x.nodeType !== 1) continue; if (x.tagName === 'INPUT' && (x.type === 'date' || x.type === 'month')) enhance(x); else if (x.querySelectorAll) scan(x); } }
     }).observe(document.body, { childList: true, subtree: true });
     // programmatic value changes (input.value = 'YYYY-MM-DD') emit no event — keep triggers synced
     setInterval(function () {
       var ins = document.querySelectorAll('input.be-date-native');
-      for (var i = 0; i < ins.length; i++) { var s = ins[i], t = s.__beDateTrigger; if (!t) continue; var want = fmtDisplay(s.value) || 'dd/mm/yyyy'; if (t.querySelector('.be-date-val').textContent !== want) refreshTrigger(s); }
+      for (var i = 0; i < ins.length; i++) { var s = ins[i], t = s.__beDateTrigger; if (!t) continue; var want = displayFor(s) || placeholderFor(s); if (t.querySelector('.be-date-val').textContent !== want) refreshTrigger(s); }
     }, 700);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
