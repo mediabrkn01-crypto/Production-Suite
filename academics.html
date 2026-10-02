@@ -1805,7 +1805,7 @@ details[open] .rawsum::before{content:'▾ '}
   <div id="att_group_section">
   <div class="mrow">
     <div class="att-fld"><span class="att-lbl">Session #</span><input id="att_num" type="number" placeholder="Session #" value="1" readonly style="opacity:.75;cursor:default"/><span style="font-size:10px;color:var(--tx3);margin-left:5px">auto</span></div>
-    <div class="att-fld"><span class="att-lbl">Class Date</span><input id="att_date" type="date" onchange="loadClassLogForAttDate();(function(){var t=new Date().toISOString().slice(0,10),v=document.getElementById('att_date').value,h=document.getElementById('att_date_hint');if(h){if(v&&v<t){h.innerHTML='⚠ Marking for past class date (<b>'+v+'</b>)';h.style.display='block';}else{h.innerHTML='';h.style.display='none';}}})()"/></div>
+    <div class="att-fld"><span class="att-lbl">Class Date</span><input id="att_date" type="date" onchange="loadClassLogForAttDate();(function(){var t=_acadLocalDateStr(new Date()),v=document.getElementById('att_date').value,h=document.getElementById('att_date_hint');if(h){if(v&&v<t){h.innerHTML='⚠ Marking for past class date (<b>'+v+'</b>)';h.style.display='block';}else{h.innerHTML='';h.style.display='none';}}})()"/></div>
   </div>
   <div id="att_date_hint" style="display:none;font-size:11px;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:7px;padding:6px 10px;margin:4px 0 8px"></div>
   <div id="att_list" style="max-height:340px;overflow:auto;margin:10px 0"></div>
@@ -2413,7 +2413,7 @@ async function loadLive(){
   if(!isHead) studQuery=studQuery.ilike('trainer_name', currentUser.name||'');
   const {data:studs}=await studQuery;
   let rows=(studs||[]).filter(s=>s.name);
-  const today=new Date().toISOString().slice(0,10);
+  const today=_acadLocalDateStr(new Date());
   // GROUP vs 1:1 is decided by the batch's real capacity (1 = individual/1:1, e.g. "Elite
   // Course"; \u22652 = group), NOT by a programme-name regex \u2014 "Talk Club Elite" is a GROUP course
   // (capacity 6) whose name merely contains "elite", which the old /elite/i test wrongly split
@@ -3179,7 +3179,7 @@ function openFreezeBatch(i){
   const b = window._liveBatches[i]; if(!b||!b.elite) return;
   if(!isCurrentlyAcademicHead()){ showToast('error','Only Academic Head can freeze batches.'); return; }
   _freezeBatchIdx = i;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _acadLocalDateStr(new Date());
   document.getElementById('fb_info').innerHTML =
     '<div style="font-size:13px;color:var(--tx)"><b>'+esc(b.name)+'</b></div>'+
     '<div style="font-size:11.5px;color:var(--tx3);margin-top:2px">Trainer: '+esc(b.trainer)+'</div>';
@@ -3236,7 +3236,7 @@ async function openResumeBatch(batchId){
       '<div><b>Frozen since:</b> '+(batch.freeze_start_date||'—')+'</div>'+
       '<div><b>Expected resume:</b> '+(batch.freeze_resume_date||'—')+'</div>'+
       (batch.freeze_reason?'<div><b>Reason:</b> '+esc(batch.freeze_reason)+'</div>':'');
-    document.getElementById('rb_date').value = batch.freeze_resume_date || new Date().toISOString().slice(0,10);
+    document.getElementById('rb_date').value = batch.freeze_resume_date || _acadLocalDateStr(new Date());
     const { data: trainers } = await sb.from('trainers').select('id,name').eq('status','active').order('name');
     const sel = document.getElementById('rb_trainer');
     sel.innerHTML = (trainers||[]).map(t =>
@@ -3436,7 +3436,7 @@ async function openAtt(i){
   // Bug root cause: if this defaults to today and the trainer doesn't change it, a backdated
   // session gets session_date = today rather than the actual class date. The Overview query
   // filters by session_date, so it never finds the attendance for the real class date → "missing".
-  const _todayAttISO = new Date().toISOString().slice(0,10);
+  const _todayAttISO = _acadLocalDateStr(new Date());
   let _bestAttDate = _todayAttISO;
   try {
     const _sched = window._acadSchedByName && window._acadSchedByName[b.raw||b.name];
@@ -3448,8 +3448,8 @@ async function openAtt(i){
       if (_wantDows.size) {
         const _cur = new Date();
         for (let _di = 0; _di < 14; _di++) {
-          if (_wantDows.has(_cur.getDay())) {
-            _bestAttDate = _cur.toISOString().slice(0,10);
+          if (_wantDows.has(_cur.getDay()) && !_acadHolidayFor(_acadLocalDateStr(_cur))) {
+            _bestAttDate = _acadLocalDateStr(_cur);
             break;
           }
           _cur.setDate(_cur.getDate() - 1);
@@ -3577,7 +3577,10 @@ async function saveAtt(){
   const b=window._attBatch; if(!b)return;
   if(b._isFrozen){showToast('error','This batch is frozen. Resume it before marking attendance.');return;}
   const num=parseInt(document.getElementById('att_num').value)||1;
-  const date=document.getElementById('att_date').value||new Date().toISOString().slice(0,10);
+  const date=document.getElementById('att_date').value||_acadLocalDateStr(new Date());
+  await _acadLoadHolidays();
+  const _hDay = _acadHolidayFor(date);
+  if (_hDay) { showToast('error', date + ' is an HR holiday (' + _hDay.name + '). Classes are not held, so no attendance is recorded for this date.', 6000); return; }
   const realBatchName = b.raw||b.name;
   const rows=b.students.map(function(s,j){return {batch_name:realBatchName,student_uin:s.uin,session_num:num,session_date:date,status:document.getElementById('att_'+j).checked?'present':'absent',marked_by:currentUser.name};});
   // Mandatory class log validation — required when at least one student is present.
@@ -4208,7 +4211,7 @@ function _acadIsAnniversaryToday(joiningDateStr) {
   return years >= 1 ? years : null;
 }
 function _acadCelebrationStatusForToday(ev) {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = _acadLocalDateStr(new Date());
   if (!ev.event_date) return null;
   const endDate = ev.event_end_date || ev.event_date;
   if (todayStr >= ev.event_date && todayStr <= endDate) return 'actual';
@@ -4224,7 +4227,7 @@ function _acadFindCelebrationTemplate(type) {
 function _acadComputeTodaysCelebrations(me) {
   if (!me) return [];
   const items = [];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = _acadLocalDateStr(new Date());
   const firstName = (me.full_name || currentUser?.name || 'there').trim().split(' ')[0];
 
   if (_acadIsBirthdayToday(me.dob)) {
@@ -4663,8 +4666,8 @@ async function _acadCheckDeptLeaveNotifications(){
 async function _acadCheckFreezeResumeReminders(){
   if(typeof isCurrentlyAcademicHead!=='function'||!isCurrentlyAcademicHead()) return;
   try {
-    var today=new Date().toISOString().slice(0,10);
-    var tom=new Date(); tom.setDate(tom.getDate()+1); var tomISO=tom.toISOString().slice(0,10);
+    var today=_acadLocalDateStr(new Date());
+    var tom=new Date(); tom.setDate(tom.getDate()+1); var tomISO=_acadLocalDateStr(tom);
     var {data}=await sb.from('batches').select('id,name,freeze_resume_date').eq('status','frozen').not('freeze_resume_date','is',null);
     (data||[]).forEach(function(b){
       if(b.freeze_resume_date===today) addNotif('freeze_resume','Batch "'+b.name+'" resume date is TODAY',null,'fr_'+b.id);
@@ -4958,7 +4961,7 @@ async function loadAcadDashboard(){
   };
   try {
     const liveBatches = window._liveBatches || [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _acadLocalDateStr(new Date());
     const activeBatches = liveBatches.filter(b => !b.end || b.end >= today);
 
     if (isHead) {
@@ -5015,7 +5018,7 @@ async function loadAcadDashboard(){
       const availableCoaches = activeTrainers.filter(t => !busyTrainerIds.has(t.id) && !onLeaveIds.has(t.id));
       // Becoming available soon: active batch, this trainer, completing within 7 days.
       const soon = new Date(today); soon.setDate(soon.getDate() + 7);
-      const soonStr = soon.toISOString().slice(0, 10);
+      const soonStr = _acadLocalDateStr(soon);
       const upcomingAvail = batchesActive.filter(b => b.expected_completion_date && b.expected_completion_date >= today && b.expected_completion_date <= soonStr);
 
       // Redesigned into the same compact metric-strip component index.html/hr.html's own
@@ -5112,6 +5115,7 @@ async function loadAcadDashboard(){
         _trows = _trows.filter(b => { const t=b.sessions_total||0; const d=Math.min(t||Infinity,((_done[b.name]&&_done[b.name].size)||0)); return !(t && d>=t); });
       }
       let _occ = [];
+      await _acadLoadHolidays();
       _trows.forEach(b => { if (b.group_classes_completed_at) return; _occ = _occ.concat(generateBatchOccurrences(b, today, today)); });
       _occ = _occ.filter(o => o.date === today).sort((a,b)=>a.startTime-b.startTime);
       const _shown = _occ.slice(0, 8);
@@ -5604,7 +5608,7 @@ function isBatchCurrentlyActive(b){
   // Finished Batches itself is built from (see loadLive()) — one shared answer to "is this
   // batch actually done," not a second, disagreeing one computed here.
   if (window._acadFinishedBatchNames && window._acadFinishedBatchNames.has(b.name)) return false;
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = _acadLocalDateStr(new Date());
   // BUG FIX, CONFIRMED LIVE (Namratha 2–3 PM showing Free while "Elite- Sangita", an active
   // batch assigned to her at that exact time, exists): this used to ALSO free the slot for a
   // batch that simply hasn't STARTED yet (todayStr < start_date). That's wrong for the
@@ -5844,7 +5848,7 @@ async function loadAvailabilityTab(){
       _availBatchesForOccupancy = (window._allBatchesFull && window._allBatchesFull.length)
         ? window._allBatchesFull
         : ((await sb.from('batches').select('*, trainers(name), courses(name), students(id)').order('created_at')).data || []);
-      const todayStr = new Date().toISOString().slice(0,10);
+      const todayStr = _acadLocalDateStr(new Date());
       const [{data:approvedLeaves},{data:hrEmployees}] = await Promise.all([
         mediaHrDB.from('hr_leave_requests').select('*').eq('status','approved').lte('start_date',todayStr).gte('end_date',todayStr),
         mediaHrDB.from('hr_employees').select('id,portal_email,full_name')
@@ -6707,6 +6711,7 @@ async function loadClassesTab(){
       return;
     }
     let allOccurrences = [];
+    await _acadLoadHolidays();
     rows.forEach(b => { if (b.group_classes_completed_at) return; allOccurrences = allOccurrences.concat(generateBatchOccurrences(b, today, soonStr)); });
     allOccurrences.sort((a,b) => a.date === b.date ? (a.startTime - b.startTime) : a.date.localeCompare(b.date));
     const todays = allOccurrences.filter(o => o.date === today);
@@ -8656,7 +8661,7 @@ function _autoCalcBatchEndDate(prefix) {
 // ── OV state ──────────────────────────────────────────────────────────────────
 var _ovMode  = 'today';   // 'today' | 'monthly'
 var _ovMonth = new Date().toISOString().slice(0,7);   // YYYY-MM
-var _ovDay   = new Date().toISOString().slice(0,10);  // YYYY-MM-DD
+var _ovDay   = _acadLocalDateStr(new Date());  // YYYY-MM-DD
 var _ovData  = null;
 var OV_GRACE_MIN = 15; // minutes after class END before marking attendance-missing
 // Status map — includes inprogress (cyan) for live classes
@@ -8720,7 +8725,7 @@ function _ovInjectCSS(){
   _ovApplySelectStyles(); // also apply direct inline overrides
 }
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function _ovMonthBounds(m){ var p=m.split('-').map(Number); var start=m+'-01'; var end=new Date(p[0],p[1],0); return {start:start,end:end.toISOString().slice(0,10),y:p[0],mo:p[1],days:end.getDate()}; }
+function _ovMonthBounds(m){ var p=m.split('-').map(Number); var start=m+'-01'; var end=new Date(p[0],p[1],0); return {start:start,end:_acadLocalDateStr(end),y:p[0],mo:p[1],days:end.getDate()}; }
 function _ovClassType(b){ return (Number(b.capacity)===1)?'1:1':'group'; }
 function _ovDur(b){ var d=Number(b&&b.class_duration_minutes); return d>0?d:60; } // duration from batch, never from attendance row
 function _ovFmt(min){ if(min==null)return ''; var h=Math.floor(min/60),m=min%60,ap=h<12?'AM':'PM',h12=((h+11)%12)+1; return h12+':'+String(m).padStart(2,'0')+ap; }
@@ -8766,7 +8771,7 @@ window.ovSetMode=function(m){
   ovLoad();
 };
 window.ovSetDay=function(v){ if(!v)return; _ovDay=v; var el=document.getElementById('ov-day'); if(el)el.value=v; ovLoad(); };
-window.ovShiftDay=function(d){ var dt=new Date(_ovDay+'T00:00:00'); dt.setDate(dt.getDate()+d); _ovDay=dt.toISOString().slice(0,10); var el=document.getElementById('ov-day'); if(el)el.value=_ovDay; ovLoad(); };
+window.ovShiftDay=function(d){ var dt=new Date(_ovDay+'T00:00:00'); dt.setDate(dt.getDate()+d); _ovDay=_acadLocalDateStr(dt); var el=document.getElementById('ov-day'); if(el)el.value=_ovDay; ovLoad(); };
 window.ovSetMonth=function(v){ if(!v)return; _ovMonth=v; ovLoad(); };
 window.ovShiftMonth=function(delta){ var p=_ovMonth.split('-').map(Number); var d=new Date(p[0],p[1]-1+delta,1); _ovMonth=d.toISOString().slice(0,7); var el=document.getElementById('ov-month'); if(el)el.value=_ovMonth; ovLoad(); };
 window._ovRefresh=function(){ var t=document.getElementById('tab-acad-overview'); if(t&&t.classList.contains('on')) ovLoad(); };
@@ -8782,8 +8787,9 @@ async function loadOverviewTab(){
 // ── Data load ─────────────────────────────────────────────────────────────────
 async function ovLoad(){
   var body=document.getElementById('ov-body'); if(!body) return;
+  await _acadLoadHolidays();
   if(typeof isCurrentlyAcademicHead==='function' && !isCurrentlyAcademicHead()){ body.innerHTML='<div class="empty">Academic Head only.</div>'; return; }
-  var todayISO=new Date().toISOString().slice(0,10);
+  var todayISO=_acadLocalDateStr(new Date());
   var rangeStart, rangeEnd, label;
   if(_ovMode==='today'){
     rangeStart=rangeEnd=_ovDay;
@@ -8913,7 +8919,7 @@ function _ovTile(val,label,color,accent){
 window.ovRender=function(){
   if(!_ovData) return;
   // Compute current time — used for time-aware status resolution
-  var todayISO=new Date().toISOString().slice(0,10);
+  var todayISO=_acadLocalDateStr(new Date());
   var now=new Date(); var nowMin=now.getHours()*60+now.getMinutes();
   var q=(document.getElementById('ov-search')?document.getElementById('ov-search').value:'').trim().toLowerCase();
   var g=function(id){var e=document.getElementById(id);return e?e.value:'all';};
@@ -9005,10 +9011,21 @@ window.ovRender=function(){
       '<td style="'+cc+';color:'+(r.minutes?'rgba(255,255,255,.6)':'rgba(255,255,255,.25)')+';font-variant-numeric:tabular-nums">'+(r.minutes/60).toFixed(1)+'h</td>'+
       '<td style="padding:9px 12px;text-align:right"><button class="act-btn" style="margin:0" onclick="ovOpenTrainer(\''+esc(String(r.tk))+'\')">View →</button></td></tr>';
   }).join(''):'<tr><td colspan="11" class="empty" style="padding:28px">No scheduled sessions for this period.</td></tr>';
-  var bodyEl=document.getElementById('ov-body'); if(bodyEl) bodyEl.innerHTML=head+trhtml+'</tbody></table></div>';
+  var _hol=(_ovMode==='today')?_acadHolidayFor(_ovDay):null;
+  var bodyEl=document.getElementById('ov-body');
+  if(_hol){
+    // Organisation-wide holiday: no class sessions exist for this date — nothing to mark,
+    // nothing missing, nothing payable. Counters above are already 0 (no occurrences).
+    if(alertsEl) alertsEl.innerHTML='';
+    if(issuesEl) issuesEl.innerHTML='';
+    if(bodyEl) bodyEl.innerHTML='<div style="padding:36px 20px;text-align:center;border:1px solid rgba(167,139,250,.25);border-radius:12px;background:rgba(167,139,250,.05)">'+
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a78bfa">Holiday · Non-working day</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#f1f5f9;margin-top:6px">'+esc(_hol.name)+'</div>'+
+      '<div style="font-size:12.5px;color:rgba(255,255,255,.45);margin-top:4px">'+esc(_hol.type)+' — no classes scheduled and no attendance required.</div></div>';
+  } else if(bodyEl) bodyEl.innerHTML=head+trhtml+'</tbody></table></div>';
   // Today's Classes: chronological list with live status
   var clEl=document.getElementById('ov-class-list'); if(clEl){
-    if(_ovMode==='today'){
+    if(_ovMode==='today' && !_hol){
       var sorted=sess.slice().sort(function(a,b){return (a.startMin||0)-(b.startMin||0)||(a.batch.localeCompare(b.batch));});
       if(sorted.length){
         var clHtml='<div><div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:10px">Today\'s Classes <span style="font-size:11px;color:rgba(255,255,255,.35);font-weight:400">'+sorted.length+' session(s) · auto-updates every 60s</span></div>'+
@@ -9041,7 +9058,7 @@ window._ovDDNav=async function(dir){
   if(_ovDDMode==='today'){
     if(!_ovDDDay) return;
     var dt=new Date(_ovDDDay+'T00:00:00'); dt.setDate(dt.getDate()+dir);
-    _ovDDDay=dt.toISOString().slice(0,10);
+    _ovDDDay=_acadLocalDateStr(dt);
     var newMonth=_ovDDDay.slice(0,7);
     if(newMonth!==_ovDay.slice(0,7)){
       _ovDay=_ovDDDay; var ed=document.getElementById('ov-day'); if(ed) ed.value=_ovDay;
@@ -9067,7 +9084,7 @@ function _ovRenderDD(){
   var isToday=_ovDDMode==='today';
   var filterDay=isToday?_ovDDDay:null;
   var month=isToday?(_ovDDDay||'').slice(0,7):_ovDDMonth;
-  var todayISO=new Date().toISOString().slice(0,10);
+  var todayISO=_acadLocalDateStr(new Date());
   var now=new Date(); var nowMin=now.getHours()*60+now.getMinutes();
   var allSess=_ovData.sessions.filter(function(s){return String(s.tk)===String(tk);})
     .map(function(s){ var st=_ovResolve(s.date,s.att,s.lv,todayISO,nowMin,s.startMin,s.dur); return Object.assign({},s,{status:st}); })
@@ -9142,7 +9159,7 @@ window.ovOpenTrainer=async function(tk){
 // ── PDF Export ───────────────────────────────────────────────────────────────
 window._ovExportPDF=function(trainerKey){
   if(!_ovData||!_ovData.sessions.length){showToast('error','No data to export.');return;}
-  var todayISO=new Date().toISOString().slice(0,10);
+  var todayISO=_acadLocalDateStr(new Date());
   var now=new Date(); var nowMin=now.getHours()*60+now.getMinutes();
   var isDaily=trainerKey?(_ovDDMode==='today'):(_ovMode==='today');
   var dailyDate=trainerKey?_ovDDDay:_ovDay;
@@ -9279,6 +9296,30 @@ window._ovExportPDF=function(trainerKey){
   }
 };
 
+// HR holidays (hr_holidays — Public / Company Holiday) are non-working days for classes: the
+// shared occurrence generator below never produces a session on one, so every screen built on
+// it (Class & Attendance overview, Today's Classes, My Classes, batch planned dates) agrees.
+// Loaded once and refreshed every 5 minutes; individual trainer leave is handled separately.
+window._acadHolidayInfo = window._acadHolidayInfo || {};
+let _acadHolidayLoadedAt = 0, _acadHolidayLoading = null;
+async function _acadLoadHolidays(force) {
+  if (!force && _acadHolidayLoadedAt && Date.now() - _acadHolidayLoadedAt < 300000) return window._acadHolidayInfo;
+  if (_acadHolidayLoading) return _acadHolidayLoading;
+  _acadHolidayLoading = (async () => {
+    try {
+      const { data, error } = await sb.from('hr_holidays').select('holiday_date,name,type');
+      if (!error) {
+        const m = {}; (data || []).forEach(h => { if (h.holiday_date) m[String(h.holiday_date).slice(0,10)] = { name: h.name || 'Holiday', type: h.type || 'Holiday' }; });
+        window._acadHolidayInfo = m; _acadHolidayLoadedAt = Date.now();
+      }
+    } catch (e) {}
+    _acadHolidayLoading = null;
+    return window._acadHolidayInfo;
+  })();
+  return _acadHolidayLoading;
+}
+function _acadHolidayFor(dateStr) { return (window._acadHolidayInfo || {})[String(dateStr || '').slice(0,10)] || null; }
+
 function generateBatchOccurrences(b, rangeStart, rangeEnd) {
   const DAY_INDEX = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
   const tokens = _acadEffectiveDayPattern(b).split(',').map(s=>s.trim()).filter(Boolean);
@@ -9288,7 +9329,11 @@ function generateBatchOccurrences(b, rangeStart, rangeEnd) {
   // Clip the batch's own [start_date, expected_completion_date] (null end = ongoing) against
   // the requested window — occurrences only exist where the two overlap.
   const batchStart = b.start_date || '0000-01-01';
-  let batchEnd = b.expected_completion_date || '9999-12-31';
+  // expected_completion_date is a PLANNED estimate. A batch still status='active' keeps running
+  // until its sessions are actually done (progress / Complete Batch), so a stale planned end
+  // date must not silently drop its real classes (e.g. an Elite 1:1 at 8/20 sessions whose
+  // planned end already passed). Non-active batches keep honoring the planned end.
+  let batchEnd = (b.status === 'active') ? '9999-12-31' : (b.expected_completion_date || '9999-12-31');
   // When group classes are completed, stop generating group class occurrences after that date.
   // The batch stays active for OTO sessions, but scheduled group occurrences cease.
   if (b.group_classes_completed_at) {
@@ -9305,7 +9350,7 @@ function generateBatchOccurrences(b, rangeStart, rangeEnd) {
   while (cur <= end) {
     if (wantedDows.has(cur.getDay())) {
       const dateStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-      occurrences.push({ date: dateStr, dow: cur.getDay(), batch: b, startTime: startMin });
+      if (!_acadHolidayFor(dateStr)) occurrences.push({ date: dateStr, dow: cur.getDay(), batch: b, startTime: startMin });
     }
     cur.setDate(cur.getDate()+1);
   }
@@ -9648,7 +9693,7 @@ function openAddStudent(){
     const list=((r&&r.data)||[]).filter(function(x){return x.role==='counsellor'||x.role==='counsellor_head';});
     document.getElementById('s_counsellor').innerHTML='<option value="">Counsellor / sales…</option>'+list.map(function(x){return '<option value="'+esc(x.name)+'">'+esc(x.name)+'</option>';}).join('');
   },function(){});
-  document.getElementById('s_enroll').value=new Date().toISOString().slice(0,10);
+  document.getElementById('s_enroll').value=_acadLocalDateStr(new Date());
   document.getElementById('modalStudent').classList.add('on');
 }
 function studentCourseChanged(){
@@ -9656,7 +9701,7 @@ function studentCourseChanged(){
   if(!opt)return;
   const fee=opt.getAttribute('data-fee'); if(fee)document.getElementById('s_fee').value=fee;
   const dur=parseInt(opt.getAttribute('data-dur'))||0, en=document.getElementById('s_enroll').value;
-  if(dur&&en){const d=new Date(en);d.setDate(d.getDate()+dur);document.getElementById('s_end').value=d.toISOString().slice(0,10);}
+  if(dur&&en){const d=new Date(en);d.setDate(d.getDate()+dur);document.getElementById('s_end').value=_acadLocalDateStr(d);}
 }
 // STUDENT ONBOARDING WORKFLOW (redesigned): Add Student now creates an independent student
 // record only — no batch, no trainer. Those are assigned LATER, only through Create Batch or
@@ -9669,7 +9714,7 @@ async function saveStudent(){
   const g=function(id){return document.getElementById(id).value.trim();};
   const name=g('s_name');if(!name){showToast('warning','Name required');return;}
   const uin=g('s_uin')||('BE'+String(Date.now()).slice(-6));
-  const enroll=g('s_enroll')||new Date().toISOString().slice(0,10);
+  const enroll=g('s_enroll')||_acadLocalDateStr(new Date());
   const rec={uin:uin,name:name,contact:g('s_contact')||null,batch_name:null,batch_id:null,trainer_name:null,programme:g('s_prog')||null,status:'New',planned_end_date:g('s_end')||null,source_counsellor:g('s_counsellor')||null,enrolled_date:enroll,preferred_slot:g('s_slot')||null};
   let {data,error}=await sb.from('students').insert(rec).select().single();
   if(error&&/preferred_slot/.test(error.message||'')){delete rec.preferred_slot;({data,error}=await sb.from('students').insert(rec).select().single());}
@@ -9702,7 +9747,7 @@ async function saveStuStatus(){
   // guard (_be_block_attendance_for_dropped_student, applied this session) actually keys off \u2014
   // set here, not left null, or that trigger would never activate for this drop.
   if (v === 'Dropped' && s.status !== 'Dropped') {
-    const today = new Date().toISOString().slice(0,10);
+    const today = _acadLocalDateStr(new Date());
     const ok = await _showSimpleConfirm(
       `Student: ${s.name}\nBatch: ${s.batch_name||'\u2014 Unassigned \u2014'}\nCourse: ${s.programme||'\u2014'}\nEffective Date: ${today}`,
       { title: 'Mark this student as Dropped from this batch?', confirmLabel: 'Mark Dropped' }
@@ -9889,7 +9934,7 @@ async function renderStuPay(){
     ('Fee '+inr(p.course_fee)+(p.discount?' \u2212 disc '+inr(p.discount)+(p.discount_by?' ('+esc(p.discount_by)+')':''):'')+' \u00b7 paid '+inr(paid)+' \u00b7 <span style="color:'+(bal>0?'#ffc24b':'#2fe08c')+'">balance '+inr(bal)+'</span>'+(p.next_due&&bal>0?' \u00b7 due '+p.next_due:'')):
     'No payment plan yet \u2014 enter fee and Save Plan.';
   document.getElementById('p_entries').innerHTML=ent.map(function(e){return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);padding:5px 0"><span>'+inr(e.amount)+' \u00b7 '+esc(e.method||'')+'</span><span style="opacity:.6">'+(e.paid_at||'')+' \u00b7 '+esc(e.entered_by||'')+'</span></div>';}).join('')||'<div style="opacity:.5">No payments recorded yet.</div>';
-  document.getElementById('pe_date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('pe_date').value=_acadLocalDateStr(new Date());
 }
 async function savePlan(){
   if(!requireHeadAccess())return;const s=_stu;if(!s)return;
@@ -9971,7 +10016,7 @@ async function initClock(){
   try{
     const fmt = iso => new Date(iso).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     if(_authSource==='media'){
-      const today=new Date().toISOString().slice(0,10);
+      const today=_acadLocalDateStr(new Date());
       const {data,error}=await mediaHrDB.from('attendance_logs').select('*').eq('employee_email',currentUser.username).eq('log_date',today).limit(1);
       if(error)return;
       const rec=data&&data[0];
@@ -10000,7 +10045,7 @@ async function clockToggle(){
   try{
     if(_authSource==='media'){
       const nowIso=new Date().toISOString();
-      const today=new Date().toISOString().slice(0,10);
+      const today=_acadLocalDateStr(new Date());
       if(_openClock){
         await mediaHrDB.from('attendance_logs').update({log_out_time:nowIso}).eq('id',_openClock.id);
         await mediaSyncClockToHrAttendance(today, { clock_out_time: nowIso });
@@ -10405,7 +10450,7 @@ async function _otoOpenRecord(studentId, sessionNum) {
     `<option value="${t.id}"${String(t.id) === String(batchTrainerId) ? ' selected' : ''}>${esc(t.name)}${t.type === 'pt' ? ' (PT)' : ''}</option>`
   ).join('');
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = _acadLocalDateStr(new Date());
   document.getElementById('oto_rec_date').value = existing ? (existing.session_date || today) : today;
   document.getElementById('oto_rec_start').value = existing ? (existing.start_time || '').slice(0, 5) : '';
   document.getElementById('oto_rec_end').value = existing ? (existing.end_time || '').slice(0, 5) : '';
@@ -10576,7 +10621,7 @@ function _ubRenderCal(fieldId) {
   const yr = st.year, mo = st.month;
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const sel = document.getElementById(fieldId).value;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = _acadLocalDateStr(new Date());
   const first = new Date(yr, mo, 1);
   const startDay = first.getDay() || 7;
   const daysInMonth = new Date(yr, mo + 1, 0).getDate();
@@ -11088,7 +11133,7 @@ async function saveUpcomingBatch(enrollStatus) {
   const durMin = (startTime && endTime) ? _timeToMinutes(endTime) - _timeToMinutes(startTime) : 0;
   const dayPattern = days.length ? days.join(', ') : null;
   const timeSlot = startTime && endTime && durMin > 0 ? formatBatchTimeRange(startTime, durMin) : null;
-  const autoName = name || ((course ? course.name : 'Batch') + ' — ' + (startDate || new Date().toISOString().slice(0, 10)));
+  const autoName = name || ((course ? course.name : 'Batch') + ' — ' + (startDate || _acadLocalDateStr(new Date())));
 
   // Duplicate name check (skip if editing same batch)
   if (!_ubEditId) {
