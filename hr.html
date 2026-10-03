@@ -776,6 +776,23 @@
 .ec-access{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;white-space:nowrap}
 .ec-access::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .ec-access.on{color:#4ade80}.ec-access.off{color:#f87171}.ec-access.warn{color:#fbbf24}.ec-access.none{color:#4a5182}
+/* Load states (skeleton / error / refreshing) */
+.hr-sub-loading>:not(.hr-load-state){display:none!important}
+.hr-skel-b{display:inline-block;border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.045) 0%,rgba(255,255,255,.09) 40%,rgba(255,255,255,.045) 80%);background-size:300% 100%;animation:hrSkel 1.3s ease-in-out infinite}
+@keyframes hrSkel{0%{background-position:100% 0}100%{background-position:0 0}}
+.hr-skel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.hr-skel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.hr-skel-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.hr-skel-card{display:grid;gap:16px;padding:20px;border-radius:18px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}
+.hr-skel-table{border:1px solid rgba(255,255,255,.06);border-radius:16px;background:rgba(255,255,255,.02);padding:6px 18px}
+.hr-skel-row{display:flex;align-items:center;gap:18px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.hr-skel-row:last-child{border-bottom:0}
+.hr-load-error{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;min-height:260px;border:1px solid rgba(248,113,113,.18);border-radius:18px;background:rgba(248,113,113,.03);padding:28px}
+.hr-refreshing-pill{position:fixed;right:18px;bottom:18px;z-index:60;display:none;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;font-size:12px;font-weight:600;color:#c5cbe8;background:rgba(13,17,32,.92);border:1px solid rgba(255,255,255,.1);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.hr-refreshing-pill.on{display:inline-flex}
+.hr-spin{width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:#ff8a3c;animation:hrSpin .8s linear infinite}
+@keyframes hrSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.hr-skel-b,.hr-spin{animation:none}}
 /* Employee profile popup */
 .hr-modal.hrp{max-width:none;width:min(78vw,1160px);max-height:min(90vh,940px);padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:20px}
 .hrp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:24px 28px 18px;flex:0 0 auto}
@@ -2540,6 +2557,19 @@
         let hrEditingEmployeeId = null;
         let hrCurrentSubtab = 'dashboard';
         let _hrLoadSeq = 0;
+        // Load state for every HR section: 'loading' (first load, show skeletons), 'ready'
+        // (data in memory — later reloads refresh in the background and keep it on screen),
+        // 'error' (first load failed — show retry, never a fake "No data").
+        let hrDataState = 'loading';
+        let _hrLoadInflight = null, _hrLastLoadOk = true;
+        let hrCelebLoaded = false, _hrCelebP = null;
+        // Employee list columns: everything EXCEPT photo_base64. Full-size base64 photos made
+        // hr_employees ~1.1 MB (≈15 s on a normal connection) and blocked the whole HR load;
+        // photos now arrive separately as small cached thumbnails (hrHydrateEmployeePhotos).
+        const HR_EMP_LIST_COLS = 'id,employee_id,full_name,division,department,designation,joining_date,employment_status,dob,phone,portal_email,emergency_contact_name,emergency_contact_phone,document_links,notes,created_at,monthly_salary,salary_type,payment_cycle,probation_months,portal_access_enabled,photo_url,access_pipeline,access_attendance,access_leave,access_payroll,access_documents,manager_email,employment_type,teachable_courses,pt_max_classes_per_day,pt_max_hours,pt_available_days,pt_time_start,pt_time_end,pt_time_ranges,sales_mti_capable,sales_english_level,sales_accept_leads,sales_lead_weight,notice_active,notice_start,notice_end,work_schedule_type,expected_start_time,expected_end_time,work_days,grace_minutes,personal_email,system_role,hourly_rate,account_type';
+        // Login roster without the base64 avatar column (and never the password) — HR only
+        // needs who has a login and with which role.
+        const HR_ROSTER_COLS = 'id,name,email,role,last_active';
         // Modal/form-editing scratch state — HR-admin UI only.
         let hrEmpSelectedRoles = [];
         let hrEmpPrimaryRole = '';
@@ -2719,8 +2749,36 @@
         }
 
 // ── loadHRData (orig line 7717) ──
+        // One shared loader for every caller. Overlapping calls coalesce: a superseded call
+        // waits for the newest one instead of returning early with empty arrays (that early
+        // return is what used to render "No employees found" during boot).
         async function loadHRData() {
+            if (hrDataState === 'ready') hrSetRefreshing(true);
+            let p = _hrLoadHRDataImpl();
+            _hrLoadInflight = p;
+            try { await p; } catch (_) {}
+            while (_hrLoadInflight && _hrLoadInflight !== p) { p = _hrLoadInflight; try { await p; } catch (_) {} }
+            if (_hrLoadInflight !== p) return;
+            _hrLoadInflight = null;
+            hrSetRefreshing(false);
+            if (_hrLastLoadOk) hrDataState = 'ready';
+            else if (hrDataState === 'ready') { if (typeof hrShowToast === 'function') hrShowToast('Couldn’t refresh HR data — showing the last loaded data.', 'error'); }
+            else hrDataState = 'error';
+        }
+        function hrSetRefreshing(on) {
+            let el = document.getElementById('hr-refreshing-pill');
+            if (!el && on) { el = document.createElement('div'); el.id = 'hr-refreshing-pill'; el.className = 'hr-refreshing-pill'; el.setAttribute('role', 'status'); el.innerHTML = '<span class="hr-spin"></span>Refreshing…'; document.body.appendChild(el); }
+            if (el) el.classList.toggle('on', !!on);
+        }
+        async function hrRetryLoad() {
+            hrDataState = 'loading'; hrLoaded = false;
+            switchHRSubtab(hrCurrentSubtab);
+            await loadHRData(); hrLoaded = true;
+            switchHRSubtab(hrCurrentSubtab);
+        }
+        async function _hrLoadHRDataImpl() {
             const myLoadToken = ++_hrLoadSeq; // see _hrLoadSeq declaration above
+            _hrLastLoadOk = true;
             hrTablesMissing = false;
             const missingTables = [];
             try {
@@ -2757,8 +2815,12 @@
                     leaveBalQuery = dbInstance.from('hr_leave_balances').select('*').eq('employee_id', myEmpId || NOBODY);
                     attQuery = dbInstance.from('hr_attendance').select('*').eq('employee_id', myEmpId || NOBODY);
                 }
-                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, celebrationEvents, empDocs, settings, roster] = await Promise.all([
-                    dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
+                // Light employee list; falls back to the same list without photo_sig on a database
+                // where 20261005_hr_load_perf.sql hasn't been run yet.
+                const empQuery = dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS + ',photo_sig').order('created_at', { ascending: false })
+                    .then(r => (r.error && /photo_sig/i.test(r.error.message || '')) ? dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS).order('created_at', { ascending: false }) : r);
+                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, empDocs, settings, roster, clb, sll] = await Promise.all([
+                    empQuery,
                     leaveReqQuery,
                     leaveBalQuery,
                     attQuery,
@@ -2769,15 +2831,28 @@
                     dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
                     dbInstance.from('hr_holidays').select('*').order('holiday_date', { ascending: true }),
                     dbInstance.from('hr_official_events').select('*').order('event_date', { ascending: true }),
-                    dbInstance.from('hr_celebration_events').select('*').order('event_date', { ascending: true }),
                     dbInstance.from('hr_employee_documents').select('*').order('created_at', { ascending: false }),
                     dbInstance.from('hr_company_settings').select('*').limit(1),
                     // Login-account roster — hr.html doesn't run the Pipeline module, so unlike
                     // index.html (which keeps this live from its own boot query) this is fetched
                     // fresh here. Used for the Supervisor→HR auto-sync below and to show each
                     // employee's linked login account.
-                    dbInstance.from('user_roster').select('*')
+                    dbInstance.from('user_roster').select(HR_ROSTER_COLS),
+                    // Leave Policy v2 ledgers — fetched in this same parallel batch (they used to
+                    // be a second, sequential round-trip after everything else).
+                    dbInstance.from('hr_cl_buckets').select('*'),
+                    dbInstance.from('hr_sl_ledger').select('*')
                 ]);
+                // Celebration events carry base64 artwork (~90 KB for 2 rows, 2-3 s) and are only
+                // needed by the celebration popup + Announcements tab — fetched in the
+                // background, after the essential data, so they never hold up the rest of HR.
+                if (!_hrCelebP || hrCelebLoaded) {
+                    _hrCelebP = dbInstance.from('hr_celebration_events').select('*').order('event_date', { ascending: true }).then(r => {
+                        if (r.error) console.error('Celebration engine: hr_celebration_events fetch failed —', r.error.message);
+                        hrCelebrationEvents = r.data || []; hrCelebLoaded = true;
+                        if (hrCurrentSubtab === 'announcements' && hrDataState === 'ready') switchHRSubtab('announcements');
+                    }, () => { hrCelebLoaded = true; });
+                }
                 // A newer loadHRData() call has started since this one began — its results
                 // will apply instead; discard these now-stale ones rather than overwrite.
                 if (myLoadToken !== _hrLoadSeq) return;
@@ -2789,7 +2864,7 @@
                 // pass can't trigger the same limit again) before concluding anything is
                 // genuinely missing.
                 const retryableQueries = {
-                    'hr_employees': () => dbInstance.from('hr_employees').select('*').order('created_at', { ascending: false }),
+                    'hr_employees': () => dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS).order('created_at', { ascending: false }),
                     'hr_job_openings': () => dbInstance.from('hr_job_openings').select('*').order('created_at', { ascending: false }),
                     'hr_applicants': () => dbInstance.from('hr_applicants').select('*').order('created_at', { ascending: false }),
                     'hr_salary_history': () => dbInstance.from('hr_salary_history').select('*').order('effective_date', { ascending: false }),
@@ -2828,7 +2903,7 @@
                 // were both showing real rows on the very same page) — treating any truthy
                 // .error as fatal, regardless of .data, was a false-positive generator.
                 const hasRows = (r) => r && r.data && r.data.length > 0;
-                if (emp.error && !hasRows(emp)) missingTables.push('Employees (hr_employees)');
+                if (emp.error && !hasRows(emp)) { missingTables.push('Employees (hr_employees)'); _hrLastLoadOk = false; }
                 if (leaveReq.error && !hasRows(leaveReq)) missingTables.push('Leave Requests (hr_leave_requests)');
                 if (leaveBal.error && !hasRows(leaveBal)) missingTables.push('Leave Balances (hr_leave_balances)');
                 if (att.error && !hasRows(att)) missingTables.push('Attendance (hr_attendance)');
@@ -2857,6 +2932,7 @@
                 // employee — also split out, so it never enters attendance, hours, leave or payroll.
                 window._hrSystemIds = _hrRawEmp.filter(e => e.account_type === 'system').map(e => e.id);
                 hrEmployees = _hrRawEmp.filter(e => (e.account_type || '') !== 'management' && e.account_type !== 'system');
+                hrHydrateEmployeePhotos(_hrRawEmp);
                 if (typeof beSetSystemAccount === 'function') {
                     const _meRow = _hrRawEmp.find(e => (e.portal_email || '').toLowerCase() === String(activeEmail || '').trim().toLowerCase());
                     beSetSystemAccount(!!(_meRow && _meRow.account_type === 'system'));
@@ -2865,13 +2941,7 @@
                 console.log('[HR INIT] hrEmployees set, count=', hrEmployees.length, 'management=', hrManagement.length);
                 // Leave Policy v2 ledgers (all employees, HR admin scope) — payroll + balance
                 // resolvers read these so paid/LOP is computed from the real SL/CL entitlement.
-                try {
-                    const [clb, sll] = await Promise.all([
-                        dbInstance.from('hr_cl_buckets').select('*'),
-                        dbInstance.from('hr_sl_ledger').select('*')
-                    ]);
-                    hrClBuckets = clb.data || []; hrSlLedger = sll.data || [];
-                } catch (e) { hrClBuckets = []; hrSlLedger = []; }
+                hrClBuckets = (clb && clb.data) || []; hrSlLedger = (sll && sll.data) || [];
                 hrLeaveRequests = leaveReq.data || [];
                 hrLeaveBalances = leaveBal.data || [];
                 hrAttendance = att.data || [];
@@ -2885,8 +2955,6 @@
                 // other table here, so the rest of HR keeps working while this one feature
                 // just has nothing to show until the migration is run.
                 hrOfficialEvents = officialEvents.data || [];
-                if (celebrationEvents.error) console.error('Celebration engine: hr_celebration_events fetch failed —', celebrationEvents.error.message);
-                hrCelebrationEvents = celebrationEvents.data || []; // same missing-table safety as above — no celebration UI until the Phase 9 migration is run
                 hrEmployeeDocuments = empDocs.data || [];
                 hrCompanySettings = (settings.data && settings.data[0]) || { weekly_off_sunday: true, weekly_off_saturday: false };
                 if (!roster.error) userRoster = roster.data || [];
@@ -2952,6 +3020,7 @@
                 }
             } catch (e) {
                 hrTablesMissing = true;
+                _hrLastLoadOk = false;
                 missingTables.push('(load failed: ' + e.message + ')');
                 console.warn('HR data load failed — have the HR tables been created in Supabase? See hr_schema.sql', e.message);
             }
@@ -2976,6 +3045,118 @@
             }
         }
 
+// ── Employee photos: small cached thumbnails, loaded after the page is usable ──
+        // Cards/avatars never need the full upload. Thumbnails (112 px JPEG, ~4 KB) are kept
+        // per browser keyed by employee id + photo_sig (an md5 of the stored photo, see
+        // 20261005_hr_load_perf.sql), so after the first visit only changed photos download.
+        const HR_THUMB_KEY = 'be_hr_thumbs_v1';
+        function _hrThumbCache() { try { return JSON.parse(localStorage.getItem(HR_THUMB_KEY) || '{}') || {}; } catch (_) { return {}; } }
+        function _hrThumbSave(c) { try { localStorage.setItem(HR_THUMB_KEY, JSON.stringify(c)); } catch (_) {} }
+        function _hrMakeThumb(dataUrl, size) {
+            return new Promise(res => {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const s = size || 112, c = document.createElement('canvas'); c.width = c.height = s;
+                        const k = Math.max(s / img.width, s / img.height), w = img.width * k, h = img.height * k;
+                        c.getContext('2d').drawImage(img, (s - w) / 2, (s - h) / 2, w, h);
+                        res(c.toDataURL('image/jpeg', 0.82));
+                    } catch (_) { res(null); }
+                };
+                img.onerror = () => res(null);
+                img.src = dataUrl;
+            });
+        }
+        let _hrPhotoRun = 0;
+        async function hrHydrateEmployeePhotos(rows) {
+            const run = ++_hrPhotoRun;
+            const cache = _hrThumbCache();
+            const hasSig = rows.some(r => 'photo_sig' in r);
+            const need = [];
+            rows.forEach(r => {
+                const c = cache[r.id];
+                if (hasSig) {
+                    if (!r.photo_sig) { delete cache[r.id]; return; }
+                    if (c && c.s === r.photo_sig) r.photo_thumb = c.t; else need.push(r.id);
+                } else {
+                    if (c) r.photo_thumb = c.t; // shown now, revalidated below (once per page)
+                    need.push(r.id);
+                }
+            });
+            _hrThumbSave(cache);
+            // Without photo_sig there's no cheap change check — revalidate once per page load,
+            // not on every background refresh after a save.
+            if (!hasSig) { if (window._hrPhotosRevalidated) return; window._hrPhotosRevalidated = true; }
+            if (!need.length) return;
+            let data = null;
+            try {
+                const q = hasSig ? dbInstance.from('hr_employees').select('id,photo_base64').in('id', need)
+                                 : dbInstance.from('hr_employees').select('id,photo_base64').not('photo_base64', 'is', null);
+                const r = await q; if (r.error) return; data = r.data || [];
+            } catch (_) { return; }
+            if (run !== _hrPhotoRun) return;
+            const byId = {}; rows.forEach(r => { byId[r.id] = r; });
+            const seen = new Set();
+            for (const d of data) {
+                seen.add(d.id);
+                const row = byId[d.id]; if (!row) continue;
+                if (!d.photo_base64) { delete cache[d.id]; row.photo_thumb = null; continue; }
+                const t = await _hrMakeThumb(d.photo_base64, 112);
+                if (t) { row.photo_thumb = t; cache[d.id] = { s: row.photo_sig || null, t }; }
+            }
+            if (!hasSig) rows.forEach(r => { if (!seen.has(r.id)) { delete cache[r.id]; r.photo_thumb = null; } });
+            _hrThumbSave(cache);
+            if (run !== _hrPhotoRun) return;
+            // Repaint only the views that show many avatars; others pick thumbs up on next render.
+            if (hrDataState === 'ready') {
+                if (hrCurrentSubtab === 'employees') renderHREmployees();
+                else if (hrCurrentSubtab === 'management') renderHRManagement();
+                else if (hrCurrentSubtab === 'dashboard') renderHRDashboard();
+                const pm = document.getElementById('hr-profile-modal');
+                if (pm && !pm.classList.contains('hidden')) renderHREmployeeProfile();
+            }
+        }
+        // The full-size photo, fetched only when an edit form needs it (so saving never
+        // overwrites a photo the list didn't download).
+        async function hrEnsureFullPhoto(row) {
+            if (!row || 'photo_base64' in row) return row;
+            const { data, error } = await dbInstance.from('hr_employees').select('photo_base64').eq('id', row.id).limit(1);
+            if (error) throw error;
+            row.photo_base64 = (data && data[0] && data[0].photo_base64) || null;
+            return row;
+        }
+
+        // Every HR section waits for its data before rendering: skeleton while loading, an
+        // error card with Retry if the first load failed — never an empty "No data" state.
+        const HR_SKEL_KIND = { dashboard: 'dash', employees: 'cards', management: 'cards', departments: 'cards', designations: 'cards', recruitment: 'cards' };
+        const HR_NO_DATA_TABS = ['policy', 'tab-builder', 'notifications', 'performance', 'schedule'];
+        function hrSkeletonHTML(tab) {
+            const kind = HR_SKEL_KIND[tab] || 'table';
+            const bar = (w, h) => `<span class="hr-skel-b" style="width:${w};height:${h || 12}px"></span>`;
+            const head = `<div class="hr-skel-head">${bar('180px', 22)}<div style="display:flex;gap:8px">${bar('120px', 34)}${bar('120px', 34)}${bar('120px', 34)}</div></div>`;
+            if (kind === 'cards') return head + `<div class="hr-skel-grid">${Array.from({ length: 6 }, () => `<div class="hr-skel-card"><div style="display:flex;gap:12px;align-items:center"><span class="hr-skel-b" style="width:46px;height:46px;border-radius:50%"></span><div style="flex:1;display:grid;gap:8px">${bar('60%', 14)}${bar('40%', 11)}</div></div><div style="display:flex;gap:8px">${bar('70px', 22)}${bar('90px', 22)}${bar('100px', 22)}</div><div style="display:flex;justify-content:space-between">${bar('110px', 12)}${bar('80px', 12)}</div></div>`).join('')}</div>`;
+            const rows = `<div class="hr-skel-table">${Array.from({ length: 7 }, (_, i) => `<div class="hr-skel-row">${bar('28px', 28)}${bar(30 + (i * 7) % 25 + '%', 12)}${bar('14%', 12)}${bar('12%', 12)}${bar('10%', 20)}</div>`).join('')}</div>`;
+            if (kind === 'dash') return `<div class="hr-skel-stats">${Array.from({ length: 4 }, () => `<div class="hr-skel-card">${bar('40%', 26)}${bar('70%', 11)}</div>`).join('')}</div>` + rows;
+            return head + rows;
+        }
+        function hrApplyPanelState(tab) {
+            const panel = document.getElementById('hr-sub-' + tab); if (!panel) return true;
+            let ov = panel.querySelector(':scope > .hr-load-state');
+            const tabReady = hrDataState === 'ready' && (tab !== 'announcements' || hrCelebLoaded);
+            if (tabReady || HR_NO_DATA_TABS.includes(tab)) { panel.classList.remove('hr-sub-loading'); if (ov) ov.remove(); return true; }
+            if (!ov) { ov = document.createElement('div'); ov.className = 'hr-load-state'; panel.prepend(ov); }
+            panel.classList.add('hr-sub-loading');
+            if (hrDataState === 'error') {
+                ov.setAttribute('role', 'alert'); ov.removeAttribute('aria-busy');
+                ov.innerHTML = `<div class="hr-load-error"><div class="dsh-empty-ic" style="width:44px;height:44px;color:#f87171;background:rgba(248,113,113,.1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></div><div style="font-size:15px;font-weight:700;color:#fff">Unable to load HR data.</div><div style="font-size:12.5px;color:#8890b5">Check your connection and try again.</div><button type="button" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider" onclick="hrRetryLoad()">Retry</button></div>`;
+            } else {
+                ov.setAttribute('aria-busy', 'true'); ov.removeAttribute('role'); ov.setAttribute('aria-label', 'Loading');
+                if (ov.dataset.tab !== tab || !ov.firstChild) ov.innerHTML = hrSkeletonHTML(tab);
+            }
+            ov.dataset.tab = tab;
+            return false;
+        }
+
 // ── switchHRSubtab (orig line 7919) ──
         function switchHRSubtab(tab) {
             // Accounts & Permissions (login/role management) lives in the main Pipeline app's
@@ -2990,7 +3171,7 @@
             });
             // Shared top stack: banner + attendance card belong to the Dashboard only.
             document.querySelectorAll('.bes-dash-only').forEach(el => el.classList.toggle('bes-off', tab !== 'dashboard'));
-            console.log('[HR INIT] switchHRSubtab(', tab, '), hrEmployees.length=', hrEmployees.length, 'hrLoaded=', hrLoaded);
+            if (!hrApplyPanelState(tab)) return;
             if (tab === 'dashboard') renderHRDashboard();
             else if (tab === 'employees') { populateHREmployeeFilterOptions(); renderHREmployees(); }
             else if (tab === 'management') renderHRManagement();
@@ -3834,11 +4015,21 @@
             hrEditingEmployeeId = id;
             document.getElementById('hr-employee-modal-title').textContent = id ? 'Edit Employee' : 'Add Employee';
             const e = id ? hrEmployees.find(x => x.id === id) : null;
-            document.getElementById('hr-emp-photo-url').value = (e?.photo_base64 ? '' : e?.photo_url) || '';
+            const _photoPending = !!(e && !('photo_base64' in e));
+            window._hrEmpPhotoPending = _photoPending;
+            document.getElementById('hr-emp-photo-url').value = (e?.photo_base64 || e?.photo_thumb || e?.photo_sig ? '' : e?.photo_url) || '';
             document.getElementById('hr-emp-photo-base64').value = e?.photo_base64 || '';
             document.getElementById('hr-emp-photo-file').value = '';
-            document.getElementById('hr-emp-photo-upload-status').textContent = '';
+            document.getElementById('hr-emp-photo-upload-status').textContent = _photoPending ? 'Loading photo…' : '';
             updateHREmpPhotoPreview();
+            if (_photoPending) hrEnsureFullPhoto(e).then(row => {
+                if (hrEditingEmployeeId !== row.id || !window._hrEmpPhotoPending) return; // closed, or HR already picked a new photo
+                document.getElementById('hr-emp-photo-url').value = (row.photo_base64 ? '' : row.photo_url) || '';
+                document.getElementById('hr-emp-photo-base64').value = row.photo_base64 || '';
+                document.getElementById('hr-emp-photo-upload-status').textContent = '';
+                window._hrEmpPhotoPending = false;
+                updateHREmpPhotoPreview();
+            }).catch(() => { document.getElementById('hr-emp-photo-upload-status').textContent = 'Photo couldn’t load — saving keeps the current photo.'; });
             document.getElementById('hr-emp-id').value = e?.employee_id || '';
             document.getElementById('hr-emp-name').value = e?.full_name || '';
             document.getElementById('hr-emp-division').value = e?.division || 'production';
@@ -3950,7 +4141,8 @@
             const url = document.getElementById('hr-emp-photo-url').value.trim();
             const base64 = document.getElementById('hr-emp-photo-base64').value;
             const nameEl = document.getElementById('hr-emp-name');
-            const av = { full_name: nameEl ? nameEl.value : '', photo_base64: base64 || null, photo_url: url || null };
+            const _row = window._hrEmpPhotoPending && hrEditingEmployeeId ? hrEmployees.find(x => x.id === hrEditingEmployeeId) : null;
+            const av = { full_name: nameEl ? nameEl.value : '', photo_base64: base64 || (_row && _row.photo_thumb) || null, photo_url: url || null };
             document.getElementById('hr-emp-photo-preview').innerHTML = hrAvatarHTML(av, 64);
             const head = document.getElementById('hr-emp-head-av');
             if (head) head.innerHTML = hrAvatarHTML(av, 44);
@@ -4040,6 +4232,7 @@
             octx.drawImage(img, -img.naturalWidth/2, -img.naturalHeight/2);
             const dataUrl = out.toDataURL('image/jpeg', 0.92);
             document.getElementById('hr-emp-photo-base64').value = dataUrl;
+            window._hrEmpPhotoPending = false;
             document.getElementById('hr-emp-photo-url').value = ''; // base64 takes priority over URL
             updateHREmpPhotoPreview();
             if (s) s.textContent = `Ready (${Math.round(dataUrl.length/1024)} KB)`;
@@ -4065,6 +4258,7 @@
 
 // ── removeHREmpPhoto (orig line 9149) ──
         function removeHREmpPhoto() {
+            window._hrEmpPhotoPending = false;
             document.getElementById('hr-emp-photo-base64').value = '';
             document.getElementById('hr-emp-photo-url').value = '';
             document.getElementById('hr-emp-photo-file').value = '';
@@ -4092,7 +4286,7 @@
         function hrVerifySavedFields(submitted, savedRow) {
             if (!savedRow) { alert('Save may have failed — the database did not return the updated record. Please reopen this employee and check their details.'); return; }
             const criticalFields = ['dob', 'phone', 'joining_date', 'department', 'designation', 'emergency_contact_name', 'emergency_contact_phone', 'monthly_salary', 'probation_months', 'photo_url', 'photo_base64'];
-            const mismatches = criticalFields.filter(f => {
+            const mismatches = criticalFields.filter(f => f in submitted).filter(f => {
                 const a = submitted[f] ?? null;
                 const b = savedRow[f] ?? null;
                 return String(a) !== String(b);
@@ -4254,6 +4448,8 @@
                 pt_time_start: validTimeRanges.length ? validTimeRanges[0].start : null,
                 pt_time_end: validTimeRanges.length ? validTimeRanges[validTimeRanges.length - 1].end : null
             };
+            // Full photo not downloaded yet (and HR didn't change it) → leave the stored photo alone.
+            if (hrEditingEmployeeId && window._hrEmpPhotoPending) { delete payload.photo_base64; delete payload.photo_url; }
             try {
                 if (hrEditingEmployeeId) {
                     // Prevent creating a duplicate login link: if this email is already used by
@@ -4521,10 +4717,10 @@
         function hrMgmtPhotoUpload(ev) {
             var f = ev.target.files && ev.target.files[0]; if (!f) return;
             var r = new FileReader();
-            r.onload = function () { document.getElementById('hr-mgmt-photo-base64').value = r.result; document.getElementById('hr-mgmt-photo-remove').classList.remove('hidden'); hrMgmtPhotoPreview(); };
+            r.onload = function () { window._hrMgmtPhotoPending = false; document.getElementById('hr-mgmt-photo-base64').value = r.result; document.getElementById('hr-mgmt-photo-remove').classList.remove('hidden'); hrMgmtPhotoPreview(); };
             r.readAsDataURL(f);
         }
-        function hrMgmtRemovePhoto() { document.getElementById('hr-mgmt-photo-base64').value = ''; document.getElementById('hr-mgmt-photo-remove').classList.add('hidden'); document.getElementById('hr-mgmt-photo-file').value = ''; hrMgmtPhotoPreview(); }
+        function hrMgmtRemovePhoto() { window._hrMgmtPhotoPending = false; document.getElementById('hr-mgmt-photo-base64').value = ''; document.getElementById('hr-mgmt-photo-remove').classList.add('hidden'); document.getElementById('hr-mgmt-photo-file').value = ''; hrMgmtPhotoPreview(); }
         function closeHRMgmtModal() { document.getElementById('hr-mgmt-modal').classList.add('hidden'); }
         function openHRManagementModal(id) {
             var m = (id && typeof hrManagement !== 'undefined') ? (hrManagement || []).find(function (x) { return String(x.id) === String(id); }) : null;
@@ -4538,9 +4734,17 @@
             document.getElementById('hr-mgmt-phone').value = m ? (m.phone || '') : '';
             document.getElementById('hr-mgmt-access').checked = m ? (m.portal_access_enabled !== false) : true;
             document.getElementById('hr-mgmt-status').value = m ? (m.employment_status || 'active') : 'active';
+            window._hrMgmtPhotoPending = !!(m && !('photo_base64' in m));
             document.getElementById('hr-mgmt-photo-base64').value = m ? (m.photo_base64 || m.photo_url || '') : '';
-            document.getElementById('hr-mgmt-photo-remove').classList.toggle('hidden', !(m && (m.photo_base64 || m.photo_url)));
+            document.getElementById('hr-mgmt-photo-remove').classList.toggle('hidden', !(m && (m.photo_base64 || m.photo_thumb || m.photo_url)));
             hrMgmtPhotoPreview();
+            if (window._hrMgmtPhotoPending) hrEnsureFullPhoto(m).then(function (row) {
+                if (!window._hrMgmtPhotoPending) return;
+                document.getElementById('hr-mgmt-photo-base64').value = row.photo_base64 || row.photo_url || '';
+                document.getElementById('hr-mgmt-photo-remove').classList.toggle('hidden', !(row.photo_base64 || row.photo_url));
+                window._hrMgmtPhotoPending = false;
+                hrMgmtPhotoPreview();
+            }).catch(function () {});
             document.getElementById('hr-mgmt-modal').classList.remove('hidden');
         }
         async function hrSaveManagement() {
@@ -4568,6 +4772,8 @@
                 photo_base64: /^data:/.test(photo) ? photo : null,
                 photo_url: (photo && !/^data:/.test(photo)) ? photo : null
             };
+            if (id && window._hrMgmtPhotoPending) { delete payload.photo_base64; delete payload.photo_url; } // full photo not loaded — keep the stored one
+
             try {
                 if (id) { var { error: uErr } = await dbInstance.from('hr_employees').update(payload).eq('id', id); if (uErr) throw uErr; }
                 else { var { error: iErr } = await dbInstance.from('hr_employees').insert([payload]); if (iErr) throw iErr; }
@@ -4583,7 +4789,7 @@
             var m = (typeof hrManagement !== 'undefined') ? (hrManagement || []).find(function (x) { return String(x.id) === String(id); }) : null;
             if (!m) return;
             var lr = _MGMT_ROLE_LABEL[(m.system_role || '').toLowerCase()] || 'Management';
-            var photo = m.photo_base64 || m.photo_url || '';
+            var photo = m.photo_base64 || m.photo_thumb || m.photo_url || '';
             var av = photo ? `<img src="${photo}" alt="${m.full_name || ''}" style="width:72px;height:72px;border-radius:50%;object-fit:cover">`
                 : `<div style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff6b06,#f9182f);color:#fff;font-weight:800;font-size:26px">${((m.full_name || '?').trim().charAt(0) || '?').toUpperCase()}</div>`;
             var chk = function (t) { return `<div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#c5cbe8"><span style="color:#22c55e">✓</span> ${t}</div>`; };
@@ -7673,6 +7879,7 @@ async function populateHRJobDeptOptions() {
         // "Login result === refresh result" by construction, since both paths now run this
         // exact same re-verification before anything else happens.
         async function bootHRPage() {
+            hrApplyPanelState(hrCurrentSubtab); // skeleton right away, before any request returns
             console.log('[HR INIT] bootHRPage start, activeUser=', activeUser, 'cached activeRole=', activeRole, 'activeEmail=', activeEmail);
             // Use activeEmail as the "logged-in" signal — activeUser isn't persisted across a
             // fresh page load (e.g. when HR is embedded in the Manager Portal), only be_active_email is.
@@ -7680,6 +7887,9 @@ async function populateHRJobDeptOptions() {
             // Global management (HR-set System Role manager|founder) gets HR-Admin-level access to
             // this module WITHOUT changing their real role — company oversight (spec §3/§8).
             let _isGlobalMgr = false;
+            // Both identity lookups are independent — run them together (they used to be two
+            // sequential round-trips before any HR data could start loading).
+            const _rosterP = dbInstance.from('user_roster').select('role,name').eq('email', activeEmail).limit(1);
             try {
                 // Fetch all rows for this login; prefer the management/leadership row (a duplicate
                 // row made maybeSingle() return null and drop global-manager HR access).
@@ -7693,7 +7903,8 @@ async function populateHRJobDeptOptions() {
                 }
             } catch(e) {}
             try {
-                const { data } = await dbInstance.from('user_roster').select('role,name').eq('email', activeEmail).limit(1);
+                const { data, error: _rErr } = await _rosterP;
+                if (_rErr) throw _rErr;
                 const liveRole = data && data[0] && data[0].role;
                 if (liveRole && liveRole !== activeRole) { activeRole = liveRole; localStorage.setItem('be_active_role', activeRole); }
                 if (!activeUser && data && data[0] && data[0].name) activeUser = data[0].name;
@@ -7715,8 +7926,10 @@ async function populateHRJobDeptOptions() {
             // only the actual redirect/render DECISION above needed to wait on the backend, not
             // everything downstream of it.
             renderHRSidebarIdentity();
-            if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
+            // Own header photo is secondary — fetched after the HR data so it doesn't compete
+            // with it for bandwidth.
             initHRPanel().then(() => {
+                if (typeof hrFetchAndApplyMyPhoto === 'function') hrFetchAndApplyMyPhoto();
                 runHRCelebrationCheck();
                 // Re-check periodically, not just once at boot — matches index.html's own
                 // 20s-throttled poll, so a celebration HR (or another admin) creates while this
@@ -7751,10 +7964,11 @@ async function populateHRJobDeptOptions() {
             if (typeof runCelebrationQueue !== 'function') return;
             if (!activeEmail) return;
             try {
-                let lookup = await dbInstance.from('hr_employees').select('*').eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
+                if (_hrCelebP) await _hrCelebP;
+                let lookup = await dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS).eq('portal_email', activeEmail.trim().toLowerCase()).limit(1);
                 let me = lookup.data && lookup.data[0];
                 if (!me && activeUser) {
-                    const byName = await dbInstance.from('hr_employees').select('*').eq('full_name', activeUser).limit(1);
+                    const byName = await dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS).eq('full_name', activeUser).limit(1);
                     me = byName.data && byName.data[0];
                 }
                 if (!me) { console.warn('Celebration engine: no HR employee record linked to this login — skipping.'); return; }

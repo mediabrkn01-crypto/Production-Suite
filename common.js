@@ -1473,7 +1473,8 @@ async function acadSyncTrainersFromHR(){
         function hrAvatarHTML(nameOrEmp, sizePx) {
             sizePx = sizePx || 28;
             const name = typeof nameOrEmp === 'string' ? nameOrEmp : (nameOrEmp?.full_name || '');
-            const base64Photo = typeof nameOrEmp === 'object' ? nameOrEmp?.photo_base64 : null;
+            // photo_thumb: small cached thumbnail (hr.html) — preferred for avatars over the full upload.
+            const base64Photo = typeof nameOrEmp === 'object' ? (nameOrEmp?.photo_thumb || nameOrEmp?.photo_base64) : null;
             const rawPhotoUrl = typeof nameOrEmp === 'object' ? nameOrEmp?.photo_url : null;
             // Uploaded (base64) photo always wins over a legacy URL — Supabase is the single
             // source of truth either way, but base64 doesn't depend on an external host.
