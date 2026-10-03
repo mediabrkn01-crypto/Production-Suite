@@ -1061,6 +1061,7 @@ async function _abFillMatchChips(rows) {
         el.outerHTML = '<span style="display:inline-flex;align-items:center;gap:6px"><span class="st-pill st-mute" style="text-transform:none;color:#10b981">Ready: ' + esc(c.batch_name || 'batch') + '</span><button class="btn btn-sm" onclick="abEnrol(\'' + m.batch_id + '\',\'' + r.id + '\',false)">Enroll</button></span>';
       } else if (m.state === 'multiple') { el.textContent = 'Multiple suitable batches'; el.style.color = '#f59e0b'; }
       else if (m.state === 'time_required') { el.textContent = 'Time confirmation required'; el.style.color = '#f59e0b'; }
+      else if (m.state === 'full') { el.textContent = 'Batch full — waiting for a batch'; el.style.color = '#f59e0b'; }
       else if (m.state === 'none') { el.textContent = 'Batch assignment required'; el.style.color = '#f87171'; }
     } catch (_) {}
   }
@@ -1551,20 +1552,26 @@ async function openBatchDetail(batchId, silent) {
     : '<div class="ab-none"><i data-lucide="users" style="width:20px;height:20px;opacity:.4"></i><span>No students enrolled yet' + ((st === 'open') ? ' — enroll from the list below or use + Enroll student.' : '.') + '</span></div>';
   document.getElementById('bd_st_title').textContent = 'Enrolled students' + (list.length ? ' (' + list.length + ')' : '');
   if (typeof lucide !== 'undefined') lucide.createIcons();
-  // Suggestions: unassigned students on this course whose single clear match is this batch.
-  if (st === 'open' || st === 'deadline') {
-    const { data: pool } = await sb.from('students').select(_AB_ST_FIELDS).is('batch_id', null).ilike('programme', b.programme || '').neq('status', 'Dropped').limit(50);
-    const sugg = [];
+  // Same-course students still without a batch. Obvious matches are enrolled automatically by
+  // the database (batch publish / new student triggers); what's left here needs a person.
+  if (st === 'open' || st === 'deadline' || st === 'full') {
+    const { data: pool } = await sb.from('students').select(_AB_ST_FIELDS).is('batch_id', null).ilike('programme', b.programme || '').neq('status', 'Dropped').order('enrolled_date').limit(60);
+    const ready = [], review = [];
     for (const r of (pool || [])) {
       const { data: m } = await sb.rpc('batch_match_for_student', { p_student_id: r.id });
-      if (m && m.state === 'single' && String(m.batch_id) === String(batchId)) sugg.push(r);
+      if (!m) continue;
+      if (m.state === 'single' && String(m.batch_id) === String(batchId)) ready.push(r);
+      else if (m.state !== 'single') review.push(Object.assign({ _why: m.message || '' , _state: m.state }, r));
     }
     if (_abDetailId !== batchId) return;
-    window._abSuggIds = sugg.map(r => r.id);
-    document.getElementById('bd_suggest').innerHTML = sugg.length ? '<div class="ab-dm-sec"><span>Ready to enroll (' + sugg.length + ') <small class="ab-hint">same course · this is their best match</small></span>' +
-      (st === 'open' && sugg.length > 1 ? '<button class="btn-ghost btn-sm" onclick="abEnrolAll(\'' + batchId + '\')">Enroll all</button>' : '') + '</div><div class="ab-sugg">' +
-      sugg.map(r => '<div class="ab-sugg-r"><div class="ab-who"><span class="ab-av g">' + esc(_abIni(r.name)) + '</span><div><b>' + esc(r.name) + '</b><div class="ab-sugg-m">' + esc(r.uin || '') + (r.contact ? ' · ' + esc(r.contact) : '') + (r.source_counsellor ? ' · ' + esc(r.source_counsellor) : '') + '</div></div></div>' +
-        (st === 'open' ? '<button class="btn btn-sm" onclick="abEnrol(\'' + batchId + '\',\'' + r.id + '\',false)">Enroll</button>' : '') + '</div>').join('') + '</div>' : '';
+    window._abSuggIds = ready.map(r => r.id);
+    const row = (r, why) => '<div class="ab-sugg-r"><div class="ab-who"><span class="ab-av' + (why ? '' : ' g') + '">' + esc(_abIni(r.name)) + '</span><div><b>' + esc(r.name) + '</b><div class="ab-sugg-m">' + esc(r.uin || '') + (r.contact ? ' · ' + esc(r.contact) : '') + (r.preferred_slot ? ' · prefers ' + esc(r.preferred_slot) : '') + (r.source_counsellor ? ' · ' + esc(r.source_counsellor) : '') + '</div>' +
+      (why ? '<div class="ab-sugg-m" style="color:#fbbf24">' + esc(why) + '</div>' : '') + '</div></div>' +
+      (st === 'open' ? '<button class="btn btn-sm" onclick="abEnrol(\'' + batchId + '\',\'' + r.id + '\',false)">Enroll</button>' : '') + '</div>';
+    document.getElementById('bd_suggest').innerHTML =
+      (ready.length ? '<div class="ab-dm-sec"><span>Ready to enroll (' + ready.length + ') <small class="ab-hint">being placed automatically</small></span>' +
+        (st === 'open' && ready.length > 1 ? '<button class="btn-ghost btn-sm" onclick="abEnrolAll(\'' + batchId + '\')">Enroll all</button>' : '') + '</div><div class="ab-sugg">' + ready.map(r => row(r, '')).join('') + '</div>' : '') +
+      (review.length ? '<div class="ab-dm-sec"><span>Needs a decision (' + review.length + ') <small class="ab-hint">same course · choose a batch for these students</small></span></div><div class="ab-sugg">' + review.map(r => row(r, r._why)).join('') + '</div>' : '');
   }
 }
 
