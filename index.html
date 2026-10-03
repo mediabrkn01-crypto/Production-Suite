@@ -2621,6 +2621,16 @@
     </div>
 
     <script src="common.js"></script>
+    <script src="access-guard.js"></script>
+    <script>
+        // Signed out because access was revoked (access-guard.js) — say why on the sign-in screen.
+        window.addEventListener('load', function () {
+            var qp = new URLSearchParams(location.search); if (!qp.get('access')) return;
+            var msg = (window.BEAccess && BEAccess.takeMessage()) || 'Your portal access has been disabled. Contact HR.';
+            try { history.replaceState(null, '', location.pathname); } catch (_) {}
+            if (typeof _showPortalLoginError === 'function') _showPortalLoginError(msg);
+        });
+    </script>
     <script src="policy-config.js"></script>
     <script src="leave-policy.js"></script>
 <script src="my-workspace.js"></script>
@@ -3540,15 +3550,6 @@
                         }
                     } else {
                         if (pwdInput === foundUser.pass || !foundUser.pass) {
-                            // Employee Panel access gate — HR can disable a linked employee's portal access
-                            // without deleting their account or HR record.
-                            try {
-                                const { data: linkedEmp } = await dbInstance.from('hr_employees').select('portal_access_enabled').eq('portal_email', foundUser.email.trim().toLowerCase()).limit(1);
-                                if (linkedEmp && linkedEmp[0] && linkedEmp[0].portal_access_enabled === false) {
-                                    _showPortalLoginError("Access disabled — HR has disabled your Employee Panel access. Contact HR for assistance.");
-                                    return;
-                                }
-                            } catch (e) { /* if the HR table isn't reachable, don't block login over it */ }
                             activeUser = foundUser.name;
                             activeRole = foundUser.role || "employee"; // use actual role (employee or social_media)
                             activeEmail = foundUser.email;
@@ -3560,6 +3561,12 @@
                 } else {
                     _showPortalLoginError("Invalid username or password.");
                     return;
+                }
+                // Portal access gate (every role): employment status + HR access switch, answered by
+                // the database (portal_access_state) — inactive / exited employees can't sign in.
+                if (window.BEAccess) {
+                    const acc = await BEAccess.state(foundUser.email);
+                    if (!acc.allowed) { activeUser = activeRole = activeEmail = null; _showPortalLoginError(acc.message || 'Sign-in disabled. Contact HR.'); return; }
                 }
 
                 // BUG FIX: this form doubles as "Add Another Account" (startAddAccountFlow) —
@@ -3592,6 +3599,10 @@
 
         async function launchSession() {
             if (!activeUser) return;
+            if (window.BEAccess && activeEmail) {
+                const acc = await BEAccess.state(activeEmail);
+                if (!acc.allowed) { BEAccess.check(); return; }
+            }
 
             // ── FAST ROUTE: determine where this user belongs FIRST, before loading any
             //    pipeline/media data. One loadCurrentUserProfile() call (cached) gives us
