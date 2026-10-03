@@ -232,6 +232,35 @@
   // =========================================================================
   // 2. resolveLeaveBalance(ctx)  — SL (monthly) + CL (buckets)
   // =========================================================================
+  // Paid leave units consumed by APPROVED requests — the request rows are the source of truth
+  // (approval never rewrote the bucket/ledger rows, which is why balances ignored approved leave).
+  // Counted with the same calendar rules as attendance: holidays, weekly offs and paid official
+  // events inside a leave are free; a half day is 0.5; HR-marked LOP days and days blocked by
+  // probation/notice consume nothing; days before LEAVE_SYSTEM_START are pre-policy (paid, no cap)
+  // and excluded. Read-only and recomputed every time, so it can never double-deduct.
+  function leaveUnitsUsed(ctx, kind, fromDate, toDate) {
+    var out = { units: 0, items: [] };
+    function nextDay(d) { var z = new Date(d + 'T00:00:00'); z.setDate(z.getDate() + 1); return ymd(z); }
+    (ctx.requests || []).forEach(function (r) {
+      if (String(r.status || '').toLowerCase() !== 'approved' || r.cancelled_at) return;
+      if (normType(r.leave_type) !== kind) return;
+      if (String(r.final_treatment || '').toLowerCase().indexOf('lop') === 0) return;
+      var s = ymd(r.start_date || ''), e = ymd(r.end_date || r.start_date || ''), n = 0, guard = 0;
+      if (!s) return;
+      for (var d = s; d <= e && guard < 400; d = nextDay(d), guard++) {
+        if (d < LEAVE_SYSTEM_START || (fromDate && d < fromDate) || (toDate && d > toDate)) continue;
+        if (isHoliday(ctx, d) || isWeeklyOff(ctx, new Date(Date.parse(d)).getDay())) continue;
+        var oe = officialEventFor(ctx, d); if (oe && !oe.clock_in_required) continue;
+        var st = ctx.employee ? getEmployeePolicyState(ctx.employee, d) : null;
+        if (st && kind === 'SL' && ((st.onProbation && !flag(P.SL_IN_PROBATION)) || (st.onNotice && !flag(P.LEAVE_IN_NOTICE)))) continue;
+        if (st && kind === 'CL' && ((st.onProbation && !flag(P.CL_IN_PROBATION)) || (st.onNotice && !flag(P.LEAVE_IN_NOTICE)))) continue;
+        n += r.half_day_type ? 0.5 : 1;
+      }
+      if (n) { out.items.push({ id: r.id, start: s, end: e, units: n, leave_type: r.leave_type, status: r.status }); out.units += n; }
+    });
+    return out;
+  }
+
   function resolveLeaveBalance(ctx) {
     var dateStr = ctx.date || ymd(new Date());
     var period = monthPeriod(dateStr);
@@ -239,7 +268,9 @@
     // Sick Leave — current month only, no carry-forward.
     var slRow = (ctx.slLedger || []).find(function (r) { return r.period === period; });
     var slEnt = slRow ? Number(slRow.entitlement) : P.SL_PER_MONTH;
-    var slUsed = slRow ? Number(slRow.used) : 0;
+    var slLedgerUsed = slRow ? Number(slRow.used) : 0;
+    var slReq = leaveUnitsUsed(ctx, 'SL', period + '-01', monthEnd(period));
+    var slUsed = Math.max(slLedgerUsed, slReq.units);
     var st = ctx.employee ? getEmployeePolicyState(ctx.employee, dateStr) : null;
     var slBlocked = st && ((st.onProbation && !flag(P.SL_IN_PROBATION)) || (st.onNotice && !flag(P.LEAVE_IN_NOTICE)));
     var clBlocked = st && ((st.onProbation && !flag(P.CL_IN_PROBATION)) || (st.onNotice && !flag(P.LEAVE_IN_NOTICE)));
@@ -250,6 +281,7 @@
       remaining: slBlocked ? 0 : Math.max(0, slEnt - slUsed),
       expiry: monthEnd(period),           // lapses at month end
       period: period,
+      usedItems: slReq.items,
       unavailable: slBlocked ? blockReason : null
     };
 
@@ -272,7 +304,13 @@
     // Cap remaining to accrued-to-date (1 CL/month) so balance never shows unearned future CL.
     var accrued = clAccruedToDate(dateStr, curInfo);
     var totalOriginal = buckets.reduce(function (s, b) { return s + b.original; }, 0);
-    var totalUsed = totalOriginal - clRemaining;
+    // Used = approved paid CL in the current cycle (incl. future-dated approved leave, which
+    // reserves its days), or what the buckets themselves record — whichever is larger.
+    var cycleEnd = ymd(new Date(new Date(curInfo.credit_date + 'T00:00:00').getFullYear(), new Date(curInfo.credit_date + 'T00:00:00').getMonth() + 6, 0));
+    var clReq = leaveUnitsUsed(ctx, 'CL', curInfo.credit_date, cycleEnd);
+    var bucketUsed = totalOriginal - clRemaining;
+    var totalUsed = Math.max(bucketUsed, clReq.units);
+    if (clReq.units > bucketUsed) clRemaining = Math.max(0, totalOriginal - totalUsed);
     var accruedRemaining = Math.max(0, accrued - totalUsed);
     if (clRemaining > accruedRemaining) clRemaining = accruedRemaining;
     var casual = {
@@ -281,6 +319,9 @@
       carriedForward: clCarried,
       remaining: clRemaining,
       accrued: accrued,
+      used: totalUsed,
+      usedItems: clReq.items,
+      credited: totalOriginal,
       nextExpiry: nextExpiry,
       buckets: buckets,              // ordered oldest-first = consumption order
       unavailable: clBlocked ? blockReason : null
@@ -340,7 +381,7 @@
     // CL accrual cap: employee can only use CL accrued to date (1/month), not future entitlement.
     if (kind === 'CL') {
       var accrued = clAccruedToDate(start);
-      var clUsed = bal.casual.buckets.reduce(function (s, b) { return s + (b.original - b.remaining); }, 0);
+      var clUsed = bal.casual.used != null ? bal.casual.used : bal.casual.buckets.reduce(function (s, b) { return s + (b.original - b.remaining); }, 0);
       var accruedAvailable = Math.max(0, accrued - clUsed);
       if (available > accruedAvailable) available = accruedAvailable;
       if (days > available && available >= 0) {
@@ -658,6 +699,7 @@
     fmtDuration: fmtDuration,
     getEmployeePolicyState: getEmployeePolicyState,
     resolveLeaveBalance: resolveLeaveBalance,
+    leaveUnitsUsed: leaveUnitsUsed,
     resolveLeaveEligibility: resolveLeaveEligibility,
     resolveAttendanceStatus: resolveAttendanceStatus,
     resolveIncidents: resolveIncidents,

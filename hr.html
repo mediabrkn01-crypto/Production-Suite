@@ -5332,7 +5332,7 @@ function hrTodayStr() { const d = new Date(); return d.getFullYear() + '-' + Str
             if (!emp || typeof LeavePolicy === 'undefined') { tbody.innerHTML = `<tr><td colspan="5"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">Balances unavailable.</div></div></td></tr>`; return; }
             if (!LeavePolicy.db) LeavePolicy.withClient(dbInstance);
             tbody.innerHTML = `<tr><td colspan="5"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">Loading policy balances…</div></div></td></tr>`;
-            const today = new Date().toISOString().slice(0,10), month = today.slice(0,7);
+            const _tn = new Date(), today = _tn.getFullYear() + '-' + String(_tn.getMonth()+1).padStart(2,'0') + '-' + String(_tn.getDate()).padStart(2,'0'), month = today.slice(0,7);
             let ctx, bal, pay, state;
             try {
                 ctx = await LeavePolicy.db.buildContext(emp, { now: new Date(), date: today });
@@ -5359,14 +5359,36 @@ function hrTodayStr() { const d = new Date(); return d.getFullYear() + '-' + Str
                 <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px">${lines.map(l => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:#6b74a0">${l[0]}</span><span style="color:#e6e9f5;font-weight:600;text-align:right">${l[1]}</span></div>`).join('')}</div>
             </div>`;
             const _buckets = (bal.casual.buckets || []);
+            // Breakdown: how each balance is calculated from real rows (credits, accrual, approved leave).
+            const _fmt = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
+            const _ln = (k, v, strong) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px"><span style="color:${strong ? '#e6e9f5' : '#8890b5'}">${k}</span><b style="color:${strong ? '#fff' : '#cbd5e1'};font-variant-numeric:tabular-nums">${v}</b></div>`;
+            const _clItems = (bal.casual.usedItems || []), _slItems = (bal.sick.usedItems || []);
+            const _breakdown = `<details class="hr-lb-bd" style="margin-top:14px;border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:10px 14px;background:rgba(255,255,255,.015)">
+                <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#a5adcf">View breakdown</summary>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:10px">
+                  <div><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#3b82f6;margin-bottom:4px">Casual Leave</div>
+                    ${_ln('Credited (active credit buckets)', bal.casual.credited ?? '—')}
+                    ${_ln('Earned so far this cycle (1 per month, max ' + (LeavePolicy.P.CL_PER_CYCLE || 6) + ')', bal.casual.accrued)}
+                    ${_clItems.length ? _clItems.map(i => _ln(_fmt(i.start) + (i.end !== i.start ? ' – ' + _fmt(i.end) : '') + ' · approved Casual Leave', '−' + i.units)).join('') : _ln('Approved Casual Leave this cycle', '0')}
+                    ${bal.casual.unavailable ? _ln('Blocked (' + bal.casual.unavailable + ')', '→ 0') : ''}
+                    ${_ln('Remaining = min(credited, earned) − used', _clRem, true)}</div>
+                  <div><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#10b981;margin-bottom:4px">Sick Leave · ${monthLabel}</div>
+                    ${_ln('Entitlement this month', _slTot)}
+                    ${_slItems.length ? _slItems.map(i => _ln(_fmt(i.start) + (i.end !== i.start ? ' – ' + _fmt(i.end) : '') + ' · approved Sick Leave', '−' + i.units)).join('') : _ln('Approved Sick Leave this month', '0')}
+                    ${bal.sick.unavailable ? _ln('Blocked (' + bal.sick.unavailable + ')', '→ 0') : ''}
+                    ${_ln('Remaining', _slRem, true)}</div>
+                </div>
+                <div style="font-size:11px;color:#6b74a0;margin-top:8px">Counted from approved requests: holidays, weekly offs and paid company events inside a leave are not charged; half days count 0.5; leave HR marked unpaid is not charged here (it shows under Loss of Pay). Leave before ${LeavePolicy.P.LEAVE_SYSTEM_START || 'the policy start'} is outside the new policy.</div>
+              </details>`;
             tbody.innerHTML = `<tr><td colspan="5" style="padding:16px">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${stateChips.join('')}</div>
                 <div style="display:flex;gap:12px;flex-wrap:wrap">
                     ${_card('#10b981', 'Sick Leave (SL)', _slRem, _slNo || 'remaining this month', _slTot ? _slRem / _slTot * 100 : 0, [['Allowance', _slTot + ' / month'], ['Used', bal.sick.used], ['Lapses', (bal.sick.expiry || '—') + ' · no carry-forward']])}
-                    ${_card('#3b82f6', 'Casual Leave (CL)', _clRem, _clNo || 'remaining', _clTot ? _clRem / _clTot * 100 : 0, [['This cycle', bal.casual.currentCredit + (bal.casual.carriedForward ? ' + ' + bal.casual.carriedForward + ' carried' : '')], ['Next expiry', bal.casual.nextExpiry || '—']])}
+                    ${_card('#3b82f6', 'Casual Leave (CL)', _clRem, _clNo || 'remaining', _clTot ? _clRem / _clTot * 100 : 0, [['Earned / used', (bal.casual.accrued ?? '—') + ' / ' + (bal.casual.used ?? 0)], ['This cycle', bal.casual.currentCredit + (bal.casual.carriedForward ? ' + ' + bal.casual.carriedForward + ' carried' : '')], ['Next expiry', bal.casual.nextExpiry || '—']])}
                     ${_card('#f87171', 'Loss of Pay — ' + monthLabel, pay.totalDeductionDays, 'day(s) · feeds payroll', null, [['Late / early incidents', (pay.incidents && pay.incidents.count) || 0], ['Double deductions', pay.buckets.lopDouble || 0]])}
                 </div>
                 <div style="margin-top:14px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0;margin-bottom:6px">CL credit buckets · oldest used first</div>
+                    ${_breakdown}
                     <div class="ui-chips">${_buckets.length ? _buckets.map(b => `<span class="ui-chip" style="font-size:11px;padding:4px 9px">${b.cycle_label}: <b style="color:#fff">${b.remaining}/${b.original}</b> left · expires ${b.expiry}</span>`).join('') : '<span class="ui-muted" style="font-size:12px">No active CL credit.</span>'}</div></div>
             </td></tr>`;
         }
