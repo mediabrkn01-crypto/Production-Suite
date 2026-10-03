@@ -513,7 +513,19 @@ details[open] .rawsum::before{content:'▾ '}
 
 /* Student detail popup */
 .sd-modal{width:640px;max-width:94vw;max-height:90vh;overflow:auto;padding:0!important}
-.sd-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;padding:20px 22px 16px;background:linear-gradient(180deg,#141018,#110e14);border-bottom:1px solid rgba(255,255,255,.07)}
+.sd-body{padding-bottom:18px}
+.sd-cols{display:grid;grid-template-columns:1fr;gap:0 4px}
+@container bewin (min-width: 900px){
+  .sd-cols{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:start}
+  .sd-cols>.sd-col:first-child{border-right:1px solid rgba(255,255,255,.06);padding-bottom:6px}
+  .sd-cols .sd-kvs{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container bewin (min-width: 1250px){ .sd-cols .sd-kvs{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.sd-sec-first{padding-top:18px!important}
+.sd-col>#stu_info{padding-top:0}
+.sd-paystatus{margin:16px 22px 0;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}
+.sd-paystatus .sd-paysum{margin:6px 0 0}
+.sd-head{z-index:2;display:flex;align-items:center;gap:14px;padding:20px 22px 16px;background:linear-gradient(180deg,#141018,#110e14);border-bottom:1px solid rgba(255,255,255,.07)}
 .sd-av{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-weight:800;font-size:16px;color:#fff;background:linear-gradient(135deg,#ed1f51,#ff6b06);flex-shrink:0}
 .sd-hid{flex:1;min-width:0}.sd-hid h3{margin:0!important;font-size:18px;line-height:1.25}
 .sd-sub{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums}
@@ -553,7 +565,7 @@ details[open] .rawsum::before{content:'▾ '}
 .sd-f input,.sd-f select{margin:0!important;width:100%}
 .sd-sub2{margin:16px 0 8px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
 .sd-entries{max-height:150px;overflow:auto;font-size:12px}
-.sd-foot{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:20px;padding:14px 22px;background:linear-gradient(0deg,#110e14,#141018);border-top:1px solid rgba(255,255,255,.07)}
+.sd-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:0;padding:14px 22px;background:linear-gradient(0deg,#110e14,#141018);border-top:1px solid rgba(255,255,255,.07)}
 .sd-foot .btn-cancel,.sd-foot .btn-save{margin:0!important;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:700;font-size:13px}
 .sd-sp{flex:1}.sd-del{border:1px solid rgba(237,31,81,.4)!important;color:var(--k1)!important}
 .sd-ghost{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.12)!important;color:#e5e7eb!important;box-shadow:none!important}
@@ -582,6 +594,7 @@ details[open] .rawsum::before{content:'▾ '}
 <script src="dynamic-tabs.js"></script>
 <link rel="stylesheet" href="be-timepicker.css">
 <script src="be-timepicker.js"></script>
+<script src="be-window.js"></script>
 </head>
 <body>
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
@@ -1805,16 +1818,21 @@ details[open] .rawsum::before{content:'▾ '}
   <div class="modal-actions"><button class="btn-cancel" onclick="document.getElementById('modalStudent').classList.remove('on')">Cancel</button><button class="btn-save" onclick="saveStudent()">Save Student</button></div>
 </div></div>
 
-<div class="modal-bg" id="modalStu"><div class="modal sd-modal">
-  <div class="sd-head">
+<div class="modal-bg" id="modalStu"><div class="modal sd-modal" data-bewin="student">
+  <div class="sd-head" data-bewin-head>
     <div class="sd-av" id="stu_av">S</div>
     <div class="sd-hid"><h3 id="stu_name">Student</h3><div class="sd-sub" id="stu_head_sub"></div></div>
-    <button type="button" class="sd-x" aria-label="Close" onclick="document.getElementById('modalStu').classList.remove('on')">&times;</button>
+    <div data-bewin-controls></div>
   </div>
+  <div class="sd-body" data-bewin-body><div class="sd-cols">
+  <div class="sd-col">
+  <div class="sd-sec sd-sec-first">Student</div>
   <div id="stu_info"></div>
   <div id="stu_att" class="sd-att"></div>
-
-  <div class="sd-sec">Manage</div>
+  <div class="sd-paystatus"><div class="sd-sub2" style="margin-top:0">Payment status</div><div id="p_summary" class="sd-paysum"></div></div>
+  </div>
+  <div class="sd-col">
+  <div class="sd-sec sd-sec-first">Manage</div>
   <div class="sd-card sd-manage">
     <div class="sd-row"><label for="stu_status">Status</label>
       <div class="sd-ctl"><select id="stu_status"><option value="">Automatic</option><option value="On Freeze">On Freeze</option><option value="Dropped">Dropped</option></select>
@@ -1831,7 +1849,6 @@ details[open] .rawsum::before{content:'▾ '}
 
   <div class="sd-sec">Payments</div>
   <div class="sd-card">
-    <div id="p_summary" class="sd-paysum"></div>
     <div class="sd-grid2">
       <label class="sd-f"><span>Course fee ₹</span><input id="p_fee" type="number" placeholder="0"/></label>
       <label class="sd-f"><span>Discount ₹</span><input id="p_disc" type="number" placeholder="0"/></label>
@@ -1848,8 +1865,9 @@ details[open] .rawsum::before{content:'▾ '}
       <label class="sd-f"><span>Method</span><select id="pe_method"><option>UPI</option><option>Cash</option><option>Bank transfer</option><option>Card</option></select></label>
     </div>
   </div>
+  </div></div></div>
 
-  <div class="sd-foot">
+  <div class="sd-foot" data-bewin-foot>
     <button class="btn-cancel sd-del" onclick="deleteStudent()">Delete</button>
     <span class="sd-sp"></span>
     <button class="btn-cancel" onclick="document.getElementById('modalStu').classList.remove('on')">Close</button>
