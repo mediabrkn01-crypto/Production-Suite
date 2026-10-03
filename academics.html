@@ -628,6 +628,18 @@ details[open] .rawsum::before{content:'▾ '}
 .ub-link-danger{background:none;border:0!important;color:rgba(248,113,113,.8);padding:6px 8px!important}.ub-link-danger:hover{color:#f87171;text-decoration:underline}
 @media(max-width:1000px){.ub-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.ub-stat:nth-child(4){border-left:0}.ub-stat:nth-child(n+4){border-top:1px solid rgba(255,255,255,.06)}.ub-dm-top{grid-template-columns:1fr}.ub-facts-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.ub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ub-grid{grid-template-columns:1fr}.ub-dm{padding:16px!important}.ub-facts-grid{grid-template-columns:1fr}.ub-actions-r{width:100%}.ub-actions-r button{flex:1 1 auto!important}}
+
+.ub-sm{width:min(560px,94vw)!important;max-width:none!important;padding:22px 24px!important}
+.ub-kvs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden}
+.ub-kv{background:#0f0c11;padding:10px 12px;min-width:0}.ub-kv span{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
+.ub-kv b{display:block;margin-top:3px;font-size:13.5px;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ub-q{margin-top:16px;font-size:15px;color:#f1f5f9}.ub-sub2{margin-top:6px;font-size:12px;color:rgba(255,255,255,.45)}.ub-sub2.warn{color:#fbbf24}
+.ub-msg{margin-top:14px;padding:11px 13px;border-radius:11px;font-size:12.5px;line-height:1.5}
+.ub-msg.bad{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3);color:#fca5a5}.ub-msg.bad ul{margin:6px 0 0 18px;padding:0}
+.ub-msg.warn{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.28);color:#fcd34d}
+.ub-pick{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+.ub-ghost.green{color:#34d399;border-color:rgba(52,211,153,.35)!important}
+@media(max-width:560px){.ub-kvs{grid-template-columns:1fr 1fr}}
 </style>
 <!-- Shared collapsible sidebar (index.html/hr.html/academics.html all include the same two
      files) — see sidebar-collapse.js's own header comment. Loaded plain (no defer) since it's a
@@ -1235,6 +1247,28 @@ details[open] .rawsum::before{content:'▾ '}
       </div></div>
 
       <!-- Upcoming Batch Detail / Enrollment Tracker Modal -->
+      <!-- Start Batch confirmation (Upcoming → Active, same batches row) -->
+      <div class="modal-bg" id="mUbStart" style="z-index:260"><div class="modal ub-sm">
+        <div class="ub-dm-eyebrow">Start batch</div>
+        <div class="ub-dm-title" id="ubs-title">Batch</div>
+        <div id="ubs-body" style="margin-top:12px"></div>
+        <div class="ub-actions" style="margin-top:18px">
+          <div class="ub-actions-l"></div>
+          <div class="ub-actions-r"><button class="ub-ghost" onclick="document.getElementById('mUbStart').classList.remove('on')">Cancel</button><button class="ub-primary green" id="ubs-go" onclick="ubConfirmStart()">Start Batch</button></div>
+        </div>
+      </div></div>
+
+      <!-- Add Students to an upcoming batch (same capacity-safe enroll as Sales) -->
+      <div class="modal-bg" id="mUbAdd" style="z-index:260"><div class="modal ub-sm" style="width:min(680px,94vw)!important">
+        <div class="ub-dm-eyebrow">Add students</div>
+        <div class="ub-dm-title" id="uba-title">Batch</div>
+        <div class="ub-dm-sub" id="uba-sub" style="margin-top:6px"></div>
+        <input id="uba-search" placeholder="Search name, student ID, phone, course, preferred time, counsellor…" oninput="ubAddRender()" style="width:100%;margin-top:6px"/>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx3);margin:10px 0 6px"><input type="checkbox" id="uba-all" onchange="ubAddLoad()" style="width:auto;margin:0"/> Show students from other courses (override)</label>
+        <div id="uba-list" style="max-height:340px;overflow:auto"></div>
+        <div class="ub-actions" style="margin-top:14px"><div class="ub-actions-l"></div><div class="ub-actions-r"><button class="ub-ghost" onclick="document.getElementById('mUbAdd').classList.remove('on')">Done</button></div></div>
+      </div></div>
+
       <div class="modal-bg" id="mUbDetail"><div class="modal ub-dm">
         <h3 id="ubd-title"></h3>
         <div id="ubd-body"><div class="loading">Loading…</div></div>
@@ -11377,10 +11411,11 @@ async function openUbDetail(batchId) {
   let left_ = '', right_ = '<button class="ub-ghost" onclick="document.getElementById(\'mUbDetail\').classList.remove(\'on\')">Close</button>';
   if (isCurrentlyAcademicHead()) left_ += '<button class="ub-link-danger" onclick="ubDeleteBatch(\'' + batchId + '\')">Delete</button>';
   if (st !== 'cancelled') left_ += '<button class="ub-ghost danger" onclick="ubCancelBatch(\'' + batchId + '\',' + enrolled.length + ')">Cancel batch</button>';
+  if (st === 'open' && (!cap || enrolled.length < cap)) right_ += '<button class="ub-ghost" onclick="ubOpenAdd(\'' + batchId + '\')">+ Add students</button>';
   if (st === 'draft' || st === 'open' || st === 'full' || st === 'closed') right_ += '<button class="ub-ghost" onclick="ubEditBatch(\'' + batchId + '\')">Edit</button>';
-  if (st === 'draft') right_ += '<button class="ub-primary green" onclick="ubPublish(\'' + batchId + '\')">Publish to Sales</button>';
+  if (st === 'draft') right_ += '<button class="ub-ghost green" onclick="ubPublish(\'' + batchId + '\')">Publish to Sales</button>';
   else if (st === 'open') right_ += '<button class="ub-ghost warn" onclick="ubCloseEnrollment(\'' + batchId + '\')">Close enrollment</button>';
-  if (st === 'full' || st === 'closed') right_ += '<button class="ub-primary green" onclick="ubActivateBatch(\'' + batchId + '\')">Activate batch</button>';
+  if (st !== 'cancelled') right_ += '<button class="ub-primary" onclick="ubActivateBatch(\'' + batchId + '\')">Start Batch</button>';
   actions.innerHTML = '<div class="ub-actions-l">' + left_ + '</div><div class="ub-actions-r">' + right_ + '</div>';
 }
 
@@ -11400,19 +11435,121 @@ async function ubCloseEnrollment(batchId) {
   loadUpcomingTab();
 }
 
+// START BATCH: the same upcoming batches row becomes an active batch (status 'active',
+// enrollment closed — the existing activation rule; active batches take no new enrolments),
+// so its students (students.batch_id), trainer, schedule and sessions carry straight into
+// Batches / Live Batches / Classes / Schedule / attendance with nothing copied.
+// Capacity is a maximum, not a minimum: any batch with ≥1 student can start.
+let _ubStartId = null;
+async function _ubStartCheck(batchId) {
+  const { data: b } = await sb.from('batches').select('id,name,course_id,programme,trainer_id,trainer_name,day_pattern,time_slot,start_date,sessions_total,capacity,status,enrollment_status,deleted_at').eq('id', batchId).maybeSingle();
+  if (!b || b.deleted_at) return { b: null, errors: ['This batch no longer exists.'], warns: [], n: 0 };
+  const { data: st } = await sb.from('students').select('id,status').eq('batch_id', batchId);
+  const n = (st || []).filter(x => x.status !== 'Dropped').length;
+  const errors = [], warns = [];
+  const days = String(_acadEffectiveDayPattern(b) || '').split(',').map(t => t.replace(/\s*·.*$/, '').trim()).filter(d => /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/.test(d));
+  if (b.status !== 'upcoming') errors.push('This batch is already ' + (b.status || 'started') + '.');
+  if (!String(b.name || '').trim()) errors.push('Give the batch a name (Edit).');
+  if (!b.course_id && !b.programme) errors.push('Choose a course for the batch (Edit).');
+  if (!n) errors.push('Enroll at least one student before starting.');
+  if (!b.trainer_id) errors.push('Assign a trainer before starting this batch.');
+  if (!days.length) errors.push('Set the class days (Edit).');
+  if (!b.start_date) errors.push('Set a start date (Edit).');
+  if (!(+b.sessions_total > 0)) errors.push('Set the number of sessions (Edit).');
+  if (!String(b.time_slot || '').trim()) warns.push('No class time is set — the batch works for attendance, but it won’t appear in timetable views (Classes / Schedule) until a time is added.');
+  if (b.start_date && b.start_date < _acadLocalDateStr(new Date())) warns.push('The planned start date (' + _dshDate(b.start_date) + ') has already passed.');
+  return { b, errors, warns, n };
+}
 async function ubActivateBatch(batchId) {
-  const b = _ubBatches.find(x => String(x.id) === String(batchId));
-  if (!b) return;
-  const { data: enrolled } = await sb.from('students').select('id').eq('batch_id', batchId);
-  if (!enrolled || !enrolled.length) {
-    if (!confirm('No students enrolled. Activate anyway?')) return;
-  }
-  const { error } = await sb.from('batches').update({ status: 'active', enrollment_status: 'closed' }).eq('id', batchId);
-  if (error) { showToast('error', error.message); return; }
-  showToast('success', 'Batch activated! Now visible in Live Batches.');
-  document.getElementById('mUbDetail').classList.remove('on');
-  loadUpcomingTab();
-  if (typeof loadLive === 'function') loadLive();
+  if (!isCurrentlyAcademicHead()) { showToast('error', 'Only the Academic Head can start batches.'); return; }
+  _ubStartId = batchId;
+  const body = document.getElementById('ubs-body');
+  body.innerHTML = '<div class="loading">Checking batch…</div>';
+  document.getElementById('mUbStart').classList.add('on');
+  const { b, errors, warns, n } = await _ubStartCheck(batchId);
+  if (_ubStartId !== batchId) return;
+  document.getElementById('ubs-title').textContent = b ? String(b.name || '').replace(/\s+—\s+\d{4}-\d{2}-\d{2}$/, '') : 'Batch';
+  const cap = b && b.capacity ? b.capacity : 0;
+  const kv = (k, v) => '<div class="ub-kv"><span>' + k + '</span><b>' + v + '</b></div>';
+  body.innerHTML = (b ? '<div class="ub-kvs">' + kv('Trainer', esc(b.trainer_name || 'Not assigned')) + kv('Students', n) + kv('Capacity', cap || '∞') +
+      kv('Seats remaining', cap ? Math.max(0, cap - n) : '∞') + kv('Start date', esc(b.start_date ? _dshDate(b.start_date) : '—')) + kv('Sessions', esc(String(b.sessions_total || '—'))) + '</div>' : '') +
+    (errors.length ? '<div class="ub-msg bad"><b>Fix before starting:</b><ul>' + errors.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul>' +
+        (b && !b.trainer_id ? '<button class="ub-ghost" style="margin-top:8px" onclick="document.getElementById(\'mUbStart\').classList.remove(\'on\');ubEditBatch(\'' + batchId + '\')">Assign trainer</button>' : '') + '</div>'
+      : '<div class="ub-q">Start this batch with <b>' + n + '</b> enrolled student' + (n === 1 ? '' : 's') + '?</div>' +
+        '<div class="ub-sub2">It moves to Batches and Live Batches with the same students, trainer and schedule. Enrollment closes — Sales will no longer see it.</div>') +
+    (warns.length ? '<div class="ub-msg warn">' + warns.map(w => '<div>' + esc(w) + '</div>').join('') + '</div>' : '');
+  const go = document.getElementById('ubs-go'); go.disabled = !!errors.length; go.style.opacity = errors.length ? '.4' : ''; go.textContent = 'Start Batch';
+}
+async function ubConfirmStart() {
+  const batchId = _ubStartId; if (!batchId) return;
+  const go = document.getElementById('ubs-go'); if (go.disabled) return;
+  go.disabled = true; go.textContent = 'Starting…';
+  try {
+    const { b, errors, n } = await _ubStartCheck(batchId);   // re-check live, never trust the open dialog
+    if (errors.length) { showToast('error', errors[0]); ubActivateBatch(batchId); return; }
+    const { data: upd, error } = await sb.from('batches').update({ status: 'active', enrollment_status: 'closed' }).eq('id', batchId).eq('status', 'upcoming').select('id');
+    if (error) { showToast('error', 'Could not start the batch: ' + error.message); return; }
+    if (!upd || !upd.length) { showToast('error', 'This batch was already started or changed. Refresh and try again.'); return; }
+    // Enrolled students who were still 'New' are now in a running batch.
+    await sb.from('students').update({ status: 'In Progress' }).eq('batch_id', batchId).or('status.is.null,status.eq.New');
+    showToast('success', (b && b.name ? b.name : 'Batch') + ' started with ' + n + ' student' + (n === 1 ? '' : 's') + '.');
+    document.getElementById('mUbStart').classList.remove('on');
+    document.getElementById('mUbDetail').classList.remove('on');
+    loadUpcomingTab();
+    if (typeof loadLive === 'function') loadLive();
+    if (typeof loadHeadView === 'function') loadHeadView();
+    if (typeof loadStats === 'function') loadStats();
+    if (typeof loadAcadDashboard === 'function') loadAcadDashboard();
+  } finally { go.disabled = false; go.textContent = 'Start Batch'; }
+}
+
+// ADD STUDENTS (before start): same-course unassigned students by default; head override shows
+// other courses. Every add goes through enroll_student_in_batch (row lock + capacity).
+let _ubAddId = null, _ubAddPool = [], _ubAddBatch = null;
+async function ubOpenAdd(batchId) {
+  _ubAddId = batchId; _ubAddBatch = _ubBatches.find(x => String(x.id) === String(batchId)) || null;
+  document.getElementById('uba-title').textContent = _ubAddBatch ? String(_ubAddBatch.name || '').replace(/\s+—\s+\d{4}-\d{2}-\d{2}$/, '') : 'Batch';
+  document.getElementById('uba-search').value = ''; document.getElementById('uba-all').checked = false;
+  document.getElementById('mUbAdd').classList.add('on');
+  await ubAddLoad();
+}
+async function ubAddLoad() {
+  const b = _ubAddBatch; if (!b) return;
+  const list = document.getElementById('uba-list'); list.innerHTML = '<div class="loading">Loading students…</div>';
+  const all = document.getElementById('uba-all').checked;
+  let q = sb.from('students').select('id,uin,name,contact,programme,preferred_slot,source_counsellor,status,batch_id,batch_name').neq('status', 'Dropped').order('enrolled_date', { ascending: false }).limit(300);
+  q = all ? q.or('batch_id.is.null,batch_id.neq.' + b.id) : q.is('batch_id', null).ilike('programme', b.programme || '');
+  const { data } = await q;
+  _ubAddPool = (data || []).filter(s => s.batch_id !== b.id);
+  const { data: cur } = await sb.from('students').select('id,status').eq('batch_id', b.id);
+  const n = (cur || []).filter(x => x.status !== 'Dropped').length, cap = b.capacity || 0;
+  document.getElementById('uba-sub').innerHTML = '<span><b>' + n + '</b> / ' + (cap || '∞') + ' enrolled · ' + (cap ? Math.max(0, cap - n) + ' seats left' : 'unlimited seats') + '</span>';
+  ubAddRender();
+}
+function ubAddRender() {
+  const b = _ubAddBatch, q = (document.getElementById('uba-search').value || '').trim().toLowerCase();
+  const rows = _ubAddPool.filter(s => !q || [s.name, s.uin, s.contact, s.programme, s.preferred_slot, s.source_counsellor].join(' ').toLowerCase().includes(q));
+  const ini = n => String(n || '?').trim().split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+  document.getElementById('uba-list').innerHTML = rows.length ? rows.map(s => {
+    const off = b && s.programme && b.programme && s.programme.toLowerCase() !== b.programme.toLowerCase();
+    return '<div class="ub-pick"><div class="ub-who"><span class="ub-av">' + esc(ini(s.name)) + '</span><div><b>' + esc(s.name) + '</b><div class="ub-sub2" style="margin:2px 0 0">' +
+      esc([s.uin, s.contact, s.programme, s.preferred_slot ? 'prefers ' + s.preferred_slot : '', s.source_counsellor].filter(Boolean).join(' · ')) + '</div>' +
+      (off ? '<div class="ub-sub2 warn" style="margin:2px 0 0">Different course — will be moved to ' + esc(b.programme) + '</div>' : '') +
+      (s.batch_id ? '<div class="ub-sub2 warn" style="margin:2px 0 0">Currently in ' + esc(s.batch_name || 'another batch') + ' — will be moved</div>' : '') +
+      '</div></div><button class="ub-ghost" onclick="ubAddOne(\'' + s.id + '\',' + (off || !!s.batch_id ? 'true' : 'false') + ',this)">Add</button></div>';
+  }).join('') : '<div class="ub-none"><span>' + (q ? 'No students match.' : 'No unassigned students on ' + esc((b && b.programme) || 'this course') + '.') + '</span></div>';
+}
+async function ubAddOne(studentId, override, btn) {
+  if (!_ubAddId) return;
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const res = await sb.rpc('enroll_student_in_batch', { p_batch_id: _ubAddId, p_student_id: studentId, p_override: !!override });
+  const r = res.data || {};
+  if (res.error || !r.ok) { showToast('error', (r && r.error) || (res.error && res.error.message) || 'Could not add student.'); btn.disabled = false; btn.textContent = 'Add'; return; }
+  showToast('success', 'Added.' + (r.full ? ' Batch is now full.' : ''));
+  await loadUpcomingTab(); _ubAddBatch = _ubBatches.find(x => String(x.id) === String(_ubAddId)) || _ubAddBatch;
+  await ubAddLoad();
+  if (document.getElementById('mUbDetail').classList.contains('on')) openUbDetail(_ubAddId);
+  if (r.full) document.getElementById('mUbAdd').classList.remove('on');
 }
 
 async function ubCancelBatch(batchId, enrolledCount) {
