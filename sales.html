@@ -173,6 +173,21 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 .be-celeb-banner-close{position:absolute;top:8px;right:8px;z-index:5;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;pointer-events:auto}
 .be-celeb-banner-close:hover{background:rgba(10,12,20,.9)}
 @media (max-width:480px){.be-celeb-banner-item{height:90px}}
+
+/* Available Batches — batch details */
+.ab-dm{width:min(980px,94vw)!important;max-width:none!important;max-height:90vh;overflow:auto}
+.ab-dm-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+.ab-dm-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3)}
+.ab-dm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:1px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden}
+.ab-dm-kv{background:rgba(13,17,28,.95);padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.ab-dm-kv span{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3)}
+.ab-dm-kv b{font-size:13px;color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-dm-sec{display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2)}
+.ab-dm-t{width:100%;border-collapse:collapse;font-size:12px;min-width:760px}
+.ab-dm-t th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);padding:8px 10px;border-bottom:1px solid var(--bd)}
+.ab-dm-t td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--tx2)}
+.ab-sugg{display:flex;flex-direction:column;gap:6px}
+.ab-sugg-r{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid rgba(16,185,129,.25);border-radius:10px;background:rgba(16,185,129,.05);font-size:12.5px}
 </style>
 <link rel="stylesheet" href="be-timepicker.css">
 <script src="be-timepicker.js"></script>
@@ -503,13 +518,24 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 </div></div>
 
 
+<!-- Batch Details (Available Batches → click a batch) — same batches/students rows Academic uses -->
+<div class="modal-bg" id="mBatchDetail"><div class="modal ab-dm">
+  <div class="ab-dm-head"><div><div class="ab-dm-eyebrow" id="bd_eyebrow">Batch</div><h3 id="bd_title" style="margin:2px 0 0">Batch</h3></div>
+    <button class="btn-ghost btn-sm" onclick="closeModal('mBatchDetail')" aria-label="Close">&times;</button></div>
+  <div id="bd_info" class="ab-dm-grid"></div>
+  <div class="ab-dm-sec"><span>Enrolled students</span><button class="btn btn-sm" id="bd_enrol_btn" onclick="openBatchEnrol(_abDetailId)">+ Enroll student</button></div>
+  <div id="bd_students" style="overflow-x:auto"></div>
+  <div id="bd_suggest"></div>
+</div></div>
+
 <!-- Batch Enrollment Modal (Available Batches → enroll existing student) -->
-<div class="modal-bg" id="mBatchEnrol"><div class="modal" style="max-width:550px">
+<div class="modal-bg" id="mBatchEnrol"><div class="modal" style="max-width:620px">
   <h3 id="be_title">Enroll Student</h3>
   <div class="sub" id="be_batch_info"></div>
   <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-    <label class="fld">Search existing student<input id="be_student_search" placeholder="Name, UIN, or contact…" oninput="beSearchStudents()"/></label>
-    <div id="be_student_results" style="max-height:180px;overflow-y:auto;font-size:12px"></div>
+    <label class="fld">Find student<input id="be_student_search" placeholder="Name, student ID, phone, course, preferred time, counsellor…" oninput="beSearchStudents()"/></label>
+    <label class="head-only" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx2)"><input type="checkbox" id="be_all" onchange="beSearchStudents()" style="width:auto"/> Show all students (override course / deadline)</label>
+    <div id="be_student_results" style="max-height:260px;overflow-y:auto;font-size:12px"></div>
     <input type="hidden" id="be_student_id"/>
     <div id="be_selected_student" style="display:none;padding:8px 12px;background:var(--card);border:1px solid var(--green);border-radius:6px;font-size:13px"></div>
   </div>
@@ -963,12 +989,28 @@ async function loadCrmEnrolments(){
       '<td>' + esc(s.programme || '—') + '</td>' +
       '<td>' + esc(s.source_counsellor || '—') + '</td>' +
       '<td style="white-space:nowrap">' + esc(_uiDate(s.enrolled_date, true)) + '</td>' +
-      '<td>' + (s.batch_name ? esc(s.batch_name) : '<span class="st-pill st-mute" style="text-transform:none">Unassigned</span>') + '</td>' +
+      '<td>' + (s.batch_name ? esc(s.batch_name) : '<span class="st-pill st-mute" style="text-transform:none" data-match-for="' + s.id + '">Unassigned</span>') + '</td>' +
       '<td>' + statusBadge(s.status) + '</td></tr>'
     ).join('');
     renderDash();
+    _abFillMatchChips(rows.filter(r => !r.batch_name && r.status !== 'Dropped').slice(0, 40));
   } catch (e) {
     console.warn('CRM enrolments load error:', e.message);
+  }
+}
+// Unassigned enrolments: show what the shared matcher says (same rule the auto-assign trigger uses).
+async function _abFillMatchChips(rows) {
+  for (const r of rows) {
+    try {
+      const { data: m } = await sb.rpc('batch_match_for_student', { p_student_id: r.id });
+      const el = document.querySelector('[data-match-for="' + r.id + '"]'); if (!el || !m) continue;
+      if (m.state === 'single') {
+        const c = (m.candidates || []).find(x => String(x.batch_id) === String(m.batch_id)) || {};
+        el.outerHTML = '<span style="display:inline-flex;align-items:center;gap:6px"><span class="st-pill st-mute" style="text-transform:none;color:#10b981">Ready: ' + esc(c.batch_name || 'batch') + '</span><button class="btn btn-sm" onclick="abEnrol(\'' + m.batch_id + '\',\'' + r.id + '\',false)">Enroll</button></span>';
+      } else if (m.state === 'multiple') { el.textContent = 'Multiple suitable batches'; el.style.color = '#f59e0b'; }
+      else if (m.state === 'time_required') { el.textContent = 'Time confirmation required'; el.style.color = '#f59e0b'; }
+      else if (m.state === 'none') { el.textContent = 'Batch assignment required'; el.style.color = '#f87171'; }
+    } catch (_) {}
   }
 }
 async function loadCrmLeads(){
@@ -1276,7 +1318,7 @@ let _abEnrolBatchId = null;
 async function loadAvailBatches() {
   try {
     const { data, error } = await sb.from('batches')
-      .select('id,name,programme,batch_type,trainer_id,trainer_name,day_pattern,time_slot,capacity,start_date,enrollment_status,enrollment_deadline,sales_notes,published_at')
+      .select('id,name,programme,course_id,batch_type,trainer_id,trainer_name,day_pattern,time_slot,capacity,start_date,enrollment_status,enrollment_deadline,sales_notes,published_at')
       .eq('status', 'upcoming')
       .in('enrollment_status', ['open', 'full', 'closed'])
       .is('deleted_at', null)
@@ -1286,9 +1328,9 @@ async function loadAvailBatches() {
     // Fetch enrolled counts
     if (_abBatches.length) {
       const ids = _abBatches.map(b => b.id);
-      const { data: stCounts } = await sb.from('students').select('batch_id').in('batch_id', ids);
+      const { data: stCounts } = await sb.from('students').select('batch_id,status').in('batch_id', ids);
       const countMap = {};
-      (stCounts || []).forEach(s => { countMap[s.batch_id] = (countMap[s.batch_id] || 0) + 1; });
+      (stCounts || []).forEach(s => { if (s.status === 'Dropped') return; countMap[s.batch_id] = (countMap[s.batch_id] || 0) + 1; });
       _abBatches.forEach(b => { b._enrolled = countMap[b.id] || 0; });
     }
     // Populate course filter
@@ -1300,6 +1342,7 @@ async function loadAvailBatches() {
       cf.value = cv || 'all';
     }
     renderAvailBatches();
+    if (_abDetailId && document.getElementById('mBatchDetail')?.classList.contains('on')) openBatchDetail(_abDetailId, true);
   } catch (e) {
     const el = document.getElementById('ab-list');
     if (el) el.innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + '</div>';
@@ -1320,8 +1363,8 @@ function renderAvailBatches() {
   var tilesEl = document.getElementById('ab-tiles');
   if (tilesEl) {
     var total = _abBatches.length;
-    var openC = _abBatches.filter(b => b.enrollment_status === 'open').length;
-    var fullC = _abBatches.filter(b => b.enrollment_status === 'full').length;
+    var openC = _abBatches.filter(b => _abState(b) === 'open').length;
+    var fullC = _abBatches.filter(b => _abState(b) === 'full').length;
     var totalEnrolled = _abBatches.reduce((s, b) => s + (b._enrolled || 0), 0);
     tilesEl.innerHTML =
       _abTile(total, 'Total', '#f1f5f9') +
@@ -1340,8 +1383,8 @@ function renderAvailBatches() {
       if (ft === '1:1' && !is11) return false;
       if (ft === 'group' && is11) return false;
     }
-    if (fs !== 'all' && b.enrollment_status !== fs) return false;
-    if (q && !(b.name || '').toLowerCase().includes(q) && !(b.programme || '').toLowerCase().includes(q) && !(b.trainer_name || '').toLowerCase().includes(q)) return false;
+    if (fs !== 'all' && _abState(b) !== fs) return false;
+    if (q && ![b.name, b.programme, b.trainer_name, b.start_date, _abFmtDate(b.start_date)].join(' ').toLowerCase().includes(q)) return false;
     return true;
   });
   if (!rows.length) {
@@ -1353,9 +1396,9 @@ function renderAvailBatches() {
     return;
   }
   const statusBadge = s => {
-    const m = { open: '#10b981', full: '#f59e0b', closed: '#6366f1' };
+    const m = { open: '#10b981', full: '#f59e0b', closed: '#6366f1', deadline: '#94a3b8' };
     const c = m[s] || '#64748b';
-    const labels = { open: 'Open', full: 'Full', closed: 'Closed' };
+    const labels = { open: 'Open', full: 'Full', closed: 'Closed', deadline: 'Enrollment closed' };
     return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;font-size:10.5px;font-weight:700;background:' + c + '18;color:' + c + ';border:1px solid ' + c + '33"><span style="width:6px;height:6px;border-radius:50%;background:' + c + '"></span>' + (labels[s] || s || '—') + '</span>';
   };
   el.innerHTML = rows.map(b => {
@@ -1363,14 +1406,15 @@ function renderAvailBatches() {
     const cap = b.capacity || 0;
     const remaining = cap ? Math.max(0, cap - enrolled) : '∞';
     const pct = cap > 0 ? Math.min(100, Math.round(enrolled / cap * 100)) : 0;
-    const barColor = b.enrollment_status === 'full' ? '#f59e0b' : '#10b981';
-    const canEnrol = b.enrollment_status === 'open';
-    return '<div style="background:rgba(13,17,28,.75);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px 18px;margin-bottom:10px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(255,255,255,.18)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.07)\'">' +
+    const st = _abState(b);
+    const barColor = st === 'full' ? '#f59e0b' : '#10b981';
+    const canEnrol = st === 'open' || (st === 'deadline' && ME && ME.isHead);
+    return '<div role="button" tabindex="0" onclick="openBatchDetail(\'' + b.id + '\')" onkeydown="if(event.key===\'Enter\')openBatchDetail(\'' + b.id + '\')" style="cursor:pointer;background:rgba(13,17,28,.75);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px 18px;margin-bottom:10px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(255,255,255,.18)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.07)\'">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
         '<div style="flex:1;min-width:200px">' +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
             '<span style="font-size:15px;font-weight:700;color:#f1f5f9">' + esc(b.name) + '</span>' +
-            statusBadge(b.enrollment_status) +
+            statusBadge(st) +
           '</div>' +
           '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:3px">' + esc(b.programme || '') + (b.capacity === 1 ? ' · 1:1' : ' · Group') + '</div>' +
         '</div>' +
@@ -1379,7 +1423,7 @@ function renderAvailBatches() {
             '<div style="font-size:20px;font-weight:800;color:#f1f5f9;font-variant-numeric:tabular-nums">' + enrolled + '<span style="font-size:13px;font-weight:400;color:rgba(255,255,255,.3)">/' + (cap || '∞') + '</span></div>' +
             '<div style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em">enrolled</div>' +
           '</div>' +
-          (canEnrol ? '<button class="btn" style="font-size:12px;padding:6px 14px;border-radius:8px;white-space:nowrap" onclick="openBatchEnrol(\'' + b.id + '\')">Enroll</button>' : '') +
+          (canEnrol ? '<button class="btn" style="font-size:12px;padding:6px 14px;border-radius:8px;white-space:nowrap" onclick="event.stopPropagation();openBatchEnrol(\'' + b.id + '\')">Enroll</button>' : '') +
         '</div>' +
       '</div>' +
       (cap > 0 ? '<div style="margin:10px 0 8px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width .3s"></div></div>' : '') +
@@ -1387,9 +1431,9 @@ function renderAvailBatches() {
         '<span><i data-lucide="user" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.trainer_name || 'TBD') + '</span>' +
         (b.day_pattern ? '<span><i data-lucide="calendar" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.day_pattern) + '</span>' : '') +
         (b.time_slot ? '<span><i data-lucide="clock" style="width:11px;height:11px;vertical-align:-1px"></i> ' + esc(b.time_slot) + '</span>' : '') +
-        '<span>Start: ' + esc(b.start_date || '—') + '</span>' +
+        '<span>Start: ' + esc(_abFmtDate(b.start_date)) + '</span>' +
         (remaining !== '∞' ? '<span style="color:' + (remaining === 0 ? '#f59e0b' : '#38bdf8') + '">Remaining: <b>' + remaining + '</b></span>' : '') +
-        (b.enrollment_deadline ? '<span>Deadline: ' + esc(b.enrollment_deadline) + '</span>' : '') +
+        (b.enrollment_deadline ? '<span' + (st === 'deadline' ? ' style="color:#f87171"' : '') + '>Deadline: ' + esc(_abFmtDate(b.enrollment_deadline)) + '</span>' : '') +
       '</div>' +
       (b.sales_notes ? '<div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:8px;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px;border-left:2px solid rgba(255,255,255,.1);font-style:italic">' + esc(b.sales_notes) + '</div>' : '') +
     '</div>';
@@ -1397,84 +1441,168 @@ function renderAvailBatches() {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+// ── Available Batches helpers ────────────────────────────────────────────────
+// Display state: Academic's enrollment_status, plus "deadline" when the enrollment deadline
+// (India date) has passed while the batch still says open.
+function _abTodayIST() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); }
+function _abState(b) {
+  if (b.enrollment_status === 'open' && b.enrollment_deadline && String(b.enrollment_deadline).slice(0,10) < _abTodayIST()) return 'deadline';
+  return b.enrollment_status || 'closed';
+}
+function _abFmtDate(d) { if (!d) return '—'; const t = new Date(String(d).slice(0,10) + 'T00:00:00'); return isNaN(t) ? String(d) : t.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+let _abDetailId = null;
+const _AB_ST_FIELDS = 'id,uin,name,contact,programme,preferred_slot,source_counsellor,enrolled_date,status,batch_id,batch_name';
+
+async function openBatchDetail(batchId, silent) {
+  const b = _abBatches.find(x => String(x.id) === String(batchId)); if (!b) return;
+  _abDetailId = batchId;
+  const st = _abState(b), enrolled = b._enrolled || 0, cap = b.capacity || 0;
+  const labels = { open: 'Open', full: 'Full', closed: 'Closed', deadline: 'Enrollment closed' };
+  document.getElementById('bd_eyebrow').textContent = (b.programme || 'Batch') + ' · ' + (b.capacity === 1 ? '1:1' : 'Group');
+  document.getElementById('bd_title').textContent = b.name;
+  const kv = (k, v) => '<div class="ab-dm-kv"><span>' + k + '</span><b>' + v + '</b></div>';
+  document.getElementById('bd_info').innerHTML =
+    kv('Course', esc(b.programme || '—')) + kv('Type', b.capacity === 1 ? '1:1' : 'Group') + kv('Trainer', esc(b.trainer_name || 'TBD')) +
+    kv('Start date', esc(_abFmtDate(b.start_date))) + kv('Enrollment deadline', esc(_abFmtDate(b.enrollment_deadline))) + kv('Class days', esc(b.day_pattern || '—')) +
+    kv('Class time', esc(b.time_slot || 'No fixed time')) + kv('Capacity', cap || '∞') + kv('Enrolled', enrolled) +
+    kv('Seats left', cap ? Math.max(0, cap - enrolled) : '∞') + kv('Status', labels[st] || st);
+  document.getElementById('bd_enrol_btn').style.display = (st === 'open' || (st === 'deadline' && ME && ME.isHead)) ? '' : 'none';
+  if (!silent) { document.getElementById('bd_students').innerHTML = '<div class="loading">Loading…</div>'; document.getElementById('bd_suggest').innerHTML = ''; openModal('mBatchDetail'); }
+  const { data: rows } = await sb.from('students').select(_AB_ST_FIELDS).eq('batch_id', batchId).order('name');
+  if (_abDetailId !== batchId) return;
+  const list = (rows || []);
+  document.getElementById('bd_students').innerHTML = list.length
+    ? '<table class="ab-dm-t"><thead><tr><th>Student</th><th>ID</th><th>Contact</th><th>Course</th><th>Preferred time</th><th>Counsellor</th><th>Enrolled</th><th>Status</th><th></th></tr></thead><tbody>' +
+      list.map(r => '<tr><td style="font-weight:600;color:var(--tx)">' + esc(r.name) + '</td><td>' + esc(r.uin || '—') + '</td><td>' + esc(r.contact || '—') + '</td><td>' + esc(r.programme || '—') +
+        '</td><td>' + esc(r.preferred_slot || '—') + '</td><td>' + esc(r.source_counsellor || '—') + '</td><td style="white-space:nowrap">' + esc(_abFmtDate(r.enrolled_date)) + '</td><td>' + esc(r.status || 'New') +
+        '</td><td>' + (ME && ME.isHead ? '<button class="btn-ghost btn-sm" onclick="abRemoveStudent(\'' + r.id + '\',\'' + esc(r.name).replace(/'/g, '') + '\')">Remove</button>' : '') + '</td></tr>').join('') + '</tbody></table>'
+    : '<div class="empty" style="padding:18px">No students enrolled yet.</div>';
+  // Suggestions: unassigned students on this course whose single clear match is this batch.
+  if (st === 'open' || st === 'deadline') {
+    const { data: pool } = await sb.from('students').select(_AB_ST_FIELDS).is('batch_id', null).ilike('programme', b.programme || '').neq('status', 'Dropped').limit(50);
+    const sugg = [];
+    for (const r of (pool || [])) {
+      const { data: m } = await sb.rpc('batch_match_for_student', { p_student_id: r.id });
+      if (m && m.state === 'single' && String(m.batch_id) === String(batchId)) sugg.push(r);
+    }
+    if (_abDetailId !== batchId) return;
+    document.getElementById('bd_suggest').innerHTML = sugg.length ? '<div class="ab-dm-sec"><span>Ready to enroll (' + sugg.length + ')</span></div><div class="ab-sugg">' +
+      sugg.map(r => '<div class="ab-sugg-r"><div><b>' + esc(r.name) + '</b> <span style="color:var(--tx3)">' + esc(r.uin || '') + (r.contact ? ' · ' + esc(r.contact) : '') + '</span><div style="font-size:11px;color:var(--tx3)">' + esc(r.programme || '') + (r.source_counsellor ? ' · ' + esc(r.source_counsellor) : '') + '</div></div>' +
+        (st === 'open' ? '<button class="btn btn-sm" onclick="abEnrol(\'' + batchId + '\',\'' + r.id + '\',false)">Enroll</button>' : '') + '</div>').join('') + '</div>' : '';
+  }
+}
+
+async function abRemoveStudent(studentId, name) {
+  if (!(ME && ME.isHead) || !_abDetailId) return;
+  if (!(await beConfirm({ title: 'Remove from batch?', message: 'Remove ' + name + ' from this batch?', detail: 'They stay a student and can be enrolled in another batch.', confirmLabel: 'Remove' }))) return;
+  const res = await sb.rpc('unenroll_student_from_batch', { p_batch_id: _abDetailId, p_student_id: studentId });
+  const out = res.data || {};
+  if (res.error || !out.ok) { showToast('error', (out && out.error) || (res.error && res.error.message) || 'Could not remove student.'); return; }
+  showToast('success', name + ' removed from the batch.');
+  loadAvailBatches(); if (typeof loadCrmEnrolments === 'function') loadCrmEnrolments();
+}
+
+let _bePool = [], _beBatch = null;
 async function openBatchEnrol(batchId) {
   const b = _abBatches.find(x => String(x.id) === String(batchId));
   if (!b) return;
-  _abEnrolBatchId = batchId;
+  _abEnrolBatchId = batchId; _beBatch = b;
   document.getElementById('be_title').textContent = 'Enroll Student — ' + b.name;
   const enrolled = b._enrolled || 0;
   const cap = b.capacity || '∞';
   const remaining = b.capacity ? Math.max(0, b.capacity - enrolled) : '∞';
   document.getElementById('be_batch_info').innerHTML =
-    esc(b.programme || '') + (b.trainer_name ? ' · ' + esc(b.trainer_name) : '') + (b.time_slot ? ' · ' + esc(b.time_slot) : '') +
-    '<br>Enrolled: <b>' + enrolled + '</b> / Capacity: <b>' + cap + '</b> — Remaining: <b>' + remaining + '</b>';
+    esc(b.programme || '') + (b.trainer_name ? ' · ' + esc(b.trainer_name) : '') + ' · ' + esc(b.time_slot || 'No fixed time') +
+    '<br>Enrolled: <b>' + enrolled + '</b> / Capacity: <b>' + cap + '</b> — Remaining: <b>' + remaining + '</b>' +
+    (_abState(b) === 'deadline' ? '<br><span style="color:#f87171">Enrollment deadline has passed — head override only.</span>' : '');
   document.getElementById('be_student_search').value = '';
-  document.getElementById('be_student_results').innerHTML = '';
+  const all = document.getElementById('be_all'); if (all) all.checked = false;
   document.getElementById('be_student_id').value = '';
   document.getElementById('be_selected_student').style.display = 'none';
   document.getElementById('be_enrol_btn').disabled = true;
-  // Load already-enrolled students
-  const { data: enrolled_st } = await sb.from('students').select('id,uin,name,contact').eq('batch_id', batchId);
+  document.getElementById('be_student_results').innerHTML = '<div class="loading">Loading eligible students…</div>';
+  // Eligible by default: same course, not in a batch, not Dropped.
+  const { data } = await sb.from('students').select(_AB_ST_FIELDS).is('batch_id', null).ilike('programme', b.programme || '').neq('status', 'Dropped').order('enrolled_date', { ascending: false }).limit(200);
+  _bePool = data || [];
+  const { data: enrolled_st } = await sb.from('students').select('id,uin,name').eq('batch_id', batchId);
   const el = document.getElementById('be_enrolled_list');
-  if (enrolled_st && enrolled_st.length) {
-    el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:4px;color:var(--tx3)">Already Enrolled (' + enrolled_st.length + ')</div>' +
-      enrolled_st.map(s => '<div style="font-size:12px;padding:3px 0;color:var(--tx)">' + esc(s.uin || '—') + ' — ' + esc(s.name) + '</div>').join('');
-  } else {
-    el.innerHTML = '<div style="font-size:12px;color:var(--tx3)">No students enrolled yet.</div>';
-  }
+  el.innerHTML = (enrolled_st && enrolled_st.length)
+    ? '<div style="font-size:12px;font-weight:700;margin-bottom:4px;color:var(--tx3)">Already enrolled (' + enrolled_st.length + ')</div>' + enrolled_st.map(s => '<div style="font-size:12px;padding:3px 0;color:var(--tx)">' + esc(s.uin || '—') + ' — ' + esc(s.name) + '</div>').join('')
+    : '<div style="font-size:12px;color:var(--tx3)">No students enrolled yet.</div>';
   openModal('mBatchEnrol');
+  beSearchStudents();
 }
 
 let _beSearchTimeout;
+function _beRowHTML(s, b) {
+  const already = s.batch_id === _abEnrolBatchId;
+  const other = s.batch_id && !already;
+  const courseOff = b && b.programme && s.programme && s.programme.toLowerCase() !== b.programme.toLowerCase();
+  const timeOff = b && b.time_slot && s.preferred_slot && s.preferred_slot.replace(/\s+/g,'').toLowerCase().slice(0,6) !== b.time_slot.replace(/\s+/g,'').toLowerCase().slice(0,6);
+  return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid var(--bd);cursor:' + (already ? 'default' : 'pointer') + '"' +
+    (already ? '' : ' onclick="beSelectStudent(\'' + s.id + '\',\'' + esc(s.uin || '') + '\',\'' + esc(s.name).replace(/'/g, '') + '\',' + (courseOff ? 'true' : 'false') + ')"') + '>' +
+    '<div style="min-width:0"><b>' + esc(s.name) + '</b> <span style="color:var(--tx3)">' + esc(s.uin || '') + '</span>' + (s.contact ? ' · ' + esc(s.contact) : '') +
+      '<div style="font-size:11px;color:var(--tx3)">' + esc(s.programme || 'No course') + (s.preferred_slot ? ' · prefers ' + esc(s.preferred_slot) : '') + (s.source_counsellor ? ' · ' + esc(s.source_counsellor) : '') + '</div>' +
+      (courseOff ? '<div style="font-size:11px;color:#f59e0b">Different course — override</div>' : '') +
+      (!courseOff && b && b.time_slot && !s.preferred_slot ? '<div style="font-size:11px;color:#f59e0b">Time confirmation required</div>' : '') +
+      (timeOff ? '<div style="font-size:11px;color:#f59e0b">Prefers a different time</div>' : '') +
+      (other ? '<div style="font-size:11px;color:#f59e0b">Currently in ' + esc(s.batch_name || 'another batch') + ' — will be moved</div>' : '') +
+    '</div>' +
+    (already ? '<span style="color:var(--green);font-size:11px;font-weight:700;white-space:nowrap">Already enrolled</span>' : '<span style="color:var(--blue);font-size:11px;white-space:nowrap">Select</span>') +
+  '</div>';
+}
 async function beSearchStudents() {
   clearTimeout(_beSearchTimeout);
-  const q = (document.getElementById('be_student_search')?.value || '').trim();
+  const q = (document.getElementById('be_student_search')?.value || '').trim().toLowerCase();
+  const showAll = !!document.getElementById('be_all')?.checked && ME && ME.isHead;
   const el = document.getElementById('be_student_results');
-  if (q.length < 2) { el.innerHTML = '<div style="color:var(--tx3);padding:4px">Type at least 2 characters…</div>'; return; }
+  if (!showAll) {
+    const rows = _bePool.filter(s => !q || [s.name, s.uin, s.contact, s.programme, s.preferred_slot, s.source_counsellor].join(' ').toLowerCase().includes(q));
+    el.innerHTML = rows.length ? rows.map(s => _beRowHTML(s, _beBatch)).join('')
+      : '<div style="color:var(--tx3);padding:6px">' + (q ? 'No eligible students match.' : 'No unassigned students on ' + esc((_beBatch && _beBatch.programme) || 'this course') + '.') + '</div>';
+    return;
+  }
+  if (q.length < 2) { el.innerHTML = '<div style="color:var(--tx3);padding:6px">Type at least 2 characters to search all students…</div>'; return; }
   _beSearchTimeout = setTimeout(async () => {
-    const { data } = await sb.from('students').select('id,uin,name,contact,programme,batch_id,batch_name').or('name.ilike.%' + q + '%,uin.ilike.%' + q + '%,contact.ilike.%' + q + '%').limit(20);
-    if (!data || !data.length) { el.innerHTML = '<div style="color:var(--tx3);padding:4px">No students found.</div>'; return; }
-    el.innerHTML = data.map(s => {
-      const alreadyInBatch = s.batch_id === _abEnrolBatchId;
-      const inOtherBatch = s.batch_id && !alreadyInBatch;
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bd);cursor:' + (alreadyInBatch ? 'default' : 'pointer') + '"' +
-        (alreadyInBatch ? '' : ' onclick="beSelectStudent(\'' + s.id + '\',\'' + esc(s.uin || '') + '\',\'' + esc(s.name) + '\')"') + '>' +
-        '<div><b>' + esc(s.name) + '</b> <span style="color:var(--tx3)">' + esc(s.uin || '') + '</span>' +
-          (s.contact ? ' · ' + esc(s.contact) : '') +
-          (inOtherBatch ? ' <span style="color:#f59e0b;font-size:11px">(in ' + esc(s.batch_name || 'another batch') + ')</span>' : '') +
-        '</div>' +
-        (alreadyInBatch ? '<span style="color:var(--green);font-size:11px;font-weight:700">Already enrolled</span>' : '<span style="color:var(--blue);font-size:11px">Select</span>') +
-      '</div>';
-    }).join('');
+    const like = '%' + q.replace(/[%,()]/g, ' ') + '%';
+    const { data } = await sb.from('students').select(_AB_ST_FIELDS)
+      .or('name.ilike.' + like + ',uin.ilike.' + like + ',contact.ilike.' + like + ',programme.ilike.' + like + ',preferred_slot.ilike.' + like + ',source_counsellor.ilike.' + like).limit(30);
+    el.innerHTML = (data && data.length) ? data.map(s => _beRowHTML(s, _beBatch)).join('') : '<div style="color:var(--tx3);padding:6px">No students found.</div>';
   }, 300);
 }
 
-function beSelectStudent(id, uin, name) {
+let _beOverride = false;
+function beSelectStudent(id, uin, name, courseOff) {
+  _beOverride = !!courseOff || (_beBatch && _abState(_beBatch) === 'deadline');
+  if (_beOverride && !(ME && ME.isHead)) { showToast('error', 'Only a head can enroll outside the course or after the deadline.'); return; }
   document.getElementById('be_student_id').value = id;
-  document.getElementById('be_selected_student').innerHTML = 'Selected: <b>' + esc(name) + '</b> (' + esc(uin) + ')';
+  document.getElementById('be_selected_student').innerHTML = 'Selected: <b>' + esc(name) + '</b> (' + esc(uin) + ')' + (_beOverride ? ' <span style="color:#f59e0b">· override</span>' : '');
   document.getElementById('be_selected_student').style.display = 'block';
   document.getElementById('be_enrol_btn').disabled = false;
 }
 
+async function abEnrol(batchId, studentId, override) {
+  const res = await sb.rpc('enroll_student_in_batch', { p_batch_id: batchId, p_student_id: studentId, p_override: !!override });
+  if (res.error) { showToast('error', res.error.message); return false; }
+  const r = res.data;
+  if (r && !r.ok) { showToast('error', r.error); return false; }
+  showToast('success', 'Student enrolled in ' + ((r && r.batch_name) || 'the batch') + '.' + (r && r.full ? ' Batch is now full.' : ''));
+  loadAvailBatches(); if (typeof loadCrmEnrolments === 'function') loadCrmEnrolments();
+  return true;
+}
+
+let _beInFlight = false;
 async function batchEnrolStudent() {
   const studentId = document.getElementById('be_student_id').value;
-  if (!studentId || !_abEnrolBatchId) return;
+  if (!studentId || !_abEnrolBatchId || _beInFlight) return;
   const btn = document.getElementById('be_enrol_btn');
-  btn.disabled = true;
-  btn.textContent = 'Enrolling…';
+  _beInFlight = true; btn.disabled = true; btn.textContent = 'Enrolling…';
   try {
-    const res = await sb.rpc('enroll_student_in_batch', { p_batch_id: _abEnrolBatchId, p_student_id: studentId });
-    if (res.error) { showToast('error', res.error.message); return; }
-    const result = res.data;
-    if (result && !result.ok) { showToast('error', result.error); return; }
-    showToast('success', 'Student enrolled!' + (result && result.full ? ' Batch is now full.' : ''));
-    closeModal('mBatchEnrol');
-    loadAvailBatches();
+    if (await abEnrol(_abEnrolBatchId, studentId, _beOverride && ME && ME.isHead)) closeModal('mBatchEnrol');
   } catch (e) {
     showToast('error', 'Enrollment failed: ' + e.message);
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Enroll Selected Student';
+    _beInFlight = false; btn.disabled = false; btn.textContent = 'Enroll Selected Student';
   }
 }
 
