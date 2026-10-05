@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="be-version" content="2026.10.05.1846-vj3k">
+<script src="be-update.js?v=2026.10.05.1846-vj3k"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Broken English | Manager Command Center</title>
 <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
@@ -9,13 +11,14 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="account-menu.css">
-<link rel="stylesheet" href="be-ui.css">
-<script src="be-mobile.js"></script>
-<script src="account-menu.js"></script>
-<script src="photo-preview.js"></script>
-<script src="shared-greeting.js"></script>
-<script src="be-shell.js"></script>
+<script src="be-live.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.05.1846-vj3k">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.05.1846-vj3k">
+<script src="be-mobile.js?v=2026.10.05.1846-vj3k"></script>
+<script src="account-menu.js?v=2026.10.05.1846-vj3k"></script>
+<script src="photo-preview.js?v=2026.10.05.1846-vj3k"></script>
+<script src="shared-greeting.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-shell.js?v=2026.10.05.1846-vj3k"></script>
 <style>
   :root{ --bg:#08070b; --panel:#0f0d14; --panel2:#141019; --bd:rgba(255,255,255,0.07);
          --tx:#f4f4f8; --tx2:rgba(255,255,255,0.55); --tx3:rgba(255,255,255,0.30);
@@ -236,10 +239,10 @@
     </main>
   </div>
 
-<script src="common.js"></script>
-<script src="access-guard.js"></script>
-<script src="announcements.js"></script>
-<script src="leave-policy.js"></script>
+<script src="common.js?v=2026.10.05.1846-vj3k"></script>
+<script src="access-guard.js?v=2026.10.05.1846-vj3k"></script>
+<script src="announcements.js?v=2026.10.05.1846-vj3k"></script>
+<script src="leave-policy.js?v=2026.10.05.1846-vj3k"></script>
 <script>
 (async function(){
   'use strict';
@@ -293,7 +296,8 @@
   window.mgrLogout = function(){ try{ localStorage.removeItem('be_active_email'); localStorage.removeItem('be_active_role'); localStorage.removeItem('be_media_academic_session'); }catch(_){ } location.href='index.html'; };
 
   // ── overview metrics (COUNT-only, fault-isolated). Media from assignments; no full fetch. ──
-  Promise.allSettled([
+  // Re-run live (be-live.js) whenever any of the counted tables changes.
+  function loadMetrics(){ return Promise.allSettled([
     cnt(db.from('assignments').select('id',{count:'exact',head:true}).in('status',['Pending','In Progress'])),                 // 0 media queue
     cnt(db.from('assignments').select('id',{count:'exact',head:true}).eq('status','Completed').ilike('type','%video%')),        // 1 done videos
     cnt(db.from('assignments').select('id',{count:'exact',head:true}).eq('status','Completed').ilike('type','%thumb%')),        // 2 done thumbs
@@ -320,8 +324,10 @@
     put('sl-tot',v[12]); put('sl-fc',v[13]); put('sl-en',v[14]); put('sl-nw',v[15]);
     put('ac-media',v[16]); put('ac-leave',v[7]); put('ac-trainers',v[8]); put('ac-enrol',v[17]);
     var notif = (v[16]||0)+(v[7]||0); var nb=document.getElementById('mgr-nav-notif'), bd=document.getElementById('mgr-bell-dot');
-    if(nb && notif){ nb.textContent=notif; nb.style.display='inline-flex'; } if(bd && notif){ bd.textContent=notif; bd.style.display='inline-flex'; }
-  });
+    if(nb){ nb.textContent=notif||''; nb.style.display=notif?'inline-flex':'none'; } if(bd){ bd.textContent=notif||''; bd.style.display=notif?'inline-flex':'none'; }
+  }); }
+  loadMetrics();
+  if (window.BELive) { BELive.use(db); BELive.on('mgr-overview', ['assignments','hr_employees','hr_attendance','hr_leave_requests','trainers','batches','students','courses','leads'], loadMetrics, { debounce: 2000 }); }
 
   // ── Live Announcements & Updates — HR announcements + celebration events (same shared source). ──
   (async function(){

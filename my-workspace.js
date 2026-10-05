@@ -549,6 +549,7 @@
   function injectCSS() { if (document.getElementById('mw-css')) return; var s = document.createElement('style'); s.id = 'mw-css'; s.textContent = CSS; document.head.appendChild(s); }
 
   // =================================================================== API
+  var _current = null;
   var RENDER = { profile: renderProfile, announcements: renderAnnouncements, attendance: renderAttendance, leave: renderLeave, documents: renderDocuments, payslips: renderPayslips, team: renderTeam };
   window.MyWorkspace = {
     init: function (c) {
@@ -562,11 +563,21 @@
     open: async function (panel) {
       if (!cfg) return;
       var root = el(panel); if (!root || !RENDER[panel]) return;
+      _current = panel;
       root.classList.add('mw-root');
       if (!root.innerHTML.trim()) root.innerHTML = '<div class="mw-card">' + loading() + '</div>';
       try { await RENDER[panel](root); }
       catch (e) { console.warn('MyWorkspace ' + panel + ' failed:', e); root.innerHTML = '<div class="mw-card">' + empty('inbox', 'Could not load this section', (e && e.message) || 'Please try again.') + '</div>'; }
     },
-    reset: function () { _me = null; _meEmail = null; _attMonth = null; }
+    reset: function () { _me = null; _meEmail = null; _attMonth = null; },
+    // Live data changed (be-live.js): repaint the panel that is on screen — but never while the
+    // employee is typing in it (e.g. a half-filled leave request); it repaints once they stop.
+    refresh: function () {
+      if (!cfg || !_current) return;
+      var root = el(_current); if (!root || !root.offsetParent) return;
+      var self = this, panel = _current;
+      var go = function () { if (_current === panel && root.offsetParent) self.open(panel); };
+      if (window.BELive) BELive.whenIdle(root, go); else go();
+    }
   };
 })();

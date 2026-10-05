@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+<meta name="be-version" content="2026.10.05.1846-vj3k">
+<script src="be-update.js?v=2026.10.05.1846-vj3k"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Broken English | Production Studio Network</title>
 
@@ -21,6 +23,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="be-live.js?v=2026.10.05.1846-vj3k"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
@@ -893,20 +896,20 @@
          two files) — see sidebar-collapse.js's own header comment. Loaded plain (no defer) since it's a
          tiny same-origin file — negligible parse cost, and guarantees initSidebarCollapse()
          already exists by the time each page calls it right after its own <aside> markup. -->
-    <link rel="stylesheet" href="sidebar-collapse.css">
-    <script src="sidebar-collapse.js"></script>
-<script src="be-select.js"></script>
-<script src="be-mobile.js"></script>
-    <link rel="stylesheet" href="account-menu.css">
-<link rel="stylesheet" href="be-ui.css">
-    <script src="account-menu.js"></script>
-<script src="photo-preview.js"></script>
-    <link rel="stylesheet" href="dashboard-metrics.css">
-    <script src="dashboard-metrics.js"></script>
-    <script src="shared-greeting.js"></script>
-    <script src="be-shell.js"></script>
-<link rel="stylesheet" href="be-timepicker.css">
-<script src="be-timepicker.js"></script>
+    <link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.05.1846-vj3k">
+    <script src="sidebar-collapse.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-select.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-mobile.js?v=2026.10.05.1846-vj3k"></script>
+    <link rel="stylesheet" href="account-menu.css?v=2026.10.05.1846-vj3k">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.05.1846-vj3k">
+    <script src="account-menu.js?v=2026.10.05.1846-vj3k"></script>
+<script src="photo-preview.js?v=2026.10.05.1846-vj3k"></script>
+    <link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.05.1846-vj3k">
+    <script src="dashboard-metrics.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="shared-greeting.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="be-shell.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.05.1846-vj3k">
+<script src="be-timepicker.js?v=2026.10.05.1846-vj3k"></script>
 
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -2620,9 +2623,9 @@
         </main>
     </div>
 
-    <script src="common.js"></script>
-    <script src="access-guard.js"></script>
-    <script src="announcements.js"></script>
+    <script src="common.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="access-guard.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="announcements.js?v=2026.10.05.1846-vj3k"></script>
     <script>
         // Signed out because access was revoked (access-guard.js) — say why on the sign-in screen.
         window.addEventListener('load', function () {
@@ -2632,9 +2635,9 @@
             if (typeof _showPortalLoginError === 'function') _showPortalLoginError(msg);
         });
     </script>
-    <script src="policy-config.js"></script>
-    <script src="leave-policy.js"></script>
-<script src="my-workspace.js"></script>
+    <script src="policy-config.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="leave-policy.js?v=2026.10.05.1846-vj3k"></script>
+<script src="my-workspace.js?v=2026.10.05.1846-vj3k"></script>
 <script>
   // My Workspace — shared module (same UI + logic as Academic and Sales). Identity is read at
   // render time, so account switches pick up the new employee automatically.
@@ -2646,7 +2649,7 @@
     navigate: function (p) { switchTab({ profile: 'my-profile', announcements: 'announcements', attendance: 'my-attendance', leave: 'my-leave', documents: 'my-docs', payslips: 'my-payslips', team: 'team-members' }[p]); }
   });
 </script>
-    <script src="dynamic-tabs.js"></script>
+    <script src="dynamic-tabs.js?v=2026.10.05.1846-vj3k"></script>
     <script>
         // Configuration Parameters
         // [moved to shared/common.js or hr/index.html: original lines 2560-2561]
@@ -3387,7 +3390,6 @@
         // this screen shows" function (it's what every existing post-action call site already
         // uses after a local mutation) — it just needs to also fire when a DIFFERENT user
         // changes one of these tables, not on a blind timer. See _beInitRealtime below.
-        let _beRealtimeChannels = [];
         let _beRealtimeDebounce = null;
         function _beScheduleRealtimeSync() {
             clearTimeout(_beRealtimeDebounce);
@@ -3398,20 +3400,28 @@
                 try { if (typeof window.mhAssignedWorkLiveRefresh === 'function') window.mhAssignedWorkLiveRefresh(); } catch (e) {}
             }, 600);
         }
+        // Shared realtime hub (be-live.js): one channel for the whole page, auto-reconnect,
+        // and a resync (handler called with info.resync) whenever events may have been missed.
         function _beInitRealtime() {
-            _beTeardownRealtime();
-            if (typeof dbInstance === 'undefined' || !dbInstance || typeof dbInstance.channel !== 'function') return;
-            const tag = (typeof activeEmail === 'string' && activeEmail) || 'anon';
-            ['user_roster', 'assignments', 'system_logs', 'attendance_logs'].forEach(table => {
-                const ch = dbInstance.channel('be-rt-' + table + '-' + tag)
-                    .on('postgres_changes', { event: '*', schema: 'public', table }, () => _beScheduleRealtimeSync())
-                    .subscribe();
-                _beRealtimeChannels.push(ch);
-            });
+            if (!window.BELive) return;
+            BELive.on('media-core', ['user_roster', 'assignments', 'system_logs', 'attendance_logs', 'work_submission_files'], () => _beScheduleRealtimeSync(), { debounce: 0 });
+            // Employee self-service data (leave, attendance, payslips, holidays): reload this
+            // login's HR data, re-check status notifications (leave approved, payslip sent…) and
+            // repaint whatever My Workspace panel / clock card is on screen.
+            BELive.on('media-my-hr', ['hr_leave_requests', 'hr_attendance', 'hr_payroll', 'hr_leave_balances', 'hr_holidays', 'hr_official_events', 'hr_celebration_events', 'hr_employees', 'hr_cl_buckets', 'hr_sl_ledger'], async (evs, info) => {
+                const me = typeof myHREmployeeRecord === 'function' ? myHREmployeeRecord() : null;
+                const mine = info.resync || !me || evs.some(e => { const r = e.new && Object.keys(e.new).length ? e.new : e.old || {}; return !('employee_id' in r) || r.employee_id === me.id || r.id === me.id; });
+                if (!mine || !activeUser) return;
+                myHRDataLoaded = false;
+                try { _lastHRNotifPoll = 0; } catch (e) {} // a real change — skip the 20 s poll throttle
+                if (typeof checkForHRNotifications === 'function') await checkForHRNotifications(); else await loadMyHRData();
+                try { if (typeof refreshAttendanceClockCard === 'function') refreshAttendanceClockCard(); } catch (e) {}
+                try { if (typeof renderNotifBadges === 'function') renderNotifBadges(); } catch (e) {}
+                if (window.MyWorkspace && MyWorkspace.refresh) MyWorkspace.refresh();
+            }, { debounce: 800 });
         }
         function _beTeardownRealtime() {
-            _beRealtimeChannels.forEach(ch => { try { dbInstance.removeChannel(ch); } catch (e) {} });
-            _beRealtimeChannels = [];
+            if (window.BELive) { BELive.off('media-core'); BELive.off('media-my-hr'); }
             clearTimeout(_beRealtimeDebounce);
         }
         window.addEventListener('beforeunload', _beTeardownRealtime);
@@ -3676,8 +3686,9 @@
             document.getElementById('main-application-frame').classList.remove('opacity-0', 'pointer-events-none');
 
             // ── Background data loading (not blocking UI) ──
+            // Live updates start right away — they don't need to wait for the first full sync.
+            if (typeof _beInitRealtime === 'function') _beInitRealtime();
             syncLedgerEngine(false).then(() => {
-                if (typeof _beInitRealtime === 'function') _beInitRealtime();
                 const liveMe = userRoster.find(u => u.email === activeEmail || u.name === activeUser);
                 if (liveMe && liveMe.role && liveMe.role !== activeRole) {
                     activeRole = liveMe.role;
@@ -4168,7 +4179,7 @@
         // duplicate of common.js's own copy that silently shadowed it (function
         // re-declaration, last one loaded wins) and never got the photo-lookup/current-
         // account enhancements added there. Deleted — index.html already <script
-        // src="common.js">s the one real copy, so this needed no replacement, just removal.
+        // src="common.js?v=2026.10.05.1846-vj3k">s the one real copy, so this needed no replacement, just removal.
 
         function switchToAccount(email) {
             const accounts = getSavedAccounts();
@@ -11117,6 +11128,6 @@ async function saveLeave(){
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && mhRa.id) mhReassignClose(); });
 })();
 </script>
-<script src="media-monthly-report.js"></script>
+<script src="media-monthly-report.js?v=2026.10.05.1846-vj3k"></script>
 </body>
 </html>

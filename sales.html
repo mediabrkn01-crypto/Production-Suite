@@ -2,32 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
+<meta name="be-version" content="2026.10.05.1846-vj3k">
+<script src="be-update.js?v=2026.10.05.1846-vj3k"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>Broken English · Sales Command Center</title>
 <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
 <link rel="apple-touch-icon" href="Broken English Final Logo-02 (1).png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="be-live.js?v=2026.10.05.1846-vj3k"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="sidebar-collapse.css"/>
-<script src="sidebar-collapse.js"></script>
-<script src="be-select.js"></script>
-<script src="be-mobile.js"></script>
+<link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.05.1846-vj3k"/>
+<script src="sidebar-collapse.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-select.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-mobile.js?v=2026.10.05.1846-vj3k"></script>
 <!-- Shared platform UI system (same files HR / Academics / Media load) — metric strip,
      top-right account menu, live greeting. Reused, not re-implemented. -->
-<link rel="stylesheet" href="dashboard-metrics.css">
-<script src="dashboard-metrics.js"></script>
-<link rel="stylesheet" href="account-menu.css">
-<link rel="stylesheet" href="be-ui.css">
-<script src="account-menu.js"></script>
-<script src="photo-preview.js"></script>
-<script src="shared-greeting.js"></script>
-<script src="be-shell.js"></script>
-<script src="access-guard.js"></script>
-<script src="announcements.js"></script>
-<script src="policy-config.js"></script>
-<script src="leave-policy.js"></script>
-<script src="my-workspace.js"></script>
-<script src="dynamic-tabs.js"></script>
+<link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.05.1846-vj3k">
+<script src="dashboard-metrics.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.05.1846-vj3k">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.05.1846-vj3k">
+<script src="account-menu.js?v=2026.10.05.1846-vj3k"></script>
+<script src="photo-preview.js?v=2026.10.05.1846-vj3k"></script>
+<script src="shared-greeting.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-shell.js?v=2026.10.05.1846-vj3k"></script>
+<script src="access-guard.js?v=2026.10.05.1846-vj3k"></script>
+<script src="announcements.js?v=2026.10.05.1846-vj3k"></script>
+<script src="policy-config.js?v=2026.10.05.1846-vj3k"></script>
+<script src="leave-policy.js?v=2026.10.05.1846-vj3k"></script>
+<script src="my-workspace.js?v=2026.10.05.1846-vj3k"></script>
+<script src="dynamic-tabs.js?v=2026.10.05.1846-vj3k"></script>
 <style>
 :root{
   --bg:#030509;--panel-bg:rgba(13,17,28,0.65);--panel-border:rgba(255,255,255,0.08);
@@ -265,8 +268,8 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 .ab-em-btns{display:flex;gap:8px;margin-left:auto}
 .ab-em-btns .btn:disabled{opacity:.4;cursor:not-allowed}
 </style>
-<link rel="stylesheet" href="be-timepicker.css">
-<script src="be-timepicker.js"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.05.1846-vj3k">
+<script src="be-timepicker.js?v=2026.10.05.1846-vj3k"></script>
 </head>
 <body>
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
@@ -1255,16 +1258,19 @@ async function clockToggle(){
 function loadAttendance(){ const t=document.getElementById('tab-attendance'); if(window.MyWorkspace&&t&&t.classList.contains('on'))MyWorkspace.open('attendance'); }
 
 /* ---------- REALTIME ---------- */
+// Shared realtime hub (be-live.js) — one channel, auto-reconnect, resync after missed events.
 function subscribeRealtime(){
-  sb.channel('sales-live')
-    .on('postgres_changes',{event:'*',schema:'public',table:'leads'},()=>loadLeads())
-    .on('postgres_changes',{event:'*',schema:'public',table:'follow_ups'},()=>loadLeads())
-    .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>renderTasks())
-    .on('postgres_changes',{event:'*',schema:'public',table:'hr_employees'},()=>loadCounsellors().then(populateStaticSelects))
-    .on('postgres_changes',{event:'*',schema:'public',table:'batches'},()=>{ if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
-    .on('postgres_changes',{event:'*',schema:'public',table:'students'},()=>{ loadCrmEnrolments(); if(document.getElementById('tab-avail-batches')?.classList.contains('on')) loadAvailBatches(); })
-    .on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},()=>loadCrmLeads())
-    .subscribe();
+  if(!window.BELive) return;
+  BELive.use(sb);
+  const availOn=()=>document.getElementById('tab-avail-batches')?.classList.contains('on');
+  BELive.on('sales-leads',['leads','follow_ups'],()=>loadLeads());
+  BELive.on('sales-tasks','tasks',()=>renderTasks());
+  BELive.on('sales-staff','hr_employees',()=>loadCounsellors().then(populateStaticSelects));
+  BELive.on('sales-batches','batches',()=>{ if(availOn()) loadAvailBatches(); });
+  BELive.on('sales-students','students',()=>{ loadCrmEnrolments(); if(availOn()) loadAvailBatches(); });
+  BELive.on('sales-crm','crm_leads',()=>loadCrmLeads());
+  // My Leave / Attendance / Payslips panels inside Sales.
+  BELive.on('sales-my-hr',['hr_leave_requests','hr_attendance','hr_payroll','attendance_logs','hr_holidays','hr_official_events'],()=>{ if(window.MyWorkspace&&MyWorkspace.refresh) MyWorkspace.refresh(); },{debounce:800});
 }
 
 /* ---------- NAV / MODAL ---------- */

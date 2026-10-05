@@ -79,7 +79,9 @@
         '<button class="am-item" data-am-action="switch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12"/></svg> Switch Account</button>' +
         '<button class="am-item" data-am-action="add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add Another Account</button>' +
         '<div class="am-divider"></div>' +
-        '<button class="am-item am-danger" data-am-action="logout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg> Logout</button>';
+        '<button class="am-item am-danger" data-am-action="logout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg> Logout</button>' +
+        // Subtle build stamp for debugging (be-update.js reads it from <meta name="be-version">).
+        (window.BEUpdate && BEUpdate.version ? '<div style="padding:8px 14px 4px;font-size:10.5px;color:#4a5182;letter-spacing:.02em" title="Running version">Broken English · Version ' + escapeHtml(BEUpdate.version) + '</div>' : '');
       wireClicks();
     }
 

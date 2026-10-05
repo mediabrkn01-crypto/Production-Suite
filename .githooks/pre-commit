@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stamp a fresh deploy version so open browser tabs pick up this commit (see be-update.js).
+# Enable once per clone:  git config core.hooksPath .githooks
+command -v node >/dev/null 2>&1 || { echo "[pre-commit] node not found — version not stamped"; exit 0; }
+# Only when site files are part of the commit.
+git diff --cached --name-only | grep -Eq '\.(html|js|css|json)$' || exit 0
+node scripts/stamp-version.mjs || exit 1
+git add version.json *.html

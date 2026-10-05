@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<meta name="be-version" content="2026.10.05.1846-vj3k">
+<script src="be-update.js?v=2026.10.05.1846-vj3k"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <!-- Same favicon/branding/PWA tags as index.html and hr.html, byte-for-byte — this file
      previously pointed at brand/logo-full.png, icons/apple-touch-icon.png, and
@@ -19,6 +21,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="be-live.js?v=2026.10.05.1846-vj3k"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -730,28 +733,28 @@ details[open] .rawsum::before{content:'▾ '}
      files) — see sidebar-collapse.js's own header comment. Loaded plain (no defer) since it's a
      tiny same-origin file — negligible parse cost, and guarantees initSidebarCollapse()
      already exists by the time each page calls it right after its own <aside> markup. -->
-<link rel="stylesheet" href="sidebar-collapse.css">
-<script src="sidebar-collapse.js"></script>
-<script src="be-select.js"></script>
-<script src="be-mobile.js"></script>
-<link rel="stylesheet" href="account-menu.css">
-<script src="account-menu.js"></script>
-<script src="photo-preview.js"></script>
-<link rel="stylesheet" href="dashboard-metrics.css">
-<script src="dashboard-metrics.js"></script>
-<script src="shared-greeting.js"></script>
-<script src="be-shell.js"></script>
+<link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.05.1846-vj3k">
+<script src="sidebar-collapse.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-select.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-mobile.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.05.1846-vj3k">
+<script src="account-menu.js?v=2026.10.05.1846-vj3k"></script>
+<script src="photo-preview.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.05.1846-vj3k">
+<script src="dashboard-metrics.js?v=2026.10.05.1846-vj3k"></script>
+<script src="shared-greeting.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-shell.js?v=2026.10.05.1846-vj3k"></script>
 <!-- Shared company leave-policy engine (single source of truth — same file index/hr/sales load).
      Academic My Leave reads balances through this so its numbers match every other portal. -->
-<script src="access-guard.js"></script>
-<script src="announcements.js"></script>
-<script src="policy-config.js"></script>
-<script src="leave-policy.js"></script>
-<script src="my-workspace.js"></script>
-<script src="dynamic-tabs.js"></script>
-<link rel="stylesheet" href="be-timepicker.css">
-<script src="be-timepicker.js"></script>
-<script src="be-window.js"></script>
+<script src="access-guard.js?v=2026.10.05.1846-vj3k"></script>
+<script src="announcements.js?v=2026.10.05.1846-vj3k"></script>
+<script src="policy-config.js?v=2026.10.05.1846-vj3k"></script>
+<script src="leave-policy.js?v=2026.10.05.1846-vj3k"></script>
+<script src="my-workspace.js?v=2026.10.05.1846-vj3k"></script>
+<script src="dynamic-tabs.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.05.1846-vj3k">
+<script src="be-timepicker.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-window.js?v=2026.10.05.1846-vj3k"></script>
 </head>
 <body>
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
@@ -4458,7 +4461,7 @@ function acadEnsureTabLoaded(tab) {
 //
 // common.js defines the real, shared version of every function below
 // (computeTodaysCelebrations/runCelebrationQueue/renderCelebrationBanners/etc.), and
-// index.html/hr.html both <script src="common.js"> it. academics.html never has — it is a
+// index.html/hr.html both <script src="common.js?v=2026.10.05.1846-vj3k"> it. academics.html never has — it is a
 // standalone file with its own client variables (mediaHrDB/sb instead of dbInstance/acadDB),
 // same reason acadSyncTrainersFromHRLocal() above exists as its own local port rather than
 // relying on the common.js copy. Every call this file made into the shared engine
@@ -5050,117 +5053,51 @@ function _acadNotifyNewBatchAssignment(newRow){
   const timeLabel = newRow.time_slot || 'time not yet set';
   addNotif('new_batch', `${newRow.name} — ${timeLabel}`, 'Academic Head', newRow.id);
 }
+// All Academic realtime goes through the shared hub (be-live.js): one channel for the page,
+// automatic reconnect, and a resync (info.resync) after any gap so no event is lost.
 function _acadInitRealtime(){
-  // Idempotent — a second call (e.g. boot() somehow running twice for one login) never
-  // stacks a second set of channels; existing ones are torn down first if present.
   _acadTeardownRealtime();
-  if (typeof sb === 'undefined' || !sb || typeof sb.channel !== 'function') return; // defensive — never blocks boot() if realtime isn't available for some reason
+  if (!window.BELive || typeof sb === 'undefined' || !sb) return;
+  BELive.use(sb);
   const isHead = isCurrentlyAcademicHead(); // real Head OR active delegation → company-wide realtime
   const myTrainerId = window._myTrainerId;
-
-  // batches — new/reassigned/completed/deleted batches. Server-side filtered to this
-  // trainer's own rows when we know their trainer_id and they're not Head (spec #11/#20 —
-  // "use filtered subscriptions where supported," "account-specific realtime filters," never
-  // broadcast every Academic event to every trainer UI). Known, disclosed limitation: a
-  // trainer_id-filtered subscription only ever matches a row's CURRENT trainer_id, so a
-  // batch being reassigned AWAY from this trainer to someone else won't itself trigger a
-  // refresh on the losing trainer's screen — the far more common/important direction
-  // (assignment TO them, completion, deletion of their own batch) is covered either way.
-  const batchesConfig = { event: '*', schema: 'public', table: 'batches' };
-  if (!isHead && myTrainerId) batchesConfig.filter = 'trainer_id=eq.' + myTrainerId;
-  const batchesChannel = sb.channel('acad-rt-batches-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', batchesConfig, (payload) => {
-      if (payload.eventType === 'INSERT' && !isHead) _acadNotifyNewBatchAssignment(payload.new);
-      _acadScheduleRealtimeRefresh();
-    })
-    .subscribe();
-  _acadRealtimeChannels.push(batchesChannel);
-
-  // attendance — session progress changes (Mark Attendance), including the automatic
-  // finish-on-final-session case (spec #7): no separate "mark batch completed" step exists
-  // or is needed — _acadIsFinishedByStatusOrProgress() already re-evaluates completion from
-  // live progress on every refresh, so the moment the last required session lands, the very
-  // next _acadRealtimeRefresh() (triggered by this same INSERT) moves the batch into
-  // Finished Batches and frees its availability slot on its own.
-  const attChannel = sb.channel('acad-rt-attendance-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => _acadScheduleRealtimeRefresh())
-    .subscribe();
-  _acadRealtimeChannels.push(attChannel);
-
-  // students — batch membership changes (Manage Students / Edit Batch add-remove) drive
-  // student counts/capacity/attendance rosters everywhere a batch's roster is shown.
-  // Server-side filtered by trainer_name for a non-Head login (the column this table
-  // actually has for that purpose), unfiltered for Head.
-  const studentsConfig = { event: '*', schema: 'public', table: 'students' };
-  if (!isHead && currentUser.name) studentsConfig.filter = 'trainer_name=eq.' + currentUser.name;
-  const studentsChannel = sb.channel('acad-rt-students-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', studentsConfig, () => _acadScheduleRealtimeRefresh())
-    .subscribe();
-  _acadRealtimeChannels.push(studentsChannel);
-
-  // payments/payment_entries — Students page's own Payment column/filter (spec Part 12: update
-  // without refresh "where realtime/shared state already supports it") — both tables are small
-  // and Head-visible only via the Students tab's own explicit fetch (loadStudentsTab), so one
-  // shared channel covering both, same debounced refresh as everything else.
-  const paymentsChannel = sb.channel('acad-rt-payments-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => _acadScheduleRealtimeRefresh())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_entries' }, () => _acadScheduleRealtimeRefresh())
-    .subscribe();
-  _acadRealtimeChannels.push(paymentsChannel);
-
-  // trainer_availability — a trainer's own declared recurring slots changing (or, for Head,
-  // any trainer's) — feeds Coach Availability/My Availability directly.
-  const availConfig = { event: '*', schema: 'public', table: 'trainer_availability' };
-  if (!isHead && myTrainerId) availConfig.filter = 'trainer_id=eq.' + myTrainerId;
-  const availChannel = sb.channel('acad-rt-availability-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', availConfig, () => _acadScheduleRealtimeRefresh())
-    .subscribe();
-  _acadRealtimeChannels.push(availChannel);
-
-  // trainers — HR → Academic sync (spec: "if HR activates/disables/deletes a trainer,
-  // Academic updates without refresh"). This table only ever changes two ways: (a)
-  // acadSyncTrainersFromHRLocal() writing a status flip from an hr_employees change (see the
-  // hr_employees channel right below — that's the actual originating HR edit, this is its
-  // downstream effect), or (b) another open Academic tab's own sync run doing the same. Either
-  // way, subscribing here is what lets every OTHER open tab (this one didn't do the write
-  // itself) converge the instant it happens, not just the tab that happened to run the sync.
-  const trainersChannel = sb.channel('acad-rt-trainers-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'trainers' }, () => _acadScheduleRealtimeRefresh())
-    .subscribe();
-  _acadRealtimeChannels.push(trainersChannel);
-
-  // hr_employees — the actual originating HR edit (Add/Edit Employee, Department = Education).
-  // No trainers-table change fires on its own here; HR only ever writes hr_employees, so THIS
-  // session must itself re-run acadSyncTrainersFromHRLocal() (the same sync boot() already
-  // runs once at login) to turn that into the trainers-table write the channel above then
-  // propagates to every other open tab. Debounced through the same _acadScheduleRealtimeRefresh
-  // queue as everything else, just with the sync step chained in front of it.
-  const hrEmpChannel = sb.channel('acad-rt-hremployees-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_employees' }, async () => {
-      // force=true — this IS the real, actual HR change the throttle in
-      // acadSyncTrainersFromHRLocal exists to defer to; it should never be skipped just
-      // because a page-load sync happened to run in the last 2 minutes.
-      await acadSyncTrainersFromHRLocal(true);
-      _acadScheduleRealtimeRefresh();
-    })
-    .subscribe();
-  _acadRealtimeChannels.push(hrEmpChannel);
-
-  // courses — the single source of truth for course info. A rename/enable/disable/add in ANY
-  // session (or this one) refreshes the cached COURSE_ROWS/courseById so every course label,
-  // filter and dropdown reflects the latest value without a browser refresh (spec #3/#4/#6).
-  // One channel, subscribed once, cleaned up in _acadTeardownRealtime — no duplicate subs.
-  const coursesChannel = sb.channel('acad-rt-courses-' + (currentUser.username || 'anon'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'courses' }, async () => {
-      try { if (typeof loadCourses === 'function') await loadCourses(); } catch(e){}
-      _acadScheduleRealtimeRefresh();
-    })
-    .subscribe();
-  _acadRealtimeChannels.push(coursesChannel);
+  const refresh = () => _acadScheduleRealtimeRefresh();
+  // batches — server-side filtered to this trainer's own rows unless Head. (A batch reassigned
+  // AWAY from a trainer is picked up by the resync / next refresh, not by this filter.)
+  const batches = { table: 'batches' };
+  if (!isHead && myTrainerId) batches.filter = 'trainer_id=eq.' + myTrainerId;
+  BELive.on('acad-batches', batches, (evs, info) => {
+    if (!isHead && !info.resync) evs.forEach(p => { if (p.eventType === 'INSERT') _acadNotifyNewBatchAssignment(p.new); });
+    refresh();
+  }, { debounce: 0 });
+  // attendance (session progress → auto-finish), payments, schedule/availability, trainers.
+  BELive.on('acad-attendance', 'attendance', refresh, { debounce: 0 });
+  const students = { table: 'students' };
+  if (!isHead && currentUser.name) students.filter = 'trainer_name=eq.' + currentUser.name;
+  BELive.on('acad-students', students, refresh, { debounce: 0 });
+  BELive.on('acad-payments', ['payments', 'payment_entries'], refresh, { debounce: 0 });
+  const avail = { table: 'trainer_availability' };
+  if (!isHead && myTrainerId) avail.filter = 'trainer_id=eq.' + myTrainerId;
+  BELive.on('acad-availability', avail, refresh, { debounce: 0 });
+  BELive.on('acad-trainers', ['trainers', 'trainer_tasks'], refresh, { debounce: 0 });
+  // hr_employees — HR's originating edit; this session re-runs the HR→trainers sync itself.
+  BELive.on('acad-hremployees', 'hr_employees', async () => {
+    await acadSyncTrainersFromHRLocal(true);
+    refresh();
+  }, { debounce: 400 });
+  // courses — single source of truth for course names/status.
+  BELive.on('acad-courses', 'courses', async () => {
+    try { if (typeof loadCourses === 'function') await loadCourses(); } catch(e){}
+    refresh();
+  }, { debounce: 300 });
+  // Employee self-service (My Leave / Attendance / Payslips) inside Academics.
+  BELive.on('acad-my-hr', ['hr_leave_requests', 'hr_attendance', 'hr_payroll', 'attendance_logs', 'hr_holidays', 'hr_official_events'], () => {
+    if (window.MyWorkspace && MyWorkspace.refresh) MyWorkspace.refresh();
+    try { _acadLastNotifPoll = 0; _acadCheckNotifications(); } catch (e) {}
+  }, { debounce: 800 });
 }
 function _acadTeardownRealtime(){
-  _acadRealtimeChannels.forEach(ch => { try { sb.removeChannel(ch); } catch(e) {} });
-  _acadRealtimeChannels = [];
+  if (window.BELive) ['acad-batches','acad-attendance','acad-students','acad-payments','acad-availability','acad-trainers','acad-hremployees','acad-courses','acad-my-hr'].forEach(k => BELive.off(k));
   clearTimeout(_acadRealtimeDebounceTimer);
 }
 // Cleanup on tab close (spec #14: "on logout/account switch, unsubscribe/cleanup all old

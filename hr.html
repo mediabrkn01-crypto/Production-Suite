@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+<meta name="be-version" content="2026.10.05.1846-vj3k">
+<script src="be-update.js?v=2026.10.05.1846-vj3k"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Broken English | HR Management</title>
 
@@ -21,6 +23,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="be-live.js?v=2026.10.05.1846-vj3k"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- jsPDF's autoTable plugin — only new dependency added for the Attendance Report export
          (spec: PDF required). Same jsPDF instance already loaded/used for payslips; autoTable
@@ -31,20 +34,20 @@
     <!-- Shared collapsible sidebar (index.html/hr.html/academics.html all include the same
          two files) — see sidebar-collapse.js's own header comment. defer so it never blocks
          first paint. -->
-    <link rel="stylesheet" href="sidebar-collapse.css">
-    <script src="sidebar-collapse.js"></script>
-<script src="be-select.js"></script>
-<script src="be-mobile.js"></script>
-    <link rel="stylesheet" href="account-menu.css">
-<link rel="stylesheet" href="be-ui.css">
-    <script src="account-menu.js"></script>
-<script src="photo-preview.js"></script>
-<link rel="stylesheet" href="be-timepicker.css">
-<script src="be-timepicker.js"></script>
-    <link rel="stylesheet" href="dashboard-metrics.css">
-    <script src="dashboard-metrics.js"></script>
-    <script src="shared-greeting.js"></script>
-    <script src="be-shell.js"></script>
+    <link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.05.1846-vj3k">
+    <script src="sidebar-collapse.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-select.js?v=2026.10.05.1846-vj3k"></script>
+<script src="be-mobile.js?v=2026.10.05.1846-vj3k"></script>
+    <link rel="stylesheet" href="account-menu.css?v=2026.10.05.1846-vj3k">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.05.1846-vj3k">
+    <script src="account-menu.js?v=2026.10.05.1846-vj3k"></script>
+<script src="photo-preview.js?v=2026.10.05.1846-vj3k"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.05.1846-vj3k">
+<script src="be-timepicker.js?v=2026.10.05.1846-vj3k"></script>
+    <link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.05.1846-vj3k">
+    <script src="dashboard-metrics.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="shared-greeting.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="be-shell.js?v=2026.10.05.1846-vj3k"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -3129,12 +3132,12 @@
         <span id="call-toast-text"></span>
     </div>
 
-    <script src="common.js"></script>
-    <script src="access-guard.js"></script>
-    <script src="announcements.js"></script>
-    <script src="policy-config.js"></script>
-    <script src="leave-policy.js"></script>
-    <script src="tab-builder.js"></script>
+    <script src="common.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="access-guard.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="announcements.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="policy-config.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="leave-policy.js?v=2026.10.05.1846-vj3k"></script>
+    <script src="tab-builder.js?v=2026.10.05.1846-vj3k"></script>
     <script>
         // ══════════════════════════════════════════════════════════════
         // ══════════════════════════ HR PANEL (admin-only) ═══════════════
@@ -3504,14 +3507,38 @@
             switchHRSubtab(hrCurrentSubtab);
             try { hrUpdateAttxBadge(); } catch (_) {}
             try { hrAnnCheckSchema().then(() => { if (hrCurrentSubtab === 'announcements') hrRenderAnnouncementsAdminList(); }); } catch (_) {}
+            hrInitLive();
+        }
+
+        // Live HR data (be-live.js). Any change by another HR user or by an employee (new leave
+        // request, clock-in, payroll/payslip status, employee edit…) quietly reloads HR data and
+        // repaints the open tab — never while HR is typing in it, and never through open popups.
+        function hrInitLive() {
+            if (!window.BELive || window._hrLiveOn) return;
+            window._hrLiveOn = true;
+            BELive.use(dbInstance);
+            BELive.on('hr-admin', ['hr_employees', 'hr_leave_requests', 'hr_attendance', 'attendance_logs', 'hr_payroll', 'hr_leave_balances',
+                'hr_cl_buckets', 'hr_sl_ledger', 'hr_holidays', 'hr_official_events', 'hr_celebration_events', 'hr_employee_documents',
+                'hr_salary_history', 'hr_job_openings', 'hr_applicants', 'hr_company_settings'], async () => {
+                if (!hrLoaded) return;
+                await loadHRData({ quiet: true });
+                const tab = hrCurrentSubtab, root = document.getElementById('hr-sub-' + tab);
+                BELive.whenIdle(root, () => {
+                    if (hrCurrentSubtab !== tab) return;
+                    const y = window.scrollY; switchHRSubtab(tab); window.scrollTo(0, y);
+                    try { renderHRNotifications(); hrUpdateAttxBadge(); } catch (_) {}
+                    if (typeof refreshAttendanceClockCard === 'function') refreshAttendanceClockCard();
+                });
+            }, { debounce: 1200 });
         }
 
 // ── loadHRData (orig line 7717) ──
         // One shared loader for every caller. Overlapping calls coalesce: a superseded call
         // waits for the newest one instead of returning early with empty arrays (that early
         // return is what used to render "No employees found" during boot).
-        async function loadHRData() {
-            if (hrDataState === 'ready') hrSetRefreshing(true);
+        async function loadHRData(opts) {
+            const quiet = !!(opts && opts.quiet); // live refreshes run in the background — no "Refreshing…" pill
+            if (hrDataState === 'ready' && !quiet) hrSetRefreshing(true);
             let p = _hrLoadHRDataImpl();
             _hrLoadInflight = p;
             try { await p; } catch (_) {}

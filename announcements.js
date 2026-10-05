@@ -288,37 +288,53 @@
   function scheduleRefresh() { clearTimeout(_rt); _rt = setTimeout(refreshViews, 250); }
 
   // ── realtime ───────────────────────────────────────────────────────────────
+  function onAnn(p) {
+    if (p.eventType === 'DELETE') { S.anns = S.anns.filter(function (x) { return String(x.id) !== String(p.old && p.old.id); }); scheduleRefresh(); return; }
+    var row = p.new, prev = upsertAnn(row);
+    if (p.eventType === 'INSERT') announce(row, 'new');
+    else if (prev && (row.notify_seq || 0) > (prev.notify_seq || 0)) announce(row, 'updated');
+    scheduleRefresh();
+  }
+  function onReaction(p) {
+    var r = p.eventType === 'DELETE' ? p.old : p.new; if (!r || r.announcement_id == null) return;
+    var k = String(r.announcement_id), em = String(r.employee_email || '').toLowerCase();
+    S.reactions[k] = S.reactions[k] || {};
+    if (p.eventType === 'DELETE') { if (em) delete S.reactions[k][em]; else loadAll().then(scheduleRefresh); } else S.reactions[k][em] = r.emoji;
+    scheduleRefresh();
+  }
+  function onReply(p) {
+    var r = p.new || p.old; if (!r) return;
+    var k = String(r.announcement_id);
+    if (p.eventType === 'INSERT' && !r.hidden_at) S.replyCounts[k] = (S.replyCounts[k] || 0) + 1;
+    else loadAll().then(scheduleRefresh);
+    if (S.openId === k) { var m = document.querySelector('.be-annm-bg'); if (m) loadReplies(m, k); }
+    scheduleRefresh();
+    window.dispatchEvent(new CustomEvent('be-ann-reply', { detail: r }));
+  }
+  function onRead(p) {
+    var r = p.new; if (r && S.email && String(r.employee_email || '').toLowerCase() === S.email) { S.reads[String(r.announcement_id)] = r; scheduleRefresh(); }
+    window.dispatchEvent(new CustomEvent('be-ann-read', { detail: r }));
+  }
   function subscribe() {
     var db = client(); if (!db || !db.channel || S.channel) return;
+    // Preferred: the page-wide shared realtime hub (one socket channel, reconnect + resync).
+    if (window.BELive) {
+      S.channel = 'belive';
+      BELive.use(db);
+      var each = function (fn) { return function (evs, info) { if (info.resync) { poll(); return; } evs.forEach(fn); }; };
+      BELive.on('ann-main', 'hr_announcements', each(onAnn), { debounce: 0 });
+      BELive.on('ann-reactions', 'hr_announcement_reactions', each(onReaction), { debounce: 0 });
+      BELive.on('ann-replies', 'hr_announcement_replies', each(onReply), { debounce: 0 });
+      BELive.on('ann-reads', 'hr_announcement_reads', each(onRead), { debounce: 0 });
+      BELive.onState(function (st) { S.live = st === 'connected'; });
+      return;
+    }
     try {
       S.channel = db.channel('be-announcements-' + Math.random().toString(36).slice(2, 8))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcements' }, function (p) {
-          if (p.eventType === 'DELETE') { S.anns = S.anns.filter(function (x) { return String(x.id) !== String(p.old && p.old.id); }); scheduleRefresh(); return; }
-          var row = p.new, prev = upsertAnn(row);
-          if (p.eventType === 'INSERT') announce(row, 'new');
-          else if (prev && (row.notify_seq || 0) > (prev.notify_seq || 0)) announce(row, 'updated');
-          scheduleRefresh();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcement_reactions' }, function (p) {
-          var r = p.eventType === 'DELETE' ? p.old : p.new; if (!r || r.announcement_id == null) return;
-          var k = String(r.announcement_id), em = String(r.employee_email || '').toLowerCase();
-          S.reactions[k] = S.reactions[k] || {};
-          if (p.eventType === 'DELETE') { if (em) delete S.reactions[k][em]; else loadAll().then(scheduleRefresh); } else S.reactions[k][em] = r.emoji;
-          scheduleRefresh();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcement_replies' }, function (p) {
-          var r = p.new || p.old; if (!r) return;
-          var k = String(r.announcement_id);
-          if (p.eventType === 'INSERT' && !r.hidden_at) S.replyCounts[k] = (S.replyCounts[k] || 0) + 1;
-          else loadAll().then(scheduleRefresh);
-          if (S.openId === k) { var m = document.querySelector('.be-annm-bg'); if (m) loadReplies(m, k); }
-          scheduleRefresh();
-          window.dispatchEvent(new CustomEvent('be-ann-reply', { detail: r }));
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcement_reads' }, function (p) {
-          var r = p.new; if (r && S.email && String(r.employee_email || '').toLowerCase() === S.email) { S.reads[String(r.announcement_id)] = r; scheduleRefresh(); }
-          window.dispatchEvent(new CustomEvent('be-ann-read', { detail: r }));
-        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcements' }, onAnn)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcement_reactions' }, onReaction)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcement_replies' }, onReply)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_announcement_reads' }, onRead)
         .subscribe(function (status) { S.live = status === 'SUBSCRIBED'; });
     } catch (_) {}
   }
