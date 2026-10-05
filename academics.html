@@ -3144,17 +3144,17 @@ function card(b,i,isPrevious){
     <div class="bcard-actions">
         ${isPrevious ? `
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
-        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Session History</button>
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
         ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openRestoreBatch('${window._acadBatchIdByName[b.raw]}','${esc(b.name).replace(/'/g,"\\'")}',${total},${dn})" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);color:var(--blue);font-weight:700">Restore Batch</button>`:''}
         ` : isFrozen ? `
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
-        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         ${isHead&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw]?`<button class="act-btn" onclick="openResumeBatch('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#10b981;font-weight:700">Resume Batch</button>`:''}
         ` : `
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchDetails('${window._acadBatchIdByName[b.raw]}')">View Batch</button>`:''}
         ${isHead&&b.raw?`<button class="act-btn" onclick="editBatchFromLive(${i})">Edit Batch</button>`:''}
-        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.name).replace(/'/g,"\\'")}')">History</button>
+        <button class="act-btn" onclick="openSessionHistoryFor('${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">History</button>
         ${(window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openBatchLogs('${window._acadBatchIdByName[b.raw]}','${esc(b.raw||b.name).replace(/'/g,"\\'")}','${esc(b.name).replace(/'/g,"\\'")}')">Logs</button>`:''}
         ${(!b.elite&&b._otoRequired>0&&window._acadBatchIdByName&&window._acadBatchIdByName[b.raw])?`<button class="act-btn" onclick="openOTOSessions('${window._acadBatchIdByName[b.raw]}')" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--purple)">1:1 Sessions</button>`:''}
         ${(isHead&&!b.elite&&b._otoRequired>0&&b.raw&&!b._groupClassesDone)?`<button class="act-btn" onclick="openCompleteGroupClasses(${i})" style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#10b981">Complete Group Classes</button>`:''}
@@ -3903,10 +3903,13 @@ async function _acadRecordSessionEarning(batchId, batchName, num, date, markedBy
 // nothing about the old per-student "Log a Session" data is lost, just merged into the same
 // per-date view.
 function openSessionHistory(){
-  return openSessionHistoryFor(window._attBatch ? window._attBatch.name : '');
+  return openSessionHistoryFor(window._attBatch ? (window._attBatch.raw || window._attBatch.name) : '', window._attBatch ? window._attBatch.name : '');
 }
-async function openSessionHistoryFor(batchName){
-  document.getElementById('sessionHistoryTitle').textContent = 'Session History' + (batchName ? ' \u2014 ' + batchName : '');
+// batchName = the real batches.name / attendance.batch_name. Elite / 1:1 cards use a display
+// key ("<batch> · <student>") that matches no attendance rows, so callers pass b.raw here and
+// the card's display name separately, for the title only.
+async function openSessionHistoryFor(batchName, displayName){
+  document.getElementById('sessionHistoryTitle').textContent = 'Session History' + ((displayName || batchName) ? ' \u2014 ' + (displayName || batchName) : '');
   const list = document.getElementById('sessionHistoryList');
   list.innerHTML = '<div class="loading">Loading\u2026</div>';
   document.getElementById('modalSessionHistory').classList.add('on');
