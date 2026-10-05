@@ -361,7 +361,14 @@
     '.bes-clockpill .bcp-btn:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:1px}',
     '.bes-clockpill.is-done{padding-right:13px}',
     '@media(max-width:1100px){.bes-clockpill .bcp-txt{display:none}.bes-clockpill{padding-left:10px}}',
-    '@media(max-width:560px){.bes-clockpill .bcp-btn span{display:none}.bes-clockpill .bcp-btn{padding:0 9px}}'
+    '@media(max-width:560px){.bes-clockpill .bcp-btn span{display:none}.bes-clockpill .bcp-btn{padding:0 9px}}',
+    // phone top bar: round clock button beside search / bell
+    '.bcp-mbtn{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:0;cursor:pointer;color:#fff;flex-shrink:0;padding:0;position:relative}',
+    '.bcp-mbtn[hidden]{display:none}',
+    '.bcp-mbtn.in{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 0 0 3px rgba(16,185,129,.18)}',
+    '.bcp-mbtn.out{background:linear-gradient(135deg,#ff6b06,#f9182f);box-shadow:0 0 0 3px rgba(249,24,47,.18)}',
+    '.bcp-mbtn.done{background:rgba(96,165,250,.14);color:#93c5fd;border:1px solid rgba(96,165,250,.35);cursor:default}',
+    '.bcp-mbtn:disabled{opacity:.6}'
   ].join('');
   var IC_IN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>';
   var IC_OUT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>';
@@ -390,6 +397,15 @@
     header.parentNode.insertBefore(pill, header);
     card.classList.add('bes-att-moved');
     var btn = pill.querySelector('.bcp-btn'), txt = pill.querySelector('.bcp-txt');
+    // Phone top bar (#mobile-topbar, shared by every portal): the desktop header is hidden on
+    // phones, so the same Clock In / Clock Out also gets a round button next to search / bell.
+    var mbtn = document.createElement('button'); mbtn.type = 'button'; mbtn.className = 'bcp-mbtn'; mbtn.hidden = true;
+    (function placeMobile(n) {
+      var icon = document.querySelector('#mobile-topbar .be-mtb-icon-btn');
+      if (icon && icon.parentNode) { icon.parentNode.insertBefore(mbtn, icon); return; }
+      if (n < 40) setTimeout(function () { placeMobile(n + 1); }, 500);
+    })(0);
+    mbtn.addEventListener('click', function () { if (mbtn._target && !mbtn._target.disabled) mbtn._target.click(); });
     function realButtons() {
       var bs = [].slice.call(card.querySelectorAll('.bes-clk'));
       return { in: bs.find(function (b) { return b.classList.contains('bes-clk-in') || /clock in/i.test(b.textContent); }),
@@ -416,6 +432,14 @@
         btn.title = card.querySelector('.bes-att-st') ? card.querySelector('.bes-att-st').textContent.trim() : '';
         btn._target = target;
       } else { btn.hidden = true; btn._target = null; }
+      var plain = txt.textContent;
+      mbtn.hidden = !cardOn;
+      mbtn._target = target;
+      mbtn.disabled = target ? !!target.disabled : false;
+      mbtn.className = 'bcp-mbtn ' + (target ? (state === 'in' ? 'out' : 'in') : 'done');
+      mbtn.innerHTML = target ? (state === 'in' ? IC_OUT : IC_IN) : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+      var lbl = target ? (state === 'in' ? 'Clock Out — ' + plain : 'Clock In — ' + plain) : plain;
+      mbtn.setAttribute('aria-label', lbl); mbtn.title = lbl;
     }
     btn.addEventListener('click', function () { if (btn._target && !btn._target.disabled) btn._target.click(); });
     new MutationObserver(sync).observe(card, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'disabled'] });
