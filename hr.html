@@ -1563,7 +1563,7 @@
                 <div id="hr-sub-payroll" class="space-y-4 hidden">
                     <div>
                         <h1 class="text-xl font-bold tracking-tight">Monthly Payroll</h1>
-                        <p class="text-[#6b74a0] text-xs mt-1">Manage monthly salaries, payslips, deductions and payment status.</p>
+                        <p class="text-[#6b74a0] text-xs mt-1">Calculate and verify each salary month. When a payroll is correct, generate its payslip — payslips are reviewed and sent from <a href="#" onclick="switchHRSubtab('payslips');return false" style="color:#ff8a3d">Payslips</a>.</p>
                     </div>
                     <!-- monthly summary (computed from existing payroll data) -->
                     <div id="hr-payroll-kpis" class="pr-kpis"></div>
@@ -1575,8 +1575,8 @@
                             <button class="pr-btn" onclick="hrPayrollExportMenu(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Export <span class="chev">▼</span></button>
                         </div>
                         <div style="display:flex;gap:10px;flex-wrap:wrap">
-                            <button class="pr-btn pr-btn-amber" onclick="generateAllHRPayslips()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Payslips</button>
-                            <button class="pr-btn pr-btn-cyan" onclick="sendAllHRPayslips()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> Send Payslips</button>
+                            <button class="pr-btn pr-btn-amber" onclick="generateAllHRPayslips()" title="Calculate this month's payroll from attendance and leave"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Payroll</button>
+                            <button class="pr-btn pr-btn-cyan" onclick="hrGenerateAllReadyPayslips()" title="Create payslips for every payroll of this month that has none yet"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> Generate Payslips</button>
                             <button class="pr-btn pr-btn-primary" onclick="openHRPayrollModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Add Payroll Entry</button>
                         </div>
                     </div>
@@ -1604,7 +1604,7 @@
                                     <th class="py-3 px-4 pr-num">Advances</th>
                                     <th class="py-3 px-4 pr-num">Net</th>
                                     <th class="py-3 px-4">Status</th>
-                                    <th class="py-3 px-4">Access</th>
+                                    <th class="py-3 px-4">Payslip</th>
                                     <th class="py-3 px-4 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -1617,11 +1617,38 @@
 
                 <!-- HR: PAYSLIPS -->
                 <div id="hr-sub-payslips" class="space-y-4 hidden">
-                    <h1 class="text-xl font-bold tracking-tight">Payslips</h1>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">Payslips</h1>
+                        <p class="text-[#6b74a0] text-xs mt-1">Official salary documents created from verified payroll. Review, add a note, download and send — employees only see a payslip once it is <b style="color:#a5adcf">Sent</b>.</p>
+                    </div>
+                    <div id="hr-payslip-schema-banner" style="display:none;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.07);font-size:12.5px;color:#fde68a">The payslip workflow needs a one-time database update — run <code style="background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px">20261005_payslip_workflow.sql</code> in Supabase.</div>
+                    <div class="pr-toolbar">
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                            <input id="hr-payslips-month" type="hidden" onchange="renderHRPayslipsList()">
+                            <button id="hr-payslips-month-btn" class="pr-btn" onclick="hrOpenMonthPicker('hr-payslips-month', this, 'renderHRPayslipsList')" style="min-width:150px;justify-content:space-between">Select month <span class="chev">▼</span></button>
+                            <select id="hr-payslips-status" class="hr-select" onchange="renderHRPayslipsList()" style="min-width:150px">
+                                <option value="">Status: All</option>
+                                <option value="draft">Draft</option>
+                                <option value="ready">Ready to send</option>
+                                <option value="sent">Sent</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap">
+                            <button class="pr-btn" onclick="hrDownloadPayslipsZip(false)">Download All (.ZIP)</button>
+                        </div>
+                    </div>
+                    <div id="hr-payslips-bulk-row" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#a5adcf;cursor:pointer">
+                            <input type="checkbox" id="hr-payslips-select-all" onchange="hrToggleAllPayslips(this.checked)"> Select All
+                        </label>
+                        <span id="hr-payslips-selcount" class="text-[11px] text-[#6b74a0]">0 selected</span>
+                        <button id="hr-payslips-bulk-btn" class="pr-btn" style="padding:6px 12px" onclick="hrPayslipsBulkMenu(this)" disabled>Bulk Actions <span class="chev">▼</span></button>
+                        <p id="hr-payslips-bulk-status" class="text-[11px] text-[#6b74a0]" style="margin:0"></p>
+                    </div>
                     <div class="card glass-card rounded-2xl overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                        <table class="w-full text-sm text-left hr-scroll-table">
                             <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Month</th><th class="py-3 px-4">Net Salary</th><th class="py-3 px-4">Status</th><th class="py-3 px-4 text-center">Action</th>
+                                <th class="py-3 px-4"></th><th class="py-3 px-4">Employee</th><th class="py-3 px-4">Salary Month</th><th class="py-3 px-4 pr-num">Net Salary</th><th class="py-3 px-4">Payslip Status</th><th class="py-3 px-4">Generated</th><th class="py-3 px-4">Sent</th><th class="py-3 px-4 text-center">Actions</th>
                             </tr></thead>
                             <tbody id="hr-payslips-rows" class="divide-y divide-white/[0.05]"></tbody>
                         </table>
@@ -2231,6 +2258,28 @@
         </div>
     </div>
 
+    <div id="hr-payslip-edit-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:560px">
+            <div class="flex items-center justify-between mb-1">
+                <div><h3 id="hr-pse-title" class="text-lg font-bold text-white">Edit Payslip</h3><p id="hr-pse-sub" class="text-xs text-[#6b74a0]"></p></div>
+                <button onclick="hrClosePayslipEdit()" class="hr-icon-btn" aria-label="Close">✕</button>
+            </div>
+            <input type="hidden" id="hr-pse-id">
+            <div id="hr-pse-figures" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0"></div>
+            <div style="font-size:12px;color:#a5adcf;background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.25);border-radius:10px;padding:10px 12px;margin-bottom:14px;line-height:1.5">Salary figures come from Payroll, the single source of truth. To change an amount, edit the payroll — this payslip then goes back to <b>Draft</b> to be checked again. <a href="#" onclick="hrPayslipEditPayroll();return false" style="color:#60a5fa">Edit payroll →</a></div>
+            <label class="hr-field-label" for="hr-pse-note">Payslip note (printed on the payslip)</label>
+            <textarea id="hr-pse-note" class="hr-input w-full" rows="3" placeholder="Optional — e.g. arrears included, bank transfer reference…"></textarea>
+            <label class="hr-field-label" for="hr-pse-status" style="margin-top:12px">Payslip status</label>
+            <select id="hr-pse-status" class="hr-select w-full"><option value="draft">Draft — still checking</option><option value="ready">Ready to send — verified</option></select>
+            <p id="hr-pse-locked" class="text-xs" style="display:none;color:#fbbf24;margin-top:10px">This payslip has been sent. Recall it first to make changes.</p>
+            <p id="hr-pse-audit" class="text-[11px] text-[#6b74a0]" style="margin-top:12px;line-height:1.6"></p>
+            <div class="flex justify-end gap-2" style="margin-top:16px">
+                <button onclick="hrClosePayslipEdit()" class="hr-icon-btn" style="padding:9px 16px">Cancel</button>
+                <button id="hr-pse-save" onclick="hrSavePayslipEdit()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">Save Payslip</button>
+            </div>
+        </div>
+    </div>
+
     <div id="hr-payroll-modal" class="hr-modal-overlay hidden">
         <div class="hr-modal">
             <div class="flex items-center justify-between mb-4">
@@ -2563,6 +2612,8 @@
         let hrDataState = 'loading';
         let _hrLoadInflight = null, _hrLastLoadOk = true;
         let hrCelebLoaded = false, _hrCelebP = null;
+        let hrPayslipSchemaOk = false;      // payslip workflow columns exist (see 20261005_payslip_workflow.sql)
+        let hrSelectedPayslipIds = new Set();
         // Employee list columns: everything EXCEPT photo_base64. Full-size base64 photos made
         // hr_employees ~1.1 MB (≈15 s on a normal connection) and blocked the whole HR load;
         // photos now arrive separately as small cached thumbnails (hrHydrateEmployeePhotos).
@@ -2819,7 +2870,7 @@
                 // where 20261005_hr_load_perf.sql hasn't been run yet.
                 const empQuery = dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS + ',photo_sig').order('created_at', { ascending: false })
                     .then(r => (r.error && /photo_sig/i.test(r.error.message || '')) ? dbInstance.from('hr_employees').select(HR_EMP_LIST_COLS).order('created_at', { ascending: false }) : r);
-                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, empDocs, settings, roster, clb, sll] = await Promise.all([
+                const [emp, leaveReq, leaveBal, att, pay, attLogs, jobs, applicants, salHist, holidays, officialEvents, empDocs, settings, roster, clb, sll, psProbe] = await Promise.all([
                     empQuery,
                     leaveReqQuery,
                     leaveBalQuery,
@@ -2841,7 +2892,9 @@
                     // Leave Policy v2 ledgers — fetched in this same parallel batch (they used to
                     // be a second, sequential round-trip after everything else).
                     dbInstance.from('hr_cl_buckets').select('*'),
-                    dbInstance.from('hr_sl_ledger').select('*')
+                    dbInstance.from('hr_sl_ledger').select('*'),
+                    // Is the Payroll → Payslip workflow schema present (20261005_payslip_workflow.sql)?
+                    dbInstance.from('hr_payroll').select('payslip_status').limit(1)
                 ]);
                 // Celebration events carry base64 artwork (~90 KB for 2 rows, 2-3 s) and are only
                 // needed by the celebration popup + Announcements tab — fetched in the
@@ -2942,6 +2995,7 @@
                 // Leave Policy v2 ledgers (all employees, HR admin scope) — payroll + balance
                 // resolvers read these so paid/LOP is computed from the real SL/CL entitlement.
                 hrClBuckets = (clb && clb.data) || []; hrSlLedger = (sll && sll.data) || [];
+                hrPayslipSchemaOk = !!(psProbe && !psProbe.error);
                 hrLeaveRequests = leaveReq.data || [];
                 hrLeaveBalances = leaveBal.data || [];
                 hrAttendance = att.data || [];
@@ -5004,7 +5058,7 @@
                 body.innerHTML = sec('Leave requests', reqs.length ? `<div class="hrp-list">${reqs.map(r => `<div><span>${esc(r.leave_type)} — ${fmtDate(r.start_date)} → ${fmtDate(r.end_date)}</span><span class="hr-badge hr-badge-${r.status}">${r.status}</span></div>`).join('')}</div>` : '<p class="hrp-empty">No leave requests yet.</p>');
             } else if (hrProfileTab === 'payroll') {
                 const pay = hrPayroll.filter(p => p.employee_id === e.id);
-                body.innerHTML = sec('Payroll', pay.length ? `<div class="hrp-list">${pay.map(p => `<div><span>${p.month}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="hrp-empty">No payroll entries yet.</p>');
+                body.innerHTML = sec('Payroll', pay.length ? `<div class="hrp-list">${pay.map(p => `<div><span>${hrMonthLong(p.month)} ${hrPayslipPill(p)}</span><span class="text-green-400 font-bold">₹${(p.net_salary||0).toLocaleString('en-IN')}</span><span><button onclick="editHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#60a5fa">Edit</button> <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-icon-btn" style="margin-left:4px">Payslip</button> <button onclick="confirmDeleteHRPayroll('${p.id}')" class="hr-icon-btn" style="color:#f87171;margin-left:4px">Del</button></span></div>`).join('')}</div>` : '<p class="hrp-empty">No payroll entries yet.</p>');
             } else if (hrProfileTab === 'documents') {
                 body.innerHTML = sec('Documents', hrRenderEmployeeDocuments(e.id));
             } else if (hrProfileTab === 'performance') {
@@ -6701,7 +6755,7 @@ async function populateHRJobDeptOptions() {
                                 <td class="py-2 pr-3">${r.avgHours === null ? '—' : r.avgHours.toFixed(1) + 'h'}</td>
                                 <td class="py-2 pr-3 text-[#a5adcf]">${workText}</td>
                                 <td class="py-2 pr-3">${r.payrollRow ? '₹' + (r.payrollRow.net_salary || 0).toLocaleString('en-IN') : '—'}</td>
-                                <td class="py-2 pr-3">${r.payrollRow ? (r.payrollRow.published ? '<span class="hr-badge hr-badge-active">Sent</span>' : '<span class="hr-badge hr-badge-pending">Draft</span>') : '<span class="text-[#4a5182]">Not generated</span>'}</td>
+                                <td class="py-2 pr-3">${r.payrollRow ? hrPayslipPill(r.payrollRow) : '<span class="text-[#4a5182]">No payroll</span>'}</td>
                             </tr>`;
                         }).join('') || `<tr><td colspan="15"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">No employees in HR yet.</div></div></td></tr>`}
                     </tbody>
@@ -7124,7 +7178,7 @@ async function populateHRJobDeptOptions() {
             hrEditingPayrollId = editId;
             document.getElementById('hr-pr-employee').innerHTML = hrEmployees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
             const p = editId ? hrPayroll.find(x => x.id === editId) : null;
-            document.getElementById('hr-payroll-modal-title').textContent = p ? 'Edit Payslip' : 'Add Payroll Entry';
+            document.getElementById('hr-payroll-modal-title').textContent = p ? 'Edit Payroll' : 'Add Payroll Entry';
             document.getElementById('hr-payroll-save-btn').textContent = p ? 'Save Changes' : 'Save Entry';
             if (p) {
                 document.getElementById('hr-pr-employee').value = p.employee_id;
@@ -7310,8 +7364,11 @@ async function populateHRJobDeptOptions() {
             // already-Sent payslip stays visible to that employee. Access is only ever changed
             // via the explicit Send / Revoke buttons.
             const existingRow = hrEditingPayrollId ? hrPayroll.find(x => x.id === hrEditingPayrollId) : null;
-            const published = existingRow ? !!existingRow.published : false;
-            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_date, published, payment_status: document.getElementById('hr-pr-status').value };
+            if (existingRow && hrPayslipStatus(existingRow) === 'sent') { showToast('warning', 'This payslip has already been sent. Recall it from Payslips before changing the payroll.'); return; }
+            if (!existingRow && hrPayroll.some(x => x.employee_id === employee_id && x.month === month)) { showToast('warning', 'A payroll for this employee and salary month already exists — edit that one instead.'); return; }
+            const payload = { employee_id, month, basic, allowances, overtime, bonuses, deductions, advances, leave_deduction, paid_leave_days, unpaid_leave_days, absent_days, net_salary, payment_date, payment_status: document.getElementById('hr-pr-status').value };
+            if (!hrPayslipSchemaOk) payload.published = existingRow ? !!existingRow.published : false;
+            else Object.assign(payload, hrPayrollAuditFields(existingRow, payload));
             try {
                 // Editing an existing payslip UPDATEs that same row — never a second INSERT,
                 // so it can't create a duplicate payslip for the same employee/month.
@@ -7330,16 +7387,18 @@ async function populateHRJobDeptOptions() {
             if (!month) { alert('Pick a payroll month first.'); return; }
             const active = hrEmployees.filter(e => e.employment_status === 'active');
             if (!active.length) { alert('No active employees to generate payslips for.'); return; }
-            if (!(await showConfirm(`Anyone who already has a payslip for this month will have it recalculated and updated — not duplicated.`, { title: `Generate payslips for all ${active.length} active employee(s) for ${month}?`, confirmLabel: 'Generate' }))) return;
+            if (!(await showConfirm(`Salaries are calculated from attendance and leave. Existing payroll for this month is recalculated, never duplicated. Payslips are NOT created — you generate them after checking the payroll.`, { title: `Generate payroll for ${active.length} active employee(s) — salary month ${hrMonthLong(month)}?`, confirmLabel: 'Generate Payroll' }))) return;
 
             const statusEl = document.getElementById('hr-payroll-bulk-status');
             const payment_date = hrDefaultPaymentDateFor(month);
-            let done = 0, failed = [];
+            let done = 0, failed = [], skippedSent = [];
             for (const emp of active) {
                 if (statusEl) statusEl.textContent = `Generating ${done + 1} of ${active.length} — ${emp.full_name}…`;
                 try {
                     const calc = hrCalculatePayrollForMonth(emp.id, month);
                     const existing = hrPayroll.find(p => p.employee_id === emp.id && p.month === month);
+                    // A sent payslip is final — never silently change the figures behind it.
+                    if (existing && hrPayslipStatus(existing) === 'sent') { skippedSent.push(emp.full_name); done++; continue; }
                     const basic = calc.earnedBasic, leave_deduction = calc.leaveDeduction;
                     // Manual figures (allowances/overtime/bonuses/other deductions/advances) on
                     // an existing row are preserved across a re-generate — only the
@@ -7352,12 +7411,11 @@ async function populateHRJobDeptOptions() {
                         employee_id: emp.id, month, basic, allowances, overtime, bonuses, deductions, advances,
                         leave_deduction, paid_leave_days: calc.paidLeaveDays, unpaid_leave_days: calc.unpaidLeaveDays,
                         absent_days: calc.absentDays, net_salary, payment_date,
-                        payment_status: existing?.payment_status || 'pending',
-                        // Re-generating never changes who can already see a payslip — Generate
-                        // All only fills in the numbers; Send/Send All is the only thing that
-                        // makes one visible to its employee.
-                        published: existing ? !!existing.published : false
+                        payment_status: existing?.payment_status || 'pending'
                     };
+                    // Generating payroll never creates, sends or publishes a payslip.
+                    if (!hrPayslipSchemaOk) payload.published = existing ? !!existing.published : false;
+                    else Object.assign(payload, hrPayrollAuditFields(existing, payload));
                     const { error } = await hrSavePayrollRow(payload, existing?.id || null);
                     if (error) failed.push(`${emp.full_name}: ${error.message}`);
                 } catch (e) {
@@ -7369,9 +7427,10 @@ async function populateHRJobDeptOptions() {
             renderHRPayroll();
             renderHREmployeeProfile();
             if (statusEl) {
-                statusEl.textContent = failed.length
-                    ? `Generated ${done - failed.length} of ${done} — ${failed.length} failed: ${failed.join('; ')}`
-                    : `Generated ${done} payslip(s) for ${month}, payable on ${payment_date}.`;
+                const ok = done - failed.length - skippedSent.length;
+                statusEl.textContent = `Payroll generated for ${ok} employee(s) — salary month ${hrMonthLong(month)}, payable on ${payment_date}. Check the figures, then use Generate Payslip.`
+                    + (skippedSent.length ? ` Skipped ${skippedSent.length} with a payslip already sent: ${skippedSent.join(', ')}.` : '')
+                    + (failed.length ? ` ${failed.length} failed: ${failed.join('; ')}` : '');
             }
         }
 
@@ -7399,9 +7458,6 @@ async function populateHRJobDeptOptions() {
             const cls = s === 'paid' ? 'green' : s === 'failed' ? 'red' : 'amber';
             return `<span class="pr-pill ${cls}">${s}</span>`;
         }
-        function _prAccessPill(published) {
-            return published ? '<span class="pr-pill blue">Employee Access</span>' : '<span class="pr-pill muted">HR Only</span>';
-        }
         function renderHRPayroll() {
             const _mi = document.getElementById('hr-payroll-month');
             if (_mi && !_mi.value) _mi.value = new Date().toISOString().slice(0,7);
@@ -7413,7 +7469,7 @@ async function populateHRJobDeptOptions() {
             if (selectAllBox) selectAllBox.checked = rows.length > 0 && hrSelectedPayrollIds.size === rows.length;
             const _bulkRow = document.getElementById('hr-payroll-bulk-row'); if (_bulkRow) _bulkRow.style.display = rows.length ? 'flex' : 'none';
             const _monthLbl = month ? new Date(month + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : 'this month';
-            const _prEmptyHTML = `<div class="dsh-empty" style="min-height:220px;gap:12px"><div class="dsh-empty-ic" style="width:48px;height:48px;color:#ff8a3d;background:rgba(255,107,6,.1);border-color:rgba(255,107,6,.3)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div><div style="font-size:15px;font-weight:700;color:#fff">No payroll for ${_monthLbl} yet</div><div class="dsh-empty-s" style="max-width:380px">Generate payslips to build this month's payroll from attendance and leave automatically, or add an entry manually.</div><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px"><button class="pr-btn pr-btn-amber" onclick="generateAllHRPayslips()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Payslips</button><button class="pr-btn pr-btn-primary" onclick="openHRPayrollModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Add Payroll Entry</button></div></div>`;
+            const _prEmptyHTML = `<div class="dsh-empty" style="min-height:220px;gap:12px"><div class="dsh-empty-ic" style="width:48px;height:48px;color:#ff8a3d;background:rgba(255,107,6,.1);border-color:rgba(255,107,6,.3)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div><div style="font-size:15px;font-weight:700;color:#fff">No payroll for ${_monthLbl} yet</div><div class="dsh-empty-s" style="max-width:380px">Generate payroll to calculate this month's salaries from attendance and leave automatically, or add an entry manually.</div><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px"><button class="pr-btn pr-btn-amber" onclick="generateAllHRPayslips()" title="Calculate this month's payroll from attendance and leave"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Payroll</button><button class="pr-btn pr-btn-primary" onclick="openHRPayrollModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Add Payroll Entry</button></div></div>`;
             // Bulk-action row state (count + enable/disable, per spec §3).
             const selCount = hrSelectedPayrollIds.size;
             const selEl = document.getElementById('hr-payroll-selcount'); if (selEl) selEl.textContent = selCount + ' selected';
@@ -7425,7 +7481,7 @@ async function populateHRJobDeptOptions() {
                 const total = rows.reduce((s, p) => s + (+p.net_salary || 0), 0);
                 const paidSum = rows.filter(p => p.payment_status === 'paid').reduce((s, p) => s + (+p.net_salary || 0), 0);
                 const pendSum = rows.filter(p => p.payment_status !== 'paid').reduce((s, p) => s + (+p.net_salary || 0), 0);
-                const sent = rows.filter(p => p.published).length;
+                const sent = rows.filter(p => hrPayslipStatus(p) === 'sent').length;
                 const fmt = n => '₹' + Math.round(n).toLocaleString('en-IN');
                 const _k = (col, icon, label, val, cls, bar) => `<div class="pr-kpi" style="border-top:2px solid ${col}"><div style="display:flex;align-items:center;justify-content:space-between"><div class="k">${label}</div><span style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:${col};background:${col}1a">${icon}</span></div><div class="v ${cls||''}">${val}</div>${bar!=null?`<div class="rp-bar rp-bar-sm" style="margin-top:8px"><span style="width:${bar}%;background:${col}"></span></div>`:''}</div>`;
                 const _pp = total ? Math.round(paidSum/total*100) : 0, _sp = rows.length ? Math.round(sent/rows.length*100) : 0;
@@ -7447,16 +7503,9 @@ async function populateHRJobDeptOptions() {
                     ${num(p.deductions)}${num(p.advances)}
                     <td class="py-2.5 px-4 pr-net ${(+p.net_salary||0) ? 'text-green-400' : 'pr-zero'}">${_prMoney(p.net_salary)}</td>
                     <td class="py-2.5 px-4">${_prStatusPill(p.payment_status)}</td>
-                    <td class="py-2.5 px-4">${_prAccessPill(p.published)}</td>
+                    <td class="py-2.5 px-4">${hrPayslipPill(p)}</td>
                     <td class="py-2.5 px-4">
-                      <div class="hr-actions">
-                        <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-act hr-act-blue">View</button>
-                        ${p.published
-                            ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-act hr-act-amber">Revoke</button>`
-                            : `<button onclick="sendHRPayslip('${p.id}')" class="hr-act hr-act-green">Send</button>`}
-                        ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-act hr-act-green">Mark Paid</button>` : ''}
-                        <button onclick="hrPayrollRowMenu('${p.id}', this)" class="hr-act" aria-label="More actions">⋯</button>
-                      </div>
+                      <div class="hr-actions">${hrPayrollActionsHTML(p)}</div>
                     </td>
                 </tr>
             `).join('') : `<tr><td colspan="13">${_prEmptyHTML}</td></tr>`;
@@ -7468,16 +7517,9 @@ async function populateHRJobDeptOptions() {
                   <div class="pr-card-top">
                     <div><div class="pr-card-name">${hrEmpName(p.employee_id)}</div>
                       <div class="pr-card-net ${(+p.net_salary||0) ? 'text-green-400' : 'pr-zero'}">${_prMoney(p.net_salary)}</div></div>
-                    <div class="pr-card-pills">${_prStatusPill(p.payment_status)}${_prAccessPill(p.published)}</div>
+                    <div class="pr-card-pills">${_prStatusPill(p.payment_status)}${hrPayslipPill(p)}</div>
                   </div>
-                  <div class="pr-card-acts">
-                    <button onclick="downloadHRPayslip('${p.id}', this)" class="hr-act hr-act-blue">View</button>
-                    ${p.published
-                        ? `<button onclick="revokeHRPayslipAccess('${p.id}')" class="hr-act hr-act-amber">Revoke</button>`
-                        : `<button onclick="sendHRPayslip('${p.id}')" class="hr-act hr-act-green">Send</button>`}
-                    ${p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-act hr-act-green">Mark Paid</button>` : ''}
-                    <button onclick="hrPayrollRowMenu('${p.id}', this)" class="hr-act">⋯</button>
-                  </div>
+                  <div class="pr-card-acts">${hrPayrollActionsHTML(p)}</div>
                 </div>`).join('') : _prEmptyHTML;
         }
 
@@ -7548,13 +7590,12 @@ async function populateHRJobDeptOptions() {
             hrOpenFloatMenu(btn, [
                 { label: 'Download Payroll PDF', icon: '⬇', fn: () => downloadMonthlyPayrollPDF() },
                 { label: 'Download Excel', icon: '⬇', fn: () => downloadMonthlyPayrollExcel() },
-                { label: 'Download All Payslips (.ZIP)', icon: '⬇', fn: () => downloadAllHRPayslipsZip() },
             ]);
         }
         function hrPayrollBulkMenu(btn) {
             if (!hrSelectedPayrollIds.size) return;
             hrOpenFloatMenu(btn, [
-                { label: 'Send Payslips', icon: '📤', fn: hrBulkSendPayslips },
+                { label: 'Generate Payslips', icon: '📄', fn: () => hrBulkGeneratePayslips([...hrSelectedPayrollIds]) },
                 { label: 'Mark Paid', icon: '✓', fn: hrBulkMarkPaid },
                 { sep: true },
                 { label: 'Delete Selected', icon: '🗑', danger: true, fn: () => deleteSelectedHRPayroll() },
@@ -7562,21 +7603,14 @@ async function populateHRJobDeptOptions() {
         }
         function hrPayrollRowMenu(id, btn) {
             const p = hrPayroll.find(x => x.id === id);
-            const items = [{ label: 'Edit / Regenerate Payroll', icon: '✎', fn: () => editHRPayroll(id) }];
-            if (p && p.published) items.push({ label: 'Resend Email', icon: '✉', fn: () => resendHRPayslipEmail(id, true) });
+            const items = [{ label: 'Edit Payroll', icon: '✎', fn: () => editHRPayroll(id) }];
+            if (p && hrPayslipStatus(p) !== 'sent') items.push({ label: 'Recalculate from attendance', icon: '↻', fn: () => hrRecalculatePayroll(id) });
+            if (p && hrPayslipStatus(p) !== 'not_generated') items.push({ label: 'Open in Payslips', icon: '📄', fn: () => hrOpenPayslipsFor(p) });
             items.push({ sep: true });
             items.push({ label: 'Delete Payroll Entry', icon: '🗑', danger: true, fn: () => confirmDeleteHRPayroll(id) });
             hrOpenFloatMenu(btn, items);
         }
-        // Bulk wrappers loop the existing per-id functions over the current selection (no new
-        // payroll logic — just batch invocation of Send / Mark Paid).
-        async function hrBulkSendPayslips() {
-            const ids = [...hrSelectedPayrollIds]; if (!ids.length) return;
-            const statusEl = document.getElementById('hr-payroll-bulk-status'); let n = 0;
-            for (const id of ids) { if (statusEl) statusEl.textContent = `Sending ${n+1} of ${ids.length}…`; try { await sendHRPayslip(id); n++; } catch (e) {} }
-            if (statusEl) statusEl.textContent = `Sent ${n} payslip(s).`;
-            await loadHRData(); renderHRPayroll();
-        }
+        // Bulk Mark Paid loops the existing per-id function over the current selection.
         async function hrBulkMarkPaid() {
             const ids = [...hrSelectedPayrollIds]; if (!ids.length) return;
             for (const id of ids) { try { await markHRPayrollPaid(id); } catch (e) {} }
@@ -7599,68 +7633,329 @@ async function populateHRJobDeptOptions() {
             return { error };
         }
 
-// ── sendHRPayslip (orig line 11008) ──
-        async function sendHRPayslip(id) {
-            const { error } = await hrSetPayrollPublished(id, true);
-            if (error) { showToast('error', error.message); return; }
+// ── Payroll → Payslip workflow ─────────────────────────────────────────────────────────────
+// Payroll (hr_payroll row) is the financial source of truth. The payslip is the employee-facing
+// document built from that SAME row — never a second copy of the figures — and moves through
+// payslip_status: not_generated → draft → ready → sent. Only `sent` is visible to the employee
+// (the DB derives `published` from the status). `month` is always the SALARY month; when HR did
+// each step is in the *_at audit columns, so September salary processed in October still prints
+// "Salary for September 2026".
+        const HR_PS_META = { not_generated: { l: 'Not generated', c: 'muted' }, draft: { l: 'Draft', c: 'amber' }, ready: { l: 'Ready to send', c: 'blue' }, sent: { l: 'Sent', c: 'green' } };
+        function hrPayslipStatus(p) { if (!p) return 'not_generated'; if (p.payslip_status) return p.payslip_status; return p.published ? 'sent' : 'draft'; }
+        function hrPayslipPill(p) { const m = HR_PS_META[hrPayslipStatus(p)] || HR_PS_META.not_generated; return `<span class="pr-pill ${m.c}">${m.l}</span>`; }
+        function hrMonthLong(m) { return /^\d{4}-\d{2}$/.test(m || '') ? new Date(m + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : (m || '—'); }
+        function hrActor() { return (typeof activeUser !== 'undefined' && activeUser) || (typeof activeEmail !== 'undefined' && activeEmail) || 'HR'; }
+        function hrFmtWhen(iso) { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+        function _hrEsc(v) { return String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+        function _hrInr(v) { return '₹' + Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+        function hrRequirePayslipSchema() {
+            if (hrPayslipSchemaOk) return true;
+            showToast('error', 'Payslips need a one-time database update first — run 20261005_payslip_workflow.sql in Supabase.', 7000);
+            return false;
+        }
+        // Audit + payslip consequences of saving payroll figures (schema present only).
+        function hrPayrollAuditFields(existing, payload) {
+            const now = new Date().toISOString(), who = hrActor(), f = {};
+            if (!existing) { f.payroll_generated_by = who; f.payroll_generated_at = now; f.payslip_status = 'not_generated'; return f; }
+            f.payroll_updated_by = who; f.payroll_updated_at = now;
+            const keys = ['basic', 'allowances', 'overtime', 'bonuses', 'deductions', 'advances', 'leave_deduction', 'net_salary', 'payment_date'];
+            const changed = keys.some(k => k === 'payment_date' ? (existing[k] || '') !== (payload[k] || '') : Number(existing[k] || 0) !== Number(payload[k] || 0));
+            // A verified payslip whose figures just changed must be checked again.
+            if (changed && hrPayslipStatus(existing) === 'ready') f.payslip_status = 'draft';
+            return f;
+        }
+        function hrPayrollActionsHTML(p) {
+            const st = hrPayslipStatus(p);
+            return `<button onclick="editHRPayroll('${p.id}')" class="hr-act hr-act-blue">Edit Payroll</button>`
+                + (st === 'not_generated'
+                    ? `<button onclick="hrGeneratePayslip('${p.id}')" class="hr-act hr-act-green">Generate Payslip</button>`
+                    : `<button onclick="hrOpenPayslipsFor('${p.id}')" class="hr-act">View Payslip</button>`)
+                + (p.payment_status !== 'paid' ? `<button onclick="markHRPayrollPaid('${p.id}')" class="hr-act hr-act-green">Mark Paid</button>` : '')
+                + `<button onclick="hrPayrollRowMenu('${p.id}', this)" class="hr-act" aria-label="More actions">⋯</button>`;
+        }
+        async function hrRecalculatePayroll(id) {
+            const p = hrPayroll.find(x => x.id === id); if (!p) return;
+            if (hrPayslipStatus(p) === 'sent') { showToast('warning', 'This payslip has already been sent. Recall it from Payslips before recalculating.'); return; }
+            const name = hrEmpName(p.employee_id);
+            if (!(await showConfirm(`Basic pay, leave deduction and day counts are recalculated from attendance and leave. Allowances, overtime, bonuses, other deductions and advances you entered are kept.`, { title: `Recalculate ${_hrEsc(name)} — ${hrMonthLong(p.month)}?`, confirmLabel: 'Recalculate' }))) return;
+            const calc = hrCalculatePayrollForMonth(p.employee_id, p.month);
+            const basic = calc.earnedBasic, leave_deduction = calc.leaveDeduction;
+            const net_salary = basic + (p.allowances || 0) + (p.overtime || 0) + (p.bonuses || 0) - leave_deduction - (p.deductions || 0) - (p.advances || 0);
+            const payload = { basic, leave_deduction, paid_leave_days: calc.paidLeaveDays, unpaid_leave_days: calc.unpaidLeaveDays, absent_days: calc.absentDays, net_salary,
+                allowances: p.allowances, overtime: p.overtime, bonuses: p.bonuses, deductions: p.deductions, advances: p.advances, payment_date: p.payment_date };
+            if (hrPayslipSchemaOk) Object.assign(payload, hrPayrollAuditFields(p, payload));
+            const { error } = await hrSavePayrollRow(payload, id);
+            if (error) { showToast('error', 'Could not recalculate: ' + error.message); return; }
+            await loadHRData(); renderHRPayroll();
+            showToast('success', `Payroll recalculated — net ${_hrInr(net_salary)}.`);
+        }
+
+        // ── Generate payslip(s) — HR confirms; never sends ──
+        async function hrGeneratePayslip(id) {
+            if (!hrRequirePayslipSchema()) return;
+            const p = hrPayroll.find(x => x.id === id); if (!p) return;
+            if (hrPayslipStatus(p) !== 'not_generated') {
+                if (await showConfirm('This payroll already has its payslip. A payslip always shows the current payroll figures, so there is nothing to regenerate — open it in Payslips instead.', { title: 'Payslip already exists.', confirmLabel: 'View Payslip' })) hrOpenPayslipsFor(id);
+                return;
+            }
+            const name = hrEmpName(p.employee_id);
+            const msg = `<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin-bottom:12px"><span>Employee</span><b style="color:#fff">${_hrEsc(name)}</b><span>Salary month</span><b style="color:#fff">${hrMonthLong(p.month)}</b><span>Payroll amount</span><b style="color:#4ade80">${_hrInr(p.net_salary)}</b></div>This will create the official payslip for this payroll. It stays HR-only (Draft) until you send it from Payslips.`;
+            if (!(await showConfirm(msg, { title: 'Generate Payslip?', confirmLabel: 'Generate Payslip' }))) return;
+            const r = await hrGeneratePayslipRows([id]);
+            await loadHRData(); renderHRPayroll();
+            if (r.created) showToast('success', `Payslip generated for ${name} — find it in Payslips (Draft).`);
+            else showToast('warning', 'Payslip already exists.');
+        }
+        // Atomic per row: only flips not_generated → draft, so double clicks / two HR users can
+        // never create a second payslip for the same payroll.
+        async function hrGeneratePayslipRows(ids, statusEl) {
+            const now = new Date().toISOString(), who = hrActor(); let created = 0, existed = 0, failed = [];
+            for (let i = 0; i < ids.length; i++) {
+                if (statusEl) statusEl.textContent = `Generating payslip ${i + 1} of ${ids.length}…`;
+                const { data, error } = await dbInstance.from('hr_payroll')
+                    .update({ payslip_status: 'draft', payslip_generated_by: who, payslip_generated_at: now })
+                    .eq('id', ids[i]).eq('payslip_status', 'not_generated').select('id');
+                if (error) failed.push(hrEmpName((hrPayroll.find(x => x.id === ids[i]) || {}).employee_id) + ': ' + error.message);
+                else if (data && data.length) created++; else existed++;
+            }
+            return { created, existed, failed };
+        }
+        async function hrBulkGeneratePayslips(ids, monthHint) {
+            if (!hrRequirePayslipSchema()) return;
+            const rows = hrPayroll.filter(p => ids.includes(p.id) && hrPayslipStatus(p) === 'not_generated');
+            if (!rows.length) { showToast('info', 'Nothing to generate — every selected payroll already has its payslip.'); return; }
+            const months = [...new Set(rows.map(p => p.month))];
+            const label = months.length === 1 ? hrMonthLong(months[0]) : 'the selected salary months';
+            if (!(await showConfirm(`Payslips are created from the current payroll figures and stay HR-only (Draft). Nothing is sent to employees.`, { title: `Generate ${rows.length} payslip${rows.length === 1 ? '' : 's'} for ${label}?`, confirmLabel: 'Generate Payslips' }))) return;
+            const statusEl = document.getElementById('hr-payroll-bulk-status');
+            const r = await hrGeneratePayslipRows(rows.map(p => p.id), statusEl);
+            hrSelectedPayrollIds = new Set();
+            await loadHRData(); renderHRPayroll();
+            if (statusEl) statusEl.textContent = `Generated ${r.created} payslip(s) for ${label}.` + (r.existed ? ` ${r.existed} already existed.` : '') + (r.failed.length ? ` ${r.failed.length} failed: ${r.failed.join('; ')}` : '') + ' Review and send them from Payslips.';
+        }
+        function hrGenerateAllReadyPayslips() {
+            const month = document.getElementById('hr-payroll-month').value;
+            if (!month) { showToast('warning', 'Pick a salary month first.'); return; }
+            const ids = hrPayroll.filter(p => p.month === month && hrPayslipStatus(p) === 'not_generated').map(p => p.id);
+            if (!ids.length) { showToast('info', hrPayroll.some(p => p.month === month) ? `Every payroll for ${hrMonthLong(month)} already has its payslip.` : `No payroll for ${hrMonthLong(month)} yet — generate payroll first.`); return; }
+            return hrBulkGeneratePayslips(ids, month);
+        }
+        function hrOpenPayslipsFor(id) {
+            const p = hrPayroll.find(x => x.id === id); if (!p) return;
+            document.getElementById('hr-payslips-month').value = p.month;
+            const sf = document.getElementById('hr-payslips-status'); if (sf) sf.value = '';
+            switchHRSubtab('payslips');
+            const row = document.getElementById('ps-row-' + id);
+            if (row) { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); row.style.transition = 'background .6s'; row.style.background = 'rgba(255,138,60,.12)'; setTimeout(() => { row.style.background = ''; }, 1600); }
+        }
+
+        // ── Payslips tab ──
+        function hrPayslipActionsHTML(p) {
+            const st = hrPayslipStatus(p), id = p.id;
+            let h = `<button onclick="hrViewPayslip('${id}')" class="hr-act hr-act-blue">View</button>`;
+            if (st !== 'sent') h += `<button onclick="hrOpenPayslipEdit('${id}')" class="hr-act">Edit</button>`;
+            h += `<button onclick="downloadHRPayslip('${id}', this)" class="hr-act">Download PDF</button>`;
+            if (st === 'draft') h += `<button onclick="hrMarkPayslipReady('${id}')" class="hr-act hr-act-amber">Mark Ready</button>`;
+            if (st === 'ready') h += `<button onclick="hrSendPayslip('${id}')" class="hr-act hr-act-green">Send Payslip</button>`;
+            h += `<button onclick="hrPayslipRowMenu('${id}', this)" class="hr-act" aria-label="More actions">⋯</button>`;
+            return h;
+        }
+        function renderHRPayslipsList() {
+            const banner = document.getElementById('hr-payslip-schema-banner');
+            if (banner) banner.style.display = hrPayslipSchemaOk ? 'none' : 'flex';
+            const mi = document.getElementById('hr-payslips-month');
+            if (mi && !mi.value) {
+                const withSlips = hrPayroll.filter(p => hrPayslipStatus(p) !== 'not_generated').map(p => p.month).sort();
+                mi.value = withSlips.length ? withSlips[withSlips.length - 1] : new Date().toISOString().slice(0, 7);
+            }
+            if (typeof hrSetMonthLabel === 'function') hrSetMonthLabel('hr-payslips-month');
+            const month = mi ? mi.value : '';
+            const stF = (document.getElementById('hr-payslips-status') || {}).value || '';
+            const rows = hrPayroll.filter(p => hrPayslipStatus(p) !== 'not_generated' && (!month || p.month === month) && (!stF || hrPayslipStatus(p) === stF))
+                .sort((a, b) => hrEmpName(a.employee_id).localeCompare(hrEmpName(b.employee_id)));
+            hrSelectedPayslipIds = new Set([...hrSelectedPayslipIds].filter(id => rows.some(p => p.id === id)));
+            const all = document.getElementById('hr-payslips-select-all'); if (all) all.checked = rows.length > 0 && hrSelectedPayslipIds.size === rows.length;
+            const sc = document.getElementById('hr-payslips-selcount'); if (sc) sc.textContent = hrSelectedPayslipIds.size + ' selected';
+            const bb = document.getElementById('hr-payslips-bulk-btn'); if (bb) bb.disabled = hrSelectedPayslipIds.size === 0;
+            const br = document.getElementById('hr-payslips-bulk-row'); if (br) br.style.display = rows.length ? 'flex' : 'none';
+            const pending = hrPayroll.filter(p => p.month === month && hrPayslipStatus(p) === 'not_generated').length;
+            const who = (by, at) => at ? `<div class="text-[#a5adcf]">${hrFmtWhen(at)}</div>${by ? `<div class="text-[11px] text-[#6b74a0]">by ${_hrEsc(by)}</div>` : ''}` : '<span class="text-[#4a5182]">—</span>';
+            document.getElementById('hr-payslips-rows').innerHTML = rows.length ? rows.map(p => `
+                <tr id="ps-row-${p.id}" class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4"><input type="checkbox" ${hrSelectedPayslipIds.has(p.id) ? 'checked' : ''} onchange="hrTogglePayslipSel('${p.id}', this.checked)" aria-label="Select payslip"></td>
+                    <td data-label="Employee" class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:9px">${hrAvatarForEmployeeId(p.employee_id, 28)}<span>${_hrEsc(hrEmpName(p.employee_id))}</span></div></td>
+                    <td data-label="Salary Month" class="py-2.5 px-4 text-[#a5adcf]" style="white-space:nowrap">${hrMonthLong(p.month)}</td>
+                    <td data-label="Net Salary" class="py-2.5 px-4 pr-num text-green-400 font-bold">${_hrInr(p.net_salary)}</td>
+                    <td data-label="Status" class="py-2.5 px-4">${hrPayslipPill(p)}${p.payslip_note ? ' <span title="Has a payslip note" class="text-[#6b74a0]">✎</span>' : ''}</td>
+                    <td data-label="Generated" class="py-2.5 px-4" style="white-space:nowrap">${who(p.payslip_generated_by, p.payslip_generated_at)}</td>
+                    <td data-label="Sent" class="py-2.5 px-4" style="white-space:nowrap">${who(p.payslip_sent_by, p.payslip_sent_at)}</td>
+                    <td data-label="Actions" class="py-2.5 px-4"><div class="hr-actions">${hrPayslipActionsHTML(p)}</div></td>
+                </tr>`).join('')
+                : `<tr><td colspan="8"><div class="dsh-empty" style="min-height:160px;gap:10px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div class="dsh-empty-t">No payslips${stF ? ' with this status' : ''} for ${hrMonthLong(month)}.</div><div class="dsh-empty-s">${pending ? `${pending} payroll${pending === 1 ? '' : 's'} for this month ${pending === 1 ? 'is' : 'are'} waiting — check the figures in Payroll, then Generate Payslip.` : 'Payslips are created from Payroll after HR checks the figures.'}</div><button class="pr-btn" style="margin-top:4px" onclick="switchHRSubtab('payroll')">Go to Payroll</button></div></td></tr>`;
+        }
+        function hrTogglePayslipSel(id, on) { if (on) hrSelectedPayslipIds.add(id); else hrSelectedPayslipIds.delete(id); renderHRPayslipsList(); }
+        function hrToggleAllPayslips(on) {
+            const month = document.getElementById('hr-payslips-month').value, stF = document.getElementById('hr-payslips-status').value;
+            const rows = hrPayroll.filter(p => hrPayslipStatus(p) !== 'not_generated' && p.month === month && (!stF || hrPayslipStatus(p) === stF));
+            hrSelectedPayslipIds = on ? new Set(rows.map(p => p.id)) : new Set();
+            renderHRPayslipsList();
+        }
+        function hrPayslipsBulkMenu(btn) {
+            if (!hrSelectedPayslipIds.size) return;
+            const ids = [...hrSelectedPayslipIds];
+            hrOpenFloatMenu(btn, [
+                { label: 'Send Selected Payslips', icon: '📤', fn: () => hrBulkSendPayslips(ids) },
+                { label: 'Mark Selected Ready', icon: '✓', fn: () => hrBulkMarkReady(ids) },
+                { sep: true },
+                { label: 'Download Selected (.ZIP)', icon: '⬇', fn: () => hrDownloadPayslipsZip(true) },
+            ]);
+        }
+        function hrPayslipRowMenu(id, btn) {
+            const p = hrPayroll.find(x => x.id === id); if (!p) return;
+            const st = hrPayslipStatus(p), items = [];
+            if (st === 'sent') {
+                items.push({ label: 'Resend Email', icon: '✉', fn: () => resendHRPayslipEmail(id, true) });
+                items.push({ label: 'Recall Payslip', icon: '↩', danger: true, fn: () => hrRecallPayslip(id) });
+            } else {
+                if (st === 'ready') items.push({ label: 'Back to Draft', icon: '↩', fn: () => hrSetPayslipStage(id, 'draft') });
+                items.push({ label: 'Edit Payroll Figures', icon: '✎', fn: () => editHRPayroll(id) });
+                items.push({ sep: true });
+                items.push({ label: 'Delete Payslip (keep payroll)', icon: '🗑', danger: true, fn: () => hrDeletePayslip(id) });
+            }
+            hrOpenFloatMenu(btn, items);
+        }
+        async function hrSetPayslipStage(id, status, extra) {
+            if (!hrRequirePayslipSchema()) return { error: new Error('schema') };
+            const upd = Object.assign({ payslip_status: status, payslip_edited_by: hrActor(), payslip_edited_at: new Date().toISOString() }, extra || {});
+            const { error } = await dbInstance.from('hr_payroll').update(upd).eq('id', id);
+            if (error) { showToast('error', 'Could not update payslip: ' + error.message); return { error }; }
+            await loadHRData(); renderHRPayslipsList();
+            return { error: null };
+        }
+        async function hrMarkPayslipReady(id) {
+            const r = await hrSetPayslipStage(id, 'ready');
+            if (!r.error) showToast('success', 'Marked ready to send.');
+        }
+        async function hrBulkMarkReady(ids) {
+            const rows = hrPayroll.filter(p => ids.includes(p.id) && hrPayslipStatus(p) === 'draft');
+            if (!rows.length) { showToast('info', 'None of the selected payslips are drafts.'); return; }
+            const now = new Date().toISOString(), who = hrActor();
+            for (const p of rows) await dbInstance.from('hr_payroll').update({ payslip_status: 'ready', payslip_edited_by: who, payslip_edited_at: now }).eq('id', p.id).eq('payslip_status', 'draft');
+            hrSelectedPayslipIds = new Set();
+            await loadHRData(); renderHRPayslipsList();
+            showToast('success', `${rows.length} payslip(s) marked ready to send.`);
+        }
+        async function hrDeletePayslip(id) {
+            const p = hrPayroll.find(x => x.id === id); if (!p || hrPayslipStatus(p) === 'sent') return;
+            if (!(await showConfirm('The payroll stays exactly as it is — only the payslip document is removed. You can generate it again from Payroll.', { title: 'Delete this payslip?', confirmLabel: 'Delete Payslip', danger: true }))) return;
+            const r = await hrSetPayslipStage(id, 'not_generated', { payslip_generated_by: null, payslip_generated_at: null, payslip_note: null });
+            if (!r.error) showToast('success', 'Payslip deleted — the payroll is unchanged.');
+        }
+        async function hrViewPayslip(id) {
+            const p = hrPayroll.find(x => x.id === id); if (!p) return;
+            const w = window.open('', '_blank');
+            try {
+                const doc = await _buildHRPayslipDoc(p, hrEmployees.find(x => x.id === p.employee_id));
+                const url = doc.output('bloburl');
+                if (w) w.location.href = url; else window.open(url, '_blank');
+            } catch (e) { if (w) w.close(); showToast('error', 'Unable to open payslip.'); console.warn('payslip view failed', e); }
+        }
+
+        // ── Send (Payslips only) ──
+        async function hrSendPayslip(id, opts) {
+            opts = opts || {};
+            const p = hrPayroll.find(x => x.id === id); if (!p) return false;
+            const st = hrPayslipStatus(p), name = hrEmpName(p.employee_id);
+            if (st === 'sent') { if (!opts.silent) showToast('info', 'This payslip has already been sent.'); return false; }
+            if (hrPayslipSchemaOk && st !== 'ready') { if (!opts.silent) showToast('warning', 'Mark the payslip Ready after checking it, then send.'); return false; }
+            if (!opts.silent) {
+                const e = hrEmployees.find(x => x.id === p.employee_id);
+                const msg = `<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin-bottom:12px"><span>Employee</span><b style="color:#fff">${_hrEsc(name)}</b><span>Salary</span><b style="color:#fff">${hrMonthLong(p.month)}</b><span>Net pay</span><b style="color:#4ade80">${_hrInr(p.net_salary)}</b></div>${_hrEsc(name)} will see it in My Payslips${e && e.personal_email ? ' and receive it by email' : ''}.`;
+                if (!(await showConfirm(msg, { title: 'Send Payslip?', confirmLabel: 'Send Payslip' }))) return false;
+            }
+            const { error } = hrPayslipSchemaOk
+                ? await dbInstance.from('hr_payroll').update({ payslip_status: 'sent', payslip_sent_by: hrActor(), payslip_sent_at: new Date().toISOString() }).eq('id', id).neq('payslip_status', 'sent')
+                : await hrSetPayrollPublished(id, true);
+            if (error) { showToast('error', 'Could not send payslip: ' + error.message); return false; }
             await loadHRData();
-            renderHRPayroll();
-            renderHREmployeeProfile();
-            // Auto-send the payslip to the employee's personal email via Brevo. Publishing to
-            // "My Payslips" already succeeded above — email is an ADDITIONAL delivery channel and
-            // its failure must never undo the payslip (it stays published either way).
-            const p = hrPayroll.find(x => x.id === id);
-            const emp = p ? hrEmployees.find(e => e.id === p.employee_id) : null;
-            showToast('success', 'Payslip generated & sent to My Payslips.');
+            if (!opts.silent) { renderHRPayslipsList(); renderHRPayroll(); showToast('success', `Payslip sent to ${name}.`); }
+            // Email is an extra channel; its failure never undoes the send.
             if (typeof hrEmailPayslip === 'function') {
                 const res = await hrEmailPayslip(id);
-                hrPayslipEmailToast(res, emp && emp.full_name);
+                if (!opts.silent) hrPayslipEmailToast(res, name);
             }
+            return true;
         }
-        // Manual (Re)send from the payroll/payslip list. resend=true bypasses the dedupe guard.
+        async function hrBulkSendPayslips(ids) {
+            ids = ids || [...hrSelectedPayslipIds];
+            const rows = hrPayroll.filter(p => ids.includes(p.id));
+            const ready = rows.filter(p => hrPayslipStatus(p) === 'ready');
+            const drafts = rows.filter(p => hrPayslipStatus(p) === 'draft').length;
+            if (!ready.length) { showToast('info', drafts ? 'Mark the selected payslips Ready first — only verified payslips can be sent.' : 'Nothing to send — the selected payslips were already sent.'); return; }
+            if (!(await showConfirm(`Each employee will see only their own payslip and receive it by email where a personal email is on file.${drafts ? `\n\n${drafts} draft payslip(s) in the selection will be skipped.` : ''}`, { title: `Send ${ready.length} payslip${ready.length === 1 ? '' : 's'}?`, confirmLabel: 'Send Payslips' }))) return;
+            const statusEl = document.getElementById('hr-payslips-bulk-status'); let n = 0;
+            for (const p of ready) { if (statusEl) statusEl.textContent = `Sending ${n + 1} of ${ready.length}…`; if (await hrSendPayslip(p.id, { silent: true })) n++; }
+            hrSelectedPayslipIds = new Set();
+            await loadHRData(); renderHRPayslipsList();
+            if (statusEl) statusEl.textContent = `Sent ${n} payslip(s).` + (drafts ? ` ${drafts} draft(s) skipped.` : '');
+        }
+        async function hrRecallPayslip(id) {
+            if (!(await showConfirm('The employee will no longer see this payslip. It goes back to Draft so you can correct it and send it again.', { title: 'Recall this payslip?', confirmLabel: 'Recall Payslip', danger: true }))) return;
+            if (!hrPayslipSchemaOk) { const { error } = await hrSetPayrollPublished(id, false); if (error) { showToast('error', error.message); return; } await loadHRData(); renderHRPayslipsList(); return; }
+            const r = await hrSetPayslipStage(id, 'draft', { payslip_sent_by: null, payslip_sent_at: null });
+            if (!r.error) showToast('success', 'Payslip recalled — back to Draft.');
+        }
+        // Old entry points (kept for any remaining callers) → the new Payslips-stage actions.
+        function sendHRPayslip(id) { return hrSendPayslip(id); }
+        function revokeHRPayslipAccess(id) { return hrRecallPayslip(id); }
+        // Manual (Re)send from the payslip list. resend=true bypasses the dedupe guard.
         async function resendHRPayslipEmail(id, resend) {
             const p = hrPayroll.find(x => x.id === id);
             const emp = p ? hrEmployees.find(e => e.id === p.employee_id) : null;
-            if (p && !p.published) { showToast('warning', 'Send the payslip to the employee first, then email it.'); return; }
+            if (p && hrPayslipStatus(p) !== 'sent') { showToast('warning', 'Send the payslip to the employee first, then email it.'); return; }
             showToast('info', 'Emailing payslip…');
             const res = await hrEmailPayslip(id, { resend: !!resend });
             hrPayslipEmailToast(res, emp && emp.full_name);
-            renderHRPayroll();
+            renderHRPayslipsList();
         }
 
-// ── revokeHRPayslipAccess (orig line 11015) ──
-        async function revokeHRPayslipAccess(id) {
-            if (!(await showConfirm('It will go back to Draft (HR only) until you Send it again.', { title: 'Revoke this employee\'s access to this payslip?', confirmLabel: 'Revoke Access', danger: true }))) return;
-            const { error } = await hrSetPayrollPublished(id, false);
-            if (error) { alert(error.message); return; }
-            await loadHRData();
-            renderHRPayroll();
-            renderHREmployeeProfile();
+        // ── Edit payslip (document fields only; figures stay in Payroll) ──
+        function hrOpenPayslipEdit(id) {
+            const p = hrPayroll.find(x => x.id === id); if (!p) return;
+            const st = hrPayslipStatus(p), locked = st === 'sent';
+            document.getElementById('hr-pse-id').value = id;
+            document.getElementById('hr-pse-title').textContent = 'Edit Payslip — ' + hrEmpName(p.employee_id);
+            document.getElementById('hr-pse-sub').textContent = 'Salary for ' + hrMonthLong(p.month) + (p.payment_date ? ' · Pay date ' + hrFmtWhen(p.payment_date + 'T00:00:00') : '');
+            const gross = (p.basic || 0) + (p.allowances || 0) + (p.overtime || 0) + (p.bonuses || 0);
+            const ded = (p.leave_deduction || 0) + (p.deductions || 0) + (p.advances || 0);
+            const box = (k, v, c) => `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px"><div class="hr-field-label" style="margin:0 0 4px">${k}</div><div style="font-weight:800;color:${c};font-size:15px">${v}</div></div>`;
+            document.getElementById('hr-pse-figures').innerHTML = box('Gross earnings', _hrInr(gross), '#e6e9f5') + box('Deductions', _hrInr(ded), '#fca5a5') + box('Net pay', _hrInr(p.net_salary), '#4ade80');
+            const note = document.getElementById('hr-pse-note'); note.value = p.payslip_note || ''; note.disabled = locked;
+            const sel = document.getElementById('hr-pse-status'); sel.value = st === 'ready' ? 'ready' : 'draft'; sel.disabled = locked;
+            document.getElementById('hr-pse-locked').style.display = locked ? '' : 'none';
+            document.getElementById('hr-pse-save').style.display = locked ? 'none' : '';
+            const line = (lbl, by, at) => at ? `${lbl} ${hrFmtWhen(at)}${by ? ' by ' + _hrEsc(by) : ''}` : '';
+            document.getElementById('hr-pse-audit').innerHTML = [line('Payroll generated', p.payroll_generated_by, p.payroll_generated_at), line('Payroll updated', p.payroll_updated_by, p.payroll_updated_at), line('Payslip generated', p.payslip_generated_by, p.payslip_generated_at), line('Last edited', p.payslip_edited_by, p.payslip_edited_at), line('Sent', p.payslip_sent_by, p.payslip_sent_at)].filter(Boolean).join('<br>');
+            const m = document.getElementById('hr-payslip-edit-modal'); m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function hrClosePayslipEdit() { const m = document.getElementById('hr-payslip-edit-modal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+        function hrPayslipEditPayroll() { const id = document.getElementById('hr-pse-id').value; hrClosePayslipEdit(); editHRPayroll(id); }
+        async function hrSavePayslipEdit() {
+            const id = document.getElementById('hr-pse-id').value;
+            const note = document.getElementById('hr-pse-note').value.trim() || null;
+            const status = document.getElementById('hr-pse-status').value === 'ready' ? 'ready' : 'draft';
+            const r = await hrSetPayslipStage(id, status, { payslip_note: note });
+            if (r.error) return;
+            hrClosePayslipEdit();
+            showToast('success', 'Payslip saved.');
         }
 
-// ── sendAllHRPayslips (orig line 11023) ──
-        async function sendAllHRPayslips() {
-            const month = document.getElementById('hr-payroll-month').value;
-            if (!month) { alert('Pick a payroll month first.'); return; }
-            const rows = hrPayroll.filter(p => p.month === month && !p.published);
-            if (!rows.length) { alert('Nothing to send — every payslip for this month is already published, or none have been generated yet.'); return; }
-            if (!(await showConfirm(`Each employee will only be able to see their own payslip.`, { title: `Send ${rows.length} payslip(s) for ${month} to their respective employees?`, confirmLabel: 'Send' }))) return;
-            const statusEl = document.getElementById('hr-payroll-bulk-status');
-            let sent = 0, failed = [];
-            for (const p of rows) {
-                if (statusEl) statusEl.textContent = `Sending ${sent + 1} of ${rows.length}…`;
-                const { error } = await hrSetPayrollPublished(p.id, true);
-                if (error) { failed.push(`${hrEmpName(p.employee_id)}: ${error.message}`); continue; }
-                sent++;
-                // Additional channel — email each published payslip; never blocks the batch.
-                if (typeof hrEmailPayslip === 'function') { try { await hrEmailPayslip(p.id); } catch (e) {} }
-            }
-            await loadHRData();
-            renderHRPayroll();
-            renderHREmployeeProfile();
-            if (statusEl) statusEl.textContent = failed.length
-                ? `Sent ${sent} of ${rows.length} — ${failed.length} failed: ${failed.join('; ')}`
-                : `Sent ${sent} payslip(s) for ${month}.`;
+        // ZIP of payslip PDFs — current Payslips view, or only the selected ones.
+        function hrDownloadPayslipsZip(selectedOnly) {
+            const month = document.getElementById('hr-payslips-month').value, stF = document.getElementById('hr-payslips-status').value;
+            const rows = hrPayroll.filter(p => hrPayslipStatus(p) !== 'not_generated' && p.month === month && (!stF || hrPayslipStatus(p) === stF) && (!selectedOnly || hrSelectedPayslipIds.has(p.id)));
+            if (!rows.length) { showToast('info', 'No payslips to download.'); return; }
+            return downloadAllHRPayslipsZip(rows, 'hr-payslips-bulk-status', month);
         }
 
 // ── deleteSelectedHRPayroll (orig line 11045) ──
@@ -7719,12 +8014,9 @@ async function populateHRJobDeptOptions() {
 // HR and every employee now build the identical payslip from the identical function — no
 // second format to drift out of sync (see common.js for the moved code + full comment).
 // ── downloadAllHRPayslipsZip (orig line 11337) ──
-        async function downloadAllHRPayslipsZip() {
-            const month = document.getElementById('hr-payroll-month').value;
-            if (!month) { alert('Pick a payroll month first.'); return; }
-            const rows = hrPayroll.filter(p => p.month === month);
-            if (!rows.length) { alert('No payslips saved for this month yet — use Generate All Payslips first.'); return; }
-            const statusEl = document.getElementById('hr-payroll-bulk-status');
+        async function downloadAllHRPayslipsZip(rows, statusId, month) {
+            if (!rows || !rows.length) { showToast('info', 'No payslips to download.'); return; }
+            const statusEl = document.getElementById(statusId || 'hr-payslips-bulk-status');
             if (statusEl) statusEl.textContent = `Building ${rows.length} payslip(s)…`;
             try {
                 const zip = new JSZip();

@@ -2039,9 +2039,11 @@ function hrOfficialEventFor(employee, dateStr) {
             doc.text('Production Studio Network', marginX, headerY + 5);
 
             doc.setFontSize(9); doc.setTextColor(120);
-            doc.text('Payslip For the Month', rightX, 18, { align: 'right' });
+            // Always the SALARY month (p.month) — never the date HR processed it, so September
+            // salary processed in October still reads "Salary for September 2026".
+            doc.text('PAYSLIP', rightX, 18, { align: 'right' });
             doc.setFontSize(12); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
-            doc.text(monthLabel, rightX, 24, { align: 'right' });
+            doc.text('Salary for ' + monthLabel, rightX, 24, { align: 'right' });
             doc.setFont(undefined, 'normal');
 
             doc.setDrawColor(225); doc.line(marginX, 32, rightX, 32);
@@ -2061,6 +2063,7 @@ function hrOfficialEventFor(employee, dateStr) {
             summaryRow('Employee ID', e?.employee_id || '—');
             summaryRow('Pay Period', monthLabel);
             summaryRow('Pay Date', payDate);
+            if (p.payslip_generated_at) summaryRow('Generated On', new Date(p.payslip_generated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
             // Full contracted salary, always — a fixed reference point so it's clear the payslip
             // isn't wrong when Basic Salary below is lower (mid-period check or partial month).
             summaryRow('Monthly Salary', rupee(monthlySalary));
@@ -2168,6 +2171,12 @@ function hrOfficialEventFor(employee, dateStr) {
             y2 += 26;
             doc.setFontSize(8.5); doc.setFont(undefined, 'normal'); doc.setTextColor(100);
             doc.text(`Amount In Words : ${amountInWordsINR(netPay)}`, marginX, y2, { maxWidth: rightX - marginX });
+            if (p.payslip_note) {
+                y2 += 10;
+                doc.setFontSize(8.5); doc.setFont(undefined, 'bold'); doc.setTextColor(60); doc.text('Note', marginX, y2);
+                doc.setFont(undefined, 'normal'); doc.setTextColor(90);
+                doc.text(doc.splitTextToSize(String(p.payslip_note), rightX - marginX), marginX, y2 + 5);
+            }
 
             doc.setFontSize(8); doc.setTextColor(160);
             doc.text('-- This is a system-generated document. --', pageW / 2, 285, { align: 'center' });
