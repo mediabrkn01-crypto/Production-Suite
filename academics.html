@@ -7705,6 +7705,7 @@ async function deleteStudent(){
 // Trainer/Coach now only ever happens via HR → Employees, which flows back into this table's
 // status column (active/inactive) on the next sync, same as any other HR-driven change.
 async function deleteCourse(id, name){
+  if(!requireHeadAccess())return;
   if (!requireHeadAccess()) return;
   if (!(await confirmDelete('course', name))) return; // type-DELETE guard — same as deleteTrainer/deleteStudent/deleteBatch
   const {error}=await sb.from('courses').delete().eq('id', id);
@@ -7731,6 +7732,8 @@ async function loadCourses(){
 function renderCourseTable(){
   const el=document.getElementById('courseTable'); if(!el)return;
   const _dash='<span class="crs-muted">—</span>';
+  // Course changes belong to the Academic Head (or an active delegate); trainers see the list read-only.
+  const _canEdit=(typeof isCurrentlyAcademicHead==='function')&&currentUser&&isCurrentlyAcademicHead();
   const _days=c=>{ const d=(c.default_days||'').split(',').map(x=>x.trim()).filter(Boolean); if(!d.length&&!c.mc_day) return _dash; return '<div class="crs-days">'+d.map(x=>'<span class="crs-day">'+esc(x)+'</span>').join('')+(c.mc_day?'<span class="crs-day crs-mc">MC '+esc(c.mc_day)+'</span>':'')+'</div>'; };
   el.innerHTML=COURSE_ROWS.map(c=>`
     <tr class="${c.active===false?'crs-legacy':''}"><td data-label="Course"><span style="font-weight:600;color:var(--tx)">${esc(c.name)}</span></td>
@@ -7741,9 +7744,9 @@ function renderCourseTable(){
     <td data-label="1:1 Sessions" class="crs-num">${c.type==='group'&&c.oto_sessions_required?c.oto_sessions_required+'<span class="crs-muted"> / student</span>':_dash}</td>
     <td data-label="Default Days">${_days(c)}</td>
     <td data-label="Status"><span class="badge ${c.active===false?'b-inactive':'b-active'}">${c.active===false?'Legacy':'Active'}</span></td>
-    <td data-label="Actions" style="text-align:right;white-space:nowrap"><button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
+    <td data-label="Actions" style="text-align:right;white-space:nowrap">${_canEdit?`<button class="act-btn" onclick="openCourse('${c.id}')">Edit</button>
     <button class="act-btn" onclick="toggleCourse('${c.id}')">${c.active===false?'Enable':'Disable'}</button>
-    <button class="act-btn crs-del" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>
+    <button class="act-btn crs-del" onclick="deleteCourse('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button>`:'<span class="crs-muted">View only</span>'}</td></tr>
   `).join('')||'<tr><td colspan="9" class="empty">No courses yet — define your first course.</td></tr>';
 }
 function populateCourseSelect(){
@@ -7832,6 +7835,7 @@ async function saveCourse(){
   if (renamed && typeof showToast === 'function') showToast('success', 'Course renamed — updated across Students, Batches & filters.');
 }
 async function toggleCourse(id){
+  if(!requireHeadAccess())return;
   if(!requireHeadAccess())return;
   const c=courseById[id]; if(!c)return;
   const {error}=await sb.from('courses').update({active:c.active===false}).eq('id',id);
