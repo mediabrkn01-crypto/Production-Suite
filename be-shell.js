@@ -358,6 +358,20 @@
     '.bes-clockpill .bcp-btn.in{background:linear-gradient(135deg,#10b981,#059669)}',
     '.bes-clockpill .bcp-btn.out{background:linear-gradient(135deg,#ff6b06,#f9182f)}',
     '.bes-clockpill .bcp-btn:disabled{opacity:.6;cursor:default}',
+    '.bes-clockpill .bcp-btn[hidden],.bes-clockpill .bcp-chip[hidden],.bes-clockpill .bcp-link[hidden]{display:none!important}',
+    '.bes-clockpill .bcp-chip{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 11px;border-radius:9px;font:700 11.5px Inter,system-ui,sans-serif;color:#93c5fd;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.28);cursor:default;user-select:none}',
+    '.bes-clockpill .bcp-chip.off{color:#c4b5fd;background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.28)}',
+    '.bes-clockpill .bcp-link{background:none;border:0;padding:0 4px;font:600 11px Inter,system-ui,sans-serif;color:#8b93b8;text-decoration:underline;text-underline-offset:2px;cursor:pointer}',
+    '.bes-clockpill .bcp-link:hover{color:#fff}',
+    '.bes-clockpill .bcp-hrs{color:#8b93b8;font-weight:600}',
+    '.bes-clockpill.is-done .bcp-txt b{color:#e6e9f5}',
+    '.bcp-dlg-bg{position:fixed;inset:0;z-index:2147482000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}',
+    '.bcp-dlg{width:min(400px,100%);background:#11162a;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px;color:#e6e9f5;font:13px/1.5 Inter,system-ui,sans-serif;box-shadow:0 30px 70px -20px rgba(0,0,0,.8)}',
+    '.bcp-dlg h3{margin:0 0 6px;font-size:16px;font-weight:800;color:#fff}',
+    '.bcp-dlg p{margin:0 0 16px;color:#a5adcf}',
+    '.bcp-dlg-b{display:flex;justify-content:flex-end;gap:8px}',
+    '.bcp-dlg-b button{height:38px;padding:0 16px;border-radius:10px;font:700 12.5px Inter,system-ui,sans-serif;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1}',
+    '.bcp-dlg-b button.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f)}',
     '.bes-clockpill .bcp-btn:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:1px}',
     '.bes-clockpill.is-done{padding-right:13px}',
     '@media(max-width:1100px){.bes-clockpill .bcp-txt{display:none}.bes-clockpill{padding-left:10px}}',
@@ -393,10 +407,10 @@
     if (!document.getElementById('bes-clockpill-css')) { var s = document.createElement('style'); s.id = 'bes-clockpill-css'; s.textContent = CSS; document.head.appendChild(s); }
     var pill = document.createElement('div');
     pill.className = 'bes-clockpill'; pill.setAttribute('role', 'group'); pill.setAttribute('aria-label', 'Attendance');
-    pill.innerHTML = '<span class="bcp-dot" aria-hidden="true"></span><span class="bcp-txt"></span><button type="button" class="bcp-btn"></button>';
+    pill.innerHTML = '<span class="bcp-dot" aria-hidden="true"></span><span class="bcp-txt"></span><button type="button" class="bcp-btn"></button><span class="bcp-chip" hidden aria-disabled="true"></span><button type="button" class="bcp-link" hidden></button>';
     header.parentNode.insertBefore(pill, header);
     card.classList.add('bes-att-moved');
-    var btn = pill.querySelector('.bcp-btn'), txt = pill.querySelector('.bcp-txt');
+    var btn = pill.querySelector('.bcp-btn'), txt = pill.querySelector('.bcp-txt'), chip = pill.querySelector('.bcp-chip'), link = pill.querySelector('.bcp-link');
     // Phone top bar (#mobile-topbar, shared by every portal): the desktop header is hidden on
     // phones, so the same Clock In / Clock Out also gets a round button next to search / bell.
     var mbtn = document.createElement('button'); mbtn.type = 'button'; mbtn.className = 'bcp-mbtn'; mbtn.hidden = true;
@@ -411,37 +425,129 @@
       return { in: bs.find(function (b) { return b.classList.contains('bes-clk-in') || /clock in/i.test(b.textContent); }),
                out: bs.find(function (b) { return b.classList.contains('bes-clk-out') || /clock out/i.test(b.textContent); }), all: bs };
     }
+    // ── helpers: company day (IST), worked hours, day-off from the shared leave policy ──
+    function istToday() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()); }
+    function mins(t) { var m = /(\d{1,2}):(\d{2})\s*(am|pm)?/i.exec(t || ''); if (!m) return null; var h = +m[1] % 12; if (!m[3]) h = +m[1]; else if (/pm/i.test(m[3])) h += 12; return h * 60 + (+m[2]); }
+    function worked(a, b) { var x = mins(a), y = mins(b); if (x == null || y == null || y < x) return ''; var d = y - x; return Math.floor(d / 60) + 'h ' + String(d % 60).padStart(2, '0') + 'm'; }
+    function g(name) { try { return Function('return typeof ' + name + ' !== "undefined" ? ' + name + ' : undefined')(); } catch (_) { return undefined; } }
+    function myEmail() { var a = g('activeEmail'); if (a) return a; var cu = g('currentUser'); if (cu && cu.username) return cu.username; var me = g('ME'); return me && me.email ? me.email : null; }
+    function db() { var d = g('dbInstance'); if (d && d.from) return d; d = g('sb'); return d && d.from ? d : null; }
+    var off = { date: null, label: null, busy: false };
+    // Holiday / weekly off / not scheduled / official event / full-day approved leave — decided by
+    // the same LeavePolicy.resolveAttendanceStatus() that attendance and payroll use.
+    async function loadDayOff() {
+      var d = istToday();
+      if (off.busy || off.date === d) return;
+      off.busy = true;
+      var label = null;
+      try {
+        var LP = window.LeavePolicy, c = db(), em = myEmail();
+        if (LP && LP.resolveAttendanceStatus && c && em) {
+          if (!LP.db && LP.withClient) LP.withClient(c);
+          var r = await c.from('hr_employees').select('*').eq('portal_email', String(em).trim().toLowerCase()).limit(1);
+          var emp = r.data && r.data[0];
+          if (emp && emp.account_type !== 'system' && LP.db && LP.db.buildContext) {
+            var ctx = await LP.db.buildContext(emp, { now: new Date(), date: d });
+            var res = LP.resolveAttendanceStatus(ctx, d) || {};
+            if (res.code === 'H') { var h = (ctx.holidays || []).find(function (x) { return String(x.holiday_date || '').slice(0, 10) === d; }); label = 'Holiday' + (h && h.name ? ' · ' + h.name : ''); }
+            else if (res.code === 'WO') label = 'Weekly off';
+            else if (res.code === 'NS') label = 'Not a working day';
+            else if (res.code === 'OE') label = 'Official event';
+            else if (res.leave && !res.half) label = 'On leave';
+          }
+        }
+      } catch (_) {}
+      off = { date: d, label: label, busy: false };
+      sync();
+    }
+    // Small confirm dialog (never the browser's confirm()).
+    function ask(title, text, okLabel) {
+      return new Promise(function (resolve) {
+        var bg = document.createElement('div'); bg.className = 'bcp-dlg-bg';
+        bg.innerHTML = '<div class="bcp-dlg" role="dialog" aria-modal="true"><h3></h3><p></p><div class="bcp-dlg-b"><button type="button" data-a="no">Cancel</button><button type="button" class="pri" data-a="yes"></button></div></div>';
+        bg.querySelector('h3').textContent = title; bg.querySelector('p').textContent = text; bg.querySelector('.pri').textContent = okLabel || 'Continue';
+        function done(v) { bg.remove(); document.removeEventListener('keydown', esc); resolve(v); }
+        function esc(e) { if (e.key === 'Escape') done(false); }
+        bg.addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) done(b.dataset.a === 'yes'); else if (e.target === bg) done(false); });
+        document.addEventListener('keydown', esc);
+        document.body.appendChild(bg); bg.querySelector('[data-a="no"]').focus();
+      });
+    }
+    function clockInAnyway(target) {
+      return ask('Clock in on a day off?', (off.label || 'Today is not a working day') + ' — no clock-in is needed. Clock in only if you are actually working today.', 'Clock in').then(function (ok) { if (ok && target && !target.disabled) target.click(); });
+    }
+    link.addEventListener('click', function () {
+      if (link.dataset.a === 'reopen') {
+        ask('Re-open today’s attendance?', 'Today’s attendance is already completed. Do you want to start another attendance session? The clock-out time will be cleared and recorded in the audit log.', 'Continue')
+          .then(function (ok) { if (ok && typeof window.beClockReopen === 'function') window.beClockReopen(); });
+      } else if (link.dataset.a === 'anyway') clockInAnyway(btn._target || mbtn._target);
+    });
+
     function sync() {
       // The card's own "hidden" means the page decided clocking doesn't apply (e.g. system account).
       var cardOn = !card.classList.contains('hidden');
       var r = realButtons(), target = null, state = 'none';
       if (r.all.length === 1) {               // single toggle button (Sales)
         var one = r.all[0];
-        if (visible(one)) { target = one; state = /out/i.test(one.textContent) ? 'in' : 'none'; } else state = 'done';
+        if (visible(one) && !one.disabled) { target = one; state = /out/i.test(one.textContent) ? 'in' : 'none'; } else state = 'done';
       } else if (visible(r.out)) { target = r.out; state = 'in'; }
       else if (visible(r.in)) { target = r.in; state = 'none'; }
       else state = 'done';
+      if (state === 'none' && off.date !== istToday()) loadDayOff();
+      var dayOff = state === 'none' && off.date === istToday() && off.label;
       pill.hidden = !cardOn;
-      pill.classList.toggle('is-in', state === 'in'); pill.classList.toggle('is-done', state === 'done');
-      txt.innerHTML = shortStatus(card, state);
-      if (target) {
+      pill.classList.toggle('is-in', state === 'in'); pill.classList.toggle('is-done', state === 'done' || !!dayOff);
+      var stText = card.querySelector('.bes-att-st') ? card.querySelector('.bes-att-st').textContent.replace(/\s+/g, ' ').trim() : '';
+      var times = stText.match(/\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?/g) || [];
+      if (state === 'done') {
+        var hrs = times.length > 1 ? worked(times[0], times[1]) : '';
+        txt.innerHTML = '✓ ' + (times.length > 1 ? 'Done <b>' + times[0] + ' – ' + times[1] + '</b>' : 'Attendance completed') + (hrs ? ' <span class="bcp-hrs">· ' + hrs + '</span>' : '');
+      } else if (dayOff) txt.innerHTML = '<b>' + off.label.replace(/</g, '&lt;') + '</b> · no clock-in needed';
+      else txt.innerHTML = shortStatus(card, state);
+      // Primary action: Clock In / Clock Out. Completed day → neutral "Completed today" chip.
+      if (target && !dayOff) {
         var out = state === 'in';
         btn.hidden = false; btn.className = 'bcp-btn ' + (out ? 'out' : 'in');
         btn.innerHTML = (out ? IC_OUT : IC_IN) + '<span>' + (out ? 'Clock Out' : 'Clock In') + '</span>';
         btn.disabled = !!target.disabled;
-        btn.title = card.querySelector('.bes-att-st') ? card.querySelector('.bes-att-st').textContent.trim() : '';
+        btn.title = stText;
         btn._target = target;
-      } else { btn.hidden = true; btn._target = null; }
+      } else { btn.hidden = true; btn._target = dayOff ? target : null; }
+      chip.hidden = !(state === 'done' || dayOff);
+      chip.className = 'bcp-chip' + (dayOff ? ' off' : '');
+      chip.textContent = dayOff ? 'Day off' : 'Completed today';
+      chip.title = dayOff ? off.label : 'Clock In opens again tomorrow';
+      var canReopen = state === 'done' && typeof window.beClockReopenAllowed === 'function' && window.beClockReopenAllowed();
+      link.hidden = !(canReopen || dayOff);
+      link.dataset.a = canReopen ? 'reopen' : 'anyway';
+      link.textContent = canReopen ? 'Re-open' : 'Clock in anyway';
       var plain = txt.textContent;
       mbtn.hidden = !cardOn;
-      mbtn._target = target;
-      mbtn.disabled = target ? !!target.disabled : false;
-      mbtn.className = 'bcp-mbtn ' + (target ? (state === 'in' ? 'out' : 'in') : 'done');
-      mbtn.innerHTML = target ? (state === 'in' ? IC_OUT : IC_IN) : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
-      var lbl = target ? (state === 'in' ? 'Clock Out — ' + plain : 'Clock In — ' + plain) : plain;
+      mbtn._target = dayOff ? null : target; mbtn._dayoff = dayOff ? target : null;
+      mbtn.disabled = target && !dayOff ? !!target.disabled : false;
+      mbtn.className = 'bcp-mbtn ' + (target && !dayOff ? (state === 'in' ? 'out' : 'in') : 'done');
+      mbtn.innerHTML = target && !dayOff ? (state === 'in' ? IC_OUT : IC_IN) : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+      var lbl = target && !dayOff ? (state === 'in' ? 'Clock Out — ' + plain : 'Clock In — ' + plain) : plain + (state === 'done' ? ' · Completed today' : '');
       mbtn.setAttribute('aria-label', lbl); mbtn.title = lbl;
     }
-    btn.addEventListener('click', function () { if (btn._target && !btn._target.disabled) btn._target.click(); });
+    mbtn.addEventListener('click', function () { if (mbtn._dayoff) clockInAnyway(mbtn._dayoff); });
+    // New company day (IST midnight): re-read today's attendance so Clock In returns — and only
+    // then; the completed state stays for the rest of the day even across reloads (it comes from
+    // the day's attendance row in the database).
+    var lastDay = istToday();
+    function rollover() {
+      var d = istToday(); if (d === lastDay) return; lastDay = d; off.date = null;
+      try { if (typeof window.refreshAttendanceClockCard === 'function') window.refreshAttendanceClockCard(); } catch (_) {}
+      try { var ic = g('refreshAttendanceClockCard'); if (typeof ic === 'function') ic(); } catch (_) {}
+      try { var init = g('initClock'); if (typeof init === 'function') init(); } catch (_) {}
+      sync();
+    }
+    (function scheduleMidnight() {
+      var p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date()).split(':').map(Number);
+      var ms = ((24 * 3600) - (p[0] * 3600 + p[1] * 60 + p[2])) * 1000 + 3000;
+      setTimeout(function () { rollover(); scheduleMidnight(); }, Math.min(ms, 6 * 3600 * 1000));
+    })();
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') rollover(); });
     new MutationObserver(sync).observe(card, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'disabled'] });
     sync();
     return true;

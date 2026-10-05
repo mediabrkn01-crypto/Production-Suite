@@ -2583,8 +2583,10 @@ function hrOfficialEventFor(employee, dateStr) {
             if (typeof syncLogToSheet === 'function') syncLogToSheet(ts, text); // Pipeline-only, push to Sheets silently
         }
 
+        // Attendance day in the company timezone (Asia/Kolkata). toISOString() is UTC, which made
+        // a clock-in between 00:00 and 05:30 IST land on (and be blocked by) the previous day.
         function todayDateStr() {
-            return new Date().toISOString().slice(0, 10);
+            return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
         }
 
         function findMyOpenAttendanceRecord() {
@@ -2656,6 +2658,7 @@ function hrOfficialEventFor(employee, dateStr) {
             const { data: dbExisting } = await dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail).eq('log_date', today).limit(1);
             if (dbExisting && dbExisting[0]) {
                 attendanceLogs = attendanceLogs.concat(dbExisting.filter(r => !attendanceLogs.some(a => a.id === r.id)));
+                if (dbExisting[0].log_out_time && typeof showToast === 'function') showToast('info', 'Today’s attendance has already been completed.');
                 refreshAttendanceClockCard();
                 if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
                 return;
@@ -2670,7 +2673,14 @@ function hrOfficialEventFor(employee, dateStr) {
                 log_out_time: null
             }]).select();
 
-            if (error) { alert('Could not record clock in: ' + error.message); return; }
+            if (error) {
+                // The database refuses a second clock-in for a completed day (and duplicates).
+                const done = /already been completed|duplicate key|attendance_logs_employee_date_unique/i.test(error.message || '');
+                const msg = done ? 'Today’s attendance has already been completed.' : 'Could not record clock in: ' + error.message;
+                if (typeof showToast === 'function') showToast(done ? 'info' : 'error', msg); else alert(msg);
+                if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
+                return;
+            }
             if (data && data[0]) attendanceLogs = attendanceLogs.concat(data);
 
             await hrSyncClockToAttendance(activeEmail, 'in', nowIso);
@@ -2680,6 +2690,40 @@ function hrOfficialEventFor(employee, dateStr) {
             if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
             if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
         }
+
+        // Re-open today's completed attendance — rare exception, HR / admin / management only,
+        // always behind a confirmation (header clock pill → "Re-open"). Clears the clock-out on
+        // the same day's row (one row per day is enforced by the database) and records who did it;
+        // the database only accepts this when reopened_at is set.
+        function beClockReopenAllowed() {
+            if (typeof beIsSystemAccount === 'function' && beIsSystemAccount()) return false;
+            const sr = (window._systemRole || '').toLowerCase();
+            return activeRole === 'admin' || ['manager', 'founder', 'co_founder', 'managing_director', 'director', 'hr', 'hr_manager'].indexOf(sr) > -1;
+        }
+        async function beClockReopen() {
+            if (!beClockReopenAllowed()) return;
+            const rec = findMyOpenAttendanceRecord();
+            if (!rec || !rec.log_out_time) return;
+            const nowIso = new Date().toISOString();
+            const { error } = await dbInstance.from('attendance_logs').update({ log_out_time: null, reopened_at: nowIso, reopened_by: activeEmail }).eq('id', rec.id);
+            if (error) {
+                const msg = /reopened_at|column/i.test(error.message || '') ? 'Re-opening needs the database update 20261007_attendance_guard.sql.' : 'Could not re-open attendance: ' + error.message;
+                if (typeof showToast === 'function') showToast('error', msg); return;
+            }
+            const prevOut = rec.log_out_time; rec.log_out_time = null;
+            try {
+                const me = typeof myHREmployeeRecord === 'function' ? myHREmployeeRecord() : null;
+                if (me) {
+                    await dbInstance.from('hr_attendance').update({ clock_out_time: null, reopened_at: nowIso }).eq('employee_id', me.id).eq('att_date', rec.log_date);
+                    await dbInstance.from('hr_audit_log').insert([{ employee_id: me.id, actor_email: activeEmail, actor_name: activeUser, action: 'attendance_reopened', entity: 'attendance', prev_status: 'Completed', new_status: 'Clocked in (re-opened)', reason: 'Re-opened from the header clock', meta: { date: rec.log_date, previous_clock_out: prevOut } }]);
+                }
+            } catch (e) {}
+            await pushLogEntry(`${activeUser} re-opened today's attendance (previous clock-out ${new Date(prevOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`);
+            refreshAttendanceClockCard();
+            if (typeof showToast === 'function') showToast('success', 'Attendance re-opened — remember to clock out.');
+        }
+        window.beClockReopenAllowed = beClockReopenAllowed;
+        window.beClockReopen = beClockReopen;
 
         async function handleClockOut() {
             if (beIsSystemAccount()) return;
@@ -2692,7 +2736,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 .update({ log_out_time: nowIso })
                 .eq('id', existing.id);
 
-            if (error) { alert('Could not record clock out: ' + error.message); return; }
+            if (error) { if (typeof showToast === 'function') showToast('error', 'Could not record clock out: ' + error.message); else alert('Could not record clock out: ' + error.message); return; }
             existing.log_out_time = nowIso;
 
             await hrSyncClockToAttendance(activeEmail, 'out', nowIso);

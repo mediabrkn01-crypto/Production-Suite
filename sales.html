@@ -2,35 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="be-version" content="2026.10.05.1850-4fqy">
-<script src="be-update.js?v=2026.10.05.1850-4fqy"></script>
+<meta name="be-version" content="2026.10.05.1909-u79f">
+<script src="be-update.js?v=2026.10.05.1909-u79f"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>Broken English · Sales Command Center</title>
 <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
 <link rel="apple-touch-icon" href="Broken English Final Logo-02 (1).png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.05.1850-4fqy"></script>
+<script src="be-live.js?v=2026.10.05.1909-u79f"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.05.1850-4fqy"/>
-<script src="sidebar-collapse.js?v=2026.10.05.1850-4fqy"></script>
-<script src="be-select.js?v=2026.10.05.1850-4fqy"></script>
-<script src="be-mobile.js?v=2026.10.05.1850-4fqy"></script>
+<link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.05.1909-u79f"/>
+<script src="sidebar-collapse.js?v=2026.10.05.1909-u79f"></script>
+<script src="be-select.js?v=2026.10.05.1909-u79f"></script>
+<script src="be-mobile.js?v=2026.10.05.1909-u79f"></script>
 <!-- Shared platform UI system (same files HR / Academics / Media load) — metric strip,
      top-right account menu, live greeting. Reused, not re-implemented. -->
-<link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.05.1850-4fqy">
-<script src="dashboard-metrics.js?v=2026.10.05.1850-4fqy"></script>
-<link rel="stylesheet" href="account-menu.css?v=2026.10.05.1850-4fqy">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.05.1850-4fqy">
-<script src="account-menu.js?v=2026.10.05.1850-4fqy"></script>
-<script src="photo-preview.js?v=2026.10.05.1850-4fqy"></script>
-<script src="shared-greeting.js?v=2026.10.05.1850-4fqy"></script>
-<script src="be-shell.js?v=2026.10.05.1850-4fqy"></script>
-<script src="access-guard.js?v=2026.10.05.1850-4fqy"></script>
-<script src="announcements.js?v=2026.10.05.1850-4fqy"></script>
-<script src="policy-config.js?v=2026.10.05.1850-4fqy"></script>
-<script src="leave-policy.js?v=2026.10.05.1850-4fqy"></script>
-<script src="my-workspace.js?v=2026.10.05.1850-4fqy"></script>
-<script src="dynamic-tabs.js?v=2026.10.05.1850-4fqy"></script>
+<link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.05.1909-u79f">
+<script src="dashboard-metrics.js?v=2026.10.05.1909-u79f"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.05.1909-u79f">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.05.1909-u79f">
+<script src="account-menu.js?v=2026.10.05.1909-u79f"></script>
+<script src="photo-preview.js?v=2026.10.05.1909-u79f"></script>
+<script src="shared-greeting.js?v=2026.10.05.1909-u79f"></script>
+<script src="be-shell.js?v=2026.10.05.1909-u79f"></script>
+<script src="access-guard.js?v=2026.10.05.1909-u79f"></script>
+<script src="announcements.js?v=2026.10.05.1909-u79f"></script>
+<script src="policy-config.js?v=2026.10.05.1909-u79f"></script>
+<script src="leave-policy.js?v=2026.10.05.1909-u79f"></script>
+<script src="my-workspace.js?v=2026.10.05.1909-u79f"></script>
+<script src="dynamic-tabs.js?v=2026.10.05.1909-u79f"></script>
 <style>
 :root{
   --bg:#030509;--panel-bg:rgba(13,17,28,0.65);--panel-border:rgba(255,255,255,0.08);
@@ -268,8 +268,8 @@ td{padding:10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;ver
 .ab-em-btns{display:flex;gap:8px;margin-left:auto}
 .ab-em-btns .btn:disabled{opacity:.4;cursor:not-allowed}
 </style>
-<link rel="stylesheet" href="be-timepicker.css?v=2026.10.05.1850-4fqy">
-<script src="be-timepicker.js?v=2026.10.05.1850-4fqy"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.05.1909-u79f">
+<script src="be-timepicker.js?v=2026.10.05.1909-u79f"></script>
 </head>
 <body>
 <!-- MANAGER EMBED MODE: hide this department's own shell chrome when iframed in manager.html. -->
@@ -1231,25 +1231,27 @@ function copyEod(){navigator.clipboard.writeText(document.getElementById('eodPla
 
 /* ---------- ATTENDANCE (shared hr_attendance — same engine as HR/Academics) ---------- */
 let _openAtt=null;
+// Attendance day in the company timezone — toISOString() is UTC and rolled the day over at 05:30 IST.
+function _istToday(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date()); }
 async function initClock(){
-  try{const today=new Date().toISOString().slice(0,10);
+  try{const today=_istToday();
     const {data}=await sb.from('hr_attendance').select('*').eq('employee_id',ME.id).eq('att_date',today).limit(1);
     const rec=data&&data[0];const fmt=t=>t?new Date(t).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'';
     _openAtt=(rec&&rec.clock_in_time&&!rec.clock_out_time)?rec:null;
     const st=document.getElementById('attState'),btn=document.getElementById('clockBtn');
     if(_openAtt){st.textContent='Clocked in at '+fmt(_openAtt.clock_in_time);btn.textContent='Clock Out';btn.className='bes-clk bes-clk-out';btn.disabled=false;}
-    else if(rec&&rec.clock_out_time){st.textContent='Done · '+fmt(rec.clock_in_time)+' → '+fmt(rec.clock_out_time);btn.textContent='Clocked out';btn.className='bes-clk bes-clk-in';btn.disabled=true;}
+    else if(rec&&rec.clock_out_time){st.textContent='Done · '+fmt(rec.clock_in_time)+' → '+fmt(rec.clock_out_time);btn.textContent='Completed today';btn.className='bes-clk bes-clk-in';btn.disabled=true;}
     else{st.textContent="You haven't clocked in today.";btn.textContent='Clock In';btn.className='bes-clk bes-clk-in';btn.disabled=false;}
   }catch(e){}
 }
 async function clockToggle(){
-  try{const today=new Date().toISOString().slice(0,10);const now=new Date().toISOString();
+  try{const today=_istToday();const now=new Date().toISOString();
     const {data}=await sb.from('hr_attendance').select('*').eq('employee_id',ME.id).eq('att_date',today).limit(1);
     const rec=data&&data[0];
     if(rec&&rec.clock_in_time&&!rec.clock_out_time){await sb.from('hr_attendance').update({clock_out_time:now}).eq('id',rec.id);}
-    else if(rec&&rec.clock_out_time){/* already done today */}
+    else if(rec&&rec.clock_out_time){ showToast('info','Today’s attendance has already been completed.'); }
     else if(rec){await sb.from('hr_attendance').update({status:'present',clock_in_time:now}).eq('id',rec.id);}
-    else{await sb.from('hr_attendance').insert({employee_id:ME.id,att_date:today,status:'present',clock_in_time:now});}
+    else{const r=await sb.from('hr_attendance').insert({employee_id:ME.id,att_date:today,status:'present',clock_in_time:now}); if(r.error&&/duplicate|completed/i.test(r.error.message)) showToast('info','Today’s attendance has already been completed.');}
     initClock();loadAttendance();
   }catch(e){showToast('error','Clock action failed.');}
 }
