@@ -496,6 +496,8 @@
         .hr-att-grid tfoot td.hr-att-sticky { width:auto; max-width:none; box-shadow:6px 0 10px -6px rgba(0,0,0,.6); }
         .hr-att-grid td.ag-id { font:500 11px ui-monospace,SFMono-Regular,Menlo,monospace; color:#6b74a0; letter-spacing:.02em; }
         .hr-att-grid td.ag-name { color:#f1f5f9; font-weight:600; font-size:12.5px; }
+        .hr-att-grid td.ag-name .ag-nm { line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .hr-att-grid .ag-dept { display:inline-block; margin-top:3px; padding:1px 7px; border:1px solid; border-radius:999px; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; line-height:14px; cursor:default; }
         .hr-att-grid .ag-sum { min-width:62px; }
         .hr-att-grid .ag-sum-first { border-left:1px solid rgba(255,255,255,.07); }
         .hr-att-grid thead th.ag-sum { background:#10152a; color:#8890b5; }
@@ -1474,6 +1476,9 @@
                                 <input id="hr-att-month" type="month" class="hr-input" onchange="renderHRMonthlyAttendance()">
                                 <button type="button" onclick="shiftHRAttReportMonth(1)" aria-label="Next month"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
                             </div>
+                            <select id="hr-att-dept" class="hr-select" onchange="renderHRMonthlyAttendance()" aria-label="Department" style="min-width:170px;height:38px">
+                                <option value="">All Departments</option>
+                            </select>
                             <!-- Compact action menu on mobile (spec item 12) — same single button either
                                  way, just narrower/icon-only below the sm breakpoint so it never pushes the
                                  month controls into a second wrapped row on a phone. -->
@@ -5436,6 +5441,22 @@
             }
         }
 
+// Department identifier for report rows — division from the employee record, same colours as
+// the Employees cards (HR_DIV_COLOR / hrDivPill), kept small so the date grid keeps its width.
+const HR_DIV_LABEL = { education: 'Education', production: 'Production', sales: 'Sales', hr: 'HR', accounts: 'Accounts', other: 'Administration' };
+function hrAttDeptBadge(e) {
+    const d = e.division || 'other', c = HR_DIV_COLOR[d] || '#94a3b8', l = HR_DIV_LABEL[d] || d;
+    const tip = `Department: ${l}` + (typeof hrRoleDisplay === 'function' ? `\nDesignation: ${hrRoleDisplay(e) || e.designation || '—'}` : '');
+    return `<span class="ag-dept" style="color:${c};background:${c}14;border-color:${c}38" title="${tip.replace(/"/g, '&quot;')}">${l}</span>`;
+}
+function hrPopulateAttDeptFilter() {
+    const sel = document.getElementById('hr-att-dept'); if (!sel) return;
+    const present = [...new Set(hrEmployees.filter(e => e.employment_status === 'active').map(e => e.division || 'other'))];
+    const order = Object.keys(HR_DIV_LABEL), cur = sel.value;
+    present.sort((a, b) => (order.indexOf(a) + 99 * (order.indexOf(a) < 0)) - (order.indexOf(b) + 99 * (order.indexOf(b) < 0)));
+    const html = '<option value="">All Departments</option>' + present.map(d => `<option value="${d}">${HR_DIV_LABEL[d] || d}</option>`).join('');
+    if (sel.innerHTML !== html) { sel.innerHTML = html; sel.value = present.includes(cur) ? cur : ''; }
+}
 var HR_DIV_COLOR = { education:'#10b981', production:'#7c3aed', sales:'#f59e0b', hr:'#3b82f6', accounts:'#06b6d4', other:'#94a3b8' };
 function hrDivPill(div, label) { const c = HR_DIV_COLOR[div] || '#94a3b8'; return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:${c};background:${c}1a;border:1px solid ${c}40;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${c}"></span>${label}</span>`; }
 function hrDateChip(iso, past) { const d = new Date(String(iso).slice(0,10)+'T00:00:00'); if (isNaN(d)) return iso || '—'; return `<div style="display:flex;align-items:center;gap:12px;${past?'opacity:.5':''}"><div style="width:42px;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.1);text-align:center;flex-shrink:0"><div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,107,6,.15);color:#ff8a3d;padding:2px 0">${d.toLocaleDateString('en-IN',{month:'short'})}</div><div style="font-size:16px;font-weight:800;color:#fff;padding:3px 0 4px;line-height:1">${d.getDate()}</div></div><div><div style="color:#fff;font-weight:600;font-size:13px">${d.toLocaleDateString('en-IN',{weekday:'long'})}</div><div style="color:#6b74a0;font-size:11px">${d.getFullYear()}${past?' · passed':''}</div></div></div>`; }
@@ -5617,7 +5638,9 @@ function hrTodayStr() { const d = new Date(); return d.getFullYear() + '-' + Str
             const daysInMonth = new Date(y, m, 0).getDate();
             const dayNums = Array.from({ length: daysInMonth }, (_, i) => i + 1);
             const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            const active = hrEmployees.filter(e => e.employment_status === 'active');
+            // Department filter (hr_employees.division — the employee record is the only source).
+            const _deptF = (document.getElementById('hr-att-dept') || {}).value || '';
+            const active = hrEmployees.filter(e => e.employment_status === 'active' && (!_deptF || (e.division || 'other') === _deptF));
 
             // Per-employee day codes + summary
             const empRows = active.map(e => {
@@ -5709,6 +5732,7 @@ function hrTodayStr() { const d = new Date(); return d.getFullYear() + '-' + Str
         function renderHRMonthlyAttendance() {
             const month = document.getElementById('hr-att-month').value;
             if (!month) return;
+            hrPopulateAttDeptFilter();
             const rpt = hrComputeMonthlyAttendanceReportData(month);
             const { y, m, daysInMonth, dayNums, dowLabels, empRows, dailyPresent, dailyAbsent, dailyLate, dailyPct,
                 totalPresentDays, totalAbsentDays, totalLateDays, totalApplicable, overallAvgHours, workDays,
@@ -5792,8 +5816,8 @@ function hrTodayStr() { const d = new Date(); return d.getFullYear() + '-' + Str
                     <tbody>
                         ${empRows.map(r => `
                             <tr>
-                                <td class="hr-att-sticky ag-id">${r.emp.employee_id || '—'}</td>
-                                <td class="hr-att-sticky2 ag-name">${r.emp.full_name}</td>
+                                <td class="hr-att-sticky ag-id" style="box-shadow:inset 3px 0 0 ${HR_DIV_COLOR[r.emp.division] || '#94a3b8'}99">${r.emp.employee_id || '—'}</td>
+                                <td class="hr-att-sticky2 ag-name"><div class="ag-nm">${_hrEsc(r.emp.full_name)}</div>${hrAttDeptBadge(r.emp)}</td>
                                 ${r.codes.map(c => `<td class="${codeClass(c.code)}"${cellTitle(r.emp, c)}>${codeLabel(c.code)}</td>`).join('')}
                                 <td class="ag-sum ag-sum-first"><span class="ag-n${r.present ? '' : ' zero'}">${r.present}</span></td>
                                 <td class="ag-sum"><span class="ag-n${r.absent ? ' bad' : ' zero'}">${r.absent}</span></td>
