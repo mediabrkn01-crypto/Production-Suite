@@ -793,6 +793,9 @@
 .hr-spin{width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:#ff8a3c;animation:hrSpin .8s linear infinite}
 @keyframes hrSpin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.hr-skel-b,.hr-spin{animation:none}}
+.hr-attx-opt{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);font-size:12.5px;color:#cbd5e1;cursor:pointer}
+.hr-attx-opt:has(input:checked){border-color:rgba(255,138,60,.55);background:rgba(255,107,6,.07)}
+.hr-attx-opt input{accent-color:#ff6b06}
 /* Employee profile popup */
 .hr-modal.hrp{max-width:none;width:min(78vw,1160px);max-height:min(90vh,940px);padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:20px}
 .hrp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:24px 28px 18px;flex:0 0 auto}
@@ -1042,6 +1045,9 @@
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">ATTENDANCE</div>
                     <button id="hrtree-attendance" onclick="switchHRSubtab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="clock" style="width:14px;height:14px"></i> Attendance
+                    </button>
+                    <button id="hrtree-att-exceptions" onclick="switchHRSubtab('att-exceptions')" class="sidebar-link" style="width:100%;text-align:left;display:flex;align-items:center;gap:8px">
+                        <i data-lucide="user-x" style="width:14px;height:14px"></i> Attendance Exceptions <span id="hr-attx-badge" style="margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;display:none;align-items:center;justify-content:center"></span>
                     </button>
                     <button id="hrtree-att-reports" onclick="switchHRSubtab('att-reports')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="bar-chart-2" style="width:14px;height:14px"></i> Attendance Reports
@@ -1428,6 +1434,34 @@
                 </div>
 
                 <!-- HR: ATTENDANCE REPORTS -->
+                <!-- HR: ATTENDANCE EXCEPTIONS (unapproved absence review queue) -->
+                <div id="hr-sub-att-exceptions" class="space-y-4 hidden">
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">Attendance Exceptions</h1>
+                        <p class="text-[#6b74a0] text-xs mt-1">Scheduled working days with no clock-in and no approved leave, holiday or WFH. They count as <b style="color:#fca5a5">Absent – Unapproved Leave (LOP)</b> in attendance and payroll until you regularize them. Today is only checked after the employee's working day ends.</p>
+                    </div>
+                    <div class="pr-toolbar">
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                            <input id="hr-attx-month" type="hidden" onchange="renderHRAttExceptions()">
+                            <button id="hr-attx-month-btn" class="pr-btn" onclick="hrOpenMonthPicker('hr-attx-month', this, 'renderHRAttExceptions')" style="min-width:150px;justify-content:space-between">Select month <span class="chev">▼</span></button>
+                            <select id="hr-attx-filter" class="hr-select" onchange="renderHRAttExceptions()" style="min-width:170px">
+                                <option value="review">Needs review</option>
+                                <option value="confirmed">Confirmed LOP</option>
+                                <option value="all">All unapproved absences</option>
+                            </select>
+                        </div>
+                        <p id="hr-attx-summary" class="text-[11px] text-[#6b74a0]" style="margin:0"></p>
+                    </div>
+                    <div class="card glass-card rounded-2xl overflow-x-auto">
+                        <table class="w-full text-sm text-left hr-scroll-table">
+                            <thead><tr class="text-[#6b74a0] text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
+                                <th class="py-3 px-4">Employee</th><th class="py-3 px-4">Date</th><th class="py-3 px-4">Issue</th><th class="py-3 px-4">Current Status</th><th class="py-3 px-4">Payroll</th><th class="py-3 px-4 text-center">Action</th>
+                            </tr></thead>
+                            <tbody id="hr-attx-rows" class="divide-y divide-white/[0.05]"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div id="hr-sub-att-reports" class="space-y-4 hidden">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div>
@@ -1457,7 +1491,7 @@
                     <div id="hr-att-report-stats" class="ar-stats"></div>
 
                     <div class="ar-legend" aria-label="Status codes">
-                        <div class="ar-lg-grp"><em>Attendance</em><span><b class="hr-att-cell-P">P</b>Present</span><span><b class="hr-att-cell-A">A</b>Absent</span><span><b class="hr-att-cell-L">L</b>Late</span><span><b class="hr-att-cell-AL">AL</b>Afternoon login</span><span><b class="hr-att-cell-HD-M">HD-M</b>Half day · morning</span><span><b class="hr-att-cell-HD-A">HD-A</b>Half day · afternoon</span><span><b class="hr-att-cell-WFH">WFH</b>Work from home</span></div>
+                        <div class="ar-lg-grp"><em>Attendance</em><span><b class="hr-att-cell-P">P</b>Present</span><span><b class="hr-att-cell-A">A</b>Absent – Unapproved Leave</span><span><b class="hr-att-cell-L">L</b>Late</span><span><b class="hr-att-cell-AL">AL</b>Afternoon login</span><span><b class="hr-att-cell-HD-M">HD-M</b>Half day · morning</span><span><b class="hr-att-cell-HD-A">HD-A</b>Half day · afternoon</span><span><b class="hr-att-cell-WFH">WFH</b>Work from home</span></div>
                         <div class="ar-lg-grp"><em>Leave</em><span><b class="hr-att-cell-SL">SL</b>Sick</span><span><b class="hr-att-cell-CL">CL</b>Casual</span><span><b class="hr-att-cell-PL">PL</b>Paid</span><span><b class="hr-att-cell-UL">UL</b>Unpaid</span><span><b class="hr-att-cell-ML">ML</b>Maternity</span><span><b class="hr-att-cell-LOP">LOP</b>Loss of pay</span></div>
                         <div class="ar-lg-grp"><em>Days off</em><span><b class="hr-att-cell-WO">WO</b>Weekly off</span><span><b class="hr-att-cell-H">H</b>Holiday</span><span><b class="hr-att-cell-OE">OE</b>Official event</span></div>
                     </div>
@@ -2258,6 +2292,32 @@
         </div>
     </div>
 
+    <div id="hr-attx-modal" class="hr-modal-overlay hidden">
+        <div class="hr-modal" style="max-width:600px">
+            <div class="flex items-center justify-between mb-1">
+                <div><h3 id="hr-attx-title" class="text-lg font-bold text-white">Review attendance</h3><p id="hr-attx-sub" class="text-xs text-[#6b74a0]"></p></div>
+                <button onclick="hrCloseAttx()" class="hr-icon-btn" aria-label="Close">✕</button>
+            </div>
+            <input type="hidden" id="hr-attx-emp"><input type="hidden" id="hr-attx-date">
+            <div id="hr-attx-facts" style="margin:12px 0;font-size:12.5px;color:#a5adcf;line-height:1.7"></div>
+            <label class="hr-field-label">Regularize this day as</label>
+            <div id="hr-attx-choices" style="display:grid;gap:8px;margin-bottom:12px">
+                <label class="hr-attx-opt"><input type="radio" name="hr-attx-choice" value="present"> <span><b>Present</b> — worked but missed the clock-in</span></label>
+                <label class="hr-attx-opt"><input type="radio" name="hr-attx-choice" value="wfh"> <span><b>Work From Home</b> — worked remotely</span></label>
+                <label class="hr-attx-opt"><input type="radio" name="hr-attx-choice" value="half_day"> <span><b>Half Day</b> <select id="hr-attx-half" class="hr-select" style="margin-left:6px;padding:3px 8px"><option value="morning">off morning</option><option value="afternoon">off afternoon</option></select></span></label>
+                <label class="hr-attx-opt"><input type="radio" name="hr-attx-choice" value="leave"> <span><b>Approved leave</b> <select id="hr-attx-leave-type" class="hr-select" style="margin-left:6px;padding:3px 8px"><option>Casual Leave</option><option>Sick Leave</option><option>Maternity Leave</option></select> <span class="text-[11px] text-[#6b74a0]">— balance and LOP follow leave policy</span></span></label>
+                <label class="hr-attx-opt"><input type="radio" name="hr-attx-choice" value="lop" checked> <span><b>Keep as Absent – Unapproved Leave</b> — unpaid (LOP), no leave deducted</span></label>
+            </div>
+            <label class="hr-field-label" for="hr-attx-reason">Reason / evidence (required, kept in the audit trail)</label>
+            <textarea id="hr-attx-reason" class="hr-input w-full" rows="2" placeholder="e.g. Seen onsite by the Academic Head; class logs confirm sessions taken"></textarea>
+            <div id="hr-attx-history" style="margin-top:12px;font-size:11.5px;color:#8890b5;line-height:1.6"></div>
+            <div class="flex justify-end gap-2" style="margin-top:16px">
+                <button onclick="hrCloseAttx()" class="hr-icon-btn" style="padding:9px 16px">Cancel</button>
+                <button id="hr-attx-save" onclick="hrSaveAttx()" class="brand-gradient text-white text-xs font-bold px-4 py-2.5 rounded-xl uppercase tracking-wider">Save</button>
+            </div>
+        </div>
+    </div>
+
     <div id="hr-payslip-edit-modal" class="hr-modal-overlay hidden">
         <div class="hr-modal" style="max-width:560px">
             <div class="flex items-center justify-between mb-1">
@@ -2588,7 +2648,7 @@
             production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators', 'Graphic Designers', 'Designers'],
             other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
         };
-        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','policy','tab-builder','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-exceptions','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','policy','tab-builder','accounts'];
         const HR_DOCUMENT_TYPES = ['ID Card / Government ID', 'Address Proof', 'Educational Certificates', 'Experience Certificates', 'Resume', 'Employment Documents', 'Other'];
         const HR_APPLICANT_STATUSES = ['Applied','Shortlisted','Interview','Selected','Rejected','Joined'];
         const HR_PAYROLL_OPTIONAL_COLUMNS = {
@@ -2797,6 +2857,7 @@
             // attendance_logs record, keyed by the logged-in employee's own email, not their role.
             if (typeof refreshAttendanceClockCard === 'function') refreshAttendanceClockCard();
             switchHRSubtab(hrCurrentSubtab);
+            try { hrUpdateAttxBadge(); } catch (_) {}
         }
 
 // ── loadHRData (orig line 7717) ──
@@ -3211,6 +3272,138 @@
             return false;
         }
 
+// ── Attendance Exceptions — unapproved absence review queue ─────────────────────────────────
+// The shared engine (LeavePolicy.resolveAttendanceStatus) decides every day for every
+// department: holiday → weekly off → approved leave / WFH → clock-in → otherwise, once the
+// employee's working day is over, "Absent – Unapproved Leave" (LOP, no leave deducted). This
+// page only lists those days and lets HR regularize them; every change goes to hr_audit_log.
+        function hrAttCtx(e) {
+            return {
+                employee: e,
+                requests: hrLeaveRequests.filter(r => r.employee_id === e.id),
+                attendance: hrAttendance.filter(a => a.employee_id === e.id),
+                holidays: hrHolidays, settings: hrCompanySettings,
+                officialEvents: hrOfficialEvents.filter(ev => ev.applies_to === 'all' || ev.applies_to === e.division),
+                portalLog: (d) => hrPortalLogFor(e, d),
+                now: new Date(), date: hrTodayStr()
+            };
+        }
+        function hrCollectAttExceptions(month) {
+            if (typeof LeavePolicy === 'undefined' || !month) return [];
+            const [y, m] = month.split('-').map(Number), days = new Date(y, m, 0).getDate(), today = hrTodayStr(), out = [];
+            hrEmployees.filter(e => (e.employment_status || 'active') === 'active').forEach(e => {
+                const ctx = hrAttCtx(e);
+                for (let d = 1; d <= days; d++) {
+                    const ds = `${month}-${String(d).padStart(2, '0')}`;
+                    if (ds > today) break;
+                    if (e.joining_date && ds < e.joining_date) continue;
+                    const r = LeavePolicy.resolveAttendanceStatus(ctx, ds);
+                    if (!r.unapproved) continue;
+                    const pending = ctx.requests.find(q => q.status === 'pending' && !q.cancelled_at && q.start_date <= ds && q.end_date >= ds);
+                    out.push({ e, date: ds, r, pending });
+                }
+            });
+            return out.sort((a, b) => b.date.localeCompare(a.date) || a.e.full_name.localeCompare(b.e.full_name));
+        }
+        function hrUpdateAttxBadge() {
+            const el = document.getElementById('hr-attx-badge'); if (!el) return;
+            const n = hrCollectAttExceptions(hrTodayStr().slice(0, 7)).filter(x => !x.r.confirmed).length;
+            el.textContent = n; el.style.display = n ? 'inline-flex' : 'none';
+        }
+        function renderHRAttExceptions() {
+            const mi = document.getElementById('hr-attx-month');
+            if (mi && !mi.value) mi.value = hrTodayStr().slice(0, 7);
+            if (typeof hrSetMonthLabel === 'function') hrSetMonthLabel('hr-attx-month');
+            const month = mi.value, f = document.getElementById('hr-attx-filter').value;
+            const all = hrCollectAttExceptions(month);
+            const rows = all.filter(x => f === 'all' || (f === 'review' ? !x.r.confirmed : x.r.confirmed));
+            const toReview = all.filter(x => !x.r.confirmed).length, confirmed = all.length - toReview;
+            document.getElementById('hr-attx-summary').textContent = `${hrMonthLong(month)}: ${toReview} to review · ${confirmed} confirmed LOP · ${new Set(all.map(x => x.e.id)).size} employee(s)`;
+            const fmt = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+            document.getElementById('hr-attx-rows').innerHTML = rows.length ? rows.map(x => {
+                const pay = hrPayroll.find(p => p.employee_id === x.e.id && p.month === month);
+                const payTxt = pay && hrPayslipStatus(pay) === 'sent' ? '<span class="text-[11px] text-[#fbbf24]">Unpaid · payslip already sent</span>' : '<span class="text-[11px] text-[#fca5a5]">Unpaid (LOP)</span>';
+                const issue = x.r.confirmed ? `Confirmed by HR${x.r.reason ? ' — ' + _hrEsc(String(x.r.reason).replace(/^Unapproved absence confirmed by HR:\s*/i, '')) : ''}`
+                    : x.pending ? `No clock-in · <span style="color:#fbbf24">${_hrEsc(x.pending.leave_type)} request pending</span>` : 'No clock-in · no leave applied';
+                return `<tr class="hover:bg-white/[0.02]">
+                    <td class="py-2.5 px-4 text-white font-semibold"><div style="display:flex;align-items:center;gap:9px">${hrAvatarHTML(x.e, 28)}<span>${_hrEsc(x.e.full_name)}</span></div></td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]" style="white-space:nowrap">${fmt(x.date)}</td>
+                    <td class="py-2.5 px-4 text-[#a5adcf]">${issue}</td>
+                    <td class="py-2.5 px-4"><span class="pr-pill red">Absent – Unapproved Leave</span></td>
+                    <td class="py-2.5 px-4">${payTxt}</td>
+                    <td class="py-2.5 px-4 text-center"><button class="hr-act hr-act-blue" onclick="hrOpenAttx('${x.e.id}','${x.date}')">${x.r.confirmed ? 'Change' : 'Review'}</button></td>
+                </tr>`;
+            }).join('') : `<tr><td colspan="6"><div class="dsh-empty" style="min-height:140px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></div><div class="dsh-empty-t">${f === 'review' ? 'Nothing to review' : 'No unapproved absences'} for ${hrMonthLong(month)}.</div><div class="dsh-empty-s">Every scheduled working day has a clock-in, approved leave, WFH or holiday.</div></div></td></tr>`;
+            hrUpdateAttxBadge();
+        }
+        async function hrOpenAttx(empId, date) {
+            const e = hrEmployees.find(x => x.id === empId); if (!e) return;
+            const ctx = hrAttCtx(e), r = LeavePolicy.resolveAttendanceStatus(ctx, date);
+            const sched = LeavePolicy.getEmployeeWorkSchedule(e, date);
+            const pending = ctx.requests.find(q => q.status === 'pending' && !q.cancelled_at && q.start_date <= date && q.end_date >= date);
+            document.getElementById('hr-attx-emp').value = empId; document.getElementById('hr-attx-date').value = date;
+            document.getElementById('hr-attx-title').textContent = 'Review attendance — ' + e.full_name;
+            document.getElementById('hr-attx-sub').textContent = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) + ' · currently Absent – Unapproved Leave (LOP)';
+            document.getElementById('hr-attx-facts').innerHTML = [
+                `Schedule: <b style="color:#e6e9f5">${sched.hasExpected ? (sched.start + ' – ' + (sched.end || '?')) : 'Flexible time'}</b>`,
+                'Clock-in: <b style="color:#fca5a5">none recorded</b> (portal and HR attendance)',
+                'Approved leave / WFH / holiday: <b style="color:#fca5a5">none</b>',
+                pending ? `Pending request: <b style="color:#fbbf24">${_hrEsc(pending.leave_type)}</b> — “${_hrEsc(pending.reason || '')}” <a href="#" onclick="hrCloseAttx();switchHRSubtab('leave');return false" style="color:#60a5fa">Decide it in Leave Requests →</a>` : '',
+                r.confirmed ? `HR already confirmed this as unapproved${r.reason ? ': “' + _hrEsc(r.reason) + '”' : ''}.` : ''
+            ].filter(Boolean).map(t => '<div>' + t + '</div>').join('');
+            document.querySelectorAll('input[name="hr-attx-choice"]').forEach(i => { i.checked = false; });
+            document.getElementById('hr-attx-reason').value = '';
+            const hist = document.getElementById('hr-attx-history'); hist.innerHTML = '';
+            const m = document.getElementById('hr-attx-modal'); m.classList.remove('hidden'); m.classList.add('flex');
+            try {
+                const { data } = await dbInstance.from('hr_audit_log').select('action,prev_status,new_status,reason,actor_name,created_at,meta')
+                    .eq('employee_id', empId).eq('entity', 'attendance').order('created_at', { ascending: false }).limit(50);
+                const rows = (data || []).filter(h => h.meta && h.meta.date === date);
+                if (rows.length) hist.innerHTML = '<div class="hr-field-label" style="margin-bottom:4px">History</div>' + rows.map(h => `<div>${hrFmtWhen(h.created_at)} · ${_hrEsc(h.actor_name || 'HR')}: ${_hrEsc(h.prev_status || '—')} → <b style="color:#e6e9f5">${_hrEsc(h.new_status || '—')}</b>${h.reason ? ' — “' + _hrEsc(h.reason) + '”' : ''}</div>`).join('');
+            } catch (_) {}
+        }
+        function hrCloseAttx() { const m = document.getElementById('hr-attx-modal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+        async function hrSaveAttx() {
+            const empId = document.getElementById('hr-attx-emp').value, date = document.getElementById('hr-attx-date').value;
+            const choice = (document.querySelector('input[name="hr-attx-choice"]:checked') || {}).value;
+            const reason = document.getElementById('hr-attx-reason').value.trim();
+            if (!choice) { showToast('warning', 'Choose how to regularize this day.'); return; }
+            if (!reason) { showToast('warning', 'Add the reason / evidence — it is kept in the audit trail.'); return; }
+            const e = hrEmployees.find(x => x.id === empId); if (!e) return;
+            const btn = document.getElementById('hr-attx-save'); btn.disabled = true;
+            const who = hrActor(), now = new Date().toISOString();
+            let newLabel = '', error = null;
+            try {
+                if (choice === 'leave') {
+                    const leave_type = document.getElementById('hr-attx-leave-type').value;
+                    newLabel = 'Approved ' + leave_type;
+                    const { data, error: insErr } = await dbInstance.from('hr_leave_requests').insert([{ employee_id: empId, leave_type, start_date: date, end_date: date, days: 1, status: 'pending', requested_at: now, manager_status: 'approved', hr_status: 'pending', emergency: true, final_treatment: 'pending', consecutive_days: 1, reason: 'Retrospective leave (regularized by HR): ' + reason }]).select('*');
+                    if (insErr) throw insErr;
+                    hrLeaveRequests.push(data[0]);
+                    await decideHRLeave(data[0].id, 'approved', { reason });   // the normal approval path: audit + attendance sync
+                } else {
+                    const status = choice === 'lop' ? 'absent' : choice;
+                    newLabel = { present: 'Present', wfh: 'Work From Home', half_day: 'Half Day', lop: 'Absent – Unapproved Leave (confirmed, LOP)' }[choice];
+                    const row = { employee_id: empId, att_date: date, status, marked_by: who,
+                        reason: choice === 'lop' ? 'Unapproved absence confirmed by HR: ' + reason : 'Regularized by HR: ' + reason };
+                    if (choice === 'half_day') row.half_day_type = document.getElementById('hr-attx-half').value;
+                    ({ error } = await dbInstance.from('hr_attendance').upsert(row, { onConflict: 'employee_id,att_date' }));
+                    if (error) throw error;
+                }
+                await dbInstance.from('hr_audit_log').insert([{ employee_id: empId, actor_email: (typeof activeEmail !== 'undefined' && activeEmail) || null, actor_name: who, action: 'attendance_regularize', entity: 'attendance', prev_status: 'Absent – Unapproved Leave', new_status: newLabel, reason, meta: { date, choice } }]);
+                await loadHRData();
+                // Keep payroll in step: recalculate this month's payroll if it exists and isn't sent.
+                const pay = hrPayroll.find(p => p.employee_id === empId && p.month === date.slice(0, 7));
+                let payMsg = '';
+                if (pay && hrPayslipStatus(pay) !== 'sent') { const rr = await hrRecalcPayrollRow(pay); if (!rr.error) { payMsg = ` Payroll for ${hrMonthLong(pay.month)} recalculated.`; await loadHRData(); } }
+                else if (pay) payMsg = ` The ${hrMonthLong(pay.month)} payslip was already sent — recall it in Payslips and recalculate to apply this change.`;
+                hrCloseAttx(); renderHRAttExceptions();
+                showToast('success', `${e.full_name} · ${hrFmtWhen(date + 'T00:00:00')} → ${newLabel}.${payMsg}`, 6000);
+            } catch (err) {
+                showToast('error', 'Could not save: ' + (err.message || err));
+            } finally { btn.disabled = false; }
+        }
+
 // ── switchHRSubtab (orig line 7919) ──
         function switchHRSubtab(tab) {
             // Accounts & Permissions (login/role management) lives in the main Pipeline app's
@@ -3232,6 +3425,7 @@
             else if (tab === 'departments') renderHRDepartments();
             else if (tab === 'designations') renderHRDesignations();
             else if (tab === 'attendance') renderHRAttendance();
+            else if (tab === 'att-exceptions') renderHRAttExceptions();
             else if (tab === 'att-reports') renderHRMonthlyAttendance();
             else if (tab === 'workforce') renderHRWorkforceReport();
             else if (tab === 'leave') renderHRLeaveRequests();
@@ -7678,16 +7872,22 @@ async function populateHRJobDeptOptions() {
             if (hrPayslipStatus(p) === 'sent') { showToast('warning', 'This payslip has already been sent. Recall it from Payslips before recalculating.'); return; }
             const name = hrEmpName(p.employee_id);
             if (!(await showConfirm(`Basic pay, leave deduction and day counts are recalculated from attendance and leave. Allowances, overtime, bonuses, other deductions and advances you entered are kept.`, { title: `Recalculate ${_hrEsc(name)} — ${hrMonthLong(p.month)}?`, confirmLabel: 'Recalculate' }))) return;
+            const r = await hrRecalcPayrollRow(p);
+            if (r.error) { showToast('error', 'Could not recalculate: ' + r.error.message); return; }
+            await loadHRData(); renderHRPayroll();
+            showToast('success', `Payroll recalculated — net ${_hrInr(r.net_salary)}.`);
+        }
+        // Recalculate one payroll row from current attendance + leave (no prompt). Used by the
+        // Recalculate menu and automatically after an attendance regularization.
+        async function hrRecalcPayrollRow(p) {
             const calc = hrCalculatePayrollForMonth(p.employee_id, p.month);
             const basic = calc.earnedBasic, leave_deduction = calc.leaveDeduction;
             const net_salary = basic + (p.allowances || 0) + (p.overtime || 0) + (p.bonuses || 0) - leave_deduction - (p.deductions || 0) - (p.advances || 0);
             const payload = { basic, leave_deduction, paid_leave_days: calc.paidLeaveDays, unpaid_leave_days: calc.unpaidLeaveDays, absent_days: calc.absentDays, net_salary,
                 allowances: p.allowances, overtime: p.overtime, bonuses: p.bonuses, deductions: p.deductions, advances: p.advances, payment_date: p.payment_date };
             if (hrPayslipSchemaOk) Object.assign(payload, hrPayrollAuditFields(p, payload));
-            const { error } = await hrSavePayrollRow(payload, id);
-            if (error) { showToast('error', 'Could not recalculate: ' + error.message); return; }
-            await loadHRData(); renderHRPayroll();
-            showToast('success', `Payroll recalculated — net ${_hrInr(net_salary)}.`);
+            const { error } = await hrSavePayrollRow(payload, p.id);
+            return { error, net_salary };
         }
 
         // ── Generate payslip(s) — HR confirms; never sends ──

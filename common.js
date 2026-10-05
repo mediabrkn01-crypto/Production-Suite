@@ -1543,9 +1543,9 @@ function hrOfficialEventFor(employee, dateStr) {
                     now: new Date(), date: dateStr
                 };
                 const r = LeavePolicy.resolveAttendanceStatus(ctx, dateStr);
-                if (r.code === 'LOP' && (r.label || '').indexOf('Unmarked') === 0 && dateStr >= today) return null; // open day
+                if (r.open || r.code === 'NS') return null; // day still open (before cutoff) / not a scheduled working day
                 if (r.code === 'HD') return rec && rec.half_day_type === 'morning' ? 'HD-M' : rec && rec.half_day_type === 'afternoon' ? 'HD-A' : 'HD';
-                if (r.code === 'LOP') return ((r.label || '').indexOf('Absent') >= 0 || (r.label || '').indexOf('Unmarked') >= 0) ? 'A' : 'LOP';
+                if (r.code === 'LOP') return r.unapproved ? 'A' : 'LOP'; // A = Absent – Unapproved Leave; LOP = leave turned unpaid
                 return r.code; // P L WFH SL CL WO H OE
             }
             // ---- Fallback (engine unavailable) — previous behavior, unchanged ----
@@ -1756,7 +1756,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     clLeft = Math.max(0, Math.min(clCredit, earned) - Math.max(usedBefore, clBucketUsed));
                 }
                 let present=0, sl=0, cl=0, ml=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
-                let leaveLop=0, absentLop=0, doubleExtra=0;
+                let leaveLop=0, absentLop=0, doubleExtra=0, unapprovedDays=0;
                 const lopReasons = []; // §6 — HR must see WHY each day became LOP
                 const addLop = (dateStr, reason, factor) => { lopReasons.push({ date: dateStr, reason, factor: factor||1 }); };
                 for (let d = 1; d <= daysInMonth; d++) {
@@ -1768,7 +1768,8 @@ function hrOfficialEventFor(employee, dateStr) {
                     // Today / future unmarked day is still an OPEN attendance day — the calendar
                     // grid (hrAttDayCode) leaves it blank, so payroll must NOT count it as Absent,
                     // or the report shows Absent 0 while payroll invents Absent 1 (§1/§5).
-                    if (r.code === 'LOP' && (r.label||'').indexOf('Unmarked') === 0 && dateStr >= todayStr) continue;
+                    if (r.open || r.code === 'NS') continue; // before today's cutoff / not a scheduled working day
+                    if (r.unapproved) unapprovedDays++;
                     switch (r.code) {
                         case 'P': case 'L': case 'WFH': present++; break;
                         case 'SL':
@@ -1813,7 +1814,8 @@ function hrOfficialEventFor(employee, dateStr) {
                     preJoiningDays: preJoining, officialEventDays: oe,
                     elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
                     incidentDays, incidents, doubleDeductionDays: doubleExtra,
-                    slDays: sl, clDays: cl, maternityLeaveDays: ml, lopReasons
+                    slDays: sl, clDays: cl, maternityLeaveDays: ml, lopReasons,
+                    unapprovedAbsenceDays: unapprovedDays   // subset of absentDays — no clock-in, no approved leave
                 };
             }
             // Fallback: engine unavailable → previous behavior (kept intact below).

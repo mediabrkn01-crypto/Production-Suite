@@ -182,7 +182,7 @@
   }
 
   // ================================================================ ATTENDANCE
-  var CODEC = { P: ['#10b981', 'Present'], L: ['#f59e0b', 'Late'], WFH: ['#a78bfa', 'WFH'], SL: ['#38bdf8', 'Sick Leave'], CL: ['#60a5fa', 'Casual Leave'], ML: ['#f472b6', 'Maternity'], WO: ['#64748b', 'Weekly Off'], H: ['#c084fc', 'Holiday'], OE: ['#ec4899', 'Official Event'], HD: ['#facc15', 'Half Day'], LOP: ['#f87171', 'LOP / Absent'] };
+  var CODEC = { P: ['#10b981', 'Present'], L: ['#f59e0b', 'Late'], WFH: ['#a78bfa', 'WFH'], SL: ['#38bdf8', 'Sick Leave'], CL: ['#60a5fa', 'Casual Leave'], ML: ['#f472b6', 'Maternity'], WO: ['#64748b', 'Weekly Off'], H: ['#c084fc', 'Holiday'], OE: ['#ec4899', 'Official Event'], HD: ['#facc15', 'Half Day'], A: ['#ef4444', 'Absent – Unapproved Leave'], LOP: ['#f87171', 'LOP (unpaid leave)'], NS: ['#334155', 'Not scheduled'] };
   async function attContext(e) {
     var LP = policy(); if (!LP) return null;
     var ctx = await LP.db.buildContext(e, { now: new Date(), date: todayStr() });
@@ -208,20 +208,57 @@
     var body = root.querySelector('.mw-card');
     if (!LP || !ctx) { body.innerHTML = empty('clock', 'Attendance engine unavailable', 'Please reload the page.'); return; }
     var pay = LP.resolvePayrollDeduction(ctx, month), b = pay.buckets;
-    var stats = [['Present', b.present + b.late, '#10b981'], ['Late', b.late, '#f59e0b'], ['WFH', b.wfh, '#a78bfa'], ['Paid Leave', b.sl + b.cl + b.ml, '#60a5fa'], ['Weekly Off', b.wo, '#64748b'], ['Holidays / Events', b.holiday + b.oe, '#c084fc'], ['Half Days', b.half, '#facc15'], ['LOP days', pay.totalDeductionDays, '#f87171']];
-    var days = new Date(p[0], p[1], 0).getDate(), first = new Date(p[0], p[1] - 1, 1).getDay(), today = todayStr();
+    var stats = [['Present', b.present + b.late, '#10b981'], ['Late', b.late, '#f59e0b'], ['WFH', b.wfh, '#a78bfa'], ['Paid Leave', b.sl + b.cl + b.ml, '#60a5fa'], ['Weekly Off', b.wo, '#64748b'], ['Holidays / Events', b.holiday + b.oe, '#c084fc'], ['Half Days', b.half, '#facc15'], ['Unapproved Absence', b.unapproved || 0, '#ef4444'], ['LOP days', pay.totalDeductionDays, '#f87171']];
+    var days = new Date(p[0], p[1], 0).getDate(), first = new Date(p[0], p[1] - 1, 1).getDay(), today = todayStr(), unapproved = [];
     var cells = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(function (d) { return '<div class="mw-cal-h">' + d + '</div>'; });
     for (var i = 0; i < first; i++) cells.push('<div></div>');
     for (var d = 1; d <= days; d++) {
       var ds = month + '-' + String(d).padStart(2, '0');
       if (ds > today) { cells.push('<div class="mw-cal-d is-future"><span>' + d + '</span></div>'); continue; }
-      var r = LP.resolveAttendanceStatus(ctx, ds), code = r.preJoining ? null : r.code, c = code && CODEC[code] ? CODEC[code][0] : null;
+      var r = LP.resolveAttendanceStatus(ctx, ds), code = r.preJoining || r.open ? null : (r.unapproved ? 'A' : r.code), c = code && CODEC[code] ? CODEC[code][0] : null;
+      if (r.unapproved) unapproved.push({ date: ds, confirmed: !!r.confirmed });
       var tip = r.label + (r.clockIn ? ' · in ' + new Date(r.clockIn).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '') + (r.clockOut ? ' · out ' + new Date(r.clockOut).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '');
-      cells.push('<div class="mw-cal-d' + (ds === today ? ' is-today' : '') + '" title="' + esc(fDate(ds, true, true) + ' — ' + tip) + '"' + (c ? ' style="--c:' + c + '"' : '') + '><span>' + d + '</span><b>' + esc(r.preJoining ? '—' : (code === 'LOP' ? 'A' : code || '—')) + '</b></div>');
+      cells.push('<div class="mw-cal-d' + (ds === today ? ' is-today' : '') + '" title="' + esc(fDate(ds, true, true) + ' — ' + tip) + '"' + (c ? ' style="--c:' + c + '"' : '') + '><span>' + d + '</span><b>' + esc(r.preJoining ? '—' : (code === 'NS' ? '·' : code || '—')) + '</b></div>');
     }
     body.outerHTML = '<div class="mw-stats">' + stats.map(function (s) { return '<div class="mw-stat" style="--c:' + s[2] + '"><div class="mw-stat-n">' + s[1] + '</div><div class="mw-stat-l">' + s[0] + '</div></div>'; }).join('') + '</div>'
-      + '<div class="mw-card"><div class="mw-cal">' + cells.join('') + '</div><div class="mw-legend">' + Object.keys(CODEC).map(function (k) { return '<span><i style="background:' + CODEC[k][0] + '"></i>' + (k === 'LOP' ? 'A' : k) + ' ' + CODEC[k][1] + '</span>'; }).join('') + '</div>'
+      + '<div class="mw-card"><div class="mw-cal">' + cells.join('') + '</div><div class="mw-legend">' + Object.keys(CODEC).map(function (k) { return '<span><i style="background:' + CODEC[k][0] + '"></i>' + k + ' ' + CODEC[k][1] + '</span>'; }).join('') + '</div>'
+      + unapprovedBlock(unapproved, ctx)
       + (pay.incidents && pay.incidents.count ? '<div class="mw-note mw-note-warn">' + esc(pay.incidents.count + ' late-login / early-logout incident(s) this month' + (pay.incidentDays ? ' — ' + pay.incidentDays + ' day deduction' : '')) + '</div>' : '') + '</div>';
+    root.querySelectorAll('[data-regularize]').forEach(function (b) {
+      var d = b.getAttribute('data-regularize'), f = root.querySelector('[data-reg-form="' + d + '"]');
+      b.onclick = function () { f.style.display = ''; b.style.display = 'none'; f.querySelector('[data-reg-reason]').focus(); };
+      f.querySelector('[data-reg-cancel]').onclick = function () { f.style.display = 'none'; b.style.display = ''; };
+      f.querySelector('[data-reg-send]').onclick = function () { this.disabled = true; requestRegularization(root, e, d, f.querySelector('[data-reg-reason]').value).finally(() => { this.disabled = false; }); };
+    });
+  }
+
+  // Days with no clock-in and no approved leave — shown plainly, never hidden (§11). The
+  // employee may ask HR to regularize one: that files a normal PENDING leave request for the
+  // date; nothing becomes paid leave until HR approves it.
+  function unapprovedBlock(list, ctx) {
+    if (!list.length) return '';
+    var pendingFor = function (d) { return (ctx.requests || []).some(function (r) { return r.status === 'pending' && !r.cancelled_at && r.start_date <= d && r.end_date >= d; }); };
+    return '<div class="mw-note mw-note-bad" style="margin-top:12px"><b>Absent – Unapproved Leave</b> on ' + list.length + ' day' + (list.length === 1 ? '' : 's') + ' this month — no clock-in and no approved leave, so ' + (list.length === 1 ? 'it is' : 'they are') + ' unpaid (LOP). Please contact HR if this attendance status is incorrect.</div>'
+      + '<div class="mw-list" style="margin-top:8px">' + list.map(function (u) {
+        var pend = pendingFor(u.date);
+        return '<div class="mw-item mw-edge-bad"><span class="mw-ic">' + ic('calendar') + '</span><div class="mw-item-main"><div class="mw-row"><b>' + esc(fDate(u.date, true, true)) + '</b>' + pill(u.confirmed ? 'Confirmed by HR' : 'Absent – Unapproved Leave', 'bad') + '</div>'
+          + '<div class="mw-sub">' + (pend ? 'Regularization request pending with HR.' : 'Worked but forgot to clock in, or had an emergency? Ask HR to review this day.') + '</div></div>'
+          + (pend ? '' : '<button class="mw-btn" data-regularize="' + esc(u.date) + '">Request regularization</button>') + '</div>'
+          + (pend ? '' : '<div data-reg-form="' + esc(u.date) + '" style="display:none;margin:6px 0 4px"><textarea rows="2" data-reg-reason placeholder="What happened? e.g. worked onsite but forgot to clock in / family emergency" style="width:100%"></textarea><div style="margin-top:6px;display:flex;gap:8px"><button class="mw-btn mw-btn-primary" data-reg-send>Send to HR</button><button class="mw-btn" data-reg-cancel>Cancel</button></div></div>');
+      }).join('') + '</div>';
+  }
+  async function requestRegularization(root, e, date, reason) {
+    reason = String(reason || '').trim();
+    if (!reason) { toast('warning', 'Tell HR what happened on this day.'); return; }
+    try {
+      var rec = { employee_id: e.id, leave_type: 'Casual Leave', start_date: date, end_date: date, days: 1, status: 'pending', requested_at: new Date().toISOString(), manager_status: 'approved', hr_status: 'pending', emergency: true, final_treatment: 'pending', consecutive_days: 1,
+        reason: 'Regularization of unapproved absence: ' + reason, policy_warning: 'Retrospective request for a day already marked Absent – Unapproved Leave. HR to decide: approve as leave, regularize attendance (Present/WFH), or keep as LOP.' };
+      var ins = await db().from('hr_leave_requests').insert([rec]);
+      if (ins.error) throw ins.error;
+      try { await db().from('hr_audit_log').insert([{ employee_id: e.id, actor_email: email(), actor_name: (cfg.getName && cfg.getName()) || e.full_name, action: 'attendance_regularization_request', entity: 'attendance', prev_status: 'Absent – Unapproved Leave', new_status: 'Pending HR Review', reason: reason, meta: { date: date } }]); } catch (x) {}
+      toast('success', 'Sent to HR for review.');
+      refreshHost(); renderAttendance(root);
+    } catch (x) { toast('error', 'Could not send the request: ' + (x.message || x)); }
   }
 
   // ===================================================================== LEAVE

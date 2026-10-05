@@ -46,7 +46,8 @@
   );
 
   // Canonical resolved attendance codes (§18). Keep existing valid codes.
-  var CODES = { P:'P', L:'L', WFH:'WFH', SL:'SL', CL:'CL', ML:'ML', LOP:'LOP', WO:'WO', H:'H', OE:'OE' };
+  var CODES = { P:'P', L:'L', WFH:'WFH', SL:'SL', CL:'CL', ML:'ML', LOP:'LOP', WO:'WO', H:'H', OE:'OE', NS:'NS' };
+  var UNAPPROVED_LABEL = 'Absent – Unapproved Leave';
 
   // Leave-type normalisation — the PDF defines only Sick Leave + Casual Leave as paid
   // entitlements. Exceptional WFH is an attendance mode, not a paid balance. Everything
@@ -453,6 +454,29 @@
   // =========================================================================
   // 4. resolveAttendanceStatus(ctx, date) — policy-first, returns a §18 code.
   // =========================================================================
+  // Unapproved-absence cutoff (§ Absent Without Leave): a day with no clock-in is only judged
+  // once it is over for that employee — past dates always; today only after the employee's own
+  // scheduled end time, or the official working-day end (P.WORK_END) for flexible schedules.
+  function absenceCutoffPassed(ctx, emp, dateStr) {
+    var now = ctx.now ? new Date(ctx.now) : new Date();
+    var today = ymd(now);
+    if (dateStr < today) return true;
+    if (dateStr > today) return false;
+    var sched = getEmployeeWorkSchedule(emp, dateStr);
+    var cutoff = (sched.hasExpected && sched.end) ? sched.end : (P.WORK_END || '17:30');
+    var cur = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    return cur >= cutoff;
+  }
+  // Is this a day the employee is scheduled to work at all? Fixed/custom schedules with chosen
+  // work days only work those days; part-time staff without a fixed schedule (paid per
+  // session) have no scheduled working days, so a day without clock-in is never an absence.
+  function isScheduledWorkDay(emp, dateStr) {
+    var sched = getEmployeeWorkSchedule(emp, dateStr);
+    if (sched.hasExpected && sched.workDays && sched.workDays.length) return sched.workDays.indexOf(new Date(Date.parse(dateStr)).getDay()) >= 0;
+    if (emp && emp.employment_type === 'part_time' && !sched.hasExpected) return false;
+    return true;
+  }
+
   function resolveAttendanceStatus(ctx, dateStr) {
     dateStr = ymd(dateStr);
     var emp = ctx.employee;
@@ -491,7 +515,9 @@
         // A paid Official Event created/edited after an Absent row was filed outranks it.
         if (oe && !oe.clock_in_required) return code(CODES.OE, 'Official Event', { payable: true });
         if (isWeeklyOff(ctx, dow)) return code(CODES.WO, 'Weekly Off', { payable: true }); // §2 always WO
-        return code(CODES.LOP, 'Absent', { payable: false, lop: true });
+        // Leave approved LATER for this date replaces the absence — never both (§9).
+        if (req && normType(req.leave_type) !== 'WFH') return resolveLeaveDay(ctx, dateStr, req, state);
+        return code(CODES.LOP, UNAPPROVED_LABEL, { payable: false, lop: true, unapproved: true, confirmed: true, reason: rec.reason || null });
       }
       // present / late — decided against THIS employee's own schedule, never a global 9:00.
       var sched = getEmployeeWorkSchedule(emp, dateStr);
@@ -515,8 +541,12 @@
     if (isWeeklyOff(ctx, dow)) return code(CODES.WO, 'Weekly Off', { payable: true });
     // Approved leave still covers the remaining working day.
     if (req) return resolveLeaveDay(ctx, dateStr, req, state);
-    // Nothing → unmarked working day = LOP.
-    return code(CODES.LOP, 'Unmarked / Absent', { payable: false, lop: true });
+    // Not one of this employee's scheduled working days → nothing to judge, never absent.
+    if (!isScheduledWorkDay(emp, dateStr)) return code(CODES.NS, 'Not a scheduled working day', { payable: false, notScheduled: true });
+    // Day still in progress (before the cutoff) → open, not yet absent, never LOP.
+    if (!absenceCutoffPassed(ctx, emp, dateStr)) return code(CODES.LOP, 'Not clocked in yet', { payable: false, open: true });
+    // Working day over, no attendance, no approved leave/WFH/holiday → unapproved absence = LOP.
+    return code(CODES.LOP, UNAPPROVED_LABEL, { payable: false, lop: true, unapproved: true });
   }
 
   function resolveLeaveDay(ctx, dateStr, req, state) {
@@ -591,12 +621,15 @@
     var p = monthStr.split('-').map(Number), y = p[0], m = p[1];
     var daysInMonth = new Date(y, m, 0).getDate();
     var todayStr = ymd(ctx.now || new Date());
-    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, ml: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0 };
+    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, ml: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0, unapproved: 0, notScheduled: 0 };
     var lopDays = 0, breakdown = [];
     for (var d = 1; d <= daysInMonth; d++) {
       var dateStr = monthStr + '-' + String(d).padStart(2, '0');
       if (dateStr > todayStr) continue; // not yet occurred
       var r = resolveAttendanceStatus(ctx, dateStr);
+      if (r.open) continue;                                  // today, before the cutoff
+      if (r.code === CODES.NS) { buckets.notScheduled++; continue; } // not a working day for them
+      if (r.unapproved) buckets.unapproved++;                // subset of lop — reported separately
       if (r.preJoining) { buckets.preJoining++; lopDays += 1; breakdown.push({ date: dateStr, code: 'PRE', lop: 1, reason: 'Pre-joining day' }); continue; }
       switch (r.code) {
         case CODES.P: buckets.present++; break;
@@ -701,6 +734,9 @@
     getEmployeePolicyState: getEmployeePolicyState,
     resolveLeaveBalance: resolveLeaveBalance,
     leaveUnitsUsed: leaveUnitsUsed,
+    isScheduledWorkDay: isScheduledWorkDay,
+    absenceCutoffPassed: absenceCutoffPassed,
+    UNAPPROVED_LABEL: UNAPPROVED_LABEL,
     resolveLeaveEligibility: resolveLeaveEligibility,
     resolveAttendanceStatus: resolveAttendanceStatus,
     resolveIncidents: resolveIncidents,
