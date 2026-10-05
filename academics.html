@@ -641,6 +641,25 @@ details[open] .rawsum::before{content:'▾ '}
 .ub-ghost.green{color:#34d399;border-color:rgba(52,211,153,.35)!important}
 @media(max-width:560px){.ub-kvs{grid-template-columns:1fr 1fr}}
 
+/* Class Start Time field (Create / Edit Batch) — input-like trigger for the site's clock picker */
+.cb-time-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px}
+.cb-time-trigger{display:inline-flex;align-items:center;gap:9px;min-width:170px;height:42px;padding:0 14px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--tx);font:600 14px Inter,system-ui,sans-serif;cursor:pointer;text-align:left}
+.cb-time-trigger:hover{border-color:rgba(255,107,6,.45)}
+.cb-time-trigger:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:1px}
+.cb-time-trigger svg{color:var(--k2,#ff8a3c);flex-shrink:0}
+.cb-time-trigger.is-empty{color:var(--tx3);font-weight:500}
+.cb-time-trigger.is-invalid{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.15)}
+.cb-time-end,.cb-time-trigger span,.cb-time-err{font-size:12.5px;color:var(--tx3);text-transform:none!important;letter-spacing:normal!important;font-weight:500}
+.cb-time-trigger span{font-size:14px;color:inherit;font-weight:inherit}
+.cb-time-end b{color:var(--tx);font-weight:700}
+.cb-time-err{font-size:12px;color:#f87171;margin-top:6px}
+/* Top-right close (✕) on batch popups */
+.bm-x{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:rgba(255,255,255,.7);display:grid;place-items:center;cursor:pointer;z-index:5;padding:0}
+.bm-x:hover{color:#fff;background:rgba(255,255,255,.1)}
+.bm-x:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:1px}
+.bm-has-x{position:relative}
+.bm-has-x>h3,.bm-has-x>.ub-dm-eyebrow,.bm-has-x>.ub-dm-title{padding-right:44px}
+#tab-acad-createbatch .section{position:relative}
 /* Finalize Batch Setup window */
 .fbs-win{background:linear-gradient(145deg,#161116,#0a080a)}
 .fbs-head{display:flex;align-items:center;gap:14px;padding:18px 22px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
@@ -1157,11 +1176,15 @@ details[open] .rawsum::before{content:'▾ '}
           <div class="cb-step">
             <div class="cb-step-h"><span class="cb-step-n">1</span><span class="cb-step-t">Batch &amp; time</span></div>
             <label class="lv-field lv-grow"><span>Batch Name</span><input id="m_b_name" placeholder="e.g. Phrase Factory 05"/></label>
-            <div class="lv-field lv-grow" style="display:block"><span>Class Time</span>
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
-                <button type="button" class="act-btn" onclick="pickBatchStartTime()">Pick batch time</button>
-                <span id="m_b_time_custom_label" style="font-size:12.5px;color:var(--tx2);font-weight:600"></span>
+            <div class="lv-field lv-grow" style="display:block"><span>Class Start Time <b style="color:#f87171">*</b></span>
+              <div class="cb-time-row">
+                <button type="button" id="m_b_time_trigger" class="cb-time-trigger is-empty" onclick="pickBatchStartTime()" aria-describedby="m_b_time_custom_label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  <span data-time-text>Select time</span>
+                </button>
+                <span id="m_b_time_custom_label" class="cb-time-end"></span>
               </div>
+              <div id="m_b_time_err" class="cb-time-err" role="alert" style="display:none">Please select a class start time.</div>
             </div>
             <input type="hidden" id="m_b_time_start">
             <input type="hidden" id="m_b_time_custom_hidden">
@@ -1855,10 +1878,13 @@ details[open] .rawsum::before{content:'▾ '}
        via the same canonical get_available_trainers() RPC Create Batch uses (now with an
        exclude-batch-id param so this batch's own current schedule never conflicts with
        itself) — one shared backend rule for both flows, not two. -->
-  <div class="subhead" style="margin:6px 0 6px">Batch Time</div>
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <button type="button" class="act-btn" onclick="_bePickBatchTime()">Change Batch Time</button>
-    <span id="be_time_label" style="font-size:11px;color:var(--tx3)"></span>
+  <div class="subhead" style="margin:6px 0 6px">Class Start Time</div>
+  <div class="cb-time-row">
+    <button type="button" id="be_time_trigger" class="cb-time-trigger is-empty" onclick="_bePickBatchTime()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      <span data-time-text>Select time</span>
+    </button>
+    <span id="be_time_label" class="cb-time-end"></span>
   </div>
   <input type="hidden" id="be_time_start">
   <input type="hidden" id="be_time_custom_hidden">
@@ -8415,7 +8441,8 @@ function _bePickBatchTime(){
 async function _beOnBatchTimeChosen(time24){
   document.getElementById('be_time_start').value = time24;
   const duration = parseInt(document.getElementById('be_duration').value,10) || 60;
-  document.getElementById('be_time_label').innerHTML = 'Selected: <b>'+esc(formatBatchTimeRange(time24, duration))+'</b>';
+  _cbTimeTrigger(document.getElementById('be_time_trigger'), time24, document.getElementById('be_time_label'), duration);
+  _batchModalMarkDirty('modalBatchEdit');
   const prevTrainer = document.getElementById('be_trainer').value || null;
   await _beRefreshAvailableTrainers(prevTrainer);
 }
@@ -8423,7 +8450,7 @@ function _beOnScheduleFieldChanged(){
   const time24 = document.getElementById('be_time_start').value;
   if (time24) {
     const duration = parseInt(document.getElementById('be_duration').value,10) || 60;
-    document.getElementById('be_time_label').innerHTML = 'Selected: <b>'+esc(formatBatchTimeRange(time24, duration))+'</b>';
+    _cbTimeTrigger(document.getElementById('be_time_trigger'), time24, document.getElementById('be_time_label'), duration);
   }
   const prevTrainer = document.getElementById('be_trainer').value || null;
   _beRefreshAvailableTrainers(prevTrainer);
@@ -8537,7 +8564,8 @@ async function openBatchEdit(id){
   document.getElementById('be_time_start').value = startHour;
   document.getElementById('be_duration').value = b.class_duration_minutes || 60;
   document.getElementById('be_start_date').value = b.start_date || '';
-  document.getElementById('be_time_label').innerHTML = startHour ? ('Current: <b>'+esc(b.time_slot||formatBatchTimeRange(startHour, b.class_duration_minutes||60))+'</b>') : 'No class time saved yet — set one below.';
+  _cbTimeTrigger(document.getElementById('be_time_trigger'), startHour, document.getElementById('be_time_label'), b.class_duration_minutes || 60);
+  if (!startHour) document.getElementById('be_time_label').textContent = 'No class time saved yet — select one.';
   await _beRefreshAvailableTrainers(b.trainer_id);
   document.getElementById('be_cap').value=b.capacity||'';
   document.getElementById('be_completion').value=b.expected_completion_date||'';
@@ -9712,12 +9740,19 @@ async function refreshAvailableTrainersForTime(){
 // duration even if it's edited after a time was already chosen.
 function _refreshBatchTimeLabel(){
   const label = document.getElementById('m_b_time_custom_label');
+  const trig = document.getElementById('m_b_time_trigger');
   const time24 = document.getElementById('m_b_time_start')?.value || '';
   if (!label) return;
-  if (!time24) { label.textContent = ''; return; }
   const duration = parseInt(document.getElementById('m_b_duration')?.value, 10) || 60;
-  const isCustom = document.getElementById('m_b_time_start').dataset.custom === '1';
-  label.innerHTML = (isCustom ? 'Selected (custom): ' : 'Selected: ') + '<b>' + esc(formatBatchTimeRange(time24, duration)) + '</b>';
+  _cbTimeTrigger(trig, time24, label, duration);
+  if (time24) { const er = document.getElementById('m_b_time_err'); if (er) er.style.display = 'none'; if (trig) trig.classList.remove('is-invalid'); }
+}
+// Shared display for the Class Start Time field (Create Batch + Edit Batch): the trigger shows
+// the start time, the hint beside it shows end time + duration — derived from the same
+// formatBatchTimeRange() string that is saved to batches.time_slot.
+function _cbTimeTrigger(trig, time24, endEl, duration){
+  if (trig) { trig.querySelector('[data-time-text]').textContent = time24 ? formatBatchTimeRange(time24, duration).split(' – ')[0] : 'Select time'; trig.classList.toggle('is-empty', !time24); }
+  if (endEl) endEl.innerHTML = time24 ? 'Ends <b>' + esc(formatBatchTimeRange(time24, duration).split(' – ')[1]) + '</b> · ' + duration + ' min class' : '';
 }
 // STEP 1 of the workflow (spec): pick the Class Start Time itself, with no trainer chosen
 // yet — reuses the existing themed clock picker component, just no longer gated on a trainer
@@ -9729,6 +9764,7 @@ function pickBatchStartTime(){
 }
 async function onBatchTimeChosen(time24){
   document.getElementById('m_b_time_start').value = time24;
+  window._cbCreateDirty = true;
   document.getElementById('m_b_time_start').dataset.custom = '';
   _refreshBatchTimeLabel();
   // Picking a new time invalidates whichever trainer was selected for the OLD time — clear it
@@ -9778,7 +9814,12 @@ async function saveBatch(){
   if(!name){alert('Batch needs a name.');return;}
   if(!course_id){alert('Pick a course. Define one in the Courses section first.');return;}
   if(!days.length){alert('Pick at least one class day.');return;}
-  if(!startHour){alert('Pick a class start time.');return;}
+  if(!startHour){
+    const er=document.getElementById('m_b_time_err'), tg=document.getElementById('m_b_time_trigger');
+    if(er) er.style.display=''; if(tg){ tg.classList.add('is-invalid'); tg.scrollIntoView({block:'center',behavior:'smooth'}); }
+    showToast('error','Please select a class start time.');
+    return;
+  }
   if(!trainer_id){alert('Pick a Trainer / Coach — the dropdown only offers trainers who are actually available at the Batch Time you picked.');return;}
   // Every batch needs a unique name — it's how the batch gets identified everywhere else
   // (Coach profile, Sales visibility, reports), so a silent duplicate would be genuinely
@@ -11871,6 +11912,64 @@ function _to24(ampm) {
   return String(h).padStart(2, '0') + ':' + mm;
 }
 
+</script>
+
+<script>
+/* Batch popups: top-right ✕ on every batch-related modal + "unsaved changes" guard.
+   Closing never saves anything — it only hides the popup (same as each modal's own Cancel).
+   A popup counts as changed after the user types / picks something in it since it opened. */
+(function(){
+  var IDS=['modalBatchDetails','modalManageStudents','modalBatchEdit','modalCompleteBatch','modalCompleteGroupClasses','modalRestoreBatch','modalFreezeBatch','modalResumeBatch','modalReassignTrainer','modalSessionHistory','modalBatchLogs','modalAtt','modalOto','modalOtoRecord','mUbAdd','mUbDetail','mUbStart'];
+  var dirty={};
+  var X='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  window._batchModalMarkDirty=function(id){ dirty[id]=true; };
+  function isFilter(t){ return t && (t.type==='search' || /search|filter/i.test(t.id||'') || t.closest('[data-no-dirty]')); }
+  function confirmDiscard(){
+    if (typeof showConfirm!=='function') return Promise.resolve(true);
+    return showConfirm('You have unsaved changes. Close without saving?',{title:'Unsaved changes',confirmLabel:'Discard &amp; Close',cancelLabel:'Stay',danger:true});
+  }
+  async function attemptClose(bg){
+    if (dirty[bg.id] && !(await confirmDiscard())) return;
+    dirty[bg.id]=false; bg.classList.remove('on');
+  }
+  function setup(){
+    IDS.forEach(function(id){
+      var bg=document.getElementById(id); if(!bg) return;
+      var m=bg.querySelector(':scope > .modal'); if(!m) return;
+      // reset the change-tracker every time the popup opens
+      new MutationObserver(function(){ if(bg.classList.contains('on')) dirty[id]=false; }).observe(bg,{attributes:true,attributeFilter:['class']});
+      ['input','change'].forEach(function(ev){ m.addEventListener(ev,function(e){ if(e.isTrusted && !isFilter(e.target)) dirty[id]=true; },true); });
+      m.addEventListener('click',function(e){ if(e.isTrusted && e.target.closest('.dchip,.daychips [data-d],.seg-a,.seg-p')) dirty[id]=true; },true);
+      if (m.hasAttribute('data-bewin')) return;                       // be-window popups already have their own ✕ (guarded below)
+      var hasTopClose = [].slice.call(m.querySelectorAll('button')).slice(0,3).some(function(b){ return /✕|×/.test(b.textContent) && b.getBoundingClientRect && !b.closest('.modal-actions'); });
+      if (hasTopClose) return;
+      var b=document.createElement('button'); b.type='button'; b.className='bm-x'; b.setAttribute('aria-label','Close'); b.title='Close'; b.innerHTML=X;
+      b.onclick=function(){ attemptClose(bg); };
+      m.classList.add('bm-has-x'); m.appendChild(b);
+    });
+    // be-window close (Finalize Batch Setup → Review → Approve & Start) gets the same guard.
+    document.addEventListener('click',function(e){
+      var c=e.target.closest && e.target.closest('[data-bewin-act="close"]'); if(!c) return;
+      var bg=c.closest('.modal-bg'); if(!bg || IDS.indexOf(bg.id)<0 || !dirty[bg.id]) return;
+      e.stopImmediatePropagation(); e.preventDefault(); attemptClose(bg);
+    },true);
+    // Create Batch is a full page, not a popup — same ✕ + guard, returning to Student Attendance.
+    var tab=document.getElementById('tab-acad-createbatch'), sec=tab && tab.querySelector('.section');
+    if (sec && !sec.querySelector('.bm-x')) {
+      var cx=document.createElement('button'); cx.type='button'; cx.className='bm-x'; cx.setAttribute('aria-label','Close Create Batch'); cx.title='Close'; cx.innerHTML=X;
+      sec.appendChild(cx);
+      ['input','change'].forEach(function(ev){ sec.addEventListener(ev,function(e){ if(e.isTrusted && !isFilter(e.target)) window._cbCreateDirty=true; },true); });
+      sec.addEventListener('click',function(e){ if(e.isTrusted && e.target.closest('.dchip,[data-d],.pick-list input')) window._cbCreateDirty=true; },true);
+      new MutationObserver(function(){ if(tab.offsetParent===null) return; if(!tab._wasShown){ tab._wasShown=true; window._cbCreateDirty=false; } }).observe(tab,{attributes:true,attributeFilter:['class','style']});
+      new MutationObserver(function(){ if(tab.offsetParent===null) tab._wasShown=false; }).observe(tab,{attributes:true,attributeFilter:['class','style']});
+      cx.onclick=async function(){
+        if (window._cbCreateDirty && !(await confirmDiscard())) return;
+        window._cbCreateDirty=false; acadSwitchTab('live');
+      };
+    }
+  }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',setup); else setup();
+})();
 </script>
 </body>
 </html>
