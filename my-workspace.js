@@ -151,6 +151,8 @@
   }
   function annActive(a) { var n = Date.now(); if (a.start_at && n < new Date(a.start_at).getTime()) return false; if (a.end_at && n > new Date(a.end_at).getTime()) return false; return true; }
   async function renderAnnouncements(root) {
+    // One shared Announcement Center (announcements.js) — realtime, reactions, replies, acknowledgement.
+    if (window.BEAnnounce) { window.BEAnnounce.renderCenter(root); return; }
     var e = await me();
     var res = await Promise.all([
       db().from('hr_announcements').select('*').order('created_at', { ascending: false }),

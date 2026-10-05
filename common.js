@@ -636,7 +636,7 @@ async function loadMyHRData() {
 
 // ── dismissAllNotifs (orig line 6967) ──
         function dismissAllNotifs() {
-            notifications.filter(n => n.type === 'announcement').forEach(n => markAnnouncementRead(n.id.replace('announcement_', '')));
+            // Clearing the bell only hides entries — an announcement counts as read only once it is opened.
             notifications.forEach(n => _readNotifIds.add(n.id));
             notifications = [];
             saveNotifs();
@@ -648,7 +648,6 @@ async function loadMyHRData() {
 // ── dismissNotif (orig line 6976) ──
         function dismissNotif(id) {
             const dismissed = notifications.find(n => n.id === id);
-            if (dismissed && dismissed.type === 'announcement') markAnnouncementRead(id.replace('announcement_', ''));
             _readNotifIds.add(id);
             notifications = notifications.filter(n => n.id !== id);
             saveNotifs();
@@ -842,6 +841,7 @@ async function loadMyHRData() {
         // (production/education/sales/hr/accounts/other), or 'selected' matched against real
         // hr_employees.id values, never against a name string. 'all' always matches.
         function hrAnnouncementApplies(a, employee) {
+            if (window.BEAnnounce) return window.BEAnnounce.applies(a, employee);   // one audience rule everywhere
             const aud = a.audience || 'all';
             if (aud === 'all') return true;
             if (!employee) return false;
@@ -856,6 +856,7 @@ async function loadMyHRData() {
         // one with a past end_at stops appearing as active anywhere (HR's own history list is
         // unaffected — that always shows every row regardless of schedule).
         function hrAnnouncementIsScheduledActive(a) {
+            if (a.archived_at) return false;
             const now = Date.now();
             if (a.start_at && now < new Date(a.start_at).getTime()) return false;
             if (a.end_at && now > new Date(a.end_at).getTime()) return false;
@@ -977,6 +978,7 @@ async function loadMyHRData() {
         }
 
         function openAnnouncementDetail(id) {
+            if (window.BEAnnounce) { window.BEAnnounce.open(id); if (typeof closeNotifPanel === 'function') closeNotifPanel(); return; }   // shared Announcement Center
             const a = hrAnnouncements.find(x => String(x.id) === String(id));
             if (!a) return;
             ensureAnnouncementDetailModal();
