@@ -334,3 +334,94 @@
 
   window.BEShell = { header: header, openPalette: openPalette, formatDate: formatDate };
 })();
+
+/* ============================================================================
+ * Header clock pill — Clock In / Clock Out lives in the top header bar (next to the
+ * date) on every portal instead of a big Attendance card at the top of each page.
+ * It MIRRORS the page's existing Attendance card (status text + its real Clock In /
+ * Clock Out buttons) and clicks those buttons, so every portal keeps its own clock
+ * logic untouched; the card itself is only hidden. If a page shows no card (e.g. the
+ * Master Admin system account), the pill hides too.
+ * ==========================================================================*/
+(function () {
+  'use strict';
+  if (window.__beClockPill) return; window.__beClockPill = true;
+  var CSS = [
+    '.bes-att.bes-att-moved{display:none!important}',
+    '.bes-clockpill{height:40px;display:inline-flex;align-items:center;gap:10px;padding:0 6px 0 13px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);color:#c7cce3;font:600 12.5px Inter,system-ui,sans-serif;white-space:nowrap;flex-shrink:0}',
+    '.bes-clockpill[hidden]{display:none}',
+    '.bes-clockpill .bcp-dot{width:8px;height:8px;border-radius:50%;background:#6b74a0;flex-shrink:0}',
+    '.bes-clockpill.is-in .bcp-dot{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.18)}',
+    '.bes-clockpill.is-done .bcp-dot{background:#60a5fa}',
+    '.bes-clockpill .bcp-txt b{color:#fff;font-weight:700}',
+    '.bes-clockpill .bcp-btn{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border-radius:9px;border:0;cursor:pointer;font:700 12px Inter,system-ui,sans-serif;color:#fff}',
+    '.bes-clockpill .bcp-btn.in{background:linear-gradient(135deg,#10b981,#059669)}',
+    '.bes-clockpill .bcp-btn.out{background:linear-gradient(135deg,#ff6b06,#f9182f)}',
+    '.bes-clockpill .bcp-btn:disabled{opacity:.6;cursor:default}',
+    '.bes-clockpill .bcp-btn:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:1px}',
+    '.bes-clockpill.is-done{padding-right:13px}',
+    '@media(max-width:1100px){.bes-clockpill .bcp-txt{display:none}.bes-clockpill{padding-left:10px}}',
+    '@media(max-width:560px){.bes-clockpill .bcp-btn span{display:none}.bes-clockpill .bcp-btn{padding:0 9px}}'
+  ].join('');
+  var IC_IN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>';
+  var IC_OUT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>';
+
+  function visible(el) { return !!el && !el.classList.contains('hidden') && el.style.display !== 'none'; }
+  function findCard() {
+    var cards = [].slice.call(document.querySelectorAll('.bes-att')).filter(function (c) { return c.querySelector('.bes-clk'); });
+    // prefer the page's own primary card ids, else the first card with clock buttons
+    return cards.find(function (c) { return c.querySelector('#attendance-clockin-btn,#hr-attendance-clockin-btn,#clockBtn'); }) || cards[0] || null;
+  }
+  function shortStatus(card, state) {
+    var st = card.querySelector('.bes-att-st'), t = st ? st.textContent.replace(/\s+/g, ' ').trim() : '';
+    var times = t.match(/\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?/g) || [];
+    if (state === 'in') return times[0] ? 'In since <b>' + times[0] + '</b>' : 'Clocked in';
+    if (state === 'done') return times.length > 1 ? 'Done <b>' + times[0] + ' – ' + times[1] + '</b>' : 'Done for today';
+    if (/checking/i.test(t)) return 'Checking…';
+    return 'Not clocked in';
+  }
+  function mount() {
+    var card = findCard(), header = document.querySelector('.bes-date');
+    if (!card || !header) return false;
+    if (!document.getElementById('bes-clockpill-css')) { var s = document.createElement('style'); s.id = 'bes-clockpill-css'; s.textContent = CSS; document.head.appendChild(s); }
+    var pill = document.createElement('div');
+    pill.className = 'bes-clockpill'; pill.setAttribute('role', 'group'); pill.setAttribute('aria-label', 'Attendance');
+    pill.innerHTML = '<span class="bcp-dot" aria-hidden="true"></span><span class="bcp-txt"></span><button type="button" class="bcp-btn"></button>';
+    header.parentNode.insertBefore(pill, header);
+    card.classList.add('bes-att-moved');
+    var btn = pill.querySelector('.bcp-btn'), txt = pill.querySelector('.bcp-txt');
+    function realButtons() {
+      var bs = [].slice.call(card.querySelectorAll('.bes-clk'));
+      return { in: bs.find(function (b) { return b.classList.contains('bes-clk-in') || /clock in/i.test(b.textContent); }),
+               out: bs.find(function (b) { return b.classList.contains('bes-clk-out') || /clock out/i.test(b.textContent); }), all: bs };
+    }
+    function sync() {
+      // The card's own "hidden" means the page decided clocking doesn't apply (e.g. system account).
+      var cardOn = !card.classList.contains('hidden');
+      var r = realButtons(), target = null, state = 'none';
+      if (r.all.length === 1) {               // single toggle button (Sales)
+        var one = r.all[0];
+        if (visible(one)) { target = one; state = /out/i.test(one.textContent) ? 'in' : 'none'; } else state = 'done';
+      } else if (visible(r.out)) { target = r.out; state = 'in'; }
+      else if (visible(r.in)) { target = r.in; state = 'none'; }
+      else state = 'done';
+      pill.hidden = !cardOn;
+      pill.classList.toggle('is-in', state === 'in'); pill.classList.toggle('is-done', state === 'done');
+      txt.innerHTML = shortStatus(card, state);
+      if (target) {
+        var out = state === 'in';
+        btn.hidden = false; btn.className = 'bcp-btn ' + (out ? 'out' : 'in');
+        btn.innerHTML = (out ? IC_OUT : IC_IN) + '<span>' + (out ? 'Clock Out' : 'Clock In') + '</span>';
+        btn.disabled = !!target.disabled;
+        btn.title = card.querySelector('.bes-att-st') ? card.querySelector('.bes-att-st').textContent.trim() : '';
+        btn._target = target;
+      } else { btn.hidden = true; btn._target = null; }
+    }
+    btn.addEventListener('click', function () { if (btn._target && !btn._target.disabled) btn._target.click(); });
+    new MutationObserver(sync).observe(card, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'disabled'] });
+    sync();
+    return true;
+  }
+  var tries = 0;
+  (function wait() { if (mount()) return; if (++tries < 60) setTimeout(wait, 500); })();
+})();
