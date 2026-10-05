@@ -1733,12 +1733,28 @@ function hrOfficialEventFor(employee, dateStr) {
                 // to 0 (that "CL treated as zero every month" bug is exactly what §4 forbids).
                 const slRow = ctx.slLedger.find(s => s.period === monthStr);
                 let slLeft = slRow ? Math.max(0, Number(slRow.entitlement) - Number(slRow.used||0)) : (LeavePolicy.P ? LeavePolicy.P.SL_PER_MONTH : 1);
-                let clLeft;
+                // CL for this month = what the shared engine says is available, exactly as the
+                // leave-balance screens show it: credited (non-expired buckets), capped at CL
+                // EARNED by month end (1 per month of the cycle), minus approved CL already used
+                // earlier in the same cycle. (Buckets are never decremented on approval, so
+                // using their raw remaining_amount paid out the full 6 CL from day one.)
+                const monthEndStr = `${monthStr}-${String(daysInMonth).padStart(2,'0')}`;
+                let clCredit = LeavePolicy.P ? LeavePolicy.P.CL_PER_CYCLE : 6, clBucketUsed = 0;
                 if (ctx.clBuckets.length) {
-                    const monthEndStr = `${monthStr}-${String(daysInMonth).padStart(2,'0')}`;
-                    clLeft = ctx.clBuckets.filter(b => (b.expiry_date||'').slice(0,10) >= monthEndStr)
-                        .reduce((s,b)=> s + Number(b.remaining_amount||0), 0);
-                } else { clLeft = LeavePolicy.P ? LeavePolicy.P.CL_PER_CYCLE : 6; }
+                    const live = ctx.clBuckets.filter(b => (b.expiry_date||'').slice(0,10) >= monthEndStr);
+                    clCredit = live.reduce((s,b)=> s + Number(b.original_amount ?? b.remaining_amount ?? 0), 0);
+                    clBucketUsed = live.reduce((s,b)=> s + Math.max(0, Number(b.original_amount ?? b.remaining_amount ?? 0) - Number(b.remaining_amount||0)), 0);
+                }
+                let clLeft = clCredit - clBucketUsed;
+                if (LeavePolicy.clCycleFor && LeavePolicy.clAccruedToDate && LeavePolicy.leaveUnitsUsed) {
+                    const cyc = LeavePolicy.clCycleFor(monthEndStr);
+                    const cycStart = String(cyc.credit_date).slice(0, 10);
+                    const earned = LeavePolicy.clAccruedToDate(monthEndStr, cyc);
+                    const prev = new Date(y, m - 1, 0); // last day of the previous month
+                    const prevStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
+                    const usedBefore = cycStart <= prevStr ? LeavePolicy.leaveUnitsUsed(ctx, 'CL', cycStart, prevStr).units : 0;
+                    clLeft = Math.max(0, Math.min(clCredit, earned) - Math.max(usedBefore, clBucketUsed));
+                }
                 let present=0, sl=0, cl=0, ml=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
                 let leaveLop=0, absentLop=0, doubleExtra=0;
                 const lopReasons = []; // §6 — HR must see WHY each day became LOP

@@ -693,6 +693,7 @@
     reloadPolicy: reloadPolicy,
     normType: normType,
     clCycleFor: clCycleFor,
+    clAccruedToDate: clAccruedToDate,
     getEmployeeWorkSchedule: getEmployeeWorkSchedule,
     isFlexibleTime: isFlexibleTime,
     resolveWorkedDuration: resolveWorkedDuration,
