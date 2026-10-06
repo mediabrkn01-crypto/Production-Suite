@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.06.1126-h60s">
-<script src="be-update.js?v=2026.10.06.1126-h60s"></script>
+<meta name="be-version" content="2026.10.06.1147-m71p">
+<script src="be-update.js?v=2026.10.06.1147-m71p"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Broken English | Manager Command Center</title>
 <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
@@ -11,14 +11,14 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.06.1126-h60s"></script>
-<link rel="stylesheet" href="account-menu.css?v=2026.10.06.1126-h60s">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.06.1126-h60s">
-<script src="be-mobile.js?v=2026.10.06.1126-h60s"></script>
-<script src="account-menu.js?v=2026.10.06.1126-h60s"></script>
-<script src="photo-preview.js?v=2026.10.06.1126-h60s"></script>
-<script src="shared-greeting.js?v=2026.10.06.1126-h60s"></script>
-<script src="be-shell.js?v=2026.10.06.1126-h60s"></script>
+<script src="be-live.js?v=2026.10.06.1147-m71p"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.06.1147-m71p">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.06.1147-m71p">
+<script src="be-mobile.js?v=2026.10.06.1147-m71p"></script>
+<script src="account-menu.js?v=2026.10.06.1147-m71p"></script>
+<script src="photo-preview.js?v=2026.10.06.1147-m71p"></script>
+<script src="shared-greeting.js?v=2026.10.06.1147-m71p"></script>
+<script src="be-shell.js?v=2026.10.06.1147-m71p"></script>
 <style>
   :root{ --bg:#08070b; --panel:#0f0d14; --panel2:#141019; --bd:rgba(255,255,255,0.07);
          --tx:#f4f4f8; --tx2:rgba(255,255,255,0.55); --tx3:rgba(255,255,255,0.30);
@@ -239,10 +239,10 @@
     </main>
   </div>
 
-<script src="common.js?v=2026.10.06.1126-h60s"></script>
-<script src="access-guard.js?v=2026.10.06.1126-h60s"></script>
-<script src="announcements.js?v=2026.10.06.1126-h60s"></script>
-<script src="leave-policy.js?v=2026.10.06.1126-h60s"></script>
+<script src="common.js?v=2026.10.06.1147-m71p"></script>
+<script src="access-guard.js?v=2026.10.06.1147-m71p"></script>
+<script src="announcements.js?v=2026.10.06.1147-m71p"></script>
+<script src="leave-policy.js?v=2026.10.06.1147-m71p"></script>
 <script>
 (async function(){
   'use strict';
@@ -330,7 +330,8 @@
   if (window.BELive) { BELive.use(db); BELive.on('mgr-overview', ['assignments','hr_employees','hr_attendance','hr_leave_requests','trainers','batches','students','courses','leads'], loadMetrics, { debounce: 2000 }); }
 
   // ── Live Announcements & Updates — HR announcements + celebration events (same shared source). ──
-  (async function(){
+  // Re-runs live (be-live.js) when HR posts/edits an announcement or a celebration.
+  async function loadAnnList(){
     var list=document.getElementById('mgr-ann-list'); if(!list) return;
     function ago(ts){ if(!ts) return ''; var d=(Date.now()-new Date(ts).getTime())/1000; if(d<3600) return Math.max(1,Math.round(d/60))+' min ago'; if(d<86400) return Math.round(d/3600)+' hours ago'; return Math.round(d/86400)+' days ago'; }
     function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -348,7 +349,12 @@
         +'<div class="body"><div class="ttl">'+esc(it.ttl)+'</div>'+(it.body?'<div class="meta">'+esc(String(it.body).slice(0,80))+'</div>':'')+'</div>'
         +'<div style="text-align:right;flex-shrink:0"><div class="meta">'+esc(ago(it.ts))+'</div><span class="tag '+t[1]+'">'+t[0]+'</span></div></div>';
     }).join(''); icons();
-  })();
+  }
+  loadAnnList();
+  if (window.BELive) BELive.on('mgr-ann', ['hr_announcements','hr_celebration_events'], function(){
+    loadAnnList();
+    try{ if(window._mgrEmp && typeof runCelebrationQueue==='function'){ myHRDataLoaded=false; loadMyHRData().then(function(){ runCelebrationQueue(window._mgrEmp); }); } }catch(e){}
+  }, { debounce: 800 });
 
   // avatar + shared celebration banner
   (function(){ var me=window._mgrEmp; if(!me) return; var av=document.getElementById('mgr-account-btn');
