@@ -1,0 +1,59 @@
+# Tells every open Broken English page that a new version is LIVE.
+#
+# Runs after each push to main. GitHub Pages deploys the push on its own; this job waits until
+# production (https://work.brokenenglish.in/version.json) actually serves the version that was
+# pushed, and only then records it in Supabase (app_versions) — which open browsers receive
+# through Supabase Realtime and show "System update available".
+# If the deploy fails or never goes live, the job fails here and nobody is notified.
+name: Publish live version
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-version
+  cancel-in-progress: true   # a newer push supersedes an older one still waiting
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pushed version
+        id: v
+        run: |
+          echo "version=$(jq -r .version version.json)" >> "$GITHUB_OUTPUT"
+          # Public Supabase URL + anon key, read from the site's own config (not secrets).
+          echo "url=$(grep -oE 'const SUPABASE_URL = "[^"]+"' common.js | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+          echo "key=$(grep -oE 'SUPABASE_ANON_KEY = "[^"]+"' common.js | head -1 | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait until production serves this version
+        env:
+          WANT: ${{ steps.v.outputs.version }}
+        run: |
+          for i in $(seq 1 90); do
+            LIVE=$(curl -fsS -H 'Cache-Control: no-cache' "https://work.brokenenglish.in/version.json?t=$(date +%s%N)" | jq -r .version || true)
+            echo "attempt $i: live=$LIVE want=$WANT"
+            if [ "$LIVE" = "$WANT" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::Production never served $WANT — not notifying employees."
+          exit 1
+
+      - name: Publish to app_versions (Supabase Realtime → open pages)
+        env:
+          URL: ${{ steps.v.outputs.url }}
+          KEY: ${{ steps.v.outputs.key }}
+          TOKEN: ${{ secrets.APP_VERSION_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          test -n "$TOKEN" || { echo "::error::APP_VERSION_TOKEN secret missing"; exit 1; }
+          BODY=$(jq -n --arg v "$VERSION" --arg b "$GITHUB_SHA" --arg t "$TOKEN" '{p_app:"broken_english",p_version:$v,p_build:$b,p_token:$t}')
+          curl -fsS -X POST "$URL/rest/v1/rpc/publish_app_version" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+            -d "$BODY"
+          echo "Published $VERSION"

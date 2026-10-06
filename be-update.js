@@ -6,12 +6,15 @@
  *  - Each deploy stamps a version into version.json and into every page as
  *    <meta name="be-version">, and every local asset as file.js?v=VERSION
  *    (scripts/stamp-version.mjs, run by the pre-commit hook).
- *  - This file polls version.json (no-store, cache-busted) every 60 s, and again when the tab
- *    becomes visible, the network comes back, the page is restored from bfcache, or the device
- *    wakes from sleep.
- *  - New version + nothing unsaved  → short "Updating Broken English…" notice, then reload.
- *    New version + unsaved work     → "Finish your current work and update" with Update now /
- *    Later; it updates by itself once the work is finished (unless the user chose Later).
+ *  - LIVE: listens to the central app_versions row over Supabase Realtime. The deploy pipeline
+ *    (.github/workflows/publish-version.yml) updates that row only after the new build is
+ *    actually served in production — so open pages learn about it within seconds, no refresh.
+ *  - Fallback: every 45 s, and when the tab becomes visible, the network comes back, the page is
+ *    restored from bfcache, or the device wakes, it reads that row + version.json (both tiny).
+ *  - On detection it pre-fetches the new page and its versioned JS/CSS in the background.
+ *  - New version + nothing unsaved  → "System update available · Updating in 10 seconds…" with
+ *    Later / Update now. Unsaved work → "Finish your current work before updating" — never an
+ *    automatic reload while working. Later → a small "Update ready" chip, reminder in 15 min.
  *  - The reload goes to the same URL with ?_v=<version> so the browser cannot reuse a cached
  *    HTML page, and the current tab/section is restored after the reload.
  *  - There is no service worker; any old one is unregistered and its caches are removed.
@@ -26,33 +29,88 @@
   // Inside the Manager Command Center the department pages run in iframes — the top page owns
   // version checks and its reload refreshes every frame, so embedded copies stay quiet.
   var EMBEDDED = false; try { EMBEDDED = window.top !== window.self; } catch (_) { EMBEDDED = true; }
-  var CHECK_MS = 60000, NOTICE_MS = 5000, LATER_MS = 15 * 60000, RESUME_KEY = 'be_update_resume';
+  var APP = 'broken_english', CHECK_MS = 45000, NOTICE_MS = 10000, LATER_MS = 15 * 60000, RESUME_KEY = 'be_update_resume';
   var meta = document.querySelector('meta[name="be-version"]');
   var running = meta ? meta.getAttribute('content') : null;
   var latest = null, ui = null, laterUntil = 0, pendingTimer = null, countdown = null;
 
   // ───────────────────────────── version check
+  // Versions are stamped "YYYY.MM.DD.HHMM-xxxx" (India time) — only a NEWER one counts, so an
+  // old record can never ask a freshly loaded page to "update" backwards.
+  function isNewer(v, than) {
+    if (!v || !than || v === than) return false;
+    var a = String(v).split('-')[0], b = String(than).split('-')[0];
+    return a > b || (a === b);   // same minute, different build → still a new build
+  }
+  function consider(v) {
+    v = v ? String(v) : null;
+    if (!v) return;
+    if (!running) { running = v; return; }             // page without a stamp: adopt as baseline
+    if (v === running) { try { sessionStorage.removeItem('be_update_tried'); } catch (_) {} return; }
+    if (!isNewer(v, running) || (latest && !isNewer(v, latest) && v !== latest)) return;
+    var fresh = v !== latest;
+    latest = v;
+    if (fresh) prefetch(v);
+    onNewVersion();
+  }
   function versionUrl() {
     var base = location.pathname.replace(/[^/]*$/, '');
     return base + 'version.json?t=' + Date.now();
   }
+  function client() {
+    try { if (typeof dbInstance !== 'undefined' && dbInstance && dbInstance.from) return dbInstance; } catch (_) {}
+    try { if (typeof sb !== 'undefined' && sb && sb.from) return sb; } catch (_) {}
+    return null;
+  }
+  // Fallback check (realtime is primary): the central production record + the deployed
+  // version.json — both tiny; neither reloads anything.
   var checking = false, lastCheck = 0;
   function check(reason) {
     if (EMBEDDED) return;
     if (checking || !navigator.onLine) return;
     if (reason !== 'force' && Date.now() - lastCheck < 8000) return;
     checking = true; lastCheck = Date.now();
-    fetch(versionUrl(), { cache: 'no-store', credentials: 'omit' })
+    var jobs = [fetch(versionUrl(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) {
-        var v = j && j.version ? String(j.version) : null;
-        if (!v) return;
-        if (!running) { running = v; return; }          // page without a stamp: adopt as baseline
-        if (v === running) { try { sessionStorage.removeItem('be_update_tried'); } catch (_) {} }
-        if (v !== running) { latest = v; onNewVersion(); }
-      })
-      .catch(function () {})
-      .then(function () { checking = false; });
+      .then(function (j) { if (j && j.version) consider(j.version); })
+      .catch(function () {})];
+    var c = client();
+    if (c && listen.ok) jobs.push(Promise.resolve(c.from('app_versions').select('version,status').eq('app_name', APP).maybeSingle())
+      .then(function (r) { var row = r && r.data; if (row && row.status !== 'rolled_back') consider(row.version); })
+      .catch(function () {}));
+    Promise.all(jobs).then(function () { checking = false; });
+  }
+  // Primary: Supabase Realtime on the central app_versions row. The deploy pipeline updates it
+  // only once the new build is actually live, so every open page hears about it within seconds.
+  function listen(n) {
+    if (EMBEDDED) return;
+    if (!window.BELive || !client()) { if ((n || 0) < 60) setTimeout(function () { listen((n || 0) + 1); }, 500); return; }
+    // Subscribe only once the table exists (before the migration runs, a binding on a missing
+    // table would break the shared live channel for every other subscriber).
+    if (!listen.ok) {
+      Promise.resolve(client().from('app_versions').select('version').limit(1)).then(function (r) {
+        if (r && !r.error) { listen.ok = true; listen(n); } else setTimeout(function () { listen(n); }, 300000);
+      }, function () { setTimeout(function () { listen(n); }, 300000); });
+      return;
+    }
+    BELive.use(client());
+    BELive.on('app-version', { table: 'app_versions', filter: 'app_name=eq.' + APP }, function (evs, info) {
+      if (info.resync) { check('force'); return; }
+      evs.forEach(function (p) { var row = p.new; if (row && row.version && row.status !== 'rolled_back') consider(row.version); });
+    }, { debounce: 0 });
+  }
+  // "Prepare the update" in the background: warm the browser cache with the new page and its
+  // versioned JS/CSS, so Update now is a single quick reload. Nothing running is replaced.
+  var prefetched = {};
+  function prefetch(v) {
+    if (prefetched[v] || EMBEDDED) return; prefetched[v] = true;
+    try {
+      var u = new URL(location.href); u.searchParams.set('_v', v);
+      fetch(u.toString(), { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (html) {
+        var re = /(?:src|href)="([^":?#]+\.(?:js|css)\?v=[^"]+)"/g, m, seen = {};
+        while ((m = re.exec(html))) { if (!seen[m[1]]) { seen[m[1]] = 1; fetch(m[1], { credentials: 'same-origin' }).catch(function () {}); } }
+      }).catch(function () {});
+    } catch (_) {}
   }
 
   // ───────────────────────────── unsaved-work detection
@@ -119,6 +177,9 @@
   var CSS = [
     '.beu{position:fixed;right:18px;bottom:18px;z-index:2147483000;width:min(360px,calc(100vw - 32px));background:#11162a;color:#e6e9f5;border:1px solid rgba(255,138,60,.35);border-radius:16px;box-shadow:0 24px 60px -16px rgba(0,0,0,.75);padding:16px 16px 14px;font:13px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s}',
     '.beu.on{opacity:1;transform:none}',
+    '.beu-chip{position:fixed;right:18px;bottom:18px;z-index:2147483000;display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:999px;border:1px solid rgba(255,138,60,.4);background:#11162a;color:#ffb37a;font:700 12px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 26px -10px rgba(0,0,0,.7);opacity:0;transition:opacity .25s}',
+    '.beu-chip.on{opacity:1}.beu-chip:hover{color:#fff}',
+    '.beu-cd{display:block;margin-top:4px;color:#e6e9f5;font-weight:600}',
     '.beu-t{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#ff8a3c;margin:0 0 6px}',
     '.beu-p{margin:0 0 12px;color:#a5adcf}',
     '.beu-b{display:flex;gap:8px;justify-content:flex-end}',
@@ -132,29 +193,51 @@
     '.beu-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#ff6b06;animation:beuSpin .8s linear infinite}',
     '@keyframes beuSpin{to{transform:rotate(360deg)}}',
     '@media (prefers-reduced-motion:reduce){.beu{transition:none}.beu-bar i{animation:none}.beu-spin{animation-duration:2s}}',
-    '@media (max-width:640px){.beu{right:16px;bottom:calc(16px + 76px)}}'
+    '@media (max-width:640px){.beu,.beu-chip{right:16px;bottom:calc(16px + 76px)}}'
   ].join('');
   function css() { if (document.getElementById('beu-css')) return; var s = document.createElement('style'); s.id = 'beu-css'; s.textContent = CSS; (document.head || document.documentElement).appendChild(s); }
   var SPARK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>';
 
-  function closeUI() { if (ui) { var u = ui; ui = null; u.classList.remove('on'); setTimeout(function () { u.remove(); }, 260); } clearTimeout(countdown); countdown = null; }
+  function closeUI() { if (ui) { var u = ui; ui = null; u.classList.remove('on'); setTimeout(function () { u.remove(); }, 260); } clearInterval(countdown); countdown = null; }
+  var chipEl = null;
+  // After "Later": a small "Update ready" chip stays in the corner as a quiet reminder.
+  function showChip() {
+    css();
+    if (chipEl) return;
+    chipEl = document.createElement('button');
+    chipEl.type = 'button'; chipEl.className = 'beu-chip'; chipEl.innerHTML = SPARK + 'Update ready';
+    chipEl.title = 'A new version of Broken English is ready — click to update';
+    chipEl.addEventListener('click', function () { laterUntil = 0; hideChip(); show(busyReason() ? 'busy' : 'manual'); });
+    document.body.appendChild(chipEl);
+    requestAnimationFrame(function () { chipEl && chipEl.classList.add('on'); });
+  }
+  function hideChip() { if (chipEl) { chipEl.remove(); chipEl = null; } }
   function show(kind) {
     css();
+    hideChip();
     if (ui && ui.dataset.kind === kind) return;
     closeUI();
     var d = document.createElement('div');
     d.className = 'beu'; d.dataset.kind = kind; d.setAttribute('role', 'status'); d.setAttribute('aria-live', 'polite');
+    var head = '<div class="beu-t">' + SPARK + 'System update available</div>';
     if (kind === 'auto') {
-      d.innerHTML = '<div class="beu-t">' + SPARK + 'Updating Broken English…</div><p class="beu-p">A new version is ready. Reloading in a few seconds — you\'ll stay on this page.</p><div class="beu-bar"><i style="animation-duration:' + NOTICE_MS + 'ms"></i></div><div class="beu-b"><button type="button" data-a="later">Not now</button><button type="button" class="pri" data-a="now">Update now</button></div>';
-      countdown = setTimeout(function () { if (!busyReason()) applyUpdate(); else show('busy'); }, NOTICE_MS);
+      d.innerHTML = head + '<p class="beu-p">A new version of Broken English is ready to install. <span class="beu-cd">Updating in <b>' + Math.round(NOTICE_MS / 1000) + '</b> seconds…</span></p><div class="beu-bar"><i style="animation-duration:' + NOTICE_MS + 'ms"></i></div><div class="beu-b"><button type="button" data-a="later">Later</button><button type="button" class="pri" data-a="now">Update now</button></div>';
+      var left = Math.round(NOTICE_MS / 1000), cd = d.querySelector('.beu-cd b');
+      countdown = setInterval(function () {
+        left--; if (cd) cd.textContent = Math.max(left, 0);
+        if (left > 0) return;
+        clearInterval(countdown); countdown = null;
+        if (!busyReason()) applyUpdate(); else show('busy');      // started typing meanwhile → wait
+      }, 1000);
+    } else if (kind === 'busy') {
+      d.innerHTML = head + '<p class="beu-p">Update available. Finish your current work before updating — nothing will reload while you are working.</p><div class="beu-b"><button type="button" data-a="later">Update later</button><button type="button" class="pri" data-a="now">Update now</button></div>';
     } else {
-      var busy = kind === 'busy';
-      d.innerHTML = '<div class="beu-t">' + SPARK + 'New update available</div><p class="beu-p">' + (busy ? 'New version available. Finish your current work and update.' : 'Broken English has been updated. Refresh to use the latest version.') + '</p><div class="beu-b">' + (busy ? '<button type="button" data-a="later">Later</button>' : '') + '<button type="button" class="pri" data-a="now">Update now</button></div>';
+      d.innerHTML = head + '<p class="beu-p">A new version of Broken English is ready to install.</p><div class="beu-b"><button type="button" data-a="later">Later</button><button type="button" class="pri" data-a="now">Update now</button></div>';
     }
     d.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
       if (b.dataset.a === 'now') applyUpdate();
-      else { laterUntil = Date.now() + LATER_MS; closeUI(); }
+      else { laterUntil = Date.now() + LATER_MS; closeUI(); showChip(); }
     });
     document.body.appendChild(d); ui = d;
     requestAnimationFrame(function () { d.classList.add('on'); });
@@ -174,8 +257,10 @@
   }
   // While an update is waiting, keep re-checking whether it has become safe.
   setInterval(function () {
-    if (!latest || latest === running || Date.now() < laterUntil) return;
-    if (!busyReason() && (!ui || ui.dataset.kind === 'busy')) { closeUI(); onNewVersion(); }
+    if (!latest || latest === running) return;
+    if (Date.now() < laterUntil) { showChip(); return; }          // snoozed: quiet chip only
+    if (!ui) { onNewVersion(); return; }                           // snooze over → remind again
+    if (!busyReason() && ui.dataset.kind === 'busy') { closeUI(); onNewVersion(); } // work finished → safe now
   }, 15000);
 
   // ───────────────────────────── route save / restore
@@ -257,13 +342,14 @@
   window.addEventListener('online', function () { check('force'); });
   window.addEventListener('focus', function () { check('focus'); });
   window.addEventListener('pageshow', function (e) { if (e.persisted) check('force'); });
-  function start() { restoreResume(); setTimeout(function () { check('force'); }, 4000); }
+  function start() { restoreResume(); listen(0); setTimeout(function () { check('force'); }, 4000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
   window.BEUpdate = {
     get version() { return running; },
     get latest() { return latest; },
     check: function () { check('force'); },
+    _consider: consider,
     isBusy: function () { return busyReason(); },
     /** True while the user has typed into a field inside `root` that is still unsaved/focused. */
     isEditingIn: function (root) {
