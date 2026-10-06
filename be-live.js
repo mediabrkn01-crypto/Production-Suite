@@ -152,6 +152,7 @@
     off: function (key) { var s = subs[key]; if (!s) return; clearTimeout(s.timer); delete subs[key]; scheduleBuild(); },
     get state() { return state; },
     get keys() { return Object.keys(subs); },
+    get _debug() { var c = getClient(); return { topic: channel && channel.topic, chState: channel && channel.state, clientChannels: c && c.getChannels ? c.getChannels().map(function (x) { return x.topic + ':' + x.state; }) : null, bindings: channel && channel.bindings && channel.bindings.postgres_changes ? channel.bindings.postgres_changes.length : null }; },
     onState: function (fn) { if (typeof fn === 'function') stateFns.push(fn); },
     resync: resyncAll,
     /** Run fn now unless the user is editing inside root; then wait until they stop.

@@ -45,6 +45,7 @@
   function consider(v) {
     v = v ? String(v) : null;
     if (!v) return;
+    try { window.dispatchEvent(new CustomEvent('be-version-seen', { detail: v })); } catch (_) {}
     if (!running) { running = v; return; }             // page without a stamp: adopt as baseline
     if (v === running) { try { sessionStorage.removeItem('be_update_tried'); } catch (_) {} return; }
     if (!isNewer(v, running) || (latest && !isNewer(v, latest) && v !== latest)) return;
