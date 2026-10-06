@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.06.1247-3bvd">
-<script src="be-update.js?v=2026.10.06.1247-3bvd"></script>
+<meta name="be-version" content="2026.10.06.1255-x06q">
+<script src="be-update.js?v=2026.10.06.1255-x06q"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Broken English | Manager Command Center</title>
 <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
@@ -11,14 +11,14 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.06.1247-3bvd"></script>
-<link rel="stylesheet" href="account-menu.css?v=2026.10.06.1247-3bvd">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.06.1247-3bvd">
-<script src="be-mobile.js?v=2026.10.06.1247-3bvd"></script>
-<script src="account-menu.js?v=2026.10.06.1247-3bvd"></script>
-<script src="photo-preview.js?v=2026.10.06.1247-3bvd"></script>
-<script src="shared-greeting.js?v=2026.10.06.1247-3bvd"></script>
-<script src="be-shell.js?v=2026.10.06.1247-3bvd"></script>
+<script src="be-live.js?v=2026.10.06.1255-x06q"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.06.1255-x06q">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.06.1255-x06q">
+<script src="be-mobile.js?v=2026.10.06.1255-x06q"></script>
+<script src="account-menu.js?v=2026.10.06.1255-x06q"></script>
+<script src="photo-preview.js?v=2026.10.06.1255-x06q"></script>
+<script src="shared-greeting.js?v=2026.10.06.1255-x06q"></script>
+<script src="be-shell.js?v=2026.10.06.1255-x06q"></script>
 <style>
   :root{ --bg:#08070b; --panel:#0f0d14; --panel2:#141019; --bd:rgba(255,255,255,0.07);
          --tx:#f4f4f8; --tx2:rgba(255,255,255,0.55); --tx3:rgba(255,255,255,0.30);
@@ -113,6 +113,20 @@
     .actgrid{grid-template-columns:minmax(0,1fr)}
     .annrow .body{min-width:0}
   }
+  .kpi-click{cursor:pointer;transition:border-color .15s,background .15s}
+  .kpi-click:hover{border-color:rgba(255,255,255,.16);background:rgba(255,255,255,.04)}
+  .kpi-click:focus-visible{outline:2px solid rgba(255,138,60,.6);outline-offset:2px}
+  .kpi .ks{font-size:10.5px;color:#6b74a0;margin-top:2px;line-height:1.3}
+  .kpi .v.kpi-err{color:#f87171}
+  .mgr-upd{display:inline-block;margin-left:6px;font-size:11px;color:#6b74a0}
+  .mgr-drill-bg{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+  .mgr-drill{width:min(720px,100%);max-height:min(80vh,720px);display:flex;flex-direction:column;background:#11162a;border:1px solid rgba(255,255,255,.1);border-radius:16px;box-shadow:0 30px 70px -20px rgba(0,0,0,.8);color:#e6e9f5;font:13px Inter,system-ui,sans-serif}
+  .mgr-drill-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .mgr-drill-h h3{margin:0;font-size:16px;font-weight:800;color:#fff}.mgr-drill-h span{font-size:12px;color:#8b93b8}
+  .mgr-drill-h button{width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#cbd5e1;cursor:pointer}
+  .mgr-drill-b{overflow:auto;padding:4px 18px 16px}
+  .mgr-drill table{width:100%;border-collapse:collapse}.mgr-drill th{position:sticky;top:0;background:#11162a;text-align:left;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#6b74a0;padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .mgr-drill td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1;font-size:12.5px}.mgr-drill td:first-child{color:#fff;font-weight:600}
 </style>
 </head>
 <body class="role-manager">
@@ -162,7 +176,7 @@
               <div class="bes-welcome-main">
                 <p class="bes-greet" id="greeting">Welcome</p>
                 <h1 class="bes-title" id="mgr-section-title">Manager Command Center</h1>
-                <p class="bes-sub">Company-wide overview — Media, HR, Academics &amp; Sales.</p>
+                <p class="bes-sub">Company-wide overview — Media, HR, Academics &amp; Sales. <span id="mgr-updated" class="mgr-upd"></span></p>
               </div>
             </div>
           </div>
@@ -182,9 +196,9 @@
             <div class="deptcard">
               <div class="top"><div class="t"><span class="dot" style="background:rgba(56,189,248,0.15)"><i data-lucide="users" style="width:18px;height:18px;color:#38bdf8"></i></span><div><div class="nm">HR</div><div class="ds">People, attendance, leave requests and team management.</div></div></div><button class="openbtn" onclick="mgrSection('hr')">Open HR <i data-lucide="arrow-right" style="width:13px;height:13px"></i></button></div>
               <div class="kgrid">
-                <div class="kpi"><div class="k">Employees</div><div class="v" id="hr-emp">—</div></div>
+                <div class="kpi"><div class="k">Employees</div><div class="v" id="hr-emp">—</div><div class="ks" id="hr-emp-s"></div></div>
                 <div class="kpi"><div class="k">Present Today</div><div class="v g" id="hr-present">—</div></div>
-                <div class="kpi"><div class="k">On Leave</div><div class="v a" id="hr-leave">—</div></div>
+                <div class="kpi"><div class="k">On Leave</div><div class="v a" id="hr-leave">—</div><div class="ks" id="hr-leave-s"></div></div>
                 <div class="kpi"><div class="k">Pending Leave</div><div class="v a" id="hr-pend">—</div></div>
               </div>
             </div>
@@ -194,7 +208,7 @@
               <div class="kgrid">
                 <div class="kpi"><div class="k">Active Trainers</div><div class="v g" id="ac-tr">—</div></div>
                 <div class="kpi"><div class="k">Active Batches</div><div class="v" id="ac-bt">—</div></div>
-                <div class="kpi"><div class="k">Students</div><div class="v b" id="ac-st">—</div></div>
+                <div class="kpi"><div class="k">Students</div><div class="v b" id="ac-st">—</div><div class="ks" id="ac-st-s"></div></div>
                 <div class="kpi"><div class="k">Courses</div><div class="v" id="ac-crs">—</div></div>
               </div>
             </div>
@@ -239,10 +253,10 @@
     </main>
   </div>
 
-<script src="common.js?v=2026.10.06.1247-3bvd"></script>
-<script src="access-guard.js?v=2026.10.06.1247-3bvd"></script>
-<script src="announcements.js?v=2026.10.06.1247-3bvd"></script>
-<script src="leave-policy.js?v=2026.10.06.1247-3bvd"></script>
+<script src="common.js?v=2026.10.06.1255-x06q"></script>
+<script src="access-guard.js?v=2026.10.06.1255-x06q"></script>
+<script src="announcements.js?v=2026.10.06.1255-x06q"></script>
+<script src="leave-policy.js?v=2026.10.06.1255-x06q"></script>
 <script>
 (async function(){
   'use strict';
@@ -295,39 +309,117 @@
   };
   window.mgrLogout = function(){ try{ localStorage.removeItem('be_active_email'); localStorage.removeItem('be_active_role'); localStorage.removeItem('be_media_academic_session'); }catch(_){ } location.href='index.html'; };
 
-  // ── overview metrics (COUNT-only, fault-isolated). Media from assignments; no full fetch. ──
-  // Re-run live (be-live.js) whenever any of the counted tables changes.
-  function loadMetrics(){ return Promise.allSettled([
-    cnt(db.from('assignments').select('id',{count:'exact',head:true}).in('status',['Pending','In Progress'])),                 // 0 media queue
-    cnt(db.from('assignments').select('id',{count:'exact',head:true}).eq('status','Completed').ilike('type','%video%')),        // 1 done videos
-    cnt(db.from('assignments').select('id',{count:'exact',head:true}).eq('status','Completed').ilike('type','%thumb%')),        // 2 done thumbs
-    cnt(db.from('assignments').select('id',{count:'exact',head:true}).eq('status','Rework Required')),                          // 3 rework
-    cnt(C('hr_employees')),                                                                                                     // 4
-    cnt(db.from('hr_attendance').select('id',{count:'exact',head:true}).eq('att_date',today).in('status',['present','late','wfh','half_day','afternoon'])), // 5 present
-    cnt(db.from('hr_leave_requests').select('id',{count:'exact',head:true}).eq('status','approved').lte('start_date',today).gte('end_date',today)),         // 6 on leave
-    cnt(db.from('hr_leave_requests').select('id',{count:'exact',head:true}).eq('status','pending')),                            // 7 pending leave
-    cnt(db.from('trainers').select('id',{count:'exact',head:true}).eq('status','active')),                                     // 8 trainers
-    cnt(db.from('batches').select('id',{count:'exact',head:true}).eq('status','active')),                                      // 9 batches
-    cnt(C('students')),                                                                                                         // 10 students
-    cnt(db.from('courses').select('id',{count:'exact',head:true}).neq('active',false)),                                        // 11 courses
-    cnt(C('leads')),                                                                                                            // 12 leads
-    cnt(db.from('leads').select('id',{count:'exact',head:true}).is('first_contact_at',null)),                                  // 13 need contact
-    cnt(db.from('leads').select('id',{count:'exact',head:true}).eq('stage','Enrolled')),                                       // 14 enrolled
-    cnt(db.from('students').select('id',{count:'exact',head:true}).gte('enrolled_date',mago)),                                 // 15 new this month
-    cnt(db.from('assignments').select('id',{count:'exact',head:true}).eq('status','Completed').not('manager_approved','is',true)), // 16 pending media approvals
-    cnt(db.from('students').select('id',{count:'exact',head:true}).is('batch_id',null)),                                       // 17 enrolments to hand off (unassigned)
-  ]).then(function(res){
-    var v = res.map(function(r){ return r.status==='fulfilled'?r.value:null; });
-    put('m-queue',v[0]); put('m-vid',v[1]); put('m-thumb',v[2]); put('m-rew',v[3]);
-    put('hr-emp',v[4]); put('hr-present',v[5]); put('hr-leave',v[6]); put('hr-pend',v[7]);
-    put('ac-tr',v[8]); put('ac-bt',v[9]); put('ac-st',v[10]); put('ac-crs',v[11]);
-    put('sl-tot',v[12]); put('sl-fc',v[13]); put('sl-en',v[14]); put('sl-nw',v[15]);
-    put('ac-media',v[16]); put('ac-leave',v[7]); put('ac-trainers',v[8]); put('ac-enrol',v[17]);
-    var notif = (v[16]||0)+(v[7]||0); var nb=document.getElementById('mgr-nav-notif'), bd=document.getElementById('mgr-bell-dot');
-    if(nb){ nb.textContent=notif||''; nb.style.display=notif?'inline-flex':'none'; } if(bd){ bd.textContent=notif||''; bd.style.display=notif?'inline-flex':'none'; }
-  }); }
+  // ── Overview metrics — the SAME rules each department's own dashboard uses (audited
+  //    2026-10-06), fault-isolated per source, with click-through lists of the records behind
+  //    every number. Day = Asia/Kolkata. Only non-sensitive fields are read (no salary,
+  //    documents, bank or personal details).
+  var _todayIST = function(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date()); };
+  var MD = {};   // drill-down data per KPI id
+  function rows(q){ return Promise.resolve(q).then(function(r){ if(r&&r.error) throw r.error; return (r&&r.data)||[]; }); }
+  function setKpi(id, list, opts){ MD[id] = { list: list, title: opts.title, cols: opts.cols };
+    var el=document.getElementById(id); if(!el) return; el.textContent = list ? list.length : '—'; el.classList.remove('kpi-err');
+    if(opts.sub){ var s=document.getElementById(id+'-s'); if(s) s.textContent=opts.sub; } }
+  function failKpi(ids){ ids.forEach(function(id){ var el=document.getElementById(id); if(el){ el.textContent='!'; el.classList.add('kpi-err'); el.title='Could not load — will retry automatically'; } }); }
+  var _mBusy=false, _mAgain=false;
+  async function loadMetrics(){
+    if(_mBusy){ _mAgain=true; return; } _mBusy=true;
+    var today=_todayIST(), month=today.slice(0,7);
+    try { await Promise.allSettled([
+      // ── HR (hr.html dashboard rules) ──
+      Promise.all([
+        rows(db.from('hr_employees').select('id,full_name,portal_email,division,designation,employment_status,account_type')),
+        rows(db.from('hr_attendance').select('employee_id,status').eq('att_date',today)),
+        rows(db.from('attendance_logs').select('employee_email').eq('log_date',today)),
+        rows(db.from('hr_leave_requests').select('id,employee_id,leave_type,status,start_date,end_date,days').or('status.eq.pending,and(status.eq.approved,start_date.lte.'+today+',end_date.gte.'+today+')'))
+      ]).then(function(r){
+        // Same people HR counts: real employees only (not the management / system logins), active.
+        var emps=r[0].filter(function(e){ return e.account_type!=='system' && e.account_type!=='management'; }), act=emps.filter(function(e){ return (e.employment_status||'active')==='active'; });
+        var byId={}; r[0].forEach(function(e){ byId[e.id]=e; });
+        var PRESENT=['present','late','afternoon','half_day','wfh'];
+        var pIds=new Set(r[1].filter(function(a){ return PRESENT.indexOf(a.status)>-1; }).map(function(a){ return a.employee_id; }));
+        var logged=new Set(r[2].map(function(l){ return String(l.employee_email||'').toLowerCase(); }));
+        emps.forEach(function(e){ if(e.portal_email && logged.has(String(e.portal_email).toLowerCase())) pIds.add(e.id); });
+        var appr=r[3].filter(function(q){ return q.status==='approved'; }), wfh=new Set(appr.filter(function(q){ return /home|wfh/i.test(q.leave_type||''); }).map(function(q){ return q.employee_id; }));
+        var leaveIds=new Set(appr.filter(function(q){ return !/home|wfh/i.test(q.leave_type||'') && !wfh.has(q.employee_id); }).map(function(q){ return q.employee_id; }));
+        var pend=r[3].filter(function(q){ return q.status==='pending'; });
+        var empCols=[['Name','full_name'],['Department','division'],['Designation','designation']];
+        setKpi('hr-emp', act, { title:'Active employees', cols:empCols, sub: (emps.length-act.length)+' inactive / exited not counted' });
+        setKpi('hr-present', [...pIds].map(function(id){ return byId[id]; }).filter(Boolean), { title:'Present today', cols:empCols });
+        setKpi('hr-leave', [...leaveIds].map(function(id){ return byId[id]; }).filter(Boolean), { title:'On leave today', cols:empCols, sub: wfh.size ? wfh.size+' working from home' : '' });
+        var pendRows=pend.map(function(q){ var e=byId[q.employee_id]||{}; return { full_name:e.full_name||'—', leave_type:q.leave_type, dates:q.start_date+(q.end_date&&q.end_date!==q.start_date?' → '+q.end_date:''), days:q.days }; });
+        setKpi('hr-pend', pendRows, { title:'Leave requests awaiting review', cols:[['Employee','full_name'],['Type','leave_type'],['Dates','dates'],['Days','days']] });
+        setKpi('ac-leave', pendRows, { title:'Leave requests awaiting review', cols:[['Employee','full_name'],['Type','leave_type'],['Dates','dates'],['Days','days']] });
+      }).catch(function(e){ console.warn('[manager] HR metrics', e); failKpi(['hr-emp','hr-present','hr-leave','hr-pend','ac-leave']); }),
+      // ── Academics (academics.html Overview rules) ──
+      Promise.all([
+        rows(db.from('trainers').select('id,name,type,status')),
+        rows(db.from('batches').select('id,name,status,deleted_at,start_date,expected_completion_date,capacity,trainer_id,trainer_name')),
+        rows(db.from('students').select('id,name,uin,status,batch_id,batch_name,programme,enrolled_date,crm_source')),
+        rows(db.from('courses').select('id,name,active').neq('active',false))
+      ]).then(function(r){
+        var allTr=r[0], tr=allTr.filter(function(t){ return t.status==='active'; }), trName={}; allTr.forEach(function(t){ trName[t.id]=t.name; });
+        // Trainer by stable trainer_id (batches.trainer_name is only a cached copy and can be blank).
+        var live=r[1].filter(function(b){ return !b.deleted_at && b.status==='active' && (!b.expected_completion_date || b.expected_completion_date>=today); }).map(function(b){ return Object.assign({}, b, { trainer_name: trName[b.trainer_id] || b.trainer_name || 'Unassigned' }); });
+        var stu=r[2];
+        var handoff=stu.filter(function(x){ return !x.batch_id && ['Dropped','Completed'].indexOf(x.status)<0; });
+        setKpi('ac-tr', tr, { title:'Active trainers', cols:[['Name','name'],['Type','type']] });
+        setKpi('ac-trainers', tr, { title:'Active trainers', cols:[['Name','name'],['Type','type']] });
+        setKpi('ac-bt', live, { title:'Active batches', cols:[['Batch','name'],['Trainer','trainer_name'],['Starts','start_date'],['Ends','expected_completion_date']] });
+        setKpi('ac-st', stu, { title:'Students (all, as in Academics)', cols:[['Name','name'],['Programme','programme'],['Batch','batch_name'],['Status','status']], sub: stu.filter(function(x){ return x.status==='Dropped'; }).length+' dropped included' });
+        setKpi('ac-crs', r[3], { title:'Active courses', cols:[['Course','name']] });
+        setKpi('ac-enrol', handoff, { title:'Students without a batch', cols:[['Name','name'],['Programme','programme'],['Enrolled','enrolled_date'],['Status','status']] });
+        MD._xale = stu.filter(function(x){ return x.crm_source==='xale'; });
+        return MD._xale;
+      }).then(function(xale){
+        // ── Sales (sales.html dashboard rules: Enrolled = lead stage Enrolled + Xale CRM enrolments) ──
+        return rows(db.from('leads').select('id,name,stage,first_contact_at,created_at')).then(function(ld){
+          var mo=ld.filter(function(l){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date(l.created_at)).slice(0,7)===month; });
+          var need=ld.filter(function(l){ return !l.first_contact_at && l.stage==='New'; });
+          var enr=ld.filter(function(l){ return l.stage==='Enrolled'; }).map(function(l){ return { name:l.name, source:'Lead', course:'—' }; })
+            .concat((xale||[]).map(function(x){ return { name:x.name, source:'Xale CRM', course:x.programme }; }));
+          var lc=[['Name','name'],['Stage','stage'],['Created','created_at']];
+          setKpi('sl-tot', ld, { title:'All leads', cols:lc });
+          setKpi('sl-fc', need, { title:'Leads needing first contact', cols:lc });
+          setKpi('sl-en', enr, { title:'Enrolled (leads + CRM enrolments)', cols:[['Name','name'],['Source','source'],['Course','course']] });
+          setKpi('sl-nw', mo, { title:'New leads this month', cols:lc });
+        });
+      }).catch(function(e){ console.warn('[manager] Academics/Sales metrics', e); failKpi(['ac-tr','ac-bt','ac-st','ac-crs','ac-trainers','ac-enrol','sl-tot','sl-fc','sl-en','sl-nw']); }),
+      // ── Media (index.html rules) ──
+      rows(db.from('assignments').select('id,topic,type,status,assigned_to,manager_approved')).then(function(a){
+        var mc=[['Work','topic'],['Type','type'],['Assigned to','assigned_to'],['Status','status']];
+        setKpi('m-queue', a.filter(function(t){ return t.status==='Pending'||t.status==='In Progress'; }), { title:'Active media queue', cols:mc });
+        setKpi('m-vid', a.filter(function(t){ return t.status==='Completed' && /video/i.test(t.type||''); }), { title:'Completed videos', cols:mc });
+        setKpi('m-thumb', a.filter(function(t){ return t.status==='Completed' && /thumb/i.test(t.type||''); }), { title:'Completed thumbnails', cols:mc });
+        setKpi('m-rew', a.filter(function(t){ return t.status==='Rework Required'; }), { title:'Rework required', cols:mc });
+        setKpi('ac-media', a.filter(function(t){ return t.status==='Completed' && t.manager_approved!==true; }), { title:'Media awaiting approval', cols:mc });
+      }).catch(function(e){ console.warn('[manager] Media metrics', e); failKpi(['m-queue','m-vid','m-thumb','m-rew','ac-media']); })
+    ]);
+    } finally {
+      _mBusy=false;
+      var notif=((MD['ac-media']&&MD['ac-media'].list)||[]).length+((MD['hr-pend']&&MD['hr-pend'].list)||[]).length;
+      var nb=document.getElementById('mgr-nav-notif'), bd=document.getElementById('mgr-bell-dot');
+      if(nb){ nb.textContent=notif||''; nb.style.display=notif?'inline-flex':'none'; } if(bd){ bd.textContent=notif||''; bd.style.display=notif?'inline-flex':'none'; }
+      var up=document.getElementById('mgr-updated'); if(up) up.textContent='Updated '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'});
+      if(_mAgain){ _mAgain=false; setTimeout(loadMetrics, 300); }
+    }
+  }
+  // Drill-down: click any number to see the records behind it.
+  window.mgrDrill = function(id){
+    var d=MD[id]; if(!d||!d.list) return;
+    var esc2=function(v){ return String(v==null||v===''?'—':v).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+    var fmt=function(k,v){ return /_at$/.test(k)&&v ? new Date(v).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}) : v; };
+    var bg=document.createElement('div'); bg.className='mgr-drill-bg';
+    bg.innerHTML='<div class="mgr-drill" role="dialog" aria-modal="true"><div class="mgr-drill-h"><div><h3>'+esc2(d.title)+'</h3><span>'+d.list.length+' record'+(d.list.length===1?'':'s')+'</span></div><button type="button" aria-label="Close">✕</button></div><div class="mgr-drill-b">'+
+      (d.list.length ? '<table><thead><tr>'+d.cols.map(function(c){ return '<th>'+esc2(c[0])+'</th>'; }).join('')+'</tr></thead><tbody>'+d.list.map(function(r){ return '<tr>'+d.cols.map(function(c){ return '<td>'+esc2(fmt(c[1],r[c[1]]))+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table>' : '<div class="empty">Nothing here right now.</div>')+'</div></div>';
+    function close(){ bg.remove(); document.removeEventListener('keydown',esc); }
+    function esc(e){ if(e.key==='Escape') close(); }
+    bg.addEventListener('click',function(e){ if(e.target===bg||e.target.closest('.mgr-drill-h button')) close(); });
+    document.addEventListener('keydown',esc); document.body.appendChild(bg);
+  };
+  document.querySelectorAll('.kpi .v[id]').forEach(function(v){ var k=v.closest('.kpi'); k.classList.add('kpi-click'); k.setAttribute('role','button'); k.tabIndex=0; k.title='Show the records behind this number';
+    k.addEventListener('click',function(){ mgrDrill(v.id); }); k.addEventListener('keydown',function(e){ if(e.key==='Enter') mgrDrill(v.id); }); });
   loadMetrics();
-  if (window.BELive) { BELive.use(db); BELive.on('mgr-overview', ['assignments','hr_employees','hr_attendance','hr_leave_requests','trainers','batches','students','courses','leads'], loadMetrics, { debounce: 2000 }); }
+  if (window.BELive) { BELive.use(db); BELive.on('mgr-overview', ['assignments','hr_employees','hr_attendance','attendance_logs','hr_leave_requests','trainers','batches','students','courses','leads'], loadMetrics, { debounce: 1500 }); }
 
   // ── Live Announcements & Updates — HR announcements + celebration events (same shared source). ──
   // Re-runs live (be-live.js) when HR posts/edits an announcement or a celebration.
