@@ -1678,6 +1678,30 @@ function hrOfficialEventFor(employee, dateStr) {
             const leaveDeduction = Math.min(earnedBasic, r2(dailySalary * (lopDays + preJoiningBasisDays)));
             return { dailySalary, earnedBasic, leaveDeduction, preJoiningBasisDays: r2(preJoiningBasisDays), salaryDayBasis: HR_SALARY_DAY_BASIS };
         }
+        // Salary days the SAVED leave_deduction stands for (LOP + pre-joining, 30-day basis).
+        // Derived from the money itself, so any "(Nd)" label always matches the rupee figure —
+        // even when HR edited the deduction by hand.
+        function hrPayrollDeductionDays(p) {
+            const salary = hrGetEffectiveSalary(p.employee_id, p.month);
+            if (!(salary > 0) || !(+p.leave_deduction > 0)) return 0;
+            return Math.round((+p.leave_deduction) / (salary / HR_SALARY_DAY_BASIS) * 100) / 100;
+        }
+        // Snapshot of the day counts payroll was calculated from — saved on the hr_payroll row
+        // (day_breakdown jsonb) so the payslip prints the same days the money was built on,
+        // even if attendance is edited later.
+        function hrPayrollDayBreakdown(c) {
+            return {
+                basis: c.salaryDayBasis || HR_SALARY_DAY_BASIS, days_in_month: c.daysInMonth,
+                elapsed: c.elapsedDays, future: c.futureDays,
+                present: c.presentDays, paid_leave: c.paidLeaveDays, sl: c.slDays || 0, cl: c.clDays || 0, ml: c.maternityLeaveDays || 0,
+                weekly_off: c.weeklyOffDays, holiday: c.holidayDays, official_event: c.officialEventDays || 0,
+                half_day: c.halfDayDays, absent: c.absentDays, leave_lop: c.unpaidLeaveDays,
+                incident_days: c.incidentDays || 0, double_days: c.doubleDeductionDays || 0,
+                unapproved_absence: c.unapprovedAbsenceDays || 0,
+                lop_days: c.lopDays, pre_joining: c.preJoiningDays, pre_joining_basis: c.preJoiningBasisDays || 0,
+                calculated_at: new Date().toISOString()
+            };
+        }
 
 // ── hrIsHoliday (orig line 10325) ──
         function hrIsHoliday(dateStr) {
@@ -1733,7 +1757,7 @@ function hrOfficialEventFor(employee, dateStr) {
             const daysInMonth = new Date(y, m, 0).getDate();
             const salary = hrGetEffectiveSalary(employeeId, monthStr);
             const dailySalary = salary / HR_SALARY_DAY_BASIS; // fixed 30-day basis — see hrPayrollMoney
-            const todayStr = new Date().toISOString().slice(0,10);
+            const todayStr = todayDateStr(); // Asia/Kolkata — not UTC (00:00–05:30 IST was "yesterday")
             const employeeRow = hrEmployees.find(e => e.id === employeeId);
             if (employeeRow && typeof LeavePolicy !== 'undefined') {
                 const ctx = {
@@ -2037,7 +2061,15 @@ function hrOfficialEventFor(employee, dateStr) {
             // current attendance + approved-leave records — always automatic, per the payroll
             // rule: Present→Present, Approved Paid Leave→Leave (not LOP), Sunday/Weekly Off and
             // Company Holiday→not LOP, Absent with nothing approved→LOP.
-            const dayInfo = hrCalculatePayrollForMonth(p.employee_id, p.month);
+            // Day counts come from the snapshot saved with this payroll (day_breakdown), i.e. the
+            // exact attendance the money was calculated from. Rows saved before that column
+            // existed fall back to a live calculation.
+            const bd = p.day_breakdown && typeof p.day_breakdown === 'object' ? p.day_breakdown : null;
+            const dayInfo = bd ? {
+                presentDays: bd.present || 0, paidLeaveDays: bd.paid_leave || 0, weeklyOffDays: bd.weekly_off || 0,
+                holidayDays: (bd.holiday || 0) + (bd.official_event || 0), lopDays: bd.lop_days || 0,
+                preJoiningDays: bd.pre_joining || 0, elapsedDays: bd.elapsed ?? daysInMonth, futureDays: bd.future || 0
+            } : hrCalculatePayrollForMonth(p.employee_id, p.month);
             const lopDays = dayInfo.lopDays;
             // Payment Date is a distinct thing from the Pay Period — salary for August is paid
             // in September. Uses whatever was actually saved on this payroll row; falls back to
@@ -2065,7 +2097,7 @@ function hrOfficialEventFor(employee, dateStr) {
             // e.g. full month, 1 LOP → Paid Days 29 of 30, whatever the month length.
             const _daily = monthlySalary > 0 ? monthlySalary / HR_SALARY_DAY_BASIS : 0;
             const _d2 = v => Math.round(v * 100) / 100;
-            const savedDeductionDays = _daily ? _d2((p.leave_deduction || 0) / _daily) : 0;
+            const savedDeductionDays = hrPayrollDeductionDays(p);
             const paidDays = _daily ? `${_d2(Math.max(0, basicForPayslip / _daily - savedDeductionDays))} of ${HR_SALARY_DAY_BASIS}` : '—';
             // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
             // a broken superscript-1. "Rs." is what actually prints correctly.
