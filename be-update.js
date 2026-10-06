@@ -69,7 +69,8 @@
   function check(reason) {
     if (EMBEDDED) return;
     if (checking || !navigator.onLine) return;
-    if (reason !== 'force' && Date.now() - lastCheck < 8000) return;
+    // Lifecycle events (return to tab, wake, back online) always check; only quick repeats are skipped.
+    if (Date.now() - lastCheck < (reason === 'force' ? 1500 : 8000)) return;
     checking = true; lastCheck = Date.now();
     var jobs = [fetch(versionUrl(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -138,10 +139,11 @@
       var m = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       var isWrite = m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS';
       if (!isWrite) return _fetch.apply(this, arguments);
+      var byUser = Date.now() - lastGesture < 3000;   // a Save click, not a background sync/read-receipt
+      if (!byUser) return _fetch.apply(this, arguments); // page's own background writes never block an update
       writes++;
-      var byUser = Date.now() - lastGesture < 3000;   // a Save click, not a background read-receipt/log
       // A finished write means what the user typed has been saved — start tracking afresh.
-      var done = function () { writes = Math.max(0, writes - 1); lastWriteEnd = Date.now(); if (!writes && byUser) touched = new WeakSet(); };
+      var done = function () { writes = Math.max(0, writes - 1); lastWriteEnd = Date.now(); if (!writes) touched = new WeakSet(); };
       var p = _fetch.apply(this, arguments);
       p.then(done, done);
       return p;
@@ -194,7 +196,8 @@
     '.beu-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#ff6b06;animation:beuSpin .8s linear infinite}',
     '@keyframes beuSpin{to{transform:rotate(360deg)}}',
     '@media (prefers-reduced-motion:reduce){.beu{transition:none}.beu-bar i{animation:none}.beu-spin{animation-duration:2s}}',
-    '@media (max-width:640px){.beu,.beu-chip{right:16px;bottom:calc(16px + 76px)}}'
+    '@media (max-width:640px){.beu{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));width:auto;bottom:calc(88px + env(safe-area-inset-bottom))}.beu-chip{right:max(12px,env(safe-area-inset-right));bottom:calc(88px + env(safe-area-inset-bottom))}.beu-b{display:grid;grid-template-columns:1fr 1fr}}',
+    '@media (pointer:coarse){.beu button{height:44px;font-size:14px}.beu-chip{height:40px}}'
   ].join('');
   function css() { if (document.getElementById('beu-css')) return; var s = document.createElement('style'); s.id = 'beu-css'; s.textContent = CSS; (document.head || document.documentElement).appendChild(s); }
   var SPARK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>';
@@ -339,10 +342,13 @@
     var now = Date.now(), slept = now - lastTick > CHECK_MS * 2.5; lastTick = now;
     if (document.visibilityState === 'visible' || slept) check(slept ? 'force' : 'tick');
   }, CHECK_MS);
-  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') check('visible'); });
+  // Phones suspend pages (screen locked, app switched, battery saver) and drop the socket —
+  // the moment the page is back, check the version directly instead of waiting for realtime.
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') check('force'); });
   window.addEventListener('online', function () { check('force'); });
-  window.addEventListener('focus', function () { check('focus'); });
-  window.addEventListener('pageshow', function (e) { if (e.persisted) check('force'); });
+  window.addEventListener('focus', function () { check('force'); });
+  window.addEventListener('pageshow', function () { check('force'); });
+  document.addEventListener('resume', function () { check('force'); });          // Android Chrome page lifecycle (frozen → resumed)
   function start() { restoreResume(); listen(0); setTimeout(function () { check('force'); }, 4000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 

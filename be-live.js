@@ -133,13 +133,13 @@
   window.addEventListener('online', function () { needResync = true; retryN = 0; build(); });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-    // Phones/laptops throttle or drop sockets while asleep — after a long absence reload anyway.
-    if (hiddenAt && Date.now() - hiddenAt > 120000) {
-      if (state !== 'connected') { needResync = true; build(); } else resyncAll();
-    }
+    // Phones suspend the page while locked/backgrounded and iOS can leave a dead socket that
+    // still looks "connected". After a minute away: rejoin a fresh channel and resync.
+    if (hiddenAt && Date.now() - hiddenAt > 60000) { needResync = true; build(false); }
     hiddenAt = 0;
   });
   window.addEventListener('pageshow', function (e) { if (e.persisted) { needResync = true; build(); } });
+  document.addEventListener('resume', function () { needResync = true; build(false); });   // Android page-lifecycle resume
 
   window.BELive = {
     use: function (c) { if (c && c.channel && c !== client) { client = c; scheduleBuild(); } return this; },
