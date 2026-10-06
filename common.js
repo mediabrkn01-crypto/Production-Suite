@@ -1144,11 +1144,75 @@ async function loadMyHRData() {
             return { level, primary: role, additional: roles.slice(1) };
         }
 
+// ── Designation master + access mapping ──────────────────────────────────────────────
+// One clean job title per person (hr_employees.designation), kept SEPARATE from:
+//   • Department (hr_employees.division)        • Employment Type (employment_type)
+//   • Access Role (hr_employees.system_role, or the designation's default access below)
+// Seniority tiers (Senior / Mid-Level / Junior) are no longer part of any title.
+// HR manages the list in the hr_designations table (Designations tab); these defaults are
+// used until that table exists and for any designation it doesn't list.
+        const HR_DESIGNATION_DEFAULTS = [
+            { division: 'education', name: 'Academic Head', access: 'academic_head' },
+            { division: 'education', name: 'Class Coordinator', access: 'academic_head' },
+            { division: 'education', name: 'Operations Manager', access: 'academic_head' },
+            { division: 'education', name: 'Fluency Coach', access: 'trainer' },
+            { division: 'sales', name: 'Student Counselor' },
+            { division: 'sales', name: 'Student Counselor Head' },
+            { division: 'sales', name: 'Sales Executive' },
+            { division: 'production', name: 'Video Editor' },
+            { division: 'production', name: 'Editor' },
+            { division: 'production', name: 'Graphic Designer' },
+            { division: 'production', name: 'Designer' },
+            { division: 'production', name: 'Cinematographer' },
+            { division: 'production', name: 'Photographer' },
+            { division: 'production', name: 'Colorist' },
+            { division: 'production', name: 'VFX & Motion Graphics Artist' },
+            { division: 'production', name: 'Production Coordinator' },
+            { division: 'hr', name: 'HR Manager' },
+            { division: 'hr', name: 'HR Executive' },
+            { division: 'hr', name: 'HR Intern' },
+            { division: 'accounts', name: 'Accounts Manager' },
+            { division: 'accounts', name: 'Accounts Executive' },
+            { division: 'accounts', name: 'Accounts Intern' },
+            { division: 'other', name: 'Administrator' }
+        ];
+        const HR_ACCESS_LABELS = { '': 'Employee', trainer: 'Trainer', academic_head: 'Academic Head', media_head: 'Media Head', hr_admin: 'HR / Admin', sales: 'Sales', manager: 'Manager', director: 'Director', managing_director: 'Managing Director', co_founder: 'Co-Founder', founder: 'Founder' };
+        // Live list: hr_designations rows when loaded (window.hrDesignationRows), else defaults.
+        function hrDesignationList(division) {
+            const rows = (window.hrDesignationRows && window.hrDesignationRows.length) ? window.hrDesignationRows : HR_DESIGNATION_DEFAULTS;
+            return rows.filter(r => r.active !== false && (!division || r.division === division));
+        }
+        function hrDesignationAccess(name) {
+            const n = String(name || '').trim().toLowerCase();
+            if (!n) return '';
+            const all = (window.hrDesignationRows && window.hrDesignationRows.length ? window.hrDesignationRows : []).concat(HR_DESIGNATION_DEFAULTS);
+            const hit = all.find(r => String(r.name).toLowerCase() === n);
+            return (hit && (hit.access || hit.access_role)) || '';
+        }
+        // Access Role = the HR-set System Role when there is one, else the designation's default
+        // access, else (records not yet normalised) the legacy team-role list.
+        function hrAccessRole(e) {
+            if (!e) return '';
+            const sr = String(e.system_role || '').toLowerCase();
+            if (sr) return sr;
+            const byDesig = hrDesignationAccess(e.designation);
+            if (byDesig) return byDesig;
+            const roles = hrParseRoles(e.department).map(r => hrStripLevel(r).role);
+            if (roles.some(r => r === 'Academic Head' || r === 'Class Coordinator')) return 'academic_head';
+            if (e.division === 'education' && roles.some(r => /coach|trainer/i.test(r))) return 'trainer';
+            return '';
+        }
+        function hrAccessLabel(e) { const r = hrAccessRole(e); return HR_ACCESS_LABELS[r] || r.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
+        function hrEmploymentLabel(e) { return e && e.employment_type === 'part_time' ? 'Part-Time' : e && e.employment_type === 'full_time' ? 'Full-Time' : ''; }
+
 // ── hrRoleDisplay (orig line 7616) ──
+// The person's ONE clean title: their designation; else their primary team role. Never a
+// Senior / Mid-Level / Junior prefix (seniority is not part of the title any more).
         function hrRoleDisplay(e) {
+            const d = String(e?.designation || '').trim();
+            if (d && !/^employee$/i.test(d)) return d.replace(/^(Senior|Mid-Level|Junior)\s+/i, '');
             const info = hrRoleInfo(e);
-            if (!info.primary) return e?.designation || '—';
-            return (info.level ? info.level + ' ' : '') + info.primary;
+            return info.primary || '—';
         }
 
 // ── Flexible multi-range working hours (Trainer/Coach) ──
