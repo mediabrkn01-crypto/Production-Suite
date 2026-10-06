@@ -3064,7 +3064,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     title: `Happy Birthday, ${firstName}!`, captionName: firstName,
                     message: 'Wishing you a wonderful year ahead filled with happiness and success 🎂',
                     bannerMessage: `🎂 Happy Birthday, ${firstName}! Have a wonderful day 🎉`,
-                    popupImage: tpl?.popup_image_base64 || null, bannerImage: (tpl?.banner_video_url || tpl?.banner_image_base64) || null, bannerLoop: tpl ? tpl.banner_loop !== false : true,
+                    popupImage: tpl?.popup_image_base64 || null, mobileImage: tpl?.banner_mobile_image_base64 || tpl?.popup_image_base64 || null, bannerImage: (tpl?.banner_video_url || tpl?.banner_image_base64) || null, bannerLoop: tpl ? tpl.banner_loop !== false : true,
                     artworkMode: tpl?.artwork_mode || 'complete',
                     popupEnabled: tpl ? tpl.popup_enabled !== false : true, bannerEnabled: tpl ? tpl.banner_enabled !== false : true
                 });
@@ -3078,7 +3078,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     title: `Happy Work Anniversary, ${firstName}!`, captionName: `${firstName} · ${yearLabel}`,
                     message: `Thank you for being an important part of our journey — ${yearLabel} at Broken English 🎉`,
                     bannerMessage: `🏆 Happy Work Anniversary, ${firstName}! ${yearLabel} and counting 🎉`,
-                    popupImage: tpl?.popup_image_base64 || null, bannerImage: (tpl?.banner_video_url || tpl?.banner_image_base64) || null, bannerLoop: tpl ? tpl.banner_loop !== false : true,
+                    popupImage: tpl?.popup_image_base64 || null, mobileImage: tpl?.banner_mobile_image_base64 || tpl?.popup_image_base64 || null, bannerImage: (tpl?.banner_video_url || tpl?.banner_image_base64) || null, bannerLoop: tpl ? tpl.banner_loop !== false : true,
                     artworkMode: tpl?.artwork_mode || 'complete',
                     popupEnabled: tpl ? tpl.popup_enabled !== false : true, bannerEnabled: tpl ? tpl.banner_enabled !== false : true
                 });
@@ -3102,7 +3102,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     title: `${ev.icon ? ev.icon + ' ' : ''}${titleText}`, captionName: null,
                     message: ev.message || `Wishing you a wonderful ${ev.title}!`,
                     bannerMessage: ev.banner_message || ev.message || `${ev.icon ? ev.icon + ' ' : ''}${titleText}`,
-                    popupImage: ev.popup_image_base64 || null, bannerImage: (ev.banner_video_url || ev.banner_image_base64) || null, bannerLoop: ev.banner_loop !== false,
+                    popupImage: ev.popup_image_base64 || null, mobileImage: ev.banner_mobile_image_base64 || ev.popup_image_base64 || null, bannerImage: (ev.banner_video_url || ev.banner_image_base64) || null, bannerLoop: ev.banner_loop !== false,
                     artworkMode: 'complete',
                     popupEnabled: ev.popup_enabled !== false, bannerEnabled: ev.banner_enabled !== false
                 });
@@ -3282,7 +3282,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 const media = isVideo
                     ? `<video src="${src}" autoplay muted playsinline${loopAttr} preload="metadata" style="display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none"></video>`
                     : `<img src="${src}" alt="${it.title}" loading="lazy" onerror="console.error('Celebration engine: banner media failed for event &quot;${it.key}&quot;.');this.closest('.be-celeb-banner-item')?.remove()">`;
-                return `<div id="celeb-banner-${it.key}" class="be-celeb-banner-item">${media}</div>`;
+                return `<div id="celeb-banner-${it.key}" class="be-celeb-banner-item"${it.mobileImage ? ` data-m="${it.mobileImage}"` : ''}>${media}</div>`;
             }).join('');
         }
 

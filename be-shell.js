@@ -324,10 +324,79 @@
   // page anyway: load them eagerly, on every page, whichever engine rendered them.
   function eagerBanners(root) {
     (root.querySelectorAll ? root.querySelectorAll('.be-celeb-banner-item img[loading="lazy"]') : []).forEach(function (img) { img.loading = 'eager'; });
+    artDirect(root);
+  }
+  // Phones: the 1920×400 desktop banner shrinks to ~80px tall and becomes unreadable. When the
+  // event has a taller image (HR's "Mobile banner", else its popup artwork) the renderers pass it
+  // as data-m; on phones that image is shown whole (contain — nothing cropped or stretched) on a
+  // blurred backdrop of itself, at a proper 170–220px height. Desktop keeps the wide banner.
+  var BANNER_CSS = '@media (max-width:640px){' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.has-m{position:relative;height:clamp(170px,52vw,220px)!important;overflow:hidden;border-radius:16px;background:#0b0e1a;isolation:isolate}' +
+    '.be-celeb-banner-item.has-m .bcb-bg{position:absolute;inset:-24px;z-index:-1;background-size:cover;background-position:center;filter:blur(22px) brightness(.45) saturate(1.15)}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.has-m img.bcb-m{display:block;width:100%!important;height:100%!important;object-fit:contain!important}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.has-m .bcb-d{display:none!important}' +
+    '}' +
+    '@media (min-width:641px){.be-celeb-banner-item .bcb-m,.be-celeb-banner-item .bcb-bg{display:none!important}}' +
+    // Wide-only banner on a phone (no taller artwork uploaded): show it at a readable height as a
+    // swipeable strip that pans slowly end to end — the whole artwork, never cropped or squeezed.
+    '@media (max-width:640px){' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.pan{height:clamp(104px,30vw,132px)!important;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:16px;position:relative}' +
+    '.be-celeb-banner-item.pan::-webkit-scrollbar{display:none}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.pan img.bcb-d{display:block;height:100%!important;width:auto!important;max-width:none!important;object-fit:contain!important}' +
+    '}';
+  function bannerCss() { if (!document.getElementById('bcb-css')) { var st = document.createElement('style'); st.id = 'bcb-css'; st.textContent = BANNER_CSS; document.head.appendChild(st); } }
+  var PHONE = window.matchMedia ? window.matchMedia('(max-width:640px)') : { matches: false };
+  var REDUCED = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  // Slow ping-pong pan of a wide banner strip; stops for good once the employee touches it.
+  function panStrip(box) {
+    if (box._pan) return; box._pan = true;
+    var dir = 1, hold = 0, stopped = false, last = 0;
+    function stop() { stopped = true; }
+    box.addEventListener('pointerdown', stop, { passive: true }); box.addEventListener('touchstart', stop, { passive: true }); box.addEventListener('wheel', stop, { passive: true });
+    if (REDUCED.matches) return;
+    (function step(t) {
+      if (stopped || !box.isConnected) return;
+      var max = box.scrollWidth - box.clientWidth;
+      if (max > 4 && !document.hidden) {
+        if (hold > t) { requestAnimationFrame(step); return; }
+        var dt = last ? Math.min(64, t - last) : 16; last = t;
+        box.scrollLeft += dir * dt * 0.035;                 // ~35px per second
+        if (box.scrollLeft >= max - 1 && dir > 0) { dir = -1; hold = t + 1800; }
+        else if (box.scrollLeft <= 0 && dir < 0) { dir = 1; hold = t + 1800; }
+      } else last = 0;
+      requestAnimationFrame(step);
+    })(0);
+  }
+  function widePan(root) {
+    var list = root.matches && root.matches('.be-celeb-banner-item') ? [root] : [].slice.call(root.querySelectorAll ? root.querySelectorAll('.be-celeb-banner-item') : []);
+    list.forEach(function (it) {
+      if (it.classList.contains('has-m') || it.classList.contains('pan') || it.hasAttribute('data-m')) return;
+      var img = it.querySelector('img'); if (!img || it.querySelector('video')) return;
+      function check() {
+        if (!PHONE.matches || !img.naturalWidth || img.naturalWidth / img.naturalHeight < 2.6) return;
+        bannerCss(); img.classList.add('bcb-d'); it.classList.add('pan'); panStrip(it);
+      }
+      if (img.complete) check(); else img.addEventListener('load', check, { once: true });
+    });
+  }
+  function artDirect(root) {
+    if (!root.querySelectorAll) return;
+    widePan(root);
+    var items = root.matches && root.matches('.be-celeb-banner-item[data-m]') ? [root] : [].slice.call(root.querySelectorAll('.be-celeb-banner-item[data-m]'));
+    if (!items.length) return;
+    bannerCss();
+    items.forEach(function (it) {
+      var m = it.getAttribute('data-m'); it.removeAttribute('data-m');
+      if (!m || it.classList.contains('has-m')) return;
+      var d = it.querySelector('img,video'); if (d) d.classList.add('bcb-d');
+      var bg = document.createElement('div'); bg.className = 'bcb-bg'; bg.style.backgroundImage = 'url("' + m.replace(/"/g, '%22') + '")';
+      var im = document.createElement('img'); im.className = 'bcb-m'; im.alt = (d && d.alt) || 'Celebration'; im.src = m; im.decoding = 'async';
+      it.appendChild(bg); it.appendChild(im); it.classList.add('has-m');
+    });
   }
   try {
     new MutationObserver(function (muts) {
-      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.matches && n.matches('.be-celeb-banner-item img[loading="lazy"]')) n.loading = 'eager'; else eagerBanners(n); } }); });
+      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.matches && n.matches('.be-celeb-banner-item img[loading="lazy"]')) n.loading = 'eager'; else eagerBanners(n); if (n.parentNode) artDirect(n.parentNode); } }); });
     }).observe(document.documentElement, { childList: true, subtree: true });
     if (document.body) eagerBanners(document.body);
   } catch (_) {}
@@ -382,7 +451,28 @@
     '.bcp-mbtn.in{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 0 0 3px rgba(16,185,129,.18)}',
     '.bcp-mbtn.out{background:linear-gradient(135deg,#ff6b06,#f9182f);box-shadow:0 0 0 3px rgba(249,24,47,.18)}',
     '.bcp-mbtn.done{background:rgba(96,165,250,.14);color:#93c5fd;border:1px solid rgba(96,165,250,.35);cursor:default}',
-    '.bcp-mbtn:disabled{opacity:.6}'
+    '.bcp-mbtn:disabled{opacity:.6}',
+    // Phone attendance card (dashboard, below the header). Desktop keeps the header pill.
+    '.bcp-mcard{display:none}',
+    '@media(max-width:640px){.bcp-mcard:not([hidden]){display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px 14px;margin:0 0 14px;padding:14px 14px 14px 16px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);font-family:Inter,system-ui,sans-serif}}',
+    '.bcp-mcard.is-in{border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.06)}',
+    '.bcp-mcard.is-done{border-color:rgba(96,165,250,.25);background:rgba(96,165,250,.05)}',
+    '.bcp-mc-l{min-width:0;display:flex;flex-direction:column;gap:3px}',
+    '.bcp-mc-k{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#8b93b8}',
+    '.bcp-mc-k i{width:8px;height:8px;border-radius:50%;background:#6b74a0}',
+    '.bcp-mcard.is-in .bcp-mc-k{color:#4ade80}.bcp-mcard.is-in .bcp-mc-k i{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2)}',
+    '.bcp-mcard.is-done .bcp-mc-k{color:#93c5fd}.bcp-mcard.is-done .bcp-mc-k i{background:#60a5fa}',
+    '.bcp-mcard.is-off .bcp-mc-k{color:#c4b5fd}.bcp-mcard.is-off .bcp-mc-k i{background:#a78bfa}',
+    '.bcp-mc-big{font-size:17px;font-weight:800;color:#fff;line-height:1.25;font-variant-numeric:tabular-nums}',
+    '.bcp-mc-sub{font-size:12.5px;color:#a5adcf;font-variant-numeric:tabular-nums}',
+    '.bcp-mc-btn{min-height:48px;min-width:118px;padding:0 18px;border-radius:13px;border:0;display:inline-flex;align-items:center;justify-content:center;gap:8px;font:800 14px Inter,system-ui,sans-serif;color:#fff;cursor:pointer;touch-action:manipulation}',
+    '.bcp-mc-btn.in{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 8px 20px -10px rgba(16,185,129,.8)}',
+    '.bcp-mc-btn.out{background:linear-gradient(135deg,#ff6b06,#f9182f);box-shadow:0 8px 20px -10px rgba(249,24,47,.8)}',
+    '.bcp-mc-btn.ghost{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#cbd5e1;font-weight:700}',
+    '.bcp-mc-btn[hidden],.bcp-mc-link[hidden]{display:none!important}',
+    '.bcp-mc-btn:disabled{opacity:.6}',
+    '.bcp-mc-link{grid-column:1/-1;justify-self:start;min-height:36px;background:none;border:0;padding:0;font:600 12px Inter,system-ui,sans-serif;color:#8b93b8;text-decoration:underline;text-underline-offset:2px;cursor:pointer}',
+    '.bcp-mbtn{width:40px;height:40px}'
   ].join('');
   var IC_IN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>';
   var IC_OUT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>';
@@ -410,6 +500,15 @@
     pill.innerHTML = '<span class="bcp-dot" aria-hidden="true"></span><span class="bcp-txt"></span><button type="button" class="bcp-btn"></button><span class="bcp-chip" hidden aria-disabled="true"></span><button type="button" class="bcp-link" hidden></button>';
     header.parentNode.insertBefore(pill, header);
     card.classList.add('bes-att-moved');
+    // Phone: a clear, labeled attendance card at the top of the dashboard (above the banner)
+    // instead of relying on the small round button in the top bar.
+    var mcard = document.createElement('section');
+    mcard.className = 'bcp-mcard'; mcard.setAttribute('aria-label', 'Attendance'); mcard.hidden = true;
+    mcard.innerHTML = '<div class="bcp-mc-l"><span class="bcp-mc-k"><i></i><span class="bcp-mc-kt">Attendance</span></span><span class="bcp-mc-big"></span><span class="bcp-mc-sub"></span></div><button type="button" class="bcp-mc-btn in"></button><button type="button" class="bcp-mc-link" hidden></button>';
+    var topStack = card.closest('.bes-top');
+    if (topStack) topStack.insertBefore(mcard, topStack.firstChild); else card.parentNode.insertBefore(mcard, card);
+    var mcVisible = false;
+    try { new IntersectionObserver(function (es) { mcVisible = es.some(function (e) { return e.isIntersecting; }); syncTopBtn(); }).observe(mcard); } catch (_) {}
     var btn = pill.querySelector('.bcp-btn'), txt = pill.querySelector('.bcp-txt'), chip = pill.querySelector('.bcp-chip'), link = pill.querySelector('.bcp-link');
     // Phone top bar (#mobile-topbar, shared by every portal): the desktop header is hidden on
     // phones, so the same Clock In / Clock Out also gets a round button next to search / bell.
@@ -529,7 +628,50 @@
       mbtn.innerHTML = target && !dayOff ? (state === 'in' ? IC_OUT : IC_IN) : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
       var lbl = target && !dayOff ? (state === 'in' ? 'Clock Out — ' + plain : 'Clock In — ' + plain) : plain + (state === 'done' ? ' · Completed today' : '');
       mbtn.setAttribute('aria-label', lbl); mbtn.title = lbl;
+      // ── phone card ──
+      mcard.hidden = !cardOn;
+      mcard.className = 'bcp-mcard' + (state === 'in' ? ' is-in' : state === 'done' ? ' is-done' : dayOff ? ' is-off' : '');
+      var kt = mcard.querySelector('.bcp-mc-kt'), big = mcard.querySelector('.bcp-mc-big'), sub = mcard.querySelector('.bcp-mc-sub'), mb = mcard.querySelector('.bcp-mc-btn'), ml = mcard.querySelector('.bcp-mc-link');
+      mb._target = target; mb._mode = null;
+      if (state === 'in') {
+        var nowM = mins(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()));
+        var startM = mins(times[0]), w = (startM != null && nowM != null && nowM >= startM) ? nowM - startM : null;
+        kt.textContent = 'Clocked in'; big.textContent = times[0] ? 'Since ' + times[0] : 'Clocked in';
+        sub.textContent = w != null ? 'Working for ' + Math.floor(w / 60) + 'h ' + String(w % 60).padStart(2, '0') + 'm' : 'Remember to clock out';
+        mb.hidden = !target; mb.className = 'bcp-mc-btn out'; mb.innerHTML = IC_OUT + 'Clock Out'; mb._mode = 'out'; mb.disabled = !!(target && target.disabled);
+      } else if (state === 'done') {
+        kt.textContent = '✓ Attendance completed';
+        big.textContent = times.length > 1 ? times[0] + ' – ' + times[1] : 'Done for today';
+        sub.textContent = times.length > 1 && worked(times[0], times[1]) ? worked(times[0], times[1]) + ' worked · Clock In opens tomorrow' : 'Clock In opens tomorrow';
+        mb.hidden = true;
+      } else if (dayOff) {
+        kt.textContent = off.label; big.textContent = 'No clock-in needed today'; sub.textContent = 'Working today anyway? Clock in below.';
+        mb.hidden = !target; mb.className = 'bcp-mc-btn ghost'; mb.textContent = 'Clock in anyway'; mb._mode = 'anyway'; mb.disabled = false;
+      } else {
+        kt.textContent = 'Attendance'; big.textContent = /checking/i.test(stText) ? 'Checking…' : 'You haven\u2019t clocked in yet'; sub.textContent = 'Tap Clock In when you start work';
+        mb.hidden = !target; mb.className = 'bcp-mc-btn in'; mb.innerHTML = IC_IN + 'Clock In'; mb._mode = 'in'; mb.disabled = !!(target && target.disabled);
+      }
+      ml.hidden = !canReopen; ml.textContent = 'Re-open today\u2019s attendance';
+      syncTopBtn();
     }
+    // The round top-bar button stays for other screens; it hides while the card is on screen.
+    function syncTopBtn() { if (mcard && !mcard.hidden && mcVisible) mbtn.style.display = 'none'; else mbtn.style.display = ''; }
+    mcard.querySelector('.bcp-mc-btn').addEventListener('click', function () {
+      var b = this, t = b._target; if (!t || t.disabled) return;
+      if (b._mode === 'anyway') { clockInAnyway(t); return; }
+      if (b._mode === 'out') {
+        // Clock-out ends the day (no second clock-in), so a stray tap must not do it.
+        var w = mcard.querySelector('.bcp-mc-sub').textContent;
+        ask('Clock out now?', (/Working for/.test(w) ? 'You have been ' + w.replace('Working for', 'working for') + '. ' : '') + 'After clocking out, Clock In opens again tomorrow.', 'Clock out').then(function (ok) { if (ok && !t.disabled) t.click(); });
+        return;
+      }
+      t.click();
+    });
+    mcard.querySelector('.bcp-mc-link').addEventListener('click', function () {
+      ask('Re-open today\u2019s attendance?', 'Today\u2019s attendance is already completed. Do you want to start another attendance session? The clock-out time will be cleared and recorded in the audit log.', 'Continue')
+        .then(function (ok) { if (ok && typeof window.beClockReopen === 'function') window.beClockReopen(); });
+    });
+    setInterval(function () { if (!mcard.hidden && mcard.classList.contains('is-in')) sync(); }, 30000);
     mbtn.addEventListener('click', function () { if (mbtn._dayoff) clockInAnyway(mbtn._dayoff); });
     // New company day (IST midnight): re-read today's attendance so Clock In returns — and only
     // then; the completed state stays for the rest of the day even across reloads (it comes from
