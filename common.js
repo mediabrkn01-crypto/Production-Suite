@@ -136,7 +136,7 @@ let myHRDataLoaded = false; // guards loadMyHRData() the same way hr.html's hrLo
 // ---------- HR constants (used by calculation helpers shared across modules) ----------
         const HR_ROLES = {
             production: ['Editor', 'Designer', 'Cinematographer', 'Photographer', 'Video Editor', 'Colorist', 'VFX & Motion Graphics Artist', 'Production Coordinator'],
-            education: ['Academic Head', 'Class Coordinator', 'Coaches'], // exactly these 3 — Academic Head & Class Coordinator have identical management access, Coaches see only their own assigned work (see checkAcademicAccess)
+            education: ['Academic Head', 'Class Coordinator', 'Operations Manager', 'Coaches'], // exactly these 3 — Academic Head & Class Coordinator have identical management access, Coaches see only their own assigned work (see checkAcademicAccess)
             // Department-specific role sets — the Add Employee form picks this list based on
             // whichever Department is selected (see hr-emp-division/renderHREmpRoleChips), so
             // HR only ever sees HR roles, Accounts only sees Accounts roles, etc. "Intern" is
@@ -1198,7 +1198,7 @@ async function loadMyHRData() {
             const byDesig = hrDesignationAccess(e.designation);
             if (byDesig) return byDesig;
             const roles = hrParseRoles(e.department).map(r => hrStripLevel(r).role);
-            if (roles.some(r => r === 'Academic Head' || r === 'Class Coordinator')) return 'academic_head';
+            if (roles.some(r => r === 'Academic Head' || r === 'Class Coordinator' || r === 'Operations Manager')) return 'academic_head';
             if (e.division === 'education' && roles.some(r => /coach|trainer/i.test(r))) return 'trainer';
             return '';
         }
