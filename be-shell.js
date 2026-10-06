@@ -405,6 +405,178 @@
 })();
 
 /* ============================================================================
+ * BEClock — the ONE clock-in / clock-out service for every portal.
+ *
+ *  - Locks immediately on the first tap: every clock control shows "Clocking in…" and every
+ *    further tap is ignored until the server answers (no debounce guesswork).
+ *  - Each tap gets a request id; the server (be_clock) stores the first result per id, so a
+ *    retry or a double request can never create a second action or a second record.
+ *  - Clock Out always asks for confirmation, and for 1.5 s after any change no control reacts —
+ *    plus any tap that STARTED before the change is dropped — so a repeated Clock In tap can
+ *    never land on the Clock Out that just appeared.
+ *  - 12 s timeout. A timeout or network drop is "unknown", not "failed": the real status is read
+ *    back from the database before anything is retried.
+ *  Pages call BEClock.run(kind, { request(rid), verify(), apply(res) }).
+ * ==========================================================================*/
+(function () {
+  'use strict';
+  if (window.BEClock) return;
+  var TIMEOUT = 12000, SLOW = 3500, COOL = 1500;
+  var S = { busy: false, kind: null, slow: false, lastChange: 0 };
+  var lastDown = 0;
+  function emit() { try { window.dispatchEvent(new CustomEvent('be-clock', { detail: { busy: S.busy, kind: S.kind, slow: S.slow } })); } catch (_) {} }
+  function rid() { try { return crypto.randomUUID(); } catch (_) { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) { var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }); } }
+  function fmt(t) { if (!t) return ''; var d = new Date(t); return isNaN(d) ? String(t) : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }); }
+
+  var CSS = '.bclk-bg{position:fixed;inset:0;z-index:2147482500;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px}' +
+    '.bclk-dlg{width:min(400px,100%);background:#11162a;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px;color:#e6e9f5;font:13.5px/1.5 Inter,system-ui,sans-serif;box-shadow:0 30px 70px -20px rgba(0,0,0,.8)}' +
+    '.bclk-dlg h3{margin:0 0 6px;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}' +
+    '.bclk-dlg p{margin:0 0 16px;color:#a5adcf}' +
+    '.bclk-b{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}' +
+    '.bclk-b button{min-height:44px;padding:0 16px;border-radius:11px;font:700 13px Inter,system-ui,sans-serif;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1}' +
+    '.bclk-b button.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f)}' +
+    '.bclk-b button.ok{border:0;color:#fff;background:linear-gradient(135deg,#10b981,#059669)}' +
+    '.bclk-toast{position:fixed;left:50%;top:18px;transform:translate(-50%,-8px);z-index:2147482600;display:flex;gap:10px;align-items:flex-start;max-width:calc(100vw - 32px);padding:12px 16px;border-radius:14px;background:#11162a;border:1px solid rgba(255,255,255,.12);color:#e6e9f5;font:13px/1.45 Inter,system-ui,sans-serif;box-shadow:0 20px 50px -16px rgba(0,0,0,.8);opacity:0;transition:opacity .2s,transform .2s}' +
+    '.bclk-toast.on{opacity:1;transform:translate(-50%,0)}.bclk-toast b{display:block;color:#fff;font-size:13.5px}.bclk-toast.ok{border-color:rgba(34,197,94,.45)}.bclk-toast.info{border-color:rgba(96,165,250,.45)}.bclk-toast i{font-style:normal;font-size:16px;line-height:1.2}' +
+    '.bclk-spin{display:inline-block;width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:bclkS .7s linear infinite;flex-shrink:0}@keyframes bclkS{to{transform:rotate(360deg)}}' +
+    '@media(prefers-reduced-motion:reduce){.bclk-spin{animation-duration:2s}.bclk-toast{transition:none}}';
+  function css() { if (!document.getElementById('bclk-css')) { var st = document.createElement('style'); st.id = 'bclk-css'; st.textContent = CSS; document.head.appendChild(st); } }
+  function dialog(title, text, buttons) {
+    css();
+    return new Promise(function (resolve) {
+      var bg = document.createElement('div'); bg.className = 'bclk-bg';
+      bg.innerHTML = '<div class="bclk-dlg" role="alertdialog" aria-modal="true"><h3></h3><p></p><div class="bclk-b"></div></div>';
+      bg.querySelector('h3').textContent = title; bg.querySelector('p').textContent = text;
+      var row = bg.querySelector('.bclk-b');
+      buttons.forEach(function (b) { var el = document.createElement('button'); el.type = 'button'; el.textContent = b.label; if (b.cls) el.className = b.cls; el.dataset.v = b.value; row.appendChild(el); });
+      function done(v) { bg.remove(); document.removeEventListener('keydown', esc, true); resolve(v); }
+      function esc(e) { if (e.key === 'Escape') { e.stopPropagation(); done(null); } }
+      bg.addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) done(b.dataset.v); });
+      document.addEventListener('keydown', esc, true);
+      document.body.appendChild(bg);
+      var first = row.querySelector('button'); if (first) first.focus();
+    });
+  }
+  var toastEl = null, toastT = null;
+  function toast(kind, title, sub) {
+    css();
+    if (toastEl) toastEl.remove();
+    var t = document.createElement('div'); t.className = 'bclk-toast ' + kind; t.setAttribute('role', 'status');
+    t.innerHTML = '<i>' + (kind === 'ok' ? '✓' : 'ℹ') + '</i><div><b></b><span></span></div>';
+    t.querySelector('b').textContent = title; t.querySelector('span').textContent = sub || '';
+    document.body.appendChild(t); toastEl = t;
+    requestAnimationFrame(function () { t.classList.add('on'); });
+    clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('on'); setTimeout(function () { t.remove(); }, 250); }, 3800);
+  }
+  function withTimeout(p, ms) {
+    return new Promise(function (res, rej) {
+      var t = setTimeout(function () { var e = new Error('timeout'); e.beKind = 'timeout'; rej(e); }, ms);
+      Promise.resolve(p).then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); });
+    });
+  }
+  function classify(e) {
+    if (!navigator.onLine) return 'offline';
+    if (e && e.beKind) return e.beKind;
+    var m = String((e && (e.message || e.details)) || '');
+    if (/Failed to fetch|NetworkError|network|Load failed|ERR_/i.test(m)) return 'network';
+    return 'server';
+  }
+  var ERR = {
+    offline: ['No internet connection', 'Your device is offline, so your attendance could not be recorded. Reconnect and try again.'],
+    network: ['Network connection issue', 'Unable to confirm your attendance because the connection is unstable.'],
+    timeout: ['Request timed out', 'The server did not answer in time. Your attendance may still have been saved — check the status before trying again.'],
+    server: ['Server error', 'The attendance server returned an error.']
+  };
+
+  // Drop taps that land during an action, during the cool-down after it, or that STARTED before
+  // the state changed (a double-tap whose second half would hit the new button).
+  var CLOCK_SEL = '.bes-clk,.bcp-btn,.bcp-mc-btn,.bcp-mbtn,#clockBtn';
+  document.addEventListener('pointerdown', function (e) { if (e.target.closest && e.target.closest(CLOCK_SEL)) lastDown = Date.now(); }, true);
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest(CLOCK_SEL); if (!b) return;
+    var now = Date.now();
+    if (S.busy || now - S.lastChange < COOL || (lastDown && lastDown < S.lastChange && now - lastDown < 3000)) {
+      e.preventDefault(); e.stopImmediatePropagation();
+    }
+  }, true);
+
+  async function run(kind, o) {
+    if (S.busy) return null;
+    if (Date.now() - S.lastChange < COOL) return null;
+    if (kind === 'out' && !o.confirmed) {
+      var since = o.since ? ' since ' + o.since : '';
+      var v = await dialog('Clock out?', 'You are currently clocked in' + since + '. Are you sure you want to end today’s attendance? Clock In opens again tomorrow.', [{ label: 'Cancel', value: 'no' }, { label: 'Confirm clock out', value: 'yes', cls: 'pri' }]);
+      if (v !== 'yes') return null;
+    }
+    if (!navigator.onLine) { await problem('offline', kind, o); return null; }
+    css();
+    var id = rid();
+    S.busy = true; S.kind = kind; S.slow = false; emit();
+    try { sessionStorage.setItem('be_clock_pending', JSON.stringify({ kind: kind, id: id, at: Date.now() })); } catch (_) {}
+    var slowT = setTimeout(function () { S.slow = true; emit(); }, SLOW);
+    var res = null, err = null;
+    try { res = await withTimeout(o.request(id), TIMEOUT); } catch (e) { err = e; }
+    clearTimeout(slowT);
+    if (err) {
+      // Unknown outcome: ask the database what actually happened before saying anything.
+      var truth = null;
+      try { truth = await withTimeout(o.verify(), 8000); } catch (_) {}
+      if (truth && ((kind === 'in' && (truth.state === 'in' || truth.state === 'done')) || (kind === 'out' && truth.state === 'done'))) {
+        res = Object.assign({}, truth, { result: 'ok' });
+      } else {
+        finish(truth);
+        if (truth && o.apply) try { o.apply(truth); } catch (_) {}
+        await problem(classify(err), kind, o, err);
+        return null;
+      }
+    }
+    finish(res);
+    try { if (o.apply) o.apply(res); } catch (e) { console.warn('[BEClock] apply:', e && e.message); }
+    report(kind, res);
+    return res;
+  }
+  function finish() {
+    S.busy = false; S.kind = null; S.slow = false; S.lastChange = Date.now();
+    try { sessionStorage.removeItem('be_clock_pending'); } catch (_) {}
+    emit();
+    setTimeout(emit, COOL + 30);   // let controls re-enable after the cool-down
+  }
+  function report(kind, r) {
+    if (!r) return;
+    if (r.result === 'ok') {
+      if (kind === 'in') toast('ok', 'Clocked in successfully', 'Clock In Time: ' + fmt(r.log_in_time));
+      else toast('ok', 'Clocked out successfully', 'Clock Out Time: ' + fmt(r.log_out_time));
+    } else if (r.result === 'already_in') toast('info', 'You are already clocked in', 'Since ' + fmt(r.log_in_time));
+    else if (r.result === 'completed') toast('info', 'Today’s attendance has already been completed.', fmt(r.log_in_time) + ' – ' + fmt(r.log_out_time));
+    else if (r.result === 'no_session') toast('info', 'You are not clocked in', 'There is no open attendance session today.');
+  }
+  async function problem(type, kind, o, err) {
+    var m = ERR[type] || ERR.server;
+    var text = m[1] + (type === 'server' && err && err.message ? ' (' + err.message + ')' : '');
+    var v = await dialog(m[0], text, [{ label: 'Close', value: 'close' }, { label: 'Check status', value: 'check' }, { label: 'Retry', value: 'retry', cls: kind === 'out' ? 'pri' : 'ok' }]);
+    if (v === 'check' || v === 'retry') {
+      var truth = null;
+      try { truth = await withTimeout(o.verify(), 8000); } catch (e) { await problem(classify(e), kind, o, e); return; }
+      if (truth && o.apply) try { o.apply(truth); } catch (_) {}
+      S.lastChange = Date.now(); emit();
+      var done = truth && ((kind === 'in' && truth.state !== 'none') || (kind === 'out' && truth.state === 'done'));
+      if (done) { report(kind, Object.assign({}, truth, { result: kind === 'in' && truth.state === 'done' ? 'completed' : 'ok' })); return; }
+      if (v === 'check') { toast('info', kind === 'in' ? 'Not clocked in yet' : 'Still clocked in', 'Your attendance was not changed. Tap ' + (kind === 'in' ? 'Clock In' : 'Clock Out') + ' to try again.'); return; }
+      S.lastChange = 0; // a retry is a deliberate new action
+      run(kind, Object.assign({}, o, { confirmed: true }));
+    }
+  }
+  window.BEClock = {
+    run: run,
+    get busy() { return S.busy; },
+    get kind() { return S.kind; },
+    get slow() { return S.slow; },
+    get coolingDown() { return Date.now() - S.lastChange < COOL; },
+    toast: toast, dialog: dialog
+  };
+})();
+
+/* ============================================================================
  * Header clock pill — Clock In / Clock Out lives in the top header bar (next to the
  * date) on every portal instead of a big Attendance card at the top of each page.
  * It MIRRORS the page's existing Attendance card (status text + its real Clock In /
@@ -652,19 +824,24 @@
         mb.hidden = !target; mb.className = 'bcp-mc-btn in'; mb.innerHTML = IC_IN + 'Clock In'; mb._mode = 'in'; mb.disabled = !!(target && target.disabled);
       }
       ml.hidden = !canReopen; ml.textContent = 'Re-open today\u2019s attendance';
+      // In-flight clock action (BEClock): every control shows progress and is locked; right after
+      // a change they stay locked for a moment so a repeated tap can't hit the new button.
+      var C = window.BEClock;
+      if (C && C.busy) {
+        var lbl2 = (C.kind === 'out' ? 'Clocking out…' : 'Clocking in…') + (C.slow ? ' (slow connection)' : '');
+        btn.hidden = false; btn.disabled = true; btn.innerHTML = '<span class="bclk-spin"></span><span>' + lbl2 + '</span>';
+        mb.hidden = false; mb.disabled = true; mb.innerHTML = '<span class="bclk-spin"></span>' + (C.kind === 'out' ? 'Clocking out…' : 'Clocking in…');
+        if (C.slow) sub.textContent = 'Slow connection — still waiting for the server…';
+        mbtn.disabled = true; mbtn.innerHTML = '<span class="bclk-spin"></span>';
+      } else if (C && C.coolingDown) { btn.disabled = true; mb.disabled = true; mbtn.disabled = true; }
       syncTopBtn();
     }
+    window.addEventListener('be-clock', function () { sync(); });
     // The round top-bar button stays for other screens; it hides while the card is on screen.
     function syncTopBtn() { if (mcard && !mcard.hidden && mcVisible) mbtn.style.display = 'none'; else mbtn.style.display = ''; }
     mcard.querySelector('.bcp-mc-btn').addEventListener('click', function () {
       var b = this, t = b._target; if (!t || t.disabled) return;
       if (b._mode === 'anyway') { clockInAnyway(t); return; }
-      if (b._mode === 'out') {
-        // Clock-out ends the day (no second clock-in), so a stray tap must not do it.
-        var w = mcard.querySelector('.bcp-mc-sub').textContent;
-        ask('Clock out now?', (/Working for/.test(w) ? 'You have been ' + w.replace('Working for', 'working for') + '. ' : '') + 'After clocking out, Clock In opens again tomorrow.', 'Clock out').then(function (ok) { if (ok && !t.disabled) t.click(); });
-        return;
-      }
       t.click();
     });
     mcard.querySelector('.bcp-mc-link').addEventListener('click', function () {
@@ -672,6 +849,8 @@
         .then(function (ok) { if (ok && typeof window.beClockReopen === 'function') window.beClockReopen(); });
     });
     setInterval(function () { if (!mcard.hidden && mcard.classList.contains('is-in')) sync(); }, 30000);
+    // Header pill button → the page's real Clock In / Clock Out (its handler runs BEClock).
+    btn.addEventListener('click', function () { if (btn._target && !btn._target.disabled) btn._target.click(); });
     mbtn.addEventListener('click', function () { if (mbtn._dayoff) clockInAnyway(mbtn._dayoff); });
     // New company day (IST midnight): re-read today's attendance so Clock In returns — and only
     // then; the completed state stays for the rest of the day even across reloads (it comes from

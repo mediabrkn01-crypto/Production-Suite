@@ -536,8 +536,12 @@ async function loadMyHRData() {
                     // Update the same day's record only — never create a second attendance entry on clock-out.
                     await dbInstance.from('hr_attendance').update({ clock_out_time: whenIso }).eq('id', existing.id);
                 }
-                if (typeof hrLoaded !== 'undefined' && hrLoaded) await loadHRData(); // hr.html only, if the admin view is open
-                if (typeof loadMyHRData === 'function') await loadMyHRData(); // reflect the clock-in in My Attendance immediately
+                // With live data (be-live.js) the HR tables and My Attendance refresh themselves from
+                // the realtime event — no full reload here (it used to run on every clock tap).
+                if (!window.BELive) {
+                    if (typeof hrLoaded !== 'undefined' && hrLoaded) await loadHRData(); // hr.html only, if the admin view is open
+                    if (typeof loadMyHRData === 'function') await loadMyHRData();
+                }
             } catch (e) {
                 console.warn('HR attendance sync from clock action failed:', e.message);
             }
@@ -2641,55 +2645,82 @@ function hrOfficialEventFor(employee, dateStr) {
             );
         }
 
-        async function handleClockIn() {
-            if (beIsSystemAccount()) return;
-            const existing = findMyOpenAttendanceRecord();
-            if (existing) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
-
-            // Backend-source-of-truth re-check, right before writing — the in-memory
-            // `attendanceLogs` guard above only catches an already-open record if this page's
-            // own load actually hydrated it; a second tab/page clocking in around the same
-            // moment (or attendanceLogs simply not being refreshed since an earlier successful
-            // clock-in elsewhere) could otherwise still slip a genuine duplicate row past it.
-            // attendance_logs has no unique(employee_email, log_date) constraint at the DB level
-            // today (confirmed — real duplicate rows already exist in production from exactly
-            // this gap), so this app-level re-check is the actual backstop until that's added.
-            const today = todayDateStr();
-            const { data: dbExisting } = await dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail).eq('log_date', today).limit(1);
-            if (dbExisting && dbExisting[0]) {
-                attendanceLogs = attendanceLogs.concat(dbExisting.filter(r => !attendanceLogs.some(a => a.id === r.id)));
-                if (dbExisting[0].log_out_time && typeof showToast === 'function') showToast('info', 'Today’s attendance has already been completed.');
-                refreshAttendanceClockCard();
-                if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
-                return;
-            }
-
-            const nowIso = new Date().toISOString();
-            const { data, error } = await dbInstance.from('attendance_logs').insert([{
-                employee_email: activeEmail,
-                employee_name: activeUser,
-                log_date: today,
-                log_in_time: nowIso,
-                log_out_time: null
-            }]).select();
-
-            if (error) {
-                // The database refuses a second clock-in for a completed day (and duplicates).
-                const done = /already been completed|duplicate key|attendance_logs_employee_date_unique/i.test(error.message || '');
-                const msg = done ? 'Today’s attendance has already been completed.' : 'Could not record clock in: ' + error.message;
-                if (typeof showToast === 'function') showToast(done ? 'info' : 'error', msg); else alert(msg);
-                if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
-                return;
-            }
-            if (data && data[0]) attendanceLogs = attendanceLogs.concat(data);
-
-            await hrSyncClockToAttendance(activeEmail, 'in', nowIso);
-            await pushLogEntry(`${activeUser} clocked IN at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-            refreshAttendanceClockCard();
-            if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
-            if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
-            if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
+        // ── Clock In / Clock Out → shared BEClock service (be-shell.js) ──
+        // One atomic, idempotent server call (be_clock RPC). The button updates as soon as the
+        // server confirms; HR attendance sync, the activity log and Sheets run in the background
+        // (they used to block the button for several seconds — the cause of repeated taps).
+        function _beClockRow(r) {
+            if (!r || !r.id) return null;
+            return { id: r.id, employee_email: activeEmail, employee_name: activeUser, log_date: r.log_date, log_in_time: r.log_in_time, log_out_time: r.log_out_time };
         }
+        async function _beClockLegacy(kind) {
+            // Used only until 20261008_clock_action.sql is applied.
+            const today = todayDateStr();
+            const sel = await dbInstance.from('attendance_logs').select('*').eq('employee_email', activeEmail).eq('log_date', today).limit(1);
+            if (sel.error) throw sel.error;
+            let row = sel.data && sel.data[0];
+            const shape = (result) => ({ result, state: !row ? 'none' : row.log_out_time ? 'done' : 'in', log_date: today, log_in_time: row && row.log_in_time, log_out_time: row && row.log_out_time, id: row && row.id });
+            if (kind === 'status') return shape('status');
+            if (kind === 'in') {
+                if (row) return shape(row.log_out_time ? 'completed' : 'already_in');
+                const ins = await dbInstance.from('attendance_logs').insert([{ employee_email: activeEmail, employee_name: activeUser, log_date: today, log_in_time: new Date().toISOString(), log_out_time: null }]).select();
+                if (ins.error) { if (/duplicate|completed/i.test(ins.error.message || '')) return _beClockLegacy('status').then(r => Object.assign(r, { result: r.state === 'done' ? 'completed' : 'already_in' })); throw ins.error; }
+                row = ins.data && ins.data[0]; return shape('ok');
+            }
+            if (!row) return shape('no_session');
+            if (row.log_out_time) return shape('completed');
+            const up = await dbInstance.from('attendance_logs').update({ log_out_time: new Date().toISOString() }).eq('id', row.id).is('log_out_time', null).select();
+            if (up.error) throw up.error;
+            if (up.data && up.data[0]) row = up.data[0];
+            return shape('ok');
+        }
+        let _beClockRpcMissing = false;
+        async function _beClockCall(kind, requestId) {
+            if (!_beClockRpcMissing) {
+                const { data, error } = await dbInstance.rpc('be_clock', { p_email: activeEmail, p_kind: kind, p_request_id: requestId || null, p_name: activeUser || null });
+                if (!error) return data;
+                if (!/be_clock|PGRST202|Could not find the function/i.test((error.message || '') + (error.code || ''))) throw error;
+                _beClockRpcMissing = true;
+            }
+            return _beClockLegacy(kind);
+        }
+        function _beClockApply(res, kind) {
+            const row = _beClockRow(res);
+            attendanceLogs = attendanceLogs.filter(r => !(r.employee_email === activeEmail && r.log_date === (res && res.log_date)));
+            if (row) attendanceLogs = attendanceLogs.concat([row]);
+            refreshAttendanceClockCard();
+            if (!res || res.result !== 'ok') return;
+            const when = kind === 'in' ? res.log_in_time : res.log_out_time;
+            // Background — never blocks the button.
+            Promise.resolve().then(async () => {
+                await hrSyncClockToAttendance(activeEmail, kind, when);
+                try { await pushLogEntry(`${activeUser} clocked ${kind === 'in' ? 'IN' : 'OUT'} at ${new Date(when).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`); } catch (e) {}
+                if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
+                if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
+            }).catch(e => console.warn('Clock follow-up failed:', e && e.message));
+        }
+        function _beClockRun(kind) {
+            if (beIsSystemAccount()) return;
+            const open = findMyOpenAttendanceRecord();
+            const since = open && open.log_in_time ? new Date(open.log_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+            const o = { since, request: id => _beClockCall(kind, id), verify: () => _beClockCall('status', null), apply: res => _beClockApply(res, kind) };
+            if (window.BEClock) return BEClock.run(kind, o);
+            return o.request(null).then(o.apply);
+        }
+        async function handleClockIn() { return _beClockRun('in'); }
+        // Same login on another device/tab clocks in or out → this page's clock follows instantly
+        // (realtime on the employee's own attendance_logs rows; no dashboard reload).
+        (function _beClockLive(n) {
+            if (!window.BELive || typeof activeEmail === 'undefined' || !activeEmail) { if ((n || 0) < 40) setTimeout(() => _beClockLive((n || 0) + 1), 500); return; }
+            BELive.on('my-clock', { table: 'attendance_logs', filter: 'employee_email=eq.' + activeEmail }, (evs, info) => {
+                if (info.resync) { _beClockCall('status', null).then(r => _beClockApply(Object.assign({}, r, { result: 'status' }), 'in')).catch(() => {}); return; }
+                evs.forEach(p => {
+                    const r = p.new && p.new.id ? p.new : null; if (!r) return;
+                    attendanceLogs = attendanceLogs.filter(x => x.id !== r.id).concat([r]);
+                });
+                refreshAttendanceClockCard();
+            }, { debounce: 150 });
+        })(0);
 
         // Re-open today's completed attendance — rare exception, HR / admin / management only,
         // always behind a confirmation (header clock pill → "Re-open"). Clears the clock-out on
@@ -2725,27 +2756,7 @@ function hrOfficialEventFor(employee, dateStr) {
         window.beClockReopenAllowed = beClockReopenAllowed;
         window.beClockReopen = beClockReopen;
 
-        async function handleClockOut() {
-            if (beIsSystemAccount()) return;
-            const existing = findMyOpenAttendanceRecord();
-            if (!existing || existing.log_out_time) { if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false); return; }
-
-            const nowIso = new Date().toISOString();
-            const { error } = await dbInstance
-                .from('attendance_logs')
-                .update({ log_out_time: nowIso })
-                .eq('id', existing.id);
-
-            if (error) { if (typeof showToast === 'function') showToast('error', 'Could not record clock out: ' + error.message); else alert('Could not record clock out: ' + error.message); return; }
-            existing.log_out_time = nowIso;
-
-            await hrSyncClockToAttendance(activeEmail, 'out', nowIso);
-            await pushLogEntry(`${activeUser} clocked OUT at ${new Date(nowIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-            refreshAttendanceClockCard();
-            if (typeof syncLedgerEngine === 'function') await syncLedgerEngine(false);
-            if (typeof syncAttendanceToSheet === 'function') syncAttendanceToSheet();
-            if (typeof syncMonthlyReportToSheet === 'function') syncMonthlyReportToSheet();
-        }
+        async function handleClockOut() { return _beClockRun('out'); }
 
 // ── ACCOUNT SWITCHER — instant switch between saved logins on this device. Genuinely
 // shared: hr.html previously had none of this at all. index.html declares its OWN
