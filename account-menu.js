@@ -69,12 +69,25 @@
       return '<div style="' + style + '">' + initials + '</div>';
     }
 
+    // Readable title for an account: the person's CURRENT designation from HR (fetched with
+    // the photos), else their saved role made readable ("academic_head" → "Academic Head").
+    function prettyRole(r) {
+      r = String(r || '').trim();
+      if (!r) return '';
+      if (/[_]/.test(r) || r === r.toLowerCase()) r = r.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+      return r.replace(/^Hr\b/, 'HR');
+    }
+    function accountTitle(rec, savedRole) {
+      var d = rec && String(rec.designation || '').trim().replace(/^(Senior|Mid-Level|Junior)\s+/i, '');
+      if (d && !/^employee$/i.test(d)) return d;
+      return prettyRole(savedRole);
+    }
     function renderMain() {
       var me = opts.getCurrentUser() || {};
       var rec = photoCache && me.email && photoCache[me.email.toLowerCase()];
       dropdown.innerHTML =
         '<div class="am-current">' + avatarHTML(rec || me.name, 34, me.name) +
-          '<div style="min-width:0"><div class="am-name">' + escapeHtml(me.name || 'User') + '</div><div class="am-role">' + escapeHtml(me.role || '') + '</div></div>' +
+          '<div style="min-width:0"><div class="am-name">' + escapeHtml(me.name || 'User') + '</div><div class="am-role">' + escapeHtml(accountTitle(rec, me.role)) + '</div></div>' +
         '</div>' +
         '<button class="am-item" data-am-action="switch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12"/></svg> Switch Account</button>' +
         '<button class="am-item" data-am-action="add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add Another Account</button>' +
@@ -95,7 +108,7 @@
             return '<div class="am-account-row">' +
               '<button class="am-acc-btn" data-am-switch="' + escapeHtml(acc.email) + '">' +
                 avatarHTML(rec || acc.name, 26, acc.name) +
-                '<span style="min-width:0"><div class="am-acc-name" title="' + escapeHtml(acc.name) + '">' + escapeHtml(acc.name) + (isCurrent ? ' <span class="am-current-tag">(current)</span>' : '') + '</div><div class="am-acc-role">' + escapeHtml(acc.role || '') + '</div></span>' +
+                '<span style="min-width:0"><div class="am-acc-name" title="' + escapeHtml(acc.name) + '">' + escapeHtml(acc.name) + (isCurrent ? ' <span class="am-current-tag">(current)</span>' : '') + '</div><div class="am-acc-role">' + escapeHtml(accountTitle(rec, acc.role)) + '</div></span>' +
               '</button>' +
               (isCurrent ? '' : '<button class="am-remove" title="Remove saved account" data-am-remove="' + escapeHtml(acc.email) + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>') +
             '</div>';

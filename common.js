@@ -2972,7 +2972,7 @@ function hrOfficialEventFor(employee, dateStr) {
             try {
                 const db = (typeof dbInstance !== 'undefined' && dbInstance) || (typeof mediaHrDB !== 'undefined' && mediaHrDB);
                 if (!db || !emails.length) return _switcherPhotoCache;
-                const { data } = await db.from('hr_employees').select('portal_email,full_name,photo_base64,photo_url').in('portal_email', emails);
+                const { data } = await db.from('hr_employees').select('portal_email,full_name,photo_base64,photo_url,designation,system_role').in('portal_email', emails);
                 (data || []).forEach(e => { if (e.portal_email) _switcherPhotoCache[e.portal_email.toLowerCase()] = e; });
             } catch (e) { /* best-effort — initials fallback already rendered, never blocks the panel */ }
             return _switcherPhotoCache;
@@ -2999,7 +2999,7 @@ function hrOfficialEventFor(employee, dateStr) {
                                 ${avatarHTML}
                                 <div class="min-w-0">
                                     <p class="text-xs font-bold text-white truncate" title="${escapeChatHtml(acc.name)}">${escapeChatHtml(acc.name)} ${isCurrent ? '<span class="text-emerald-400">(current)</span>' : ''}</p>
-                                    <p class="text-[10px] text-[#4a5182] truncate">${acc.role}</p>
+                                    <p class="text-[10px] text-[#4a5182] truncate">${escapeChatHtml((cached && cached.designation && !/^employee$/i.test(cached.designation)) ? String(cached.designation).replace(/^(Senior|Mid-Level|Junior)\s+/i, '') : String(acc.role || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</p>
                                 </div>
                             </button>
                             <button onclick="event.stopPropagation();removeSavedAccount(${emailLiteral}, this)" title="Remove saved account" class="text-[#4a5182] hover:text-red-400 p-1 shrink-0">
