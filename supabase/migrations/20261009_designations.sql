@@ -68,21 +68,25 @@ update public.hr_employees
  where designation ~* '^(Senior|Mid-Level|Junior)\s+';
 
 -- 4. One clean designation per person ------------------------------------------------------
+-- Anyone who ALREADY has a designation from the master list (e.g. set by hand in HR) is never
+-- touched below — only old / free-text / tiered titles are mapped.
+create or replace function pg_temp.is_clean(t text) returns boolean language sql as
+  $f$ select exists (select 1 from public.hr_designations d where lower(d.name) = lower(coalesce(t, ''))) $f$;
 -- Education
 update public.hr_employees set designation = 'Academic Head'
- where division = 'education' and department ~ '(^|,\s*)Academic Head(\s*,|$)';
+ where not pg_temp.is_clean(designation) and division = 'education' and department ~ '(^|,\s*)Academic Head(\s*,|$)';
 update public.hr_employees set designation = 'Class Coordinator'
- where division = 'education' and department ~ '(^|,\s*)Class Coordinator(\s*,|$)'
+ where not pg_temp.is_clean(designation) and division = 'education' and department ~ '(^|,\s*)Class Coordinator(\s*,|$)'
    and department !~ '(^|,\s*)Academic Head(\s*,|$)';
 update public.hr_employees set designation = 'Fluency Coach'
- where division = 'education'
+ where not pg_temp.is_clean(designation) and division = 'education'
    and coalesce(designation, '') !~* '^(Academic Head|Class Coordinator|Operations Manager)$'
    and (coalesce(designation, '') ~* '(trainer|coach)' or coalesce(designation, '') = '' or department ~* 'coach');
 -- Sales
 update public.hr_employees set designation = 'Student Counselor Head'
- where division = 'sales' and department ~ '(^|,\s*)Student Counselor Head(\s*,|$)';
+ where not pg_temp.is_clean(designation) and division = 'sales' and department ~ '(^|,\s*)Student Counselor Head(\s*,|$)';
 update public.hr_employees set designation = 'Student Counselor'
- where division = 'sales' and coalesce(designation, '') !~* '^(Student Counselor Head|Sales Executive)$'
+ where not pg_temp.is_clean(designation) and division = 'sales' and coalesce(designation, '') !~* '^(Student Counselor Head|Sales Executive)$'
    and (coalesce(designation, '') ~* 'counsel' or department ~* 'student counselor');
 -- Production: generic "Employee" titles take their primary team role
 update public.hr_employees set designation = case
@@ -96,10 +100,10 @@ update public.hr_employees set designation = case
          when department ~* '^\s*vfx'              then 'VFX & Motion Graphics Artist'
          when department ~* '^\s*production coordinator' then 'Production Coordinator'
          else designation end
- where division = 'production' and coalesce(designation, '') ~* '^(employee|)$';
+ where not pg_temp.is_clean(designation) and division = 'production' and coalesce(designation, '') ~* '^(employee|)$';
 -- HR
 update public.hr_employees set designation = 'HR Manager'
- where division = 'hr' and department ~ '(^|,\s*)HR Manager(\s*,|$)';
+ where not pg_temp.is_clean(designation) and division = 'hr' and department ~ '(^|,\s*)HR Manager(\s*,|$)';
 
 -- 5. Review: every employee's old → new title
 select full_name, division, designation_legacy as before, designation as designation_now, department as team_roles_now, employment_type, system_role
