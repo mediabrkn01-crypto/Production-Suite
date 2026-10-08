@@ -4,7 +4,7 @@ Read-only voice layer on top of the existing ERP. It does not have its own copy 
 Speech (Malayalam / English / Manglish) → live ERP tools → spoken answer.
 
 ```
-Founder Deck globe (be-command-center/assets/jarvis-voice.js)
+Manager Command Deck globe (manager.html + jarvis-voice.js)
    │  POST raw 16 kHz PCM  +  Supabase Auth bearer token
    ▼
 supabase/functions/jarvis/index.ts           — auth, rate limit, SSE stream
@@ -33,7 +33,7 @@ WebSocket server is not needed. The server holds the Sarvam sockets and streams 
    supabase secrets set --project-ref fevqnpllmarhoqdzpatq \
      SARVAM_API_KEY=... ANTHROPIC_API_KEY=... LLM_PROVIDER=anthropic CLAUDE_MODEL=claude-sonnet-4-6 \
      JARVIS_MAX_TOOL_CALLS=6 JARVIS_TIMEZONE=Asia/Kolkata \
-     JARVIS_ALLOWED_ORIGINS=https://amailtosreekanth-cpu.github.io
+     JARVIS_ALLOWED_ORIGINS=https://work.brokenenglish.in
    ```
    - Optional settings: `ERP_INTERNAL_API_BASE` and `ERP_INTERNAL_API_TOKEN` (default to this project's URL and
      service role), `JARVIS_TTS_SPEAKER` (default `shubh`), `SARVAM_LLM_MODEL` (default `sarvam-105b`).
@@ -43,7 +43,7 @@ WebSocket server is not needed. The server holds the Sarvam sockets and streams 
    ```
 4. **Set up Supabase Auth email sign-in** (Dashboard → Authentication):
    - **Email provider:** enabled.
-   - **URL Configuration → Redirect URLs:** add the Founder Deck URL (for the magic link).
+   - **URL Configuration → Redirect URLs:** add `https://work.brokenenglish.in/manager.html` (for the magic link).
    - **Email Templates → Magic Link:** include `{{ .Token }}` so the email carries the 6-digit code, and keep
      `{{ .ConfirmationURL }}` for the link.
    - **SMTP:** the built-in sender is rate-limited. Set up custom SMTP (e.g. Brevo, which payslips already use)
