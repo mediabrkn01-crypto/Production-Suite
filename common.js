@@ -1868,7 +1868,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     const usedBefore = cycStart <= prevStr ? LeavePolicy.leaveUnitsUsed(ctx, 'CL', cycStart, prevStr).units : 0;
                     clLeft = Math.max(0, Math.min(clCredit, earned) - Math.max(usedBefore, clBucketUsed));
                 }
-                let present=0, sl=0, cl=0, ml=0, wo=0, holiday=0, oe=0, half=0, preJoining=0;
+                let present=0, sl=0, cl=0, ml=0, wo=0, holiday=0, oe=0, half=0, halfPaid=0, preJoining=0;
                 let leaveLop=0, absentLop=0, doubleExtra=0, unapprovedDays=0;
                 const lopReasons = []; // §6 — HR must see WHY each day became LOP
                 const addLop = (dateStr, reason, factor) => { lopReasons.push({ date: dateStr, reason, factor: factor||1 }); };
@@ -1888,24 +1888,35 @@ function hrOfficialEventFor(employee, dateStr) {
                         case 'SL':
                             if (r.prePolicy) { sl++; break; }   // before policy start: paid, no cap
                             if (slLeft >= 1) { sl++; slLeft -= 1; }
+                            else if (slLeft >= 0.5) { sl += 0.5; slLeft -= 0.5; leaveLop += 0.5; addLop(dateStr, 'Sick Leave balance exhausted (half day unpaid)', 0.5); }
                             else { leaveLop++; addLop(dateStr, 'Sick Leave balance exhausted'); }
                             break;
                         case 'CL':
                             if (r.prePolicy) { cl++; break; }   // before policy start: paid, no cap
                             if (clLeft >= 1) { cl++; clLeft -= 1; }
+                            else if (clLeft >= 0.5) { cl += 0.5; clLeft -= 0.5; leaveLop += 0.5; addLop(dateStr, 'Casual Leave balance exhausted (half day unpaid)', 0.5); }
                             else { leaveLop++; addLop(dateStr, 'Casual Leave balance exhausted'); }
                             break;
                         case 'ML': ml++; break; // Maternity Leave — paid, no LOP deduction (§5)
                         case 'WO': wo++; break;
                         case 'H': holiday++; break;
                         case 'OE': oe++; break;
-                        case 'HD': half++; break;
+                        case 'HD':
+                            // Half day: the worked half is always payable (half * 0.5 below). The
+                            // other half is paid leave when the approved request is a Casual /
+                            // Sick Leave half day with balance left, otherwise 0.5 LOP.
+                            half++;
+                            if (r.halfPaid === 'CL' && (r.prePolicy || clLeft >= 0.5)) { cl += 0.5; halfPaid++; if (!r.prePolicy) clLeft -= 0.5; }
+                            else if (r.halfPaid === 'SL' && (r.prePolicy || slLeft >= 0.5)) { sl += 0.5; halfPaid++; if (!r.prePolicy) slLeft -= 0.5; }
+                            else if (r.halfPaid) addLop(dateStr, (r.halfPaid === 'CL' ? 'Casual' : 'Sick') + ' Leave balance exhausted (half day)', 0.5);
+                            break;
                         default: { // LOP — reason comes straight from the resolver (adjacency,
                                    // probation, notice, unmarked/absent) so HR sees the cause.
-                            const factor = r.lopFactor === 2 ? 2 : 1;
+                            const factor = r.lopFactor === 2 ? 2 : r.lopFactor === 0.5 ? 0.5 : 1;
                             if (factor === 2) doubleExtra += 1; // extra (2nd) unit of a double deduction
+                            const unit = factor === 0.5 ? 0.5 : 1; // unpaid half-day request = 0.5 LOP
                             const hasLeave = hrApprovedLeaveFor(employeeId, dateStr);
-                            if (hasLeave) leaveLop += 1; else absentLop += 1;
+                            if (hasLeave) leaveLop += unit; else absentLop += unit;
                             addLop(dateStr, r.label || (hasLeave ? 'Leave → LOP' : 'Absent'), factor);
                         }
                     }
@@ -1914,7 +1925,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 const incidentDays = incidents.deductionDays;
                 if (incidentDays > 0) addLop(monthStr, incidents.reason || 'Late-login/early-logout incidents', 1);
                 const paidLeaveDays = sl + cl + ml;
-                const lopDays = leaveLop + absentLop + doubleExtra + half * 0.5 + incidentDays;
+                const lopDays = leaveLop + absentLop + doubleExtra + (half - halfPaid) * 0.5 + incidentDays;
                 const payableDays = present + paidLeaveDays + oe + wo + holiday + half * 0.5;
                 const futureDays = daysInMonth - elapsedDays;
                 const { earnedBasic, leaveDeduction, preJoiningBasisDays, salaryDayBasis } = hrPayrollMoney(salary, daysInMonth, elapsedDays, lopDays, preJoining);
@@ -1922,7 +1933,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     salary, daysInMonth, dailySalary, salaryDayBasis, preJoiningBasisDays,
                     presentDays: present, paidLeaveDays, eligibleLeaveDays: paidLeaveDays,
                     excessLeaveDays: leaveLop, unpaidLeaveDays: leaveLop, absentDays: absentLop,
-                    holidayDays: holiday, weeklyOffDays: wo, halfDayDays: half,
+                    holidayDays: holiday, weeklyOffDays: wo, halfDayDays: half, halfDayPaidDays: halfPaid,
                     preJoiningDays: preJoining, officialEventDays: oe,
                     elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
                     incidentDays, incidents, doubleDeductionDays: doubleExtra,
@@ -2429,7 +2440,8 @@ function hrOfficialEventFor(employee, dateStr) {
             // still clock in/out for the half they DO work and those times attach to this same
             // day/row (upsert only sets the columns below; clock_in_time/clock_out_time on an
             // existing row are left untouched). Audit: reason + who approved it.
-            const isHalfDay = req.leave_type === 'Half Day';
+            // A Casual / Sick Leave half day carries half_day_type too — same half_day row.
+            const isHalfDay = req.leave_type === 'Half Day' || !!req.half_day_type;
             const isWFH = /home|wfh/i.test(req.leave_type || '');
             const status = isHalfDay ? 'half_day' : (isWFH ? 'wfh' : 'on_leave');
             const start = new Date(req.start_date), end = new Date(req.end_date);

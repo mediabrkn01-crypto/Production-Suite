@@ -273,6 +273,7 @@
       + '<div class="mw-form">'
       + '<label class="mw-f"><span>Leave type</span><select data-f="type">' + LEAVE_TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></label>'
       + '<label class="mw-f" data-w="half" style="display:none"><span>Half type</span><select data-f="half"><option value="morning">Morning Half (off first half, work second)</option><option value="afternoon">Afternoon Half (work first half, off second)</option></select></label>'
+      + '<label class="mw-f" data-w="halfpay" style="display:none"><span>Use for the half day</span><select data-f="halfpay"><option value="Casual Leave">Casual Leave balance (0.5 day)</option><option value="Sick Leave">Sick Leave balance (0.5 day)</option><option value="Half Day">Unpaid — 0.5 day LOP</option></select></label>'
       + '<div class="mw-f2"><label class="mw-f"><span>Start date</span><input type="date" data-f="start"></label><label class="mw-f" data-w="end"><span>End date</span><input type="date" data-f="end"></label></div>'
       + '<label class="mw-f"><span>Reason</span><textarea rows="2" data-f="reason" placeholder="Optional"></textarea></label>'
       + '<label class="mw-f"><span>Supporting document / medical certificate (link)</span><input data-f="proof" placeholder="https://… (required for Exceptional WFH / emergency Sick Leave)"></label>'
@@ -282,7 +283,7 @@
       + '<div class="mw-card"><div class="mw-card-t">My balances</div><div data-bal>' + loading() + '</div></div></div>'
       + '<div class="mw-card"><div class="mw-card-t">My requests</div><div data-list>' + loading() + '</div></div>';
     var q = function (s) { return root.querySelector('[data-f="' + s + '"]'); };
-    q('type').onchange = function () { var h = q('type').value === 'Half Day'; root.querySelector('[data-w="half"]').style.display = h ? '' : 'none'; root.querySelector('[data-w="end"]').style.display = h ? 'none' : ''; };
+    q('type').onchange = function () { var h = q('type').value === 'Half Day'; root.querySelector('[data-w="half"]').style.display = h ? '' : 'none'; root.querySelector('[data-w="halfpay"]').style.display = h ? '' : 'none'; root.querySelector('[data-w="end"]').style.display = h ? 'none' : ''; };
     root.querySelector('[data-submit]').onclick = function () { submitLeave(root, e, q); };
     // balances
     (async function () {
@@ -309,12 +310,16 @@
     list.innerHTML = rows.length ? '<div class="mw-list">' + rows.map(function (r) {
       var k = r.status === 'approved' ? 'ok' : (r.status === 'rejected' || r.status === 'cancelled') ? 'bad' : 'warn';
       var can = r.status !== 'cancelled' && r.status !== 'rejected' && r.start_date > today;
-      return '<div class="mw-item mw-edge-' + k + '"><span class="mw-ic">' + ic('calendar') + '</span><div class="mw-item-main"><div class="mw-row"><b>' + esc(r.leave_type || 'Leave') + '</b>' + (r.emergency ? pill('Emergency', 'warn') : '') + (r.half_day_type ? pill(r.half_day_type === 'morning' ? 'Morning half' : 'Afternoon half', 'mute') : '') + '</div><div class="mw-sub">' + esc(fRange(r.start_date, r.end_date)) + (r.days ? ' · ' + r.days + ' day' + (r.days === 1 ? '' : 's') : '') + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' + (r.policy_warning ? '<div class="mw-note mw-note-warn" style="margin-top:6px">' + esc(r.policy_warning) + '</div>' : '') + '</div><div class="mw-row mw-item-end">' + pill(statusLabel(r), k) + (can ? '<button class="mw-btn mw-btn-danger mw-btn-sm" data-cancel="' + esc(r.id) + '">Cancel</button>' : '') + '</div></div>';
+      return '<div class="mw-item mw-edge-' + k + '"><span class="mw-ic">' + ic('calendar') + '</span><div class="mw-item-main"><div class="mw-row"><b>' + esc(r.leave_type || 'Leave') + '</b>' + (r.emergency ? pill('Emergency', 'warn') : '') + (r.half_day_type ? pill(r.half_day_type === 'morning' ? 'Morning half' : 'Afternoon half', 'mute') : '') + '</div><div class="mw-sub">' + esc(fRange(r.start_date, r.end_date)) + (r.days ? ' · ' + Number(r.days) + ' day' + (Number(r.days) <= 1 ? '' : 's') : '') + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' + (r.policy_warning ? '<div class="mw-note mw-note-warn" style="margin-top:6px">' + esc(r.policy_warning) + '</div>' : '') + '</div><div class="mw-row mw-item-end">' + pill(statusLabel(r), k) + (can ? '<button class="mw-btn mw-btn-danger mw-btn-sm" data-cancel="' + esc(r.id) + '">Cancel</button>' : '') + '</div></div>';
     }).join('') + '</div>' : empty('calendar', 'No leave requests yet', 'Requests you submit will appear here with their HR status.');
     list.querySelectorAll('[data-cancel]').forEach(function (b) { b.onclick = function () { var r = rows.find(function (x) { return String(x.id) === b.getAttribute('data-cancel'); }); if (r) cancelLeave(root, e, r); }; });
   }
   async function submitLeave(root, e, q) {
     var type = q('type').value, half = type === 'Half Day', start = q('start').value, end = half ? start : q('end').value;
+    // A half day is paid from the chosen balance: it is stored as that leave type (Casual /
+    // Sick Leave) + half_day_type, so the leave engine deducts 0.5 from that balance. 'Half Day'
+    // alone = unpaid half day (0.5 LOP).
+    if (half) type = (q('halfpay') && q('halfpay').value) || 'Casual Leave';
     var reason = q('reason').value.trim(), proof = q('proof').value.trim(), emergency = q('emergency').checked;
     if (!start || !end) { toast('warning', half ? 'Pick the date.' : 'Pick start and end dates.'); return; }
     var days = half ? 0.5 : Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
@@ -322,14 +327,14 @@
     var btn = root.querySelector('[data-submit]'); btn.disabled = true; btn.textContent = 'Submitting…';
     try {
       var policy_warning = null, final_treatment = 'pending', adjacency_flag = false, LP = policy();
-      if (LP) { try { var ctx = await LP.db.buildContext(e, { now: new Date(), date: start }); var ev = LP.resolveLeaveEligibility(ctx, { leave_type: type, start_date: start, end_date: end, days: days, emergency: emergency }); if (ev.warnings && ev.warnings.length) { policy_warning = ev.warnings.join(' '); toast('info', 'Policy note: ' + ev.warnings[0]); } final_treatment = ev.treatment || 'pending'; adjacency_flag = !!(ev.adjacency && ev.adjacency.adjacent); } catch (x) {} }
+      if (LP) { try { var ctx = await LP.db.buildContext(e, { now: new Date(), date: start }); var ev = LP.resolveLeaveEligibility(ctx, { leave_type: type, start_date: start, end_date: end, days: days, emergency: emergency, half_day_type: half ? q('half').value : null }); if (ev.warnings && ev.warnings.length) { policy_warning = ev.warnings.join(' '); toast('info', 'Policy note: ' + ev.warnings[0]); } final_treatment = ev.treatment || 'pending'; adjacency_flag = !!(ev.adjacency && ev.adjacency.adjacent); } catch (x) {} }
       var auth = e.manager_email ? String(e.manager_email).trim().toLowerCase() : null;
       if (!auth && typeof window.hrResolveReportingAuthority === 'function') { try { var a = window.hrResolveReportingAuthority(e); auth = a ? a.email : null; } catch (x) {} }
-      var rec = { employee_id: e.id, leave_type: type, start_date: start, end_date: end, days: days, reason: reason, status: 'pending', requested_at: new Date().toISOString(), manager_status: 'approved', hr_status: 'pending', reporting_authority_email: auth, emergency: emergency, proof_url: proof || null, policy_warning: policy_warning, final_treatment: final_treatment, adjacency_flag: adjacency_flag, consecutive_days: days };
+      var rec = { employee_id: e.id, leave_type: type, start_date: start, end_date: end, days: days, reason: reason, status: 'pending', requested_at: new Date().toISOString(), manager_status: 'approved', hr_status: 'pending', reporting_authority_email: auth, emergency: emergency, proof_url: proof || null, policy_warning: policy_warning, final_treatment: final_treatment, adjacency_flag: adjacency_flag, consecutive_days: Math.max(1, Math.ceil(days)) }; // calendar days spanned (a half day spans 1)
       if (half) rec.half_day_type = q('half').value;
       var ins = await db().from('hr_leave_requests').insert([rec]);
       if (ins.error) throw ins.error;
-      try { await db().from('hr_audit_log').insert([{ employee_id: e.id, actor_email: email(), actor_name: (cfg.getName && cfg.getName()) || e.full_name, action: 'leave_request', entity: 'leave_request', new_status: 'Pending HR Review', reason: reason, meta: { leave_type: type, start_date: start, end_date: end, days: days, emergency: emergency } }]); } catch (x) {}
+      try { await db().from('hr_audit_log').insert([{ employee_id: e.id, actor_email: email(), actor_name: (cfg.getName && cfg.getName()) || e.full_name, action: 'leave_request', entity: 'leave_request', new_status: 'Pending HR Review', reason: reason, meta: { leave_type: type, half_day_type: half ? q('half').value : null, start_date: start, end_date: end, days: days, emergency: emergency } }]); } catch (x) {}
       toast('success', 'Leave request submitted to HR.');
       refreshHost(); renderLeave(root);
     } catch (x) { toast('error', 'Could not submit request: ' + (x.message || x)); btn.disabled = false; btn.textContent = 'Submit request'; }
@@ -337,7 +342,7 @@
   async function cancelLeave(root, e, r) {
     var today = todayStr();
     if (r.start_date <= today && r.status === 'approved') { toast('error', 'Cannot cancel leave that has already started.'); return; }
-    var ok = await confirmBox('Cancel leave request', esc(r.leave_type || 'Leave') + ' · ' + esc(fRange(r.start_date, r.end_date)) + (r.days ? ' (' + r.days + ' day' + (r.days === 1 ? '' : 's') + ')' : '') + '<br>Are you sure you want to cancel it?', 'Yes, cancel leave');
+    var ok = await confirmBox('Cancel leave request', esc(r.leave_type || 'Leave') + ' · ' + esc(fRange(r.start_date, r.end_date)) + (r.days ? ' (' + Number(r.days) + ' day' + (Number(r.days) <= 1 ? '' : 's') + ')' : '') + '<br>Are you sure you want to cancel it?', 'Yes, cancel leave');
     if (!ok) return;
     var actor = (cfg.getName && cfg.getName()) || e.full_name, prev = statusLabel(r);
     var up = await db().from('hr_leave_requests').update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: actor }).eq('id', r.id).eq('employee_id', e.id);

@@ -386,14 +386,18 @@
       var accruedAvailable = Math.max(0, accrued - clUsed);
       if (available > accruedAvailable) available = accruedAvailable;
       if (days > available && available >= 0) {
-        warnings.push('You currently have only ' + available + ' available Casual Leave day' + (available === 1 ? '' : 's') + '. You cannot apply for ' + days + ' Casual Leave day' + (days === 1 ? '' : 's') + '.');
+        warnings.push('You currently have only ' + available + ' available Casual Leave day' + (available <= 1 ? '' : 's') + '. You cannot apply for ' + days + ' Casual Leave day' + (days <= 1 ? '' : 's') + ' — the uncovered part is LOP.');
       }
     }
     var paidDays = Math.min(days, Math.max(0, available));
     var lopDays = days - paidDays;
     var consumeFrom = null;
     if (kind === 'CL') consumeFrom = planCLConsumption(bal.casual.buckets, paidDays); // oldest-first
-    if (kind === 'OTHER') { warnings.push('Leave type not defined as a paid entitlement in policy — treated as LOP.'); }
+    if (kind === 'OTHER') {
+      warnings.push(/half/i.test(request.leave_type || '') && request.half_day_type
+        ? 'Unpaid half day — 0.5 day LOP. Choose Casual or Sick Leave to use your balance.'
+        : 'Leave type not defined as a paid entitlement in policy — treated as LOP.');
+    }
 
     // §2.2 max 2 consecutive days.
     if (days > P.MAX_CONSECUTIVE) { warnings.push('Exceeds ' + P.MAX_CONSECUTIVE + ' consecutive leave days — requires management exception.'); requiresException = true; }
@@ -502,7 +506,12 @@
     if (rec) {
       if (rec.status === 'holiday') return code(CODES.H, 'Holiday', { payable: true });
       if (rec.status === 'wfh') return code(CODES.WFH, 'WFH', { payable: true, worked: true });
-      if (rec.status === 'half_day') return code('HD', 'Half Day', { payable: true, half: true });
+      if (rec.status === 'half_day') {
+        // A half day paid from a balance (Casual / Sick Leave request with half_day_type) is
+        // 0.5 paid leave + 0.5 worked — no LOP. A plain unpaid half day stays 0.5 LOP.
+        if (req && req.half_day_type && (normType(req.leave_type) === 'CL' || normType(req.leave_type) === 'SL')) return resolveLeaveDay(ctx, dateStr, req, state);
+        return code('HD', 'Half Day', { payable: true, half: true });
+      }
       if (rec.status === 'on_leave') {
         // §1 precedence: official-calendar days outrank ANY leave. A leave-sync writes an
         // on_leave row for EVERY date in an approved range (weekends included), so without
@@ -549,7 +558,17 @@
     return code(CODES.LOP, UNAPPROVED_LABEL, { payable: false, lop: true, unapproved: true });
   }
 
+  // Half-day requests (half_day_type set) cover only half the date: a paid result becomes a
+  // paid half day ('HD' + halfPaid), an unpaid result becomes a 0.5-day LOP — never a full day.
   function resolveLeaveDay(ctx, dateStr, req, state) {
+    var r = resolveLeaveDayFull(ctx, dateStr, req, state);
+    if (!req || !req.half_day_type) return r;
+    var halfLbl = req.half_day_type === 'morning' ? 'Morning half' : req.half_day_type === 'afternoon' ? 'Afternoon half' : 'Half day';
+    if (r.code === CODES.CL || r.code === CODES.SL) return code('HD', halfLbl + ' · ' + r.label, { payable: true, half: true, halfPaid: r.code, halfType: req.half_day_type, prePolicy: r.prePolicy });
+    if (r.code === CODES.LOP) return Object.assign(r, { half: true, lopFactor: 0.5, halfType: req.half_day_type, label: halfLbl + ' · ' + r.label });
+    return r;
+  }
+  function resolveLeaveDayFull(ctx, dateStr, req, state) {
     var kind = req ? normType(req.leave_type) : 'OTHER';
     // Before the policy start date: approved leave is paid, no balance cap, no probation/notice rule.
     if (isPrePolicy(dateStr)) {
@@ -641,11 +660,16 @@
         case CODES.WO: buckets.wo++; break;
         case CODES.H: buckets.holiday++; break;
         case CODES.OE: buckets.oe++; break;
-        case 'HD': buckets.half++; lopDays += 0.5; breakdown.push({ date: dateStr, code: 'HD', lop: 0.5, reason: 'Half day' }); break;
+        case 'HD':
+          buckets.half++;
+          if (r.halfPaid === CODES.CL) buckets.cl += 0.5;          // half day paid from Casual Leave
+          else if (r.halfPaid === CODES.SL) buckets.sl += 0.5;     // half day paid from Sick Leave
+          else { lopDays += 0.5; breakdown.push({ date: dateStr, code: 'HD', lop: 0.5, reason: 'Half day' }); }
+          break;
         case CODES.LOP:
         default:
-          var factor = r.lopFactor === 2 ? 2 : 1;
-          if (factor === 2) buckets.lopDouble++; else buckets.lop++;
+          var factor = r.lopFactor === 2 ? 2 : r.lopFactor === 0.5 ? 0.5 : 1;
+          if (factor === 2) buckets.lopDouble++; else buckets.lop += factor;
           lopDays += factor;
           breakdown.push({ date: dateStr, code: 'LOP', lop: factor, reason: r.label + (factor === 2 ? ' (double)' : '') });
       }
