@@ -411,14 +411,45 @@
       '.bw-acty{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;padding-right:2px}',
       '.bw-actr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:8px 10px;border-radius:10px;background:var(--bw-s);border:1px solid var(--bw-b)}.bw-actr b{font-size:12px}.bw-actr span{grid-column:1/-1;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.bw-actr small{grid-row:1;grid-column:2;font-size:10.5px;color:var(--bw-d)}',
       '.bw-post{display:flex;flex-direction:column;gap:6px;margin-top:8px}.bw-post-a{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.bw-post-a label{cursor:pointer}',
-      '.bw-pick{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;margin-top:8px;padding:2px}',
-      '.bw-pk{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 12px;border-radius:12px;border:1px solid var(--bw-b);background:var(--bw-s);cursor:pointer}',
       '.bw [hidden]{display:none!important}',
-      '.bw-pk input[type=checkbox]{width:18px!important;height:18px!important;min-height:0!important;min-width:18px;padding:0!important;margin:0;border:0;flex:0 0 18px;accent-color:#ff6b06;box-shadow:none!important}',
       '.bw-contrib{width:auto!important;flex:0 0 auto;max-width:190px}',
-      '.bw-pk input{accent-color:#ff6b06;flex-shrink:0}.bw-pk span{display:flex;flex-direction:column;min-width:0}.bw-pk b{font-size:13px}.bw-pk small{font-size:11px;color:var(--bw-m);overflow-wrap:anywhere}',
-      '.bw-pk.on{border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.08)}.bw-pk.off{opacity:.45;cursor:not-allowed}',
-      '@media(max-width:640px){.bw-mem{align-items:flex-start}.bw-pick{max-height:50vh}}',
+      // assignment type cards
+      '.bw-types{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
+      '.bw-types button{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--bw-b);background:var(--bw-s);color:var(--bw-t);font-family:inherit;cursor:pointer;transition:border-color .15s,background .15s}',
+      '.bw-types button:hover:not(:disabled){border-color:rgba(255,255,255,.18)}',
+      '.bw-types button.on{border-color:rgba(255,107,6,.6);background:linear-gradient(135deg,rgba(255,107,6,.12),rgba(249,24,47,.06));box-shadow:0 0 0 3px rgba(255,107,6,.1)}',
+      '.bw-types button:disabled{opacity:.45;cursor:not-allowed}',
+      '.bw-types b{display:block;font-size:13.5px}.bw-types small{display:block;font-size:11.5px;color:var(--bw-m);margin-top:2px;font-weight:500}',
+      '.bw-ty-ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(255,255,255,.05);color:var(--bw-m)}',
+      '.bw-types button.on .bw-ty-ic{background:rgba(255,107,6,.16);color:#ff8a3c}',
+      // team picker
+      '.bw-tl-h{display:flex;align-items:center;justify-content:space-between;gap:10px}',
+      '.bw-tcount{font-size:11px;font-weight:700;color:var(--bw-m);padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.05)}.bw-tcount.ok{color:#6ee7b7;background:rgba(16,185,129,.12)}',
+      '.bw-chips{display:flex;flex-wrap:wrap;gap:6px;min-height:40px;align-items:center;padding:8px;border-radius:12px;border:1px dashed rgba(255,255,255,.12);margin-bottom:8px}',
+      '.bw-chips-e{font-size:12px;color:var(--bw-d);padding:0 4px}',
+      '.bw-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 4px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font-size:12.5px;font-weight:600;max-width:100%}',
+      '.bw-chip em{font-style:normal;font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#fbbf24;text-transform:uppercase}',
+      '.bw-chip.lead{border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.08)}',
+      '.bw-chip button{width:24px;height:24px;border-radius:50%;border:none;background:none;color:var(--bw-d);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center}',
+      '.bw-chip button:hover{background:rgba(255,255,255,.08);color:var(--bw-t)}.bw-chip.lead [data-lead]{color:#fbbf24}',
+      '.bw-chip .bw-pk-ava{width:22px;height:22px;font-size:9px}',
+      '.bw-pick-box{border:1px solid var(--bw-b);border-radius:14px;overflow:hidden;background:rgba(0,0,0,.18)}',
+      '.bw-pick-top{display:flex;flex-direction:column;gap:8px;padding:10px;border-bottom:1px solid var(--bw-b)}',
+      '.bw-dfil{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.bw-dfil::-webkit-scrollbar{display:none}',
+      '.bw-dfil button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 11px;border-radius:999px;border:1px solid var(--bw-b);background:none;color:var(--bw-m);font:600 11.5px inherit;font-family:inherit;cursor:pointer}',
+      '.bw-dfil button i{width:7px;height:7px;border-radius:50%}.bw-dfil button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.12)}',
+      '.bw-pick{display:flex;flex-direction:column;max-height:248px;overflow:auto;padding:4px}',
+      '.bw-pk{display:flex;align-items:center;gap:11px;min-height:46px;padding:6px 10px;border-radius:10px;cursor:pointer;transition:background .12s}',
+      '.bw-pk:hover{background:rgba(255,255,255,.04)}',
+      '.bw-pk input[type=checkbox]{position:absolute;opacity:0;width:1px!important;height:1px!important;min-height:0!important;pointer-events:none}',
+      '.bw-pk:focus-within{outline:2px solid rgba(255,107,6,.6);outline-offset:-2px}',
+      '.bw-pk-ava{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;background:color-mix(in srgb,var(--dc) 30%,#151a2b);border:1px solid color-mix(in srgb,var(--dc) 55%,transparent)}',
+      '.bw-pk-t{display:flex;flex-direction:column;min-width:0;flex:1}.bw-pk-t b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bw-pk-t small{font-size:11px;color:var(--bw-m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.bw-ck{width:20px;height:20px;border-radius:6px;border:1.5px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;color:transparent;flex-shrink:0;transition:all .12s}',
+      '.bw-pk.on{background:rgba(255,107,6,.07)}.bw-pk.on .bw-ck{background:linear-gradient(135deg,#ff6b06,#f9182f);border-color:transparent;color:#fff}',
+      '.bw-pk.off{opacity:.4;cursor:not-allowed}',
+      '.bw-pick-none{padding:16px;text-align:center;font-size:12px;color:var(--bw-d)}',
+      '@media(max-width:640px){.bw-mem{align-items:flex-start}.bw-pick{max-height:46vh}.bw-types{grid-template-columns:1fr}.bw-pk{min-height:52px}}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -868,10 +899,16 @@
           '<div class="bw-f"><label class="bw-l" for="bw-title">Task / work title <b>*</b></label><input id="bw-title" maxlength="140" placeholder="e.g. Prepare October Academic Report" value="' + esc(t ? t.topic : '') + '"></div>' +
           (t ? (isTeam(t) ? '<div class="bw-f"><span class="bw-l">Team ' + teamBadge() + '</span><div class="bw-file"><span>' + esc(teamNames(S.mem[String(t.id)]).join(', ')) + '</span><a href="#" data-team-in>Manage team</a></div></div>'
               : '<div class="bw-f"><span class="bw-l">Assigned to</span><div class="bw-file"><span>' + esc(t.assigned_to || '—') + ' · ' + esc(DIV[t.department] || '') + '</span><a href="#" data-re-in>Reassign</a></div></div>')
-            : '<div class="bw-f"><span class="bw-l">Assignment type</span><div class="bw-seg" role="radiogroup" id="bw-type"><button type="button" data-ty="individual" class="on">Individual</button><button type="button" data-ty="team"' + (S.teams ? '' : ' disabled title="Run 20261013_work_teams.sql to enable team work"') + '>Team / Collaborative</button></div>' + (S.teams ? '' : '<span class="bw-due">Team work needs 20261013_work_teams.sql.</span>') + '</div>' +
-              '<div class="bw-f" id="bw-teamf" hidden><label class="bw-l" for="bw-tsearch">Assign team members <b>*</b></label><input class="bw-in" id="bw-tsearch" type="search" placeholder="Search employees…" autocomplete="off">' +
-                '<div class="bw-pick" id="bw-pick">' + activeTargets('').map(function (x) { var ok = !!x.portal_email; return '<label class="bw-pk' + (ok ? '' : ' off') + '" data-name="' + esc(lc(x.full_name + ' ' + (x.designation || '') + ' ' + (DIV[x.division] || ''))) + '"><input type="checkbox" value="' + esc(x.id) + '"' + (ok ? '' : ' disabled') + '><span><b>' + esc(x.full_name) + '</b><small>' + esc((x.designation ? x.designation + ' · ' : '') + (DIV[x.division] || x.division || '')) + (ok ? '' : ' · no login') + '</small></span></label>'; }).join('') + '</div>' +
-                '<div class="bw-g2"><div class="bw-f"><span class="bw-due" id="bw-tcount">0 selected — choose at least 2</span></div><div class="bw-f"><label class="bw-l" for="bw-lead">Team lead <em>optional</em></label><select id="bw-lead"><option value="">No team lead</option></select></div></div></div>' +
+            : '<div class="bw-f"><span class="bw-l">Assignment type</span><div class="bw-types" role="radiogroup" id="bw-type">' +
+                '<button type="button" role="radio" aria-checked="true" data-ty="individual" class="on"><span class="bw-ty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span><span><b>Individual</b><small>One employee owns the task</small></span></button>' +
+                '<button type="button" role="radio" aria-checked="false" data-ty="team"' + (S.teams ? '' : ' disabled title="Run 20261013_work_teams.sql to enable team work"') + '><span class="bw-ty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.8"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15 14.5a5 5 0 0 1 6.5 5.5"/></svg></span><span><b>Team work</b><small>' + (S.teams ? '2+ people, one shared task' : 'Needs 20261013_work_teams.sql') + '</small></span></button>' +
+              '</div></div>' +
+              '<div class="bw-f" id="bw-teamf" hidden><div class="bw-l bw-tl-h"><span>Team members <b>*</b></span><span class="bw-tcount" id="bw-tcount">Choose at least 2</span></div>' +
+                '<div class="bw-chips" id="bw-chips"><span class="bw-chips-e">Pick people below — tap ★ on a person to make them team lead (optional).</span></div>' +
+                '<div class="bw-pick-box"><div class="bw-pick-top"><input class="bw-in" id="bw-tsearch" type="search" placeholder="Search by name, role or department…" autocomplete="off" aria-label="Search employees">' +
+                  '<div class="bw-dfil" role="group" aria-label="Filter by department"><button type="button" data-dfil="" class="on">All</button>' + Object.keys(DIV).filter(function (d) { return activeTargets(d).length; }).map(function (d) { return '<button type="button" data-dfil="' + d + '"><i style="background:' + (DIV_COLOR[d] || '#94a3b8') + '"></i>' + esc(DIV[d]) + '</button>'; }).join('') + '</div></div>' +
+                  '<div class="bw-pick" id="bw-pick">' + activeTargets('').map(function (x) { var ok = !!x.portal_email; return '<label class="bw-pk' + (ok ? '' : ' off') + '" data-dep="' + esc(x.division || '') + '" data-name="' + esc(lc(x.full_name + ' ' + (x.designation || '') + ' ' + (DIV[x.division] || ''))) + '"><input type="checkbox" value="' + esc(x.id) + '"' + (ok ? '' : ' disabled') + '><span class="bw-pk-ava" style="--dc:' + (DIV_COLOR[x.division] || '#94a3b8') + '">' + esc(initials(x.full_name)) + '</span><span class="bw-pk-t"><b>' + esc(x.full_name) + '</b><small>' + esc((x.designation ? x.designation + ' · ' : '') + (DIV[x.division] || x.division || '')) + (ok ? '' : ' · no login') + '</small></span><span class="bw-ck" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span></label>'; }).join('') + '<div class="bw-pick-none" hidden>No employees match.</div></div></div>' +
+                '<input type="hidden" id="bw-lead" value=""></div>' +
               '<div class="bw-g2" id="bw-indf"><div class="bw-f"><label class="bw-l" for="bw-dep">Department</label><select id="bw-dep">' + (depOpts.length > 1 ? '<option value="">All departments</option>' : '') + depOpts.map(function (d) { return '<option value="' + d + '"' + (dep0 === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select></div>' +
               '<div class="bw-f"><label class="bw-l" for="bw-emp">Employee <b>*</b></label><select id="bw-emp">' + empOptions(dep0, '') + '</select></div></div>') +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-cat">Category <em>optional</em></label><input id="bw-cat" list="bw-cats" placeholder="e.g. Report, Poster Design" value="' + esc(t ? (t.type || '') : '') + '"><datalist id="bw-cats">' + Object.keys(cats).map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
@@ -893,17 +930,34 @@
         // assignment type + team picker
         var type = 'individual';
         ov.querySelectorAll('[data-ty]').forEach(function (b) { b.onclick = function () { if (b.disabled) return; type = b.dataset.ty;
-          ov.querySelectorAll('[data-ty]').forEach(function (x) { x.classList.toggle('on', x === b); });
+          ov.querySelectorAll('[data-ty]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
           ov.querySelector('#bw-teamf').hidden = type !== 'team'; ov.querySelector('#bw-indf').hidden = type === 'team';
-          var sv = ov.querySelector('[data-save]'); if (sv) sv.textContent = type === 'team' ? 'Assign team work' : 'Assign work'; }; });
+          var sv = ov.querySelector('[data-save]'); if (sv) sv.textContent = type === 'team' ? 'Assign team work' : 'Assign work';
+          var sub = ov.querySelector('.bw-mh p'); if (sub) sub.textContent = type === 'team' ? 'Every team member is notified instantly in their own portal.' : 'The employee is notified instantly in their own portal.'; }; });
         var picked = function () { return Array.prototype.map.call(ov.querySelectorAll('#bw-pick input:checked'), function (c) { return c.value; }); };
+        // Selected people as chips (✕ remove, ★ team lead) — no separate lead dropdown.
         var syncPick = function () {
-          var ids = picked(), lead = ov.querySelector('#bw-lead'), keep = lead ? lead.value : '';
-          var cnt = ov.querySelector('#bw-tcount'); if (cnt) cnt.textContent = ids.length + ' selected' + (ids.length < 2 ? ' — choose at least 2' : '');
-          if (lead) lead.innerHTML = '<option value="">No team lead</option>' + ids.map(function (id) { var x = empById(id); return '<option value="' + esc(id) + '"' + (keep === id ? ' selected' : '') + '>' + esc(x ? x.full_name : id) + '</option>'; }).join('');
+          var ids = picked(), lead = ov.querySelector('#bw-lead'), chips = ov.querySelector('#bw-chips');
+          if (lead && ids.indexOf(lead.value) === -1) lead.value = '';
+          var cnt = ov.querySelector('#bw-tcount'); if (cnt) { cnt.textContent = ids.length ? ids.length + ' selected' + (ids.length < 2 ? ' · add 1 more' : '') : 'Choose at least 2'; cnt.classList.toggle('ok', ids.length >= 2); }
+          if (chips) chips.innerHTML = ids.length ? ids.map(function (id) { var x = empById(id) || {}, isLead = lead && lead.value === id;
+              return '<span class="bw-chip' + (isLead ? ' lead' : '') + '"><span class="bw-pk-ava" style="--dc:' + (DIV_COLOR[x.division] || '#94a3b8') + '">' + esc(initials(x.full_name)) + '</span>' + esc(x.full_name || id) + (isLead ? '<em>Lead</em>' : '') +
+                '<button type="button" data-lead="' + esc(id) + '" aria-label="' + (isLead ? 'Remove team lead' : 'Make ' + esc(x.full_name) + ' team lead') + '" title="' + (isLead ? 'Team lead' : 'Make team lead') + '">★</button><button type="button" data-unpick="' + esc(id) + '" aria-label="Remove ' + esc(x.full_name) + '">✕</button></span>'; }).join('')
+            : '<span class="bw-chips-e">Pick people below — tap ★ on a person to make them team lead (optional).</span>';
+          if (chips) {
+            chips.querySelectorAll('[data-lead]').forEach(function (b) { b.onclick = function () { lead.value = lead.value === b.dataset.lead ? '' : b.dataset.lead; syncPick(); }; });
+            chips.querySelectorAll('[data-unpick]').forEach(function (b) { b.onclick = function () { var c = ov.querySelector('#bw-pick input[value="' + b.dataset.unpick + '"]'); if (c) { c.checked = false; c.closest('.bw-pk').classList.remove('on'); } syncPick(); }; });
+          }
         };
         ov.querySelectorAll('#bw-pick input').forEach(function (c) { c.onchange = function () { c.closest('.bw-pk').classList.toggle('on', c.checked); syncPick(); }; });
-        var ts = ov.querySelector('#bw-tsearch'); if (ts) ts.oninput = function () { var q = lc(ts.value); ov.querySelectorAll('#bw-pick .bw-pk').forEach(function (l) { l.hidden = !!q && l.dataset.name.indexOf(q) === -1; }); };
+        var dfil = '', ts = ov.querySelector('#bw-tsearch');
+        var filterPick = function () {
+          var q = ts ? lc(ts.value) : '', shown = 0;
+          ov.querySelectorAll('#bw-pick .bw-pk').forEach(function (l) { var hide = (!!q && l.dataset.name.indexOf(q) === -1) || (!!dfil && l.dataset.dep !== dfil); l.hidden = hide; if (!hide) shown++; });
+          var none = ov.querySelector('.bw-pick-none'); if (none) none.hidden = shown > 0;
+        };
+        if (ts) ts.oninput = filterPick;
+        ov.querySelectorAll('[data-dfil]').forEach(function (b) { b.onclick = function () { dfil = b.dataset.dfil; ov.querySelectorAll('[data-dfil]').forEach(function (x) { x.classList.toggle('on', x === b); }); filterPick(); }; });
         var fi = ov.querySelector('#bw-file');
         function paintFiles() {
           var box = ov.querySelector('#bw-flist'); box.querySelectorAll('.bw-file.new').forEach(function (x) { x.remove(); });
