@@ -344,12 +344,18 @@ async function salesRoster(): Promise<Row[]> {
 }
 
 export const salesService = {
-  async getSalesSummary(range: DateRange) {
-    const [roster, leads, crm] = await Promise.all([
+  /** own = a counselor's own leads / enrolments only (sales.own permission). */
+  async getSalesSummary(range: DateRange, own?: { id: string; name: string } | null) {
+    let [roster, leads, crm] = await Promise.all([
       salesRoster(),
       fetchAll("leads", "id,stage,temperature,assigned_to,created_at,updated_at,first_contact_at,source"),
       fetchAll("students", "id,name,enrolled_date,counsellor_id,source_counsellor,programme", (q) => q.eq("crm_source", "xale")),
     ]);
+    if (own) {
+      roster = roster.filter((c) => String(c.id) === String(own.id));
+      leads = leads.filter((l) => String(l.assigned_to) === String(own.id));
+      crm = crm.filter((s) => String(s.counsellor_id) === String(own.id) || (!s.counsellor_id && lc(s.source_counsellor) === lc(own.name)));
+    }
     const inR = (d: string) => d >= range.from && d <= range.to;
     const newLeads = leads.filter((l) => inR(tsDay(l.created_at)));
     const leadConv = leads.filter((l) => l.stage === "Enrolled" && inR(tsDay(l.updated_at)));
@@ -365,6 +371,7 @@ export const salesService = {
       return { counselor: c.full_name, new_leads: own.length, enrollments: conv + crmN, lead_conversions: conv, crm_enrollments: crmN };
     }).sort((a, b) => b.enrollments - a.enrollments || b.new_leads - a.new_leads);
     return {
+      scope: own ? `own (${own.name})` : "whole Sales team",
       range, leads: newLeads.length, leads_by_stage: byStage, conversions: leadConv.length,
       crm_enrollments: crmEnr.length, enrollments,
       conversion_rate_percent: denom ? Math.round((enrollments / denom) * 100) : 0,
@@ -407,17 +414,20 @@ export const salesService = {
 };
 
 export const crmService = {
-  async queryLeads(status: string, limit: number) {
+  async queryLeads(status: string, limit: number, ownId?: string | null) {
     const st = lc(status);
     let q = db().from("leads").select("lead_id,name,stage,temperature,course_interest,source,assigned_to,created_at,next_action_date,first_contact_at").order("created_at", { ascending: false });
     if (st === "need_contact" || st === "need_first_contact") q = q.eq("stage", "New").is("first_contact_at", null);
     else if (st === "hot" || st === "warm" || st === "cold") q = q.ilike("temperature", st);
     else if (st && st !== "all" && st !== "any") q = q.ilike("stage", status.trim());
+    if (ownId) q = q.eq("assigned_to", ownId);
     const { data, error } = await q.limit(limit);
     if (error) throw new Error(error.message);
     const roster = await salesRoster();
     const name: Record<string, string> = {}; roster.forEach((r) => { name[r.id] = r.full_name; });
-    const { count } = await (st === "all" || st === "any" || !st ? db().from("leads").select("id", { count: "exact", head: true }) : Promise.resolve({ count: null }));
+    const { count } = await (st === "all" || st === "any" || !st
+      ? (ownId ? db().from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", ownId) : db().from("leads").select("id", { count: "exact", head: true }))
+      : Promise.resolve({ count: null }));
     return {
       filter: status, total_matching: count ?? (data || []).length, returned: (data || []).length,
       leads: (data || []).map((l: Row) => ({ lead_id: l.lead_id, name: l.name, stage: l.stage, temperature: l.temperature, course_interest: l.course_interest,
@@ -468,6 +478,63 @@ export const metricsService = {
       media_completed_in_range: media.filter((t) => t.status === "Completed" && inR(t.completed_at || t.submitted_at)).length,
       all_work_open: rows.filter((t) => open.includes(t.status || "Pending")).length,
       all_work_overdue: rows.filter((t) => open.includes(t.status || "Pending") && isIsoDate(String(t.date || "").slice(0, 10)) && String(t.date).slice(0, 10) < today).length,
+    };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// Self-service (every employee): own work tasks, attendance and leave
+// ─────────────────────────────────────────────────────────────────────────────────────────
+const OPEN_TASK = ["Pending", "In Progress", "Rework Required"];
+export const selfService = {
+  async getMyTasks(email: string, status?: string | null) {
+    const { data, error } = await db().from("assignments")
+      .select("topic,type,status,priority,date,assigned_by,department,progress,completed_at,submitted_at,manager_approved")
+      .ilike("employee_email", email.replace(/[\\%_]/g, (c) => "\\" + c));
+    if (error) throw new Error(error.message);
+    const today = tzDate();
+    const rows = (data || []).filter((t: Row) => t.status !== "cancelled");
+    const isOpen = (t: Row) => OPEN_TASK.includes(t.status || "Pending");
+    const overdue = (t: Row) => isOpen(t) && isIsoDate(String(t.date || "").slice(0, 10)) && String(t.date).slice(0, 10) < today;
+    const st = lc(status);
+    const pick = rows.filter((t) => !st || st === "open" ? isOpen(t) : st === "overdue" ? overdue(t) : st === "completed" ? t.status === "Completed" : st === "all" ? true : lc(t.status) === st)
+      .sort((a, b) => String(a.date || "9999").localeCompare(String(b.date || "9999")));
+    return {
+      open: rows.filter(isOpen).length, overdue: rows.filter(overdue).length,
+      rework: rows.filter((t) => t.status === "Rework Required").length,
+      completed: rows.filter((t) => t.status === "Completed").length,
+      filter: st || "open",
+      tasks: pick.slice(0, 15).map((t) => ({ task: t.topic, type: t.type, status: t.status, priority: t.priority, due: t.date ? String(t.date).slice(0, 10) : null, overdue: overdue(t), assigned_by: t.assigned_by, progress: t.progress ?? null })),
+    };
+  },
+
+  async getMyAttendanceAndLeave(employeeId: string, month?: string | null) {
+    const { data: e, error } = await db().from("hr_employees")
+      .select("id,full_name,portal_email,division,employment_type,joining_date,probation_months,notice_active,notice_start,notice_end,work_schedule_type,expected_start_time,expected_end_time,work_days,grace_minutes")
+      .eq("id", employeeId).maybeSingle();
+    if (error || !e) throw new Error(error?.message || "employee not found");
+    const today = tzDate();
+    const ctx = await LP.makeDb(db()).buildContext(e, { now: wallNow(), date: today });
+    ctx.attendance = (ctx.attendance || []).map((a: Row) => ({ ...a, clock_in_time: toWallClock(a.clock_in_time), clock_out_time: toWallClock(a.clock_out_time) }));
+    try { const oe = await db().from("hr_official_events").select("*"); ctx.officialEvents = (oe.data || []).filter((x: Row) => !x.applies_to || x.applies_to === "all" || x.applies_to === e.division); } catch { /* optional */ }
+    try {
+      const logs = await db().from("attendance_logs").select("log_date").ilike("employee_email", String(e.portal_email || "").replace(/[\\%_]/g, (c) => "\\" + c));
+      const set = new Set((logs.data || []).map((l: Row) => String(l.log_date).slice(0, 10)));
+      ctx.portalLog = (d: string) => set.has(d);
+    } catch { /* optional */ }
+    const m = month && /^\d{4}-\d{2}$/.test(month) ? month : today.slice(0, 7);
+    const todayStatus = LP.resolveAttendanceStatus(ctx, today);
+    const pay = LP.resolvePayrollDeduction(ctx, m);
+    const bal = LP.resolveLeaveBalance(ctx);
+    const reqs = (ctx.requests || []).filter((r: Row) => !r.cancelled_at && String(r.end_date || r.start_date) >= today.slice(0, 8) + "01")
+      .map((r: Row) => ({ type: r.leave_type + (r.half_day_type ? " (half day)" : ""), from: r.start_date, to: r.end_date, days: r.days != null ? Number(r.days) : null, status: LP.isApproved(r) ? "approved" : r.status }));
+    const b = pay.buckets;
+    return {
+      today: { date: today, status: todayStatus.label, code: todayStatus.code },
+      month: m,
+      month_summary: { present: b.present + b.late, late: b.late, wfh: b.wfh, paid_leave: b.sl + b.cl + b.ml, half_days: b.half, weekly_off: b.wo, holidays: b.holiday + b.oe, unapproved_absence: b.unapproved || 0, lop_days: pay.totalDeductionDays },
+      leave_balance: { casual_leave_remaining: bal.casual.remaining, sick_leave_remaining: bal.sick.remaining, casual_unavailable_reason: bal.casual.unavailable || null },
+      leave_requests_this_month_onward: reqs.slice(0, 10),
     };
   },
 };

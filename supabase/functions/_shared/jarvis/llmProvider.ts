@@ -76,7 +76,10 @@ export class AnthropicProvider implements LlmProvider {
       }
       if (res.stop_reason === "refusal") throw new LlmError("LLM_REFUSAL", "model declined");
       const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim();
-      if (res.stop_reason !== "tool_use") return { text, toolCalls: used };
+      if (res.stop_reason !== "tool_use") {
+        if (!text) throw new LlmError("LLM_BAD_RESPONSE", "empty answer (" + res.stop_reason + ")");
+        return { text, toolCalls: used };
+      }
 
       const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       messages.push({ role: "assistant", content: res.content });
@@ -115,7 +118,8 @@ export class SarvamLlmProvider implements LlmProvider {
         method: "POST", signal: ctl.signal,
         headers: { "Content-Type": "application/json", "api-subscription-key": config.sarvamApiKey },
         body: JSON.stringify({
-          model: this.model, messages, temperature: 0.2, max_tokens: 1024,
+          // Hidden reasoning off (voice latency; it otherwise ate the whole budget → empty answers).
+          model: this.model, messages, temperature: 0.2, max_tokens: 2048, reasoning_effort: null,
           ...(tools.length ? { tools: tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } })), tool_choice: allowTools ? "auto" : "none" } : {}),
         }),
       });
@@ -143,7 +147,10 @@ export class SarvamLlmProvider implements LlmProvider {
       const calls: SarvamToolCall[] = msg.tool_calls || [];
       // Some reasoning models wrap thoughts in <think>…</think>; never speak those.
       const text = String(msg.content || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-      if (!calls.length) return { text, toolCalls: used };
+      if (!calls.length) {
+        if (!text) throw new LlmError("LLM_BAD_RESPONSE", "empty answer (" + (res?.choices?.[0]?.finish_reason || "?") + ")");
+        return { text, toolCalls: used };
+      }
       messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
       const allowed = calls.slice(0, Math.max(0, budgetLeft));
       const parsed = allowed.map((c) => { let args: unknown = {}; try { args = JSON.parse(c.function.arguments || "{}"); } catch { args = { __invalid_json: true }; } return { id: c.id, name: c.function.name, args }; });

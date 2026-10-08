@@ -4,9 +4,9 @@
 //   • authorised per tool against the server-resolved JarvisAuthContext
 //   • results are compact JSON (only the rows needed to answer), capped in size
 import { z } from "npm:zod@4.6.5";
-import type { JarvisAuthContext, JarvisScope } from "./auth.ts";
+import { can, type JarvisAuthContext } from "./auth.ts";
 import { config } from "./config.ts";
-import { academicService, attendanceService, crmService, leaveService, metricsService, salesService } from "./erpServices.ts";
+import { academicService, attendanceService, crmService, leaveService, metricsService, salesService, selfService } from "./erpServices.ts";
 import { addDays, resolveDateRange, tzDate } from "./time.ts";
 
 /** Vendor-neutral tool definition (converted per LLM provider). */
@@ -59,6 +59,12 @@ const SCHEMAS = {
     department: z.enum(["academic", "sales", "hr", "media", "all"]),
     date_range: datePhrase.describe("Period for the metrics, e.g. today, this_week, this_month."),
   }),
+  get_my_tasks: z.object({
+    status: z.enum(["open", "overdue", "completed", "rework required", "all"]).optional().describe("Which of MY work tasks (default open)."),
+  }),
+  get_my_attendance_and_leave: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/).optional().describe("YYYY-MM for the monthly summary (default this month)."),
+  }),
 } as const;
 
 export type ToolName = keyof typeof SCHEMAS;
@@ -72,25 +78,38 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   get_sales_summary: "Sales performance for a period: new leads, conversions, CRM enrollments, total enrollments, conversion rate and counselor performance.",
   get_top_performing_counselor: "Rank Sales counselors over the last N days by enrollments (lead_conversion) or by net course fee (sales_volume).",
   query_crm_leads: "List CRM leads by stage or temperature (name, stage, temperature, course interest, counselor, dates). Contact numbers are never returned.",
-  get_erp_metrics: "Headline KPIs for a department (academic, sales, hr, media) or all, for a period.",
+  get_erp_metrics: "Headline KPIs for a department (academic, sales, hr, media) or all, for a period — only the departments this person may see.",
+  get_my_tasks: "The speaker's OWN assigned work tasks (Work Assignment): open, overdue, rework, completed, with due dates and who assigned them.",
+  get_my_attendance_and_leave: "The speaker's OWN attendance today, this month's summary (present, late, leave, LOP), leave balances and recent leave requests.",
 };
 
-/** Which access scopes may call each tool. */
-const ACCESS: Record<ToolName, JarvisScope[]> = {
-  get_todays_classes: ["org", "academic", "trainer"],
-  get_unmarked_class_attendance: ["org", "academic", "trainer"],
-  get_upcoming_batches: ["org", "academic"],
-  get_trainers_on_leave: ["org", "academic"],
-  get_employee_attendance_summary: ["org"],
-  get_sales_summary: ["org"],
-  get_top_performing_counselor: ["org"],
-  query_crm_leads: ["org"],
-  get_erp_metrics: ["org", "academic"],
+/** Who may call each tool — from the server-resolved permissions only. */
+const ACCESS: Record<ToolName, (a: JarvisAuthContext) => boolean> = {
+  get_todays_classes: (a) => can(a, "academic.all") || can(a, "academic.own"),
+  get_unmarked_class_attendance: (a) => can(a, "academic.all") || can(a, "academic.own"),
+  get_upcoming_batches: (a) => can(a, "academic.all"),
+  get_trainers_on_leave: (a) => can(a, "academic.all") || can(a, "hr.attendance"),
+  get_employee_attendance_summary: (a) => can(a, "hr.attendance"),
+  get_sales_summary: (a) => can(a, "sales.all") || can(a, "sales.own"),
+  get_top_performing_counselor: (a) => can(a, "sales.all"),
+  query_crm_leads: (a) => can(a, "sales.all") || can(a, "sales.own"),
+  get_erp_metrics: (a) => metricDepartments(a).length > 0,
+  get_my_tasks: (a) => can(a, "self"),
+  get_my_attendance_and_leave: (a) => can(a, "self"),
 };
+function metricDepartments(a: JarvisAuthContext): string[] {
+  if (can(a, "org")) return ["academic", "sales", "hr", "media"];
+  const d: string[] = [];
+  if (can(a, "academic.all")) d.push("academic");
+  if (can(a, "sales.all")) d.push("sales");
+  if (can(a, "hr.attendance")) d.push("hr");
+  if (can(a, "media.all")) d.push("media");
+  return d;
+}
 
 export function toolDefinitions(auth: JarvisAuthContext): ToolDefinition[] {
   return (Object.keys(SCHEMAS) as ToolName[])
-    .filter((n) => ACCESS[n].includes(auth.scope))
+    .filter((n) => ACCESS[n](auth))
     .map((name) => {
       const js = z.toJSONSchema(SCHEMAS[name]) as Record<string, unknown>;
       delete js.$schema;
@@ -136,7 +155,7 @@ async function resolveTrainer(id: string | undefined, name: string | undefined):
 export async function executeErpTool(toolName: string, args: unknown, auth: JarvisAuthContext): Promise<ToolResult> {
   if (!(toolName in SCHEMAS)) return { ok: false, error: `Unknown tool ${toolName}` };
   const name = toolName as ToolName;
-  if (!ACCESS[name].includes(auth.scope)) return { ok: false, error: "Not permitted for your role." };
+  if (!ACCESS[name](auth)) return { ok: false, error: "The speaker does not have access to this information in the ERP." };
   const parsed = SCHEMAS[name].safeParse(args ?? {});
   if (!parsed.success) return { ok: false, error: "Invalid arguments: " + parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ") };
   try {
@@ -150,11 +169,16 @@ export async function executeErpTool(toolName: string, args: unknown, auth: Jarv
 
 // deno-lint-ignore no-explicit-any
 async function run(name: ToolName, a: any, auth: JarvisAuthContext): Promise<unknown> {
-  // Trainers only ever see their own teaching, whatever the model asks for.
-  const ownOnly = auth.scope === "trainer";
+  // Without academic.all a person only ever sees their own teaching, whatever the model asks.
+  const ownOnly = !can(auth, "academic.all");
   const trainerFilter = async (): Promise<{ id: string; name: string } | null> => {
     if (ownOnly) {
       if (!auth.trainerId) throw new ToolError("NO_TRAINER");
+      if (a.trainer_id || a.trainer_name) {
+        const t = await resolveTrainer(a.trainer_id, a.trainer_name);
+        if (t !== "ambiguous" && t && t.id !== auth.trainerId) throw new ToolError("NOT_OWN");
+        if (t === "ambiguous" || !t) throw new ToolError("NOT_OWN");
+      }
       return { id: auth.trainerId, name: auth.name };
     }
     if (!a.trainer_id && !a.trainer_name) return null;
@@ -170,6 +194,7 @@ async function run(name: ToolName, a: any, auth: JarvisAuthContext): Promise<unk
       try { t = await trainerFilter(); } catch (e) {
         if (e instanceof ToolError && e.message === "AMBIGUOUS_TRAINER") return { note: `More than one trainer matches "${a.trainer_name}". Ask which one.` };
         if (e instanceof ToolError && e.message === "NO_TRAINER") return { note: "Your login is not linked to a trainer profile, so there are no classes to show." };
+        if (e instanceof ToolError && e.message === "NOT_OWN") return { note: "The speaker can only see their own classes, not other trainers' schedules." };
         throw e;
       }
       const r = dayRange(a.date, 7);
@@ -199,6 +224,7 @@ async function run(name: ToolName, a: any, auth: JarvisAuthContext): Promise<unk
       try { t = await trainerFilter(); } catch (e) {
         if (e instanceof ToolError && e.message === "AMBIGUOUS_TRAINER") return { note: `More than one trainer matches "${a.trainer_name}". Ask which one.` };
         if (e instanceof ToolError && e.message === "NO_TRAINER") return { note: "Your login is not linked to a trainer profile." };
+        if (e instanceof ToolError && e.message === "NOT_OWN") return { note: "The speaker can only see their own classes, not other trainers' schedules." };
         throw e;
       }
       const r = dayRange(a.date);
@@ -217,14 +243,20 @@ async function run(name: ToolName, a: any, auth: JarvisAuthContext): Promise<unk
       return { days_ahead: days, upcoming_batches: list.length, batches: list.slice(0, 30) };
     }
     case "get_sales_summary":
-      return salesService.getSalesSummary(resolveDateRange(a.date_range));
+      return salesService.getSalesSummary(resolveDateRange(a.date_range), can(auth, "sales.all") ? null : { id: auth.employeeId, name: auth.name });
     case "get_top_performing_counselor":
       return salesService.getTopCounselor(a.timeframe_days, a.metric);
     case "query_crm_leads":
-      return crmService.queryLeads(a.status, a.limit);
+      return crmService.queryLeads(a.status, a.limit, can(auth, "sales.all") ? null : auth.employeeId);
+    case "get_my_tasks":
+      return selfService.getMyTasks(auth.email, a.status);
+    case "get_my_attendance_and_leave":
+      return selfService.getMyAttendanceAndLeave(auth.employeeId, a.month);
     case "get_erp_metrics": {
       const r = resolveDateRange(a.date_range);
-      const want = auth.scope === "academic" ? ["academic"] : (a.department === "all" ? ["academic", "sales", "hr", "media"] : [a.department]);
+      const allowed = metricDepartments(auth);
+      const want = a.department === "all" ? allowed : allowed.filter((d) => d === a.department);
+      if (!want.length) return { note: `The speaker does not have access to ${a.department} metrics.` };
       const out: Record<string, unknown> = { range: r };
       const jobs: Record<string, () => Promise<unknown>> = {
         academic: () => metricsService.academic(r),

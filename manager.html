@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.08.1629-5zlx">
-<script src="be-update.js?v=2026.10.08.1629-5zlx"></script>
+<meta name="be-version" content="2026.10.08.1644-uooi">
+<script src="be-update.js?v=2026.10.08.1644-uooi"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050408">
 <title>Broken English | Manager Command Deck</title>
@@ -14,14 +14,14 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.08.1629-5zlx"></script>
-<link rel="stylesheet" href="account-menu.css?v=2026.10.08.1629-5zlx">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.08.1629-5zlx">
-<script src="be-mobile.js?v=2026.10.08.1629-5zlx"></script>
-<script src="account-menu.js?v=2026.10.08.1629-5zlx"></script>
-<script src="photo-preview.js?v=2026.10.08.1629-5zlx"></script>
-<script src="shared-greeting.js?v=2026.10.08.1629-5zlx"></script>
-<script src="be-shell.js?v=2026.10.08.1629-5zlx"></script>
+<script src="be-live.js?v=2026.10.08.1644-uooi"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.08.1644-uooi">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.08.1644-uooi">
+<script src="be-mobile.js?v=2026.10.08.1644-uooi"></script>
+<script src="account-menu.js?v=2026.10.08.1644-uooi"></script>
+<script src="photo-preview.js?v=2026.10.08.1644-uooi"></script>
+<script src="shared-greeting.js?v=2026.10.08.1644-uooi"></script>
+<script src="be-shell.js?v=2026.10.08.1644-uooi"></script>
 <style>
   /* ── Manager Command Deck (2026-10-08) — Founder-deck layout, live Manager data. ──
      Tokens: deck void/panel + Broken English gradient; per-department accent via --thr. */
@@ -445,13 +445,14 @@
     </main>
   </div>
 
-<script src="common.js?v=2026.10.08.1629-5zlx"></script>
-<script src="be-select.js?v=2026.10.08.1629-5zlx"></script>
-<script src="work-tasks.js?v=2026.10.08.1629-5zlx"></script>
-<script src="access-guard.js?v=2026.10.08.1629-5zlx"></script>
-<script src="announcements.js?v=2026.10.08.1629-5zlx"></script>
-<script src="jarvis-voice.js?v=2026.10.08.1629-5zlx"></script>
-<script src="leave-policy.js?v=2026.10.08.1629-5zlx"></script>
+<script src="common.js?v=2026.10.08.1644-uooi"></script>
+<script src="be-select.js?v=2026.10.08.1644-uooi"></script>
+<script src="work-tasks.js?v=2026.10.08.1644-uooi"></script>
+<script src="access-guard.js?v=2026.10.08.1644-uooi"></script>
+<script src="announcements.js?v=2026.10.08.1644-uooi"></script>
+<script src="be-session.js?v=2026.10.08.1644-uooi"></script>
+<script src="jarvis-voice.js?v=2026.10.08.1644-uooi"></script>
+<script src="leave-policy.js?v=2026.10.08.1644-uooi"></script>
 <script>
 (async function(){
   'use strict';
@@ -522,7 +523,7 @@
     if (!frames[sec]) { var f=document.createElement('iframe'); f.className='frame'; f.src=SEC[sec].src; f.title=SEC[sec].title; content.appendChild(f); frames[sec]=f; }
     frames[sec].hidden=false;
   };
-  window.mgrLogout = function(){ try{ localStorage.removeItem('be_active_email'); localStorage.removeItem('be_active_role'); localStorage.removeItem('be_media_academic_session'); }catch(_){ } location.href='index.html'; };
+  window.mgrLogout = function(){ try{ if(window.BESession) BESession.clear(email); }catch(_){} try{ localStorage.removeItem('be_active_email'); localStorage.removeItem('be_active_role'); localStorage.removeItem('be_media_academic_session'); }catch(_){ } location.href='index.html'; };
 
   // ── Deck chrome: IST clock, realtime pill, version ──
   (function(){
@@ -753,8 +754,8 @@
   })();
 
   // ── Jarvis — read-only voice assistant on the globe (jarvis-voice.js → edge function
-  //    `jarvis`). Sign-in is a one-time email code on this ERP project; the backend resolves
-  //    access from HR. Sheets reuse the drill-down modal styling.
+  //    `jarvis`). Uses the existing ERP session (be-session.js); the backend resolves identity
+  //    and access from HR on every question. Sheets reuse the drill-down modal styling.
   (function(){
     if(!window.JarvisVoice) return;
     var sheetEl=null;
@@ -767,8 +768,9 @@
       document.body.appendChild(sheetEl);
     }
     document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&sheetEl) closeJSheet(); });
-    JarvisVoice.init({ url: SUPABASE_URL, key: SUPABASE_ANON_KEY, sub: document.getElementById('jsSub'), globe: document.getElementById('globeEl'),
-      scale: function(s){ return 'scale('+s+')'; }, sheet: openJSheet, closeSheet: closeJSheet, email: email,
+    // No separate login: uses the ERP session of the signed-in manager (be-session.js).
+    JarvisVoice.init({ sub: document.getElementById('jsSub'), globe: document.getElementById('globeEl'),
+      scale: function(s){ return 'scale('+s+')'; }, sheet: openJSheet, closeSheet: closeJSheet,
       onTranscript: function(t){ var m=t.match(/^\s*(open|go to|show)\s+(the\s+)?(media|hr|academics?|sales|work)\b/i); if(m){ var k=m[3].toLowerCase(); mgrSection(k.indexOf('academic')===0?'academics':k); } } });
     var z=document.getElementById('jarvisZone'); if(!z) return; var sx=0, sy=0;
     z.addEventListener('pointerdown',function(e){ sx=e.clientX; sy=e.clientY; },true);

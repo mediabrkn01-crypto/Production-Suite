@@ -1,7 +1,8 @@
 // POST /functions/v1/jarvis — one Jarvis voice turn, streamed back as Server-Sent Events.
 //
 // Transport (works in the Supabase edge runtime — no long-lived socket to the browser):
-//   request  Authorization: Bearer <Supabase Auth access token>   (email OTP sign-in)
+//   request  x-erp-session: <token from the normal ERP login>      (no separate Jarvis login)
+//            Authorization / apikey: the project's public anon key (Supabase gateway)
 //            ?session=<client session id>&rate=16000&audio=1|0
 //            body = raw PCM s16le mono (Content-Type: application/octet-stream, ≤ 60 s)
 //                   or JSON {"text": "..."} for typed questions
@@ -23,7 +24,7 @@ function cors(req: Request): Record<string, string> {
   const allow = config.allowedOrigins.includes("*") ? "*" : (config.allowedOrigins.includes(origin) ? origin : config.allowedOrigins[0] || "");
   return {
     "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-erp-session",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
   };
@@ -38,7 +39,7 @@ Deno.serve(async (req: Request) => {
   // ── who is calling (verified server-side) ──
   let auth;
   try { auth = await resolveAuthContext(req); } catch (e) {
-    if (e instanceof JarvisAuthError) return json(req, e.status, { error: e.message, code: e.status === 401 ? "AUTH_REQUIRED" : "FORBIDDEN" });
+    if (e instanceof JarvisAuthError) return json(req, e.status, { error: e.message, code: e.code });
     console.error("[jarvis] auth:", e instanceof Error ? e.message : e);
     return json(req, 500, { error: "Jarvis could not verify your sign-in right now." });
   }

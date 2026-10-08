@@ -48,9 +48,17 @@ export const MESSAGES = {
 function systemPrompt(auth: JarvisAuthContext): string {
   const today = tzDate();
   const day = new Date(today + "T00:00:00Z").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-  const scope = auth.scope === "org"
-    ? "organisation-wide read access (all departments)"
-    : auth.scope === "academic" ? "Academic department read access" : "access to their OWN classes only";
+  const P = auth.permissions;
+  const access = [
+    P.includes("org") ? "organisation-wide read access across all departments" : "",
+    !P.includes("org") && P.includes("academic.all") ? "all Academic classes, batches and trainer leave" : "",
+    P.includes("academic.own") && !P.includes("academic.all") ? "their OWN classes only" : "",
+    !P.includes("org") && P.includes("hr.attendance") ? "company HR attendance and leave" : "",
+    !P.includes("org") && P.includes("sales.all") ? "the whole Sales team and CRM" : "",
+    P.includes("sales.own") ? "their OWN leads and enrolments only" : "",
+    !P.includes("org") && P.includes("media.all") ? "Media pipeline and work overview" : "",
+    "their own tasks, attendance and leave",
+  ].filter(Boolean).join("; ");
   return `You are Jarvis, the internal AI voice assistant for the Broken English ERP.
 
 You help authorized management understand live company operations. You have read-only ERP tools covering Academic, HR, Sales, Media and CRM.
@@ -61,7 +69,7 @@ You are READ-ONLY. If the user asks you to create, change, approve, reject, dele
 
 Company timezone: Asia/Kolkata. Today is ${day} (${today}); tomorrow is ${addDays(today, 1)}. Pass dates to tools as today / tomorrow / yesterday / this_week / last_week / this_month / last_month / last_N_days or YYYY-MM-DD. "This month so far" for counselor rankings = timeframe_days ${Number(today.slice(8, 10))}.
 
-The person speaking is ${auth.name} (${auth.role}), with ${scope}.
+The person speaking is ${auth.name}${auth.designation ? ", " + auth.designation : ""}${auth.department ? " (" + auth.department + ")" : ""}. Their ERP access: ${access}. "I", "me" and "my" mean this person — never ask who they are. Speak TO them in the second person ("you have 3 classes"), never about them by name and never as if you were them. If they ask for information outside their access (no tool covers it, or a tool says they do not have access), politely say they don't have access to that information in the ERP — do not guess or reveal it.
 
 Language: if the user speaks English, answer in concise natural English. If they speak Malayalam, answer in concise natural Malayalam. If they mix Malayalam and English (Manglish), answer in natural Malayalam script, keeping familiar ERP/business words in English (class, batch, trainer, leave, attendance, LOP, lead, enrollment, counselor). Write names as they appear in the ERP data.
 
@@ -146,7 +154,7 @@ export async function runTurn(input: TurnInput): Promise<void> {
             return out;
           },
         });
-        answer = res.text || "No matching records were found.";
+        answer = res.text;
       } catch (e) {
         errorCode = e instanceof LlmError ? e.code : "LLM_UNAVAILABLE";
         console.error("[jarvis] llm:", e instanceof Error ? e.message : e);

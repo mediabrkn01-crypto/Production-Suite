@@ -1,98 +1,64 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   JARVIS voice client — connects a deck globe (Manager Command Deck) to the Jarvis
-   backend (Supabase Edge Function `jarvis`). No UI redesign: it drives the globe's
-   glow/scale, one caption line (ui.sub) and the page's own sheet (ui.sheet) for
-   sign-in and text fallbacks.
+   JARVIS voice client — the built-in ERP assistant. No separate login: it uses the
+   ERP session of whoever is signed in (BESession token from the normal portal login).
+   The server re-resolves identity + access from HR on every question.
 
-   Flow (tap the globe):
-     tap → LISTENING (mic → 16 kHz PCM, auto-stops after ~1.2 s of silence; tap again
-     to stop early) → POST audio → Server-Sent Events back:
-       state · transcript.partial/final · assistant.text · audio.chunk · error · done
-     Audio chunks play as they arrive (MediaSource), else once the turn ends.
+   Two hosts:
+     • Manager Command Deck — drives the existing globe (JarvisVoice.init({globe, sub, …}))
+     • every other portal   — a small floating Jarvis orb (auto, see bottom of file)
 
-   Auth: Supabase Auth email sign-in on the ERP project (one-time code, or the magic
-   link in the same email). The backend verifies the token and resolves the role
-   from HR — this file never decides who may see what.
+   Tap → LISTENING (mic → 16 kHz PCM, auto-stops after ~1.2 s of silence; tap again to
+   send) → POST to the `jarvis` edge function → Server-Sent Events:
+     state · transcript.partial/final · assistant.text · audio.chunk · error · done
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
+  if (window.JarvisVoice) return;
+  var EXPIRED = 'Your session has expired. Please sign in again to continue using Jarvis.';
   var STATE_LABEL = {
     IDLE: 'Tap the globe · JARVIS listens', LISTENING: 'LISTENING… tap to send', TRANSCRIBING: 'HEARING YOU…',
     THINKING: 'THINKING…', CHECKING_ERP: 'CHECKING ERP…', CHECKING_CRM: 'CHECKING CRM…', SPEAKING: 'SPEAKING', ERROR: 'JARVIS ERROR'
   };
-  var STATE_GLOW = {          // r,g,b for the globe's drop-shadow per state
+  var STATE_GLOW = {
     LISTENING: '237,31,81', TRANSCRIBING: '240,88,37', THINKING: '77,159,255', CHECKING_ERP: '255,194,75',
     CHECKING_CRM: '255,194,75', SPEAKING: '47,224,140', ERROR: '255,77,94'
   };
-  var cfg = null, sb = null, ui = null;
+  var cfg = null, ui = null;
   var state = 'IDLE', busy = false, rec = null, abortCtl = null, player = null;
-  var sessionId = (function () { try { var s = sessionStorage.getItem('jarvis_session'); if (!s) { s = 'deck-' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('jarvis_session', s); } return s; } catch (_) { return 'deck-' + Date.now(); } })();
+  var sessionId = (function () { try { var s = sessionStorage.getItem('jarvis_session'); if (!s) { s = 'erp-' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('jarvis_session', s); } return s; } catch (_) { return 'erp-' + Date.now(); } })();
 
-  function closeSheet() { var f = (ui && ui.closeSheet) || window.closeSheet; if (typeof f === 'function') { try { f(); } catch (_) {} } }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function setState(s) {
     state = s;
-    if (ui && ui.sub) ui.sub.textContent = STATE_LABEL[s] || s;
-    var g = ui && ui.globe;
+    if (ui.sub) ui.sub.textContent = ui.idleLabel && s === 'IDLE' ? ui.idleLabel : (STATE_LABEL[s] || s);
+    var g = ui.globe;
     if (g) {
       var c = STATE_GLOW[s];
       g.style.filter = c ? 'drop-shadow(0 0 ' + (s === 'SPEAKING' ? 46 : 30) + 'px rgba(' + c + ',.65))' : '';
-      if (window._g && _g.controls) _g.controls().autoRotateSpeed = s === 'IDLE' ? .55 : (s === 'CHECKING_ERP' || s === 'CHECKING_CRM' ? 4 : 1.6);
+      if (window._g && _g.controls) _g.controls().autoRotateSpeed = s === 'IDLE' ? .5 : (s === 'CHECKING_ERP' || s === 'CHECKING_CRM' ? 4 : 1.6);
     }
-    if (typeof ui?.onState === 'function') { try { ui.onState(s); } catch (_) {} }
+    if (typeof ui.onState === 'function') { try { ui.onState(s); } catch (_) {} }
   }
   function say(text, ms) {
-    if (!ui || !ui.sub) return;
+    if (!ui.sub) return;
     ui.sub.textContent = text;
     clearTimeout(ui.sub._jh);
-    ui.sub._jh = setTimeout(function () { if (state === 'IDLE') ui.sub.textContent = STATE_LABEL.IDLE; }, ms || 9000);
+    ui.sub._jh = setTimeout(function () { if (state === 'IDLE') ui.sub.textContent = ui.idleLabel || STATE_LABEL.IDLE; }, ms || 9000);
   }
 
-  // ── auth (Supabase Auth on the ERP project) ──────────────────────────────────
-  function client() {
-    if (!sb) sb = window.supabase.createClient(cfg.url, cfg.key, { auth: { storageKey: 'jarvis-erp-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
-    return sb;
+  // ── ERP session (no Jarvis login) ─────────────────────────────────────────────
+  function token() { return window.BESession ? BESession.token() : null; }
+  function signInAgain() {
+    try { if (window.BESession) BESession.clear(BESession.currentEmail()); } catch (_) {}
+    try { ['be_active_email', 'be_active_user', 'be_active_role', 'be_media_academic_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (_) {}
+    location.href = 'index.html';
   }
-  async function token() {
-    var r = await client().auth.getSession();
-    return r && r.data && r.data.session ? r.data.session.access_token : null;
-  }
-  function signInSheet() {
-    return new Promise(function (resolve) {
-      if (typeof ui.sheet !== 'function') { resolve(false); return; }
-      ui.sheet('JARVIS', 'Sign in to Jarvis', 'Use your work email — the one linked to your ERP employee record.',
-        '<div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">' +
-        '<input class="l-inp" id="jv-email" type="email" autocomplete="email" placeholder="you@company.com" style="margin:0" value="' + esc(ui.email || '') + '">' +
-        '<button class="l-btn" id="jv-send" type="button">Email me a sign-in code</button>' +
-        '<div id="jv-step2" style="display:none;flex-direction:column;gap:10px">' +
-        '<input class="l-inp" id="jv-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from the email" style="margin:0">' +
-        '<button class="l-btn" id="jv-verify" type="button">Verify &amp; start Jarvis</button></div>' +
-        '<div class="l-msg" id="jv-msg"></div><div class="eb" style="margin-top:4px">You can also just tap the link in that email on this device.</div></div>');
-      var $ = function (id) { return document.getElementById(id); };
-      var msg = function (t, err) { var m = $('jv-msg'); if (m) { m.className = 'l-msg' + (err ? ' err' : ''); m.textContent = t; } };
-      $('jv-send').onclick = async function () {
-        var email = ($('jv-email').value || '').trim().toLowerCase();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg('Enter your work email.', true); return; }
-        this.disabled = true; msg('Sending…');
-        var r = await client().auth.signInWithOtp({ email: email, options: { shouldCreateUser: true, emailRedirectTo: location.origin + location.pathname } });
-        this.disabled = false;
-        if (r.error) { msg(r.error.message || 'Could not send the email.', true); return; }
-        $('jv-step2').style.display = 'flex'; msg('Check your inbox for the code (or link).');
-        $('jv-code').focus();
-      };
-      $('jv-verify').onclick = async function () {
-        var email = ($('jv-email').value || '').trim().toLowerCase(), code = ($('jv-code').value || '').replace(/\D/g, '');
-        if (code.length < 6) { msg('Enter the code from the email.', true); return; }
-        this.disabled = true; msg('Verifying…');
-        var r = await client().auth.verifyOtp({ email: email, token: code, type: 'email' });
-        this.disabled = false;
-        if (r.error) { msg('That code did not work — request a new one.', true); return; }
-        closeSheet();
-        resolve(true);
-      };
-      var poll = setInterval(async function () { if (await token()) { clearInterval(poll); closeSheet(); resolve(true); } }, 1500);
-      setTimeout(function () { clearInterval(poll); }, 15 * 60000);
-    });
+  function sessionExpired() {
+    setState('IDLE'); say(EXPIRED, 12000);
+    if (typeof ui.sheet === 'function') {
+      ui.sheet('JARVIS', 'Session expired', '', '<div style="font-size:14px;line-height:1.7;margin-bottom:14px">' + EXPIRED + '</div><button type="button" class="l-btn" id="jv-relogin">Sign in again</button>');
+      var b = document.getElementById('jv-relogin'); if (b) b.onclick = signInAgain;
+    }
   }
 
   // ── microphone → 16 kHz PCM16 with a simple end-of-speech detector ─────────────
@@ -104,7 +70,7 @@
     var proc = ctx.createScriptProcessor(4096, 1, 1);
     var chunks = [], ratio = ctx.sampleRate / 16000, heard = false, silentMs = 0, started = Date.now();
     var buf = new Uint8Array(an.frequencyBinCount);
-    var r = { stream: stream, ctx: ctx, an: an, chunks: chunks, stopped: false, onAutoStop: null };
+    var r = { stream: stream, ctx: ctx, chunks: chunks, stopped: false, onAutoStop: null };
     proc.onaudioprocess = function (e) {
       if (r.stopped) return;
       var input = e.inputBuffer.getChannelData(0);
@@ -120,7 +86,6 @@
     };
     src.connect(proc); proc.connect(ctx.destination);
     r.proc = proc;
-    // existing globe "voice" animation
     (function loop() {
       if (r.stopped) return;
       an.getByteFrequencyData(buf);
@@ -146,20 +111,17 @@
   // ── streamed MP3 playback ─────────────────────────────────────────────────────
   function makePlayer() {
     var MS = window.ManagedMediaSource || window.MediaSource;
-    var audio = new Audio(), queue = [], all = [], sb2 = null, ended = false, usingMS = !!(MS && MS.isTypeSupported && MS.isTypeSupported('audio/mpeg'));
+    var audio = new Audio(), queue = [], all = [], sbuf = null, ended = false, usingMS = !!(MS && MS.isTypeSupported && MS.isTypeSupported('audio/mpeg'));
     audio.disableRemotePlayback = true;
-    var p = { audio: audio, done: false };
+    var p = { audio: audio };
     if (usingMS) {
       var ms = new MS(); audio.src = URL.createObjectURL(ms);
-      ms.addEventListener('sourceopen', function () {
-        sb2 = ms.addSourceBuffer('audio/mpeg'); sb2.mode = 'sequence';
-        sb2.addEventListener('updateend', pump); pump();
-      });
       var pump = function () {
-        if (!sb2 || sb2.updating) return;
-        if (queue.length) { try { sb2.appendBuffer(queue.shift()); } catch (_) {} }
+        if (!sbuf || sbuf.updating) return;
+        if (queue.length) { try { sbuf.appendBuffer(queue.shift()); } catch (_) {} }
         else if (ended && ms.readyState === 'open') { try { ms.endOfStream(); } catch (_) {} }
       };
+      ms.addEventListener('sourceopen', function () { sbuf = ms.addSourceBuffer('audio/mpeg'); sbuf.mode = 'sequence'; sbuf.addEventListener('updateend', pump); pump(); });
       p.push = function (u8) { queue.push(u8); pump(); if (audio.paused) audio.play().catch(function () {}); };
       p.end = function () { ended = true; pump(); };
     } else {
@@ -173,8 +135,8 @@
 
   // ── one turn: POST audio, read SSE ────────────────────────────────────────────
   async function send(pcm) {
-    var tk = await token();
-    if (!tk) { setState('IDLE'); say('Sign in to use Jarvis'); return; }
+    var tk = token();
+    if (!tk) { sessionExpired(); return; }
     busy = true; abortCtl = new AbortController();
     setState('TRANSCRIBING');
     var answer = '', ttsFailed = false, gotAudio = false, transcript = '';
@@ -182,12 +144,12 @@
     try {
       var res = await fetch(cfg.fn + '?session=' + encodeURIComponent(sessionId) + '&rate=16000', {
         method: 'POST', signal: abortCtl.signal,
-        headers: { 'Authorization': 'Bearer ' + tk, 'apikey': cfg.key, 'Content-Type': 'application/octet-stream' },
+        headers: { 'Authorization': 'Bearer ' + cfg.key, 'apikey': cfg.key, 'x-erp-session': tk, 'Content-Type': 'application/octet-stream' },
         body: pcm.buffer
       });
       if (!res.ok) {
         var j = {}; try { j = await res.json(); } catch (_) {}
-        if (res.status === 401) { try { await client().auth.signOut(); } catch (_) {} }
+        if (res.status === 401 || j.code === 'SESSION_EXPIRED') { sessionExpired(); return; }
         setState('ERROR'); say(j.error || 'Jarvis is unavailable right now.'); setTimeout(function () { setState('IDLE'); }, 2500);
         return;
       }
@@ -211,7 +173,6 @@
       }
       player.end();
       if (answer) say(answer, Math.min(30000, 4000 + answer.length * 70));
-      // Text fallback in the existing sheet when there was no voice (or the answer is long).
       if (answer && (ttsFailed || !gotAudio || answer.length > 220) && typeof ui.sheet === 'function') {
         ui.sheet('JARVIS', transcript ? '“' + transcript + '”' : 'Jarvis', ttsFailed ? 'Voice unavailable — text answer' : 'Live ERP answer', '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap">' + esc(answer) + '</div>');
       }
@@ -234,25 +195,104 @@
     await send(pcm);
   }
 
+  // ── default sheet (portals without their own) ─────────────────────────────────
+  var sheetEl = null;
+  function defaultCloseSheet() { if (sheetEl) { sheetEl.remove(); sheetEl = null; } }
+  function defaultSheet(sub, title, meta, html) {
+    defaultCloseSheet(); css();
+    sheetEl = document.createElement('div'); sheetEl.className = 'jv-sheet-bg';
+    sheetEl.innerHTML = '<div class="jv-sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><div class="jv-sheet-h"><div><div class="jv-eb">' + esc(sub) + '</div><h3>' + esc(title) + '</h3>' + (meta ? '<span>' + esc(meta) + '</span>' : '') + '</div><button type="button" aria-label="Close">✕</button></div><div class="jv-sheet-b">' + html + '</div></div>';
+    sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl || e.target.closest('.jv-sheet-h button')) defaultCloseSheet(); });
+    document.body.appendChild(sheetEl);
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sheetEl) defaultCloseSheet(); });
+
+  var _css = false;
+  function css() {
+    if (_css) return; _css = true;
+    var s = document.createElement('style');
+    s.textContent = [
+      '.jv-orb{position:fixed;right:22px;bottom:22px;z-index:140;display:flex;align-items:center;gap:10px;flex-direction:row-reverse}',
+      '.jv-orb-btn{width:58px;height:58px;border-radius:50%;border:none;cursor:pointer;background:radial-gradient(circle at 32% 30%,#ff7a94,#ed1f51 45%,#5c0d22 90%);box-shadow:0 0 26px rgba(237,31,81,.55),0 10px 30px rgba(0,0,0,.5);transition:transform .09s linear,filter .3s;animation:jvBreathe 3.2s ease-in-out infinite}',
+      '.jv-orb-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}',
+      '@keyframes jvBreathe{0%,100%{box-shadow:0 0 22px rgba(237,31,81,.45),0 10px 30px rgba(0,0,0,.5)}50%{box-shadow:0 0 38px rgba(237,31,81,.75),0 10px 30px rgba(0,0,0,.5)}}',
+      '.jv-orb-cap{max-width:min(320px,70vw);padding:8px 12px;border-radius:12px;background:rgba(10,8,14,.92);border:1px solid rgba(255,255,255,.1);color:#f2f1ee;font:600 11px Inter,system-ui,sans-serif;letter-spacing:.04em;box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transform:translateX(6px);transition:opacity .2s,transform .2s;pointer-events:none}',
+      '.jv-orb.show-cap .jv-orb-cap,.jv-orb:hover .jv-orb-cap{opacity:1;transform:none}',
+      '@media (max-width:820px){.jv-orb{bottom:calc(92px + env(safe-area-inset-bottom,0px));right:14px}.jv-orb-btn{width:50px;height:50px}}',
+      '@media (prefers-reduced-motion:reduce){.jv-orb-btn{animation:none}}',
+      '.jv-sheet-bg{position:fixed;inset:0;z-index:2100;background:rgba(3,3,7,.55);backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center;padding:16px}',
+      '.jv-sheet{width:min(560px,100%);max-height:80vh;overflow:auto;background:linear-gradient(165deg,rgba(30,24,32,.96),rgba(9,7,13,.98));border:1px solid rgba(255,255,255,.13);border-radius:20px;box-shadow:0 50px 130px rgba(0,0,0,.9);color:#f2f1ee;font:13px Inter,system-ui,sans-serif}',
+      '.jv-sheet-h{display:flex;justify-content:space-between;gap:12px;padding:18px 20px 12px;border-bottom:1px solid rgba(255,255,255,.08)}',
+      '.jv-sheet-h h3{margin:3px 0 2px;font-size:17px;font-weight:800}.jv-sheet-h span{font-size:12px;color:rgba(255,255,255,.55)}',
+      '.jv-sheet-h button{width:32px;height:32px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:#f2f1ee;cursor:pointer;flex-shrink:0}',
+      '.jv-sheet-b{padding:16px 20px 20px}',
+      '.jv-eb{font:600 9.5px Barlow,Inter,sans-serif;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.3)}',
+      '.jv-sheet .l-btn{width:100%;padding:12px;border:none;border-radius:11px;background:linear-gradient(120deg,#ed1f51,#f05825);color:#fff;font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  /** Floating orb for portals without the Manager globe. */
+  function mountOrb() {
+    css();
+    var wrap = document.createElement('div'); wrap.className = 'jv-orb';
+    wrap.innerHTML = '<button type="button" class="jv-orb-btn" aria-label="Ask Jarvis"></button><div class="jv-orb-cap" aria-live="polite">Tap to ask Jarvis</div>';
+    document.body.appendChild(wrap);
+    var btn = wrap.querySelector('.jv-orb-btn'), cap = wrap.querySelector('.jv-orb-cap');
+    return { wrap: wrap, btn: btn, cap: cap };
+  }
+
   window.JarvisVoice = {
-    /** opts: { url, key, fn, sub, globe, scale(fn), sheet(fn), onState?, onTranscript? } */
+    /** opts: { globe?, sub?, scale?, sheet?, closeSheet?, onState?, onTranscript?, idleLabel? } */
     init: function (opts) {
-      cfg = { url: opts.url, key: opts.key, fn: opts.fn || (opts.url + '/functions/v1/jarvis') };
-      ui = opts; client();
+      opts = opts || {};
+      var B = window.BESession || {};
+      cfg = { key: opts.key || B.anonKey, fn: opts.fn || ((opts.url || B.url) + '/functions/v1/jarvis') };
+      ui = Object.assign({}, opts);
+      if (!ui.sheet) { ui.sheet = defaultSheet; ui.closeSheet = defaultCloseSheet; }
     },
     get state() { return state; },
-    /** Globe tap. */
     toggle: async function () {
       if (!cfg) return false;
       if (busy) { if (abortCtl) abortCtl.abort(); if (player) player.stop(); setState('IDLE'); return true; }
       if (state === 'SPEAKING') { if (player) player.stop(); setState('IDLE'); return true; }
       if (rec) { await finishListening(); return true; }
-      if (!(await token())) { const ok = await signInSheet(); if (!ok) return true; }
+      if (!token()) { sessionExpired(); return true; }
       try { rec = await startCapture(); } catch (e) { say('Mic blocked — allow it in the browser bar'); return true; }
       rec.onAutoStop = function () { finishListening(); };
       setState('LISTENING');
       return true;
     },
-    signOut: function () { return client().auth.signOut(); }
+    /** Floating orb mode — used automatically on every portal except the Manager deck. */
+    mountOrb: function () {
+      if (cfg && ui && ui.globe) return;
+      var o = mountOrb();
+      JarvisVoice.init({
+        sub: o.cap, idleLabel: 'Tap to ask Jarvis',
+        onState: function (s) {
+          o.wrap.classList.toggle('show-cap', s !== 'IDLE');
+          var c = STATE_GLOW[s]; o.btn.style.filter = c ? 'drop-shadow(0 0 18px rgba(' + c + ',.9))' : '';
+        },
+        globe: o.btn, scale: function (s) { return 'scale(' + s + ')'; }
+      });
+      o.btn.addEventListener('click', function () { JarvisVoice.toggle(); });
+      o.wrap.addEventListener('mouseenter', function () { if (state === 'IDLE') o.cap.textContent = 'Tap to ask Jarvis'; });
+    }
   };
+
+  // Auto: on any portal page loaded with <script src="jarvis-voice.js" data-jarvis-orb>, show the
+  // orb once someone is signed in (not inside the Manager deck's embedded frames).
+  var me = document.currentScript;
+  if (me && me.hasAttribute('data-jarvis-orb')) {
+    var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
+    var tries = 0;
+    var tryMount = function () {
+      if (embedded || (cfg && ui && ui.globe)) return;
+      var signedIn = window.BESession && BESession.currentEmail();
+      if (signedIn) { JarvisVoice.mountOrb(); return; }
+      if (++tries < 120) setTimeout(tryMount, 1000);   // wait for login on this page
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(tryMount, 600); });
+    else setTimeout(tryMount, 600);
+  }
 })();

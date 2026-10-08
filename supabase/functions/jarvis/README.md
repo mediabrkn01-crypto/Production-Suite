@@ -4,8 +4,8 @@ Read-only voice layer on top of the existing ERP. It does not have its own copy 
 Speech (Malayalam / English / Manglish) → live ERP tools → spoken answer.
 
 ```
-Manager Command Deck globe (manager.html + jarvis-voice.js)
-   │  POST raw 16 kHz PCM  +  Supabase Auth bearer token
+Manager deck globe / floating orb on every portal (jarvis-voice.js)
+   │  POST raw 16 kHz PCM  +  x-erp-session (token from the normal ERP login)
    ▼
 supabase/functions/jarvis/index.ts           — auth, rate limit, SSE stream
    └─ _shared/jarvis/voiceEngine.ts          — turn orchestrator + globe states
@@ -41,27 +41,30 @@ WebSocket server is not needed. The server holds the Sarvam sockets and streams 
    ```bash
    supabase functions deploy jarvis --project-ref fevqnpllmarhoqdzpatq
    ```
-4. **Set up Supabase Auth email sign-in** (Dashboard → Authentication):
-   - **Email provider:** enabled.
-   - **URL Configuration → Redirect URLs:** add `https://work.brokenenglish.in/manager.html` (for the magic link).
-   - **Email Templates → Magic Link:** include `{{ .Token }}` so the email carries the 6-digit code, and keep
-     `{{ .ConfirmationURL }}` for the link.
-   - **SMTP:** the built-in sender is rate-limited. Set up custom SMTP (e.g. Brevo, which payslips already use)
-     before wider use.
-5. **Grant access in HR:** Jarvis works only for people whose HR record (matched by portal email) has a
-   leadership System Role (manager, founder, co_founder, …), Academic Head access, or trainer access.
+4. **No Jarvis login.** The normal ERP login (index.html) also calls the `erp-session` function, which repeats the
+   password + HR access check on the server and returns a signed session token. Jarvis trusts only that token,
+   and re-reads identity and access from HR on every question. Deploy both functions:
+   `supabase functions deploy jarvis erp-session --project-ref fevqnpllmarhoqdzpatq`
+5. **Access:** every active employee can use Jarvis; what they can read follows their ERP access (table below).
 
 ## Access
 
-| Resolved from HR | Jarvis scope | Tools |
-|---|---|---|
-| system_role manager / founder / co_founder / managing_director / director, account_type management | `org` | all 9 |
-| Academic Head, Class Coordinator, Operations Manager | `academic` | classes, unmarked attendance, upcoming batches, trainer leave, academic metrics |
-| Trainer / Fluency Coach | `trainer` | own classes and own unmarked attendance only (trainer filter forced on the server) |
+Effective access is resolved the same way as the ERP (`hrAccessRole`: System Role → designation default → team roles; HR admin via roster role `admin` / `hr_admin`; Sales head via a head/manager title):
 
-- The role is never read from the browser.
-- Every tool is read-only, with no SQL, no write paths and no contact numbers.
-- Write requests ("approve…", "delete…") get the fixed read-only reply.
+| Who | Jarvis can read |
+|---|---|
+| Founder / Co-Founder / Manager / management & system accounts | everything (org) |
+| Academic Head, Class Coordinator, Operations Manager | all Academic classes, batches, trainer leave, Academic metrics |
+| Fluency Coach / trainer | own classes and own unmarked attendance only |
+| HR (division hr, roster admin, hr_admin) | company attendance and leave, trainer leave |
+| Student Counselor Head | whole Sales team + CRM |
+| Student Counselor | own leads and enrolments only |
+| Media Head | Media metrics |
+| Everyone | own tasks, own attendance, leave balance and requests |
+
+- Role and permissions are re-read from HR on every request, so role changes, deactivation and exits apply immediately.
+- Tools a person may not use are not offered to the model, and each tool checks permissions again on the server.
+- Every tool is read-only, with no SQL, no write paths and no contact numbers. Write requests ("approve…", "delete…") get the fixed read-only reply.
 
 ## Event stream (SSE, one JSON object per `data:` line)
 

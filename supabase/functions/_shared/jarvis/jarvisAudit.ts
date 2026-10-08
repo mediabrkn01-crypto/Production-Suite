@@ -32,7 +32,7 @@ export async function writeAudit(auth: JarvisAuthContext | null, e: AuditEntry):
       employee_id: auth?.employeeId ?? null,
       email: auth?.email ?? null,
       role: auth?.role ?? null,
-      scope: auth?.scope ?? null,
+      scope: auth ? auth.permissions.join(",") : null,
       session_id: e.sessionId,
       input_mode: e.input,
       transcript: e.transcript.slice(0, 2000),

@@ -1,34 +1,52 @@
-// Who is calling Jarvis — resolved ONLY on the server:
-//   1. The browser sends a Supabase Auth access token (email OTP / magic-link sign-in).
-//   2. The token is verified with Supabase Auth (signature + expiry) → verified email.
-//   3. Access comes from that person's live hr_employees record (System Role, account type,
-//      designation, employment status) — the same rules the ERP portals use. Nothing the
-//      browser sends about roles is read.
+// Who is calling Jarvis — resolved ONLY on the server, from the existing ERP sign-in:
+//   1. The ERP login (index.html) gets a signed session token from `erp-session` after the
+//      normal username/password check. The browser sends it as `x-erp-session`.
+//   2. The token's signature + expiry are verified here → signed-in email.
+//   3. The live hr_employees + user_roster records give identity and EFFECTIVE ACCESS using the
+//      same rules as the ERP (common.js hrAccessRole: System Role → designation default access
+//      → legacy team roles; HR admin via roster role 'admin' / system role hr_admin; Sales head
+//      via head/manager title, as sales.html). Re-read on every request, so role changes,
+//      deactivation and exits apply immediately. Nothing role-related from the browser is read.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { config } from "./config.ts";
+import { verifySession } from "./session.ts";
 
-export type JarvisScope = "org" | "academic" | "trainer";
+/** What a person may read through Jarvis. */
+export type Permission =
+  | "self"            // own tasks, attendance, leave
+  | "academic.all"    // every Academic class / batch / trainer leave
+  | "academic.own"    // own classes only (trainers)
+  | "hr.attendance"   // company attendance + leave
+  | "sales.all"       // whole Sales team + CRM
+  | "sales.own"       // own leads / enrolments only (counselors)
+  | "media.all"       // Media pipeline + work overview
+  | "org";            // organisation-wide metrics
 
 export interface JarvisAuthContext {
+  /** Kept for audit/memory keys — this is the employee id (there are no separate Jarvis users). */
   authUserId: string;
-  email: string;
   employeeId: string;
+  email: string;
   name: string;
-  /** Resolved access role, e.g. co_founder | manager | academic_head | trainer | system */
+  department: string | null;
+  designation: string | null;
+  /** Effective access role, same vocabulary as the ERP (co_founder, academic_head, trainer, hr_admin, sales, media_head, '' = employee…) */
   role: string;
-  /** What the person may read through Jarvis. */
-  scope: JarvisScope;
-  /** trainers.id when the person is also a trainer (used to scope "my classes"). */
+  permissions: Permission[];
+  /** trainers.id when the person teaches (scopes "my classes"). */
   trainerId: string | null;
-  division: string | null;
 }
 
 export class JarvisAuthError extends Error {
-  constructor(public status: 401 | 403, message: string) { super(message); }
+  constructor(public status: 401 | 403, public code: "SESSION_EXPIRED" | "FORBIDDEN", message: string) { super(message); }
 }
 
+export const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again to continue using Jarvis.";
+
 const LEADERSHIP = ["manager", "founder", "co_founder", "managing_director", "director"];
-const HEAD_DESIGNATIONS = ["academic head", "class coordinator", "operations manager"];
+const ACCESS_DEFAULTS: Record<string, string> = {
+  "academic head": "academic_head", "class coordinator": "academic_head", "operations manager": "academic_head", "fluency coach": "trainer",
+};
 
 let _admin: SupabaseClient | null = null;
 /** Service-role client for server-side reads. Never exposed to the browser. */
@@ -42,42 +60,71 @@ export function adminClient(): SupabaseClient {
   return _admin;
 }
 
+const likeExact = (v: string) => v.replace(/[\\%_]/g, (c) => "\\" + c);
+const clean = (s: unknown) => String(s ?? "").trim().replace(/^(senior|mid-level|junior)\s+/i, "");
+
 export async function resolveAuthContext(req: Request): Promise<JarvisAuthContext> {
-  const h = req.headers.get("authorization") || "";
-  const token = h.toLowerCase().startsWith("bearer ") ? h.slice(7).trim() : "";
-  if (!token) throw new JarvisAuthError(401, "Sign in to use Jarvis.");
+  const session = await verifySession(req.headers.get("x-erp-session"));
+  if (!session) throw new JarvisAuthError(401, "SESSION_EXPIRED", SESSION_EXPIRED_MESSAGE);
+  const email = session.email;
   const sb = adminClient();
-  const { data, error } = await sb.auth.getUser(token);
-  const user = data?.user;
-  if (error || !user || !user.email) throw new JarvisAuthError(401, "Your Jarvis sign-in has expired. Please sign in again.");
-  if (user.is_anonymous) throw new JarvisAuthError(401, "Sign in with your work email to use Jarvis.");
-  const email = user.email.trim().toLowerCase();
 
-  const { data: rows, error: e2 } = await sb.from("hr_employees")
-    .select("id,full_name,portal_email,division,department,designation,system_role,account_type,employment_status")
-    .eq("portal_email", email);
-  if (e2) throw new JarvisAuthError(403, "Your ERP access could not be checked right now.");
-  const active = (rows || []).filter((r) => !["inactive", "exited"].includes(String(r.employment_status || "active").toLowerCase()));
-  // Prefer the leadership row when a login has duplicates (same rule as manager.html).
-  const rec = active.find((r) => r.account_type === "management" || LEADERSHIP.includes(String(r.system_role || "").toLowerCase())) || active[0];
-  if (!rec) throw new JarvisAuthError(403, "This email is not linked to an active ERP employee.");
-
-  const sys = String(rec.system_role || "").toLowerCase();
-  const desig = String(rec.designation || "").trim().replace(/^(senior|mid-level|junior)\s+/i, "").toLowerCase();
-  let role = sys || desig || "employee";
-  let scope: JarvisScope | null = null;
-  if (LEADERSHIP.includes(sys) || rec.account_type === "management" || rec.account_type === "system") {
-    scope = "org"; role = sys || (rec.account_type === "system" ? "system" : "management");
-  } else if (sys === "academic_head" || (!sys && HEAD_DESIGNATIONS.includes(desig))) {
-    scope = "academic"; role = "academic_head";
-  } else if (sys === "trainer" || (rec.division === "education" && (!sys || sys === "trainer"))) {
-    scope = "trainer"; role = "trainer";
+  const [empR, rosterR, desigR] = await Promise.all([
+    sb.from("hr_employees").select("id,full_name,portal_email,division,department,designation,system_role,account_type,employment_status,portal_access_enabled").ilike("portal_email", likeExact(email)),
+    sb.from("user_roster").select("role,name").ilike("email", likeExact(email)).limit(1),
+    sb.from("hr_designations").select("name,access_role,active"),
+  ]);
+  if (empR.error) throw new JarvisAuthError(401, "SESSION_EXPIRED", "Your ERP access could not be checked right now.");
+  // Same row preference as the ERP access gate (portal_access_state): system → active → enabled.
+  const rows = (empR.data || []).sort((a, b) =>
+    Number(b.account_type === "system") - Number(a.account_type === "system") ||
+    Number(String(b.employment_status || "active").toLowerCase() === "active") - Number(String(a.employment_status || "active").toLowerCase() === "active") ||
+    Number(b.portal_access_enabled !== false) - Number(a.portal_access_enabled !== false));
+  const rec = rows[0];
+  if (!rec) throw new JarvisAuthError(403, "FORBIDDEN", "This sign-in is not linked to an employee record.");
+  const status = String(rec.employment_status || "active").toLowerCase();
+  if (rec.account_type !== "system" && (status === "exited" || status === "inactive" || rec.portal_access_enabled === false)) {
+    throw new JarvisAuthError(401, "SESSION_EXPIRED", "Your ERP access is disabled. Contact HR.");
   }
-  if (!scope) throw new JarvisAuthError(403, "Jarvis is available to management and academic staff only.");
+
+  // Effective access role — common.js hrAccessRole, server-side.
+  const sys = String(rec.system_role || "").toLowerCase();
+  const desig = clean(rec.designation);
+  const desigAccess = (() => {
+    const hit = (desigR.data || []).find((d) => d.active !== false && String(d.name).toLowerCase() === desig.toLowerCase());
+    return (hit && hit.access_role) || ACCESS_DEFAULTS[desig.toLowerCase()] || "";
+  })();
+  const teamRoles = String(rec.department || "").split(",").map((r) => clean(r));
+  let role = sys || desigAccess;
+  if (!role && teamRoles.some((r) => /^(academic head|class coordinator|operations manager)$/i.test(r))) role = "academic_head";
+  if (!role && rec.division === "education" && teamRoles.some((r) => /coach|trainer/i.test(r))) role = "trainer";
+  const rosterRole = String(rosterR.data?.[0]?.role || "").toLowerCase();
+  const isLeader = LEADERSHIP.includes(sys) || rec.account_type === "management" || rec.account_type === "system";
+  if (isLeader && !role) role = rec.account_type === "system" ? "system" : "management";
+
+  // Permissions from effective access (never from the browser).
+  const p = new Set<Permission>(["self"]);
+  if (isLeader) ["org", "academic.all", "hr.attendance", "sales.all", "media.all"].forEach((x) => p.add(x as Permission));
+  if (role === "academic_head") p.add("academic.all");
+  if (role === "trainer" || (rec.division === "education" && !p.has("academic.all"))) p.add("academic.own");
+  if (role === "hr_admin" || rosterRole === "admin" || rec.division === "hr") p.add("hr.attendance");
+  if (rec.division === "sales" || role === "sales") {
+    // sales.html: head = global manager or a head/manager title.
+    p.add(/head|manager/i.test(`${rec.department || ""} ${rec.designation || ""}`) ? "sales.all" : "sales.own");
+  }
+  if (role === "media_head") p.add("media.all");
 
   let trainerId: string | null = null;
-  const t = await sb.from("trainers").select("id").or(`hr_employee_id.eq.${rec.id},portal_email.eq.${email}`).limit(1);
-  if (t.data && t.data[0]) trainerId = t.data[0].id;
+  if (p.has("academic.own") || p.has("academic.all")) {
+    const t = await sb.from("trainers").select("id").or(`hr_employee_id.eq.${rec.id},portal_email.eq.${email}`).limit(1);
+    if (t.data && t.data[0]) trainerId = t.data[0].id;
+  }
 
-  return { authUserId: user.id, email, employeeId: rec.id, name: rec.full_name || email, role, scope, trainerId, division: rec.division || null };
+  return {
+    authUserId: rec.id, employeeId: rec.id, email, name: rec.full_name || email,
+    department: rec.division || null, designation: desig || null, role: role || "employee",
+    permissions: [...p], trainerId,
+  };
 }
+
+export const can = (a: JarvisAuthContext, perm: Permission) => a.permissions.includes(perm);
