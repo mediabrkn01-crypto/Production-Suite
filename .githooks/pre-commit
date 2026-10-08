@@ -6,3 +6,9 @@ command -v node >/dev/null 2>&1 || { echo "[pre-commit] node not found — versi
 git diff --cached --name-only | grep -Eq '\.(html|js|css|json)$' || exit 0
 node scripts/stamp-version.mjs || exit 1
 git add version.json *.html
+# Jarvis (supabase/functions/jarvis) runs the SAME leave/attendance engine server-side —
+# keep its vendored copy identical to leave-policy.js on every commit.
+if ! cmp -s leave-policy.js supabase/functions/_shared/jarvis/vendor/leave-policy.js; then
+  cp leave-policy.js supabase/functions/_shared/jarvis/vendor/leave-policy.js
+  git add supabase/functions/_shared/jarvis/vendor/leave-policy.js
+fi
