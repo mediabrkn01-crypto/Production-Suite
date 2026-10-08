@@ -203,6 +203,57 @@
     var r = await db.from('assignment_activity').select('*').eq('assignment_id', id).order('created_at');
     return r.data || [];
   }
+  // ── employee photos: the same small-thumbnail cache as HR (localStorage be_hr_thumbs_v1,
+  //    keyed by employee id + photo_sig) so photos download once and then load instantly. ──
+  var THUMB_KEY = 'be_hr_thumbs_v1', PHOTOS = {};
+  function thumbCache() { try { return JSON.parse(localStorage.getItem(THUMB_KEY) || '{}') || {}; } catch (_) { return {}; } }
+  function makeThumb(dataUrl, size) {
+    return new Promise(function (res) {
+      var img = new Image();
+      img.onload = function () { try { var s = size || 112, c = document.createElement('canvas'); c.width = c.height = s;
+        var k = Math.max(s / img.width, s / img.height), w = img.width * k, h = img.height * k;
+        c.getContext('2d').drawImage(img, (s - w) / 2, (s - h) / 2, w, h); res(c.toDataURL('image/jpeg', 0.82)); } catch (_) { res(null); } };
+      img.onerror = function () { res(null); }; img.src = dataUrl;
+    });
+  }
+  /** Avatar: photo when known, else department-coloured initials. Live-patched by data-ava. */
+  function ava(id, name, dep, cls) {
+    var t = id && PHOTOS[id];
+    return '<span class="bw-pk-ava' + (cls ? ' ' + cls : '') + '" data-ava="' + esc(id || '') + '" style="--dc:' + (DIV_COLOR[dep] || '#94a3b8') + '">' + (t ? '<img src="' + t + '" alt="">' : esc(initials(name))) + '</span>';
+  }
+  var _hydrating = {};
+  async function hydratePhotos(db, ids) {
+    ids = (ids || []).filter(function (id) { return id && !_hydrating[id]; });
+    if (!ids.length) return;
+    ids.forEach(function (id) { _hydrating[id] = 1; });
+    try {
+      var cache = thumbCache();
+      var sig = await db.from('hr_employees').select('id,photo_sig').in('id', ids);
+      var need = [];
+      (sig.data || []).forEach(function (r) {
+        var c = cache[r.id];
+        if (!r.photo_sig) { PHOTOS[r.id] = null; return; }
+        if (c && c.s === r.photo_sig && c.t) PHOTOS[r.id] = c.t; else need.push(r.id);
+      });
+      paintPhotos();
+      for (var i = 0; i < need.length; i += 6) {   // small batches — each photo is ~70 KB
+        var r = await db.from('hr_employees').select('id,photo_base64,photo_sig').in('id', need.slice(i, i + 6));
+        for (var d of (r.data || [])) {
+          if (!d.photo_base64) continue;
+          var t = await makeThumb(d.photo_base64, 112);
+          if (t) { PHOTOS[d.id] = t; cache[d.id] = { s: d.photo_sig || null, t: t }; }
+        }
+        try { localStorage.setItem(THUMB_KEY, JSON.stringify(cache)); } catch (_) {}
+        paintPhotos();
+      }
+    } catch (_) { /* initials stay */ }
+  }
+  function paintPhotos() {
+    document.querySelectorAll('[data-ava]').forEach(function (el) {
+      var t = PHOTOS[el.dataset.ava];
+      if (t && !el.querySelector('img')) el.innerHTML = '<img src="' + t + '" alt="">';
+    });
+  }
   var _teamLive = false;
   function liveTeamBlocks() {
     if (_teamLive || !window.BELive) return; _teamLive = true;
@@ -217,6 +268,7 @@
   function joinNames(a) { return a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
   /** Team block for the task modal (members, roles, contributions, activity, team outputs). */
   function teamHTML(t, mem, acts, o) {
+    if (o && o.db) hydratePhotos(o.db, (mem || []).map(function (m) { return m.employee_id; }));
     return '<div class="bw-teamblk" data-task="' + esc(t.id) + '">' + teamInner(t, mem, acts, o) + '</div>';
   }
   function teamInner(t, mem, acts, o) {
@@ -228,7 +280,7 @@
     return '<div class="bw-f"><span class="bw-l">Team members · ' + act.length + (lead ? ' · Team lead: ' + esc(lead.employee_name) : '') + '</span><div class="bw-mems">' +
         act.map(function (m) {
           var mine = o.me && lc(m.employee_email) === lc(o.me);
-          return '<div class="bw-mem"><span class="bw-ava">' + esc(initials(m.employee_name)) + '</span><div class="bw-mem-t"><b>' + esc(m.employee_name || m.employee_email) + (mine ? ' <em>(you)</em>' : '') + (m.member_role === 'lead' ? ' <i class="bw-lead">LEAD</i>' : '') + '</b>' + depChip(m.department) + '</div>' +
+          return '<div class="bw-mem">' + ava(m.employee_id, m.employee_name, m.department) + '<div class="bw-mem-t"><b>' + esc(m.employee_name || m.employee_email) + (mine ? ' <em>(you)</em>' : '') + (m.member_role === 'lead' ? ' <i class="bw-lead">LEAD</i>' : '') + '</b>' + depChip(m.department) + '</div>' +
             (mine && o.canContribute ? '<select class="bw-contrib" data-contrib="' + esc(m.id) + '">' + Object.keys(CONTRIB).map(function (k) { return '<option value="' + k + '"' + (m.contribution_status === k ? ' selected' : '') + '>' + CONTRIB[k] + '</option>'; }).join('') + '</select>'
               : '<span class="bw-cs ' + esc(m.contribution_status) + '">' + esc(CONTRIB[m.contribution_status] || '') + '</span>') +
             (o.manage && act.length > 1 ? '<button type="button" class="bw-btn ghost bw-rmm" data-rmm="' + esc(m.id) + '" aria-label="Remove ' + esc(m.employee_name) + '">Remove</button>' : '') + '</div>';
@@ -435,15 +487,25 @@
       '.bw-chip .bw-pk-ava{width:22px;height:22px;font-size:9px}',
       '.bw-pick-box{border:1px solid var(--bw-b);border-radius:14px;overflow:hidden;background:rgba(0,0,0,.18)}',
       '.bw-pick-top{display:flex;flex-direction:column;gap:8px;padding:10px;border-bottom:1px solid var(--bw-b)}',
-      '.bw-dfil{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.bw-dfil::-webkit-scrollbar{display:none}',
-      '.bw-dfil button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 11px;border-radius:999px;border:1px solid var(--bw-b);background:none;color:var(--bw-m);font:600 11.5px inherit;font-family:inherit;cursor:pointer}',
+      '.bw-dfil{display:flex;flex-wrap:wrap;gap:6px}',
+      '.bw-dfil button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 11px;min-height:30px;border-radius:999px;border:1px solid var(--bw-b);background:none;color:var(--bw-m);font-family:inherit;font-size:11.5px;font-weight:600;line-height:1;cursor:pointer;outline:none}',
+      '.bw-dfil button:hover{color:var(--bw-t);border-color:rgba(255,255,255,.18)}.bw-dfil button:focus-visible{box-shadow:0 0 0 2px rgba(255,107,6,.6)}',
       '.bw-dfil button i{width:7px;height:7px;border-radius:50%}.bw-dfil button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.12)}',
       '.bw-pick{display:flex;flex-direction:column;max-height:248px;overflow:auto;padding:4px}',
       '.bw-pk{display:flex;align-items:center;gap:11px;min-height:46px;padding:6px 10px;border-radius:10px;cursor:pointer;transition:background .12s}',
       '.bw-pk:hover{background:rgba(255,255,255,.04)}',
       '.bw-pk input[type=checkbox]{position:absolute;opacity:0;width:1px!important;height:1px!important;min-height:0!important;pointer-events:none}',
       '.bw-pk:focus-within{outline:2px solid rgba(255,107,6,.6);outline-offset:-2px}',
-      '.bw-pk-ava{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;background:color-mix(in srgb,var(--dc) 30%,#151a2b);border:1px solid color-mix(in srgb,var(--dc) 55%,transparent)}',
+      '.bw-pk-ava{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;font-size:11px;font-weight:800;color:#fff;background:color-mix(in srgb,var(--dc) 30%,#151a2b);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--dc) 60%,transparent)}',
+      '.bw-pk-ava img{width:100%;height:100%;object-fit:cover;display:block}.bw-pk-ava.sm{width:28px;height:28px;font-size:10px}.bw-avas .bw-pk-ava{margin-left:-8px;box-shadow:0 0 0 2px #0d1120}.bw-avas .bw-pk-ava:first-child{margin-left:0}',
+      '.bw-mem .bw-pk-ava{width:38px;height:38px}',
+      '.bw,.bw *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent}',
+      '.bw ::-webkit-scrollbar{width:8px;height:8px}.bw ::-webkit-scrollbar-track{background:transparent}',
+      '.bw ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:99px;border:2px solid transparent;background-clip:padding-box}.bw ::-webkit-scrollbar-thumb:hover{background-color:rgba(255,107,6,.45)}',
+      '.bw ::-webkit-scrollbar-corner{background:transparent}',
+      '.bw-sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.bw-sugg:empty{display:none}',
+      '.bw-sugg button{padding:4px 10px;border-radius:999px;border:1px solid var(--bw-b);background:none;color:var(--bw-m);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer}',
+      '.bw-sugg button:hover,.bw-sugg button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.1)}',
       '.bw-pk-t{display:flex;flex-direction:column;min-width:0;flex:1}.bw-pk-t b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bw-pk-t small{font-size:11px;color:var(--bw-m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.bw-ck{width:20px;height:20px;border-radius:6px;border:1.5px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;color:transparent;flex-shrink:0;transition:all .12s}',
       '.bw-pk.on{background:rgba(255,107,6,.07)}.bw-pk.on .bw-ck{background:linear-gradient(135deg,#ff6b06,#f9182f);border-color:transparent;color:#fff}',
@@ -622,7 +684,7 @@
       var lead = activeMembers(mem).find(function (m) { return m.member_role === 'lead'; });
       // One final submission: the team lead when there is one, otherwise any team member.
       var canSubmit = !team || !lead || lc(lead.employee_email) === me;
-      if (team) teamBlock = teamHTML(t, mem, await loadActivity(db, t.id), { me: me, canContribute: isOpen(t), canPost: isOpen(t) });
+      if (team) teamBlock = teamHTML(t, mem, await loadActivity(db, t.id), { me: me, canContribute: isOpen(t), canPost: isOpen(t), db: db });
       var acts = '';
       if (k === 'pending') acts = '<button class="bw-btn pri" data-a="start">Start task</button>';
       else if (k === 'progress' || k === 'rework') acts = '<button class="bw-btn" data-a="update">Add progress update</button>' + (canSubmit ? '<button class="bw-btn green" data-a="submit">' + (team ? 'Submit final team output' : 'Mark completed') + '</button>' : '');
@@ -695,6 +757,7 @@
     async function loadEmps() {
       var r = await db.from('hr_employees').select('id,full_name,portal_email,division,designation,employment_status,account_type');
       S.emps = (r.data || []).filter(function (e) { return (e.account_type || '') !== 'system' && e.full_name; });
+      hydratePhotos(db, S.emps.filter(function (e) { return (e.employment_status || 'active') === 'active'; }).map(function (e) { return e.id; }));
     }
     async function load() {
       S.cols = await hasCols(db);
@@ -807,15 +870,15 @@
     }
     function rowById(id) { return S.rows.find(function (t) { return String(t.id) === String(id); }); }
     function whoCell(t) {
-      if (!isTeam(t)) return '<div class="bw-who bw-c-who"><span class="bw-ava">' + esc(initials(t.assigned_to)) + '</span><div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>';
+      if (!isTeam(t)) { var ie = empForTask(t); return '<div class="bw-who bw-c-who">' + ava(ie && ie.id, t.assigned_to, t.department, 'sm') + '<div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>'; }
       var mem = activeMembers(S.mem[String(t.id)]), d = teamDeps(mem);
-      return '<div class="bw-who bw-c-who"><span class="bw-avas">' + mem.slice(0, 3).map(function (m) { return '<span class="bw-ava">' + esc(initials(m.employee_name)) + '</span>'; }).join('') + '</span><div><b>Team · ' + mem.length + ' members</b><span class="bw-due">' + esc(d.map(function (x) { return DIV[x] || x; }).join(' + ')) + '</span></div></div>';
+      return '<div class="bw-who bw-c-who"><span class="bw-avas">' + mem.slice(0, 3).map(function (m) { return ava(m.employee_id, m.employee_name, m.department, 'sm'); }).join('') + '</span><div><b>Team · ' + mem.length + ' members</b><span class="bw-due">' + esc(d.map(function (x) { return DIV[x] || x; }).join(' + ')) + '</span></div></div>';
     }
     async function view(id) {
       var t = rowById(id); if (!t) return;
       var open = isOpen(t), done = t.status === 'Completed', team = isTeam(t), mem = S.mem[String(t.id)] || [];
       var actorEmail = lc((o.actor && o.actor.email) || '');
-      var teamOpts = { manage: open, canPost: true, me: actorEmail };
+      var teamOpts = { manage: open, canPost: true, me: actorEmail, db: db };
       var teamBlock = team ? teamHTML(t, mem, await loadActivity(db, t.id), teamOpts) : '';
       var acts = (open ? '<button class="bw-btn red" data-a="cancel">Cancel task</button>' + (team ? '' : '<button class="bw-btn" data-a="re">Reassign</button>') + '<button class="bw-btn pri" data-a="edit">Edit</button>' : '') +
         (done ? '<button class="bw-btn" data-a="rework">Send back for rework</button>' : '');
@@ -907,11 +970,11 @@
                 '<div class="bw-chips" id="bw-chips"><span class="bw-chips-e">Pick people below — tap ★ on a person to make them team lead (optional).</span></div>' +
                 '<div class="bw-pick-box"><div class="bw-pick-top"><input class="bw-in" id="bw-tsearch" type="search" placeholder="Search by name, role or department…" autocomplete="off" aria-label="Search employees">' +
                   '<div class="bw-dfil" role="group" aria-label="Filter by department"><button type="button" data-dfil="" class="on">All</button>' + Object.keys(DIV).filter(function (d) { return activeTargets(d).length; }).map(function (d) { return '<button type="button" data-dfil="' + d + '"><i style="background:' + (DIV_COLOR[d] || '#94a3b8') + '"></i>' + esc(DIV[d]) + '</button>'; }).join('') + '</div></div>' +
-                  '<div class="bw-pick" id="bw-pick">' + activeTargets('').map(function (x) { var ok = !!x.portal_email; return '<label class="bw-pk' + (ok ? '' : ' off') + '" data-dep="' + esc(x.division || '') + '" data-name="' + esc(lc(x.full_name + ' ' + (x.designation || '') + ' ' + (DIV[x.division] || ''))) + '"><input type="checkbox" value="' + esc(x.id) + '"' + (ok ? '' : ' disabled') + '><span class="bw-pk-ava" style="--dc:' + (DIV_COLOR[x.division] || '#94a3b8') + '">' + esc(initials(x.full_name)) + '</span><span class="bw-pk-t"><b>' + esc(x.full_name) + '</b><small>' + esc((x.designation ? x.designation + ' · ' : '') + (DIV[x.division] || x.division || '')) + (ok ? '' : ' · no login') + '</small></span><span class="bw-ck" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span></label>'; }).join('') + '<div class="bw-pick-none" hidden>No employees match.</div></div></div>' +
+                  '<div class="bw-pick" id="bw-pick">' + activeTargets('').map(function (x) { var ok = !!x.portal_email; return '<label class="bw-pk' + (ok ? '' : ' off') + '" data-dep="' + esc(x.division || '') + '" data-name="' + esc(lc(x.full_name + ' ' + (x.designation || '') + ' ' + (DIV[x.division] || ''))) + '"><input type="checkbox" value="' + esc(x.id) + '"' + (ok ? '' : ' disabled') + '>' + ava(x.id, x.full_name, x.division) + '<span class="bw-pk-t"><b>' + esc(x.full_name) + '</b><small>' + esc((x.designation ? x.designation + ' · ' : '') + (DIV[x.division] || x.division || '')) + (ok ? '' : ' · no login') + '</small></span><span class="bw-ck" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span></label>'; }).join('') + '<div class="bw-pick-none" hidden>No employees match.</div></div></div>' +
                 '<input type="hidden" id="bw-lead" value=""></div>' +
               '<div class="bw-g2" id="bw-indf"><div class="bw-f"><label class="bw-l" for="bw-dep">Department</label><select id="bw-dep">' + (depOpts.length > 1 ? '<option value="">All departments</option>' : '') + depOpts.map(function (d) { return '<option value="' + d + '"' + (dep0 === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select></div>' +
               '<div class="bw-f"><label class="bw-l" for="bw-emp">Employee <b>*</b></label><select id="bw-emp">' + empOptions(dep0, '') + '</select></div></div>') +
-          '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-cat">Category <em>optional</em></label><input id="bw-cat" list="bw-cats" placeholder="e.g. Report, Poster Design" value="' + esc(t ? (t.type || '') : '') + '"><datalist id="bw-cats">' + Object.keys(cats).map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
+          '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-cat">Category <em>optional</em></label><input id="bw-cat" autocomplete="off" placeholder="e.g. Report, Poster Design" value="' + esc(t ? (t.type || '') : '') + '"><div class="bw-sugg" id="bw-catsug">' + Object.keys(cats).slice(0, 8).map(function (c) { return '<button type="button" data-cat="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div></div>' +
             '<div class="bw-f"><span class="bw-l">Priority</span><div class="bw-seg" role="radiogroup">' + PRIO.map(function (p) { return '<button type="button" data-p="' + p[0] + '" class="' + (pr === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div></div></div>' +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-ad">Assigned date</label><input id="bw-ad" type="date" value="' + esc(t ? String(t.assigned_date || '').slice(0, 10) : today()) + '"></div>' +
             '<div class="bw-f"><label class="bw-l" for="bw-due">Due date <b>*</b></label><input id="bw-due" type="date" min="' + (t ? '' : today()) + '" value="' + esc(t ? String(t.date || '').slice(0, 10) : '') + '"></div></div>' +
@@ -926,6 +989,7 @@
         var dep = ov.querySelector('#bw-dep'), emp = ov.querySelector('#bw-emp');
         if (dep) dep.onchange = function () { emp.innerHTML = empOptions(dep.value, emp.value); };
         var reIn = ov.querySelector('[data-re-in]'); if (reIn) reIn.onclick = function (e) { e.preventDefault(); close(); reassign([t.id]); };
+        ov.querySelectorAll('[data-cat]').forEach(function (b) { b.onclick = function () { var ci = ov.querySelector('#bw-cat'); ci.value = b.dataset.cat; ov.querySelectorAll('[data-cat]').forEach(function (x) { x.classList.toggle('on', x === b); }); }; });
         var tmIn = ov.querySelector('[data-team-in]'); if (tmIn) tmIn.onclick = function (e) { e.preventDefault(); close(); view(t.id); };
         // assignment type + team picker
         var type = 'individual';
@@ -941,7 +1005,7 @@
           if (lead && ids.indexOf(lead.value) === -1) lead.value = '';
           var cnt = ov.querySelector('#bw-tcount'); if (cnt) { cnt.textContent = ids.length ? ids.length + ' selected' + (ids.length < 2 ? ' · add 1 more' : '') : 'Choose at least 2'; cnt.classList.toggle('ok', ids.length >= 2); }
           if (chips) chips.innerHTML = ids.length ? ids.map(function (id) { var x = empById(id) || {}, isLead = lead && lead.value === id;
-              return '<span class="bw-chip' + (isLead ? ' lead' : '') + '"><span class="bw-pk-ava" style="--dc:' + (DIV_COLOR[x.division] || '#94a3b8') + '">' + esc(initials(x.full_name)) + '</span>' + esc(x.full_name || id) + (isLead ? '<em>Lead</em>' : '') +
+              return '<span class="bw-chip' + (isLead ? ' lead' : '') + '">' + ava(id, x.full_name, x.division) + esc(x.full_name || id) + (isLead ? '<em>Lead</em>' : '') +
                 '<button type="button" data-lead="' + esc(id) + '" aria-label="' + (isLead ? 'Remove team lead' : 'Make ' + esc(x.full_name) + ' team lead') + '" title="' + (isLead ? 'Team lead' : 'Make team lead') + '">★</button><button type="button" data-unpick="' + esc(id) + '" aria-label="Remove ' + esc(x.full_name) + '">✕</button></span>'; }).join('')
             : '<span class="bw-chips-e">Pick people below — tap ★ on a person to make them team lead (optional).</span>';
           if (chips) {
