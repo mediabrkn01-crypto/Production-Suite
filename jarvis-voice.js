@@ -16,15 +16,15 @@
   if (window.JarvisVoice) return;
   var EXPIRED = 'Your session has expired. Please sign in again to continue using Jarvis.';
   var STATE_LABEL = {
-    IDLE: 'Tap the globe · JARVIS listens', LISTENING: 'LISTENING… tap to send', TRANSCRIBING: 'HEARING YOU…',
+    IDLE: 'Tap the globe · JARVIS listens', WAKE_DETECTED: 'Yes?', LISTENING: 'LISTENING… tap to send', TRANSCRIBING: 'HEARING YOU…',
     THINKING: 'THINKING…', CHECKING_ERP: 'CHECKING ERP…', CHECKING_CRM: 'CHECKING CRM…', SPEAKING: 'SPEAKING', ERROR: 'JARVIS ERROR'
   };
   var STATE_GLOW = {
-    LISTENING: '237,31,81', TRANSCRIBING: '240,88,37', THINKING: '77,159,255', CHECKING_ERP: '255,194,75',
+    WAKE_DETECTED: '255,255,255', LISTENING: '237,31,81', TRANSCRIBING: '240,88,37', THINKING: '77,159,255', CHECKING_ERP: '255,194,75',
     CHECKING_CRM: '255,194,75', SPEAKING: '47,224,140', ERROR: '255,77,94'
   };
   var cfg = null, ui = null;
-  var state = 'IDLE', busy = false, rec = null, abortCtl = null, player = null;
+  var state = 'IDLE', busy = false, rec = null, abortCtl = null, player = null, stateFns = [];
   var sessionId = (function () { try { var s = sessionStorage.getItem('jarvis_session'); if (!s) { s = 'erp-' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('jarvis_session', s); } return s; } catch (_) { return 'erp-' + Date.now(); } })();
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -38,6 +38,7 @@
       if (window._g && _g.controls) _g.controls().autoRotateSpeed = s === 'IDLE' ? .5 : (s === 'CHECKING_ERP' || s === 'CHECKING_CRM' ? 4 : 1.6);
     }
     if (typeof ui.onState === 'function') { try { ui.onState(s); } catch (_) {} }
+    stateFns.forEach(function (f) { try { f(s); } catch (_) {} });
   }
   function say(text, ms) {
     if (!ui.sub) return;
@@ -61,47 +62,58 @@
     }
   }
 
-  // ── microphone → 16 kHz PCM16 with a simple end-of-speech detector ─────────────
+  // ── one recorder: 16 kHz PCM16 frames + a simple end-of-speech detector. Fed either by
+  //    its own microphone (tap) or by the wake-word service's stream (no second mic, keeps
+  //    the words right after "Hey Jarvis"). ────────────────────────────────────────────
+  function makeRecorder() {
+    var chunks = [], heard = false, silentMs = 0, started = Date.now(), level = 0;
+    var r = { chunks: chunks, stopped: false, onAutoStop: null };
+    r.push = function (out) {           // out: Int16Array @ 16 kHz
+      if (r.stopped || !out || !out.length) return;
+      chunks.push(out);
+      var energy = 0; for (var i = 0; i < out.length; i++) { var v = out[i] / 32768; energy += v * v; }
+      var rms = Math.sqrt(energy / out.length), ms = out.length / 16;
+      level = Math.min(1, rms * 6);
+      if (rms > 0.02) { heard = true; silentMs = 0; } else if (heard) silentMs += ms;
+      if ((heard && silentMs > (r.silenceMs || 1200)) || Date.now() - started > 30000 || (!heard && Date.now() - started > (r.noSpeechMs || 8000))) { if (r.onAutoStop) r.onAutoStop(); }
+    };
+    r.level = function () { return level; };
+    r.heard = function () { return heard; };
+    r.raf = 0;
+    (function loop() {
+      if (r.stopped) return;
+      if (ui.globe && ui.scale) ui.globe.style.transform = ui.scale(1 + level * .18);
+      r.raf = requestAnimationFrame(loop);
+    })();
+    return r;
+  }
   async function startCapture() {
     var stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
     var ctx = new (window.AudioContext || window.webkitAudioContext)();
     var src = ctx.createMediaStreamSource(stream);
-    var an = ctx.createAnalyser(); an.fftSize = 256; src.connect(an);
     var proc = ctx.createScriptProcessor(4096, 1, 1);
-    var chunks = [], ratio = ctx.sampleRate / 16000, heard = false, silentMs = 0, started = Date.now();
-    var buf = new Uint8Array(an.frequencyBinCount);
-    var r = { stream: stream, ctx: ctx, chunks: chunks, stopped: false, onAutoStop: null };
+    var ratio = ctx.sampleRate / 16000;
+    var r = makeRecorder();
+    r.stream = stream; r.ctx = ctx;
     proc.onaudioprocess = function (e) {
       if (r.stopped) return;
       var input = e.inputBuffer.getChannelData(0);
-      var outLen = Math.floor(input.length / ratio), out = new Int16Array(outLen), energy = 0;
-      for (var i = 0; i < outLen; i++) {
-        var s = input[Math.floor(i * ratio)]; energy += s * s;
-        out[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
-      }
-      chunks.push(out);
-      var rms = Math.sqrt(energy / Math.max(1, outLen)), ms = input.length / ctx.sampleRate * 1000;
-      if (rms > 0.02) { heard = true; silentMs = 0; } else if (heard) silentMs += ms;
-      if ((heard && silentMs > 1200) || Date.now() - started > 30000) { if (r.onAutoStop) r.onAutoStop(); }
+      var outLen = Math.floor(input.length / ratio), out = new Int16Array(outLen);
+      for (var i = 0; i < outLen; i++) out[i] = Math.max(-32768, Math.min(32767, Math.round(input[Math.floor(i * ratio)] * 32767)));
+      r.push(out);
     };
     src.connect(proc); proc.connect(ctx.destination);
     r.proc = proc;
-    (function loop() {
-      if (r.stopped) return;
-      an.getByteFrequencyData(buf);
-      var v = buf.reduce(function (a, b) { return a + b; }, 0) / buf.length / 255;
-      if (ui.globe && ui.scale) ui.globe.style.transform = ui.scale(1 + v * .18);
-      r.raf = requestAnimationFrame(loop);
-    })();
-    r.heard = function () { return heard; };
     return r;
   }
   function stopCapture(r) {
     if (!r || r.stopped) return null;
     r.stopped = true; cancelAnimationFrame(r.raf);
-    try { r.proc.disconnect(); } catch (_) {}
-    try { r.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (_) {}
-    try { r.ctx.close(); } catch (_) {}
+    if (r.proc) {   // own microphone (tap); wake-fed recorders share the wake service's stream
+      try { r.proc.disconnect(); } catch (_) {}
+      try { r.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (_) {}
+      try { r.ctx.close(); } catch (_) {}
+    }
     if (ui.globe && ui.scale) ui.globe.style.transform = ui.scale(1);
     var n = r.chunks.reduce(function (a, c) { return a + c.length; }, 0), pcm = new Int16Array(n), o = 0;
     r.chunks.forEach(function (c) { pcm.set(c, o); o += c.length; });
@@ -213,6 +225,7 @@
     var s = document.createElement('style');
     s.textContent = [
       '.jv-orb{position:fixed;right:22px;bottom:22px;z-index:140;display:flex;align-items:center;gap:10px;flex-direction:row-reverse}',
+      '.jv-orb .jw-chip{margin-top:6px;font-size:9px;padding:3px 8px}',
       '.jv-orb-btn{width:58px;height:58px;border-radius:50%;border:none;cursor:pointer;background:radial-gradient(circle at 32% 30%,#ff7a94,#ed1f51 45%,#5c0d22 90%);box-shadow:0 0 26px rgba(237,31,81,.55),0 10px 30px rgba(0,0,0,.5);transition:transform .09s linear,filter .3s;animation:jvBreathe 3.2s ease-in-out infinite}',
       '.jv-orb-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}',
       '@keyframes jvBreathe{0%,100%{box-shadow:0 0 22px rgba(237,31,81,.45),0 10px 30px rgba(0,0,0,.5)}50%{box-shadow:0 0 38px rgba(237,31,81,.75),0 10px 30px rgba(0,0,0,.5)}}',
@@ -236,7 +249,7 @@
   function mountOrb() {
     css();
     var wrap = document.createElement('div'); wrap.className = 'jv-orb';
-    wrap.innerHTML = '<button type="button" class="jv-orb-btn" aria-label="Ask Jarvis"></button><div class="jv-orb-cap" aria-live="polite">Tap to ask Jarvis</div>';
+    wrap.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center"><button type="button" class="jv-orb-btn" aria-label="Ask Jarvis"></button><div data-jarvis-chip></div></div><div class="jv-orb-cap" aria-live="polite">Tap to ask Jarvis</div>';
     document.body.appendChild(wrap);
     var btn = wrap.querySelector('.jv-orb-btn'), cap = wrap.querySelector('.jv-orb-cap');
     return { wrap: wrap, btn: btn, cap: cap };
@@ -258,11 +271,36 @@
       if (state === 'SPEAKING') { if (player) player.stop(); setState('IDLE'); return true; }
       if (rec) { await finishListening(); return true; }
       if (!token()) { sessionExpired(); return true; }
+      var W = window.JarvisWake;
+      if (W && W.shouldOffer && W.shouldOffer()) { W.offer(function () { JarvisVoice.toggle(); }); return true; }
+      if (W && W.active && W.active()) { JarvisVoice.startFromStream([], false); return true; }   // same mic stream as the wake word
       try { rec = await startCapture(); } catch (e) { say('Mic blocked — allow it in the browser bar'); return true; }
       rec.onAutoStop = function () { finishListening(); };
       setState('LISTENING');
       return true;
     },
+    /** Start a turn fed by the wake-word stream (JarvisWake.feed). preroll: Int16Array frames
+     *  captured just before activation so "Hey Jarvis, who has classes…" keeps its start. */
+    startFromStream: function (preroll, fromWake) {
+      if (!cfg || busy || rec || state !== 'IDLE') return false;
+      if (!token()) { sessionExpired(); return false; }
+      rec = makeRecorder(); rec.external = true;
+      rec.noSpeechMs = 6000;
+      (preroll || []).forEach(function (f) { rec.push(f); });
+      rec.onAutoStop = function () { finishListening(); };
+      if (fromWake) {
+        setState('WAKE_DETECTED'); say('Yes? I\'m listening…', 4000);
+        setTimeout(function () { if (rec) setState('LISTENING'); }, 450);
+      } else setState('LISTENING');
+      return true;
+    },
+    /** Frames from the wake-word stream while a stream-fed turn is listening. */
+    feed: function (frame) { if (rec && rec.external) rec.push(frame); },
+    listening: function () { return !!rec; },
+    sheet: function (sub, title, meta, html) { if (ui && ui.sheet) ui.sheet(sub, title, meta, html); },
+    closeSheet: function () { if (ui && ui.closeSheet) ui.closeSheet(); },
+    onStateChange: function (fn) { if (typeof fn === 'function') stateFns.push(fn); },
+    get initialized() { return !!cfg; },
     /** Floating orb mode — used automatically on every portal except the Manager deck. */
     mountOrb: function () {
       if (cfg && ui && ui.globe) return;

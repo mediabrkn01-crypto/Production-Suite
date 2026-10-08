@@ -25,7 +25,7 @@ function cors(req: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-erp-session",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Vary": "Origin",
   };
 }
@@ -34,7 +34,7 @@ const json = (req: Request, status: number, body: unknown) =>
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
-  if (req.method !== "POST") return json(req, 405, { error: "Use POST." });
+  if (req.method !== "POST" && req.method !== "GET") return json(req, 405, { error: "Use POST." });
 
   // ── who is calling (verified server-side) ──
   let auth;
@@ -42,6 +42,20 @@ Deno.serve(async (req: Request) => {
     if (e instanceof JarvisAuthError) return json(req, e.status, { error: e.message, code: e.code });
     console.error("[jarvis] auth:", e instanceof Error ? e.message : e);
     return json(req, 500, { error: "Jarvis could not verify your sign-in right now." });
+  }
+
+  // ── GET ?config=wake — wake-word settings for the signed-in employee (no audio involved) ──
+  if (req.method === "GET") {
+    return json(req, 200, {
+      wake: {
+        enabled: !!config.picovoiceAccessKey,
+        accessKey: config.picovoiceAccessKey || null,
+        sensitivity: config.wakeSensitivity,
+        keywordUrl: config.wakeKeywordUrl || null,
+        modelUrl: "https://cdn.jsdelivr.net/gh/Picovoice/porcupine@v4.0/lib/common/porcupine_params.pv",
+      },
+      user: { name: auth.name },
+    });
   }
 
   // ── simple per-user rate limit (cost guard) ──

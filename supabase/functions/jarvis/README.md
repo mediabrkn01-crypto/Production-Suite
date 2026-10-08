@@ -90,3 +90,29 @@ Effective access is resolved the same way as the ERP (`hrAccessRole`: System Rol
   wall-clock time because the edge runtime runs in UTC.
 - **Cost guard:** 12 turns per user per minute, at most `JARVIS_MAX_TOOL_CALLS` tool calls per answer, and
   questions capped at 60 seconds of audio.
+
+## Wake word: "Hey Jarvis"
+
+`jarvis-wake.js` (`window.JarvisWake`) is the shared wake-word service for every portal.
+
+**What it does:**
+- **Detection on the device:** Picovoice Porcupine runs as WebAssembly in the browser. While it waits for the wake phrase, no audio leaves the device.
+- **One mic stream:** Picovoice WebVoiceProcessor feeds both the detector and a 0.5 s pre-roll buffer, so "Hey Jarvis, who has classes today?" keeps the start of the question.
+- **On detection:** a soft ding (about 220 ms), the `jarvis.wake` event, then state `WAKE_DETECTED` followed by `LISTENING`. The turn runs through the same `JarvisVoice` engine as a globe tap, fed by the same mic stream, with the same STT, ERP tools and TTS.
+- **Pausing:** detection pauses for any state other than IDLE (listening, thinking, checking ERP, speaking), so Jarvis can't wake itself and sessions never overlap.
+- **Preference:** stored per employee on each device, under `localStorage jarvis_wake_pref:<email>`. A chip under the globe or orb toggles it ("● “Hey Jarvis” on"). The first time someone uses Jarvis it offers "Enable voice activation".
+- **Lifecycle:** the mic is released when the tab is hidden and restarted when it's visible again, provided the preference is ON and mic permission isn't denied. The listener is restored after a page reload.
+- **Sign-in required:** settings come from `GET /functions/v1/jarvis?config=wake`, which needs a valid ERP session.
+
+**Setup:**
+1. Create a Picovoice Console account (console.picovoice.ai) and copy your **AccessKey**. Check the plan terms for company (commercial) use.
+2. In the Console, train a **Porcupine** keyword "Hey Jarvis" with platform **Web (WASM)**. Save the downloaded `.ppn` in this repo as `jarvis/hey-jarvis_wasm.ppn`. Until that file exists, the built-in keyword "Jarvis" is used.
+3. Set the secrets:
+   ```bash
+   supabase secrets set --project-ref fevqnpllmarhoqdzpatq PICOVOICE_ACCESS_KEY=... JARVIS_WAKE_SENSITIVITY=0.5
+   ```
+   Sensitivity runs from 0 to 1. Higher values catch more wake phrases but trigger falsely more often; 0.5 is the default.
+
+**Limits:**
+- **Background:** it works while the ERP tab or app is open and active. A suspended browser or PWA, a locked screen, or a backgrounded tab on mobile can't listen; detection resumes when the app is active again.
+- **iOS:** Safari may ask for microphone permission again in new sessions.

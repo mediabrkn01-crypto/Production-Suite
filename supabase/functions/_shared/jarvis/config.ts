@@ -40,5 +40,11 @@ export const config = {
   erpTimeoutMs: int("JARVIS_ERP_TIMEOUT_MS", 12000),
   /** Override only for local testing against a mock; production uses Sarvam's hosts. */
   sarvamWsBase: env("SARVAM_WS_BASE", "wss://api.sarvam.ai"),
+  // Wake word ("Hey Jarvis") — Picovoice Porcupine runs in the browser; these are only handed
+  // to signed-in employees. The AccessKey is a client-side key by Picovoice's design.
+  picovoiceAccessKey: env("PICOVOICE_ACCESS_KEY"),
+  wakeSensitivity: Math.min(1, Math.max(0, parseFloat(env("JARVIS_WAKE_SENSITIVITY", "0.5")) || 0.5)),
+  /** URL/path of the custom "Hey Jarvis" .ppn (Web/WASM). Empty → built-in "Jarvis" keyword. */
+  wakeKeywordUrl: env("JARVIS_WAKE_KEYWORD_URL", "jarvis/hey-jarvis_wasm.ppn"),
   sarvamHttpBase: env("SARVAM_HTTP_BASE", "https://api.sarvam.ai"),
 };
