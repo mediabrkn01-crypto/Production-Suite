@@ -488,12 +488,20 @@ export const metricsService = {
 const OPEN_TASK = ["Pending", "In Progress", "Rework Required"];
 export const selfService = {
   async getMyTasks(email: string, status?: string | null) {
-    const { data, error } = await db().from("assignments")
-      .select("topic,type,status,priority,date,assigned_by,department,progress,completed_at,submitted_at,manager_approved")
-      .ilike("employee_email", email.replace(/[\\%_]/g, (c) => "\\" + c));
+    const cols = "id,topic,type,status,priority,date,assigned_by,department,progress,completed_at,submitted_at,manager_approved,assignment_type";
+    const esc = email.replace(/[\\%_]/g, (c) => "\\" + c);
+    const { data, error } = await db().from("assignments").select(cols).ilike("employee_email", esc);
     if (error) throw new Error(error.message);
+    // Team (collaborative) tasks the person is an active member of — one shared row each.
+    let team: Row[] = [];
+    const mem = await db().from("assignment_members").select("assignment_id").ilike("employee_email", esc).is("removed_at", null);
+    if (!mem.error && mem.data?.length) {
+      const have = new Set((data || []).map((t: Row) => String(t.id)));
+      const need = mem.data.map((m: Row) => m.assignment_id).filter((id: unknown) => !have.has(String(id)));
+      if (need.length) team = (await db().from("assignments").select(cols).in("id", need)).data || [];
+    }
     const today = tzDate();
-    const rows = (data || []).filter((t: Row) => t.status !== "cancelled");
+    const rows = ([...(data || []), ...team] as Row[]).filter((t: Row) => t.status !== "cancelled");
     const isOpen = (t: Row) => OPEN_TASK.includes(t.status || "Pending");
     const overdue = (t: Row) => isOpen(t) && isIsoDate(String(t.date || "").slice(0, 10)) && String(t.date).slice(0, 10) < today;
     const st = lc(status);
@@ -504,7 +512,8 @@ export const selfService = {
       rework: rows.filter((t) => t.status === "Rework Required").length,
       completed: rows.filter((t) => t.status === "Completed").length,
       filter: st || "open",
-      tasks: pick.slice(0, 15).map((t) => ({ task: t.topic, type: t.type, status: t.status, priority: t.priority, due: t.date ? String(t.date).slice(0, 10) : null, overdue: overdue(t), assigned_by: t.assigned_by, progress: t.progress ?? null })),
+      team_tasks: rows.filter((t) => t.assignment_type === "team" && isOpen(t)).length,
+      tasks: pick.slice(0, 15).map((t) => ({ task: t.topic, team_work: t.assignment_type === "team" || undefined, type: t.type, status: t.status, priority: t.priority, due: t.date ? String(t.date).slice(0, 10) : null, overdue: overdue(t), assigned_by: t.assigned_by, progress: t.progress ?? null })),
     };
   },
 

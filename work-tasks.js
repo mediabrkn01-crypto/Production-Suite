@@ -163,6 +163,7 @@
   async function saveRow(db, id, patch) {
     var ok = await hasCols(db), p = Object.assign({}, patch);
     if (!ok) ['scope', 'department', 'employee_id', 'created_by', 'created_at', 'updated_at', 'started_at', 'completed_at', 'progress', 'reference_link', 'history'].forEach(function (k) { delete p[k]; });
+    if (!(await hasTeams(db))) TEAM_COLS.forEach(function (k) { delete p[k]; });
     return id == null ? db.from('assignments').insert([p]) : db.from('assignments').update(p).eq('id', id);
   }
   async function uploadFiles(db, files, onPct) {
@@ -176,6 +177,115 @@
       i++; if (onPct) onPct(Math.round(i / files.length * 100));
     }
     return out;
+  }
+
+  // ── team / collaborative tasks (20261013_work_teams.sql) ─────────────────────────────
+  // ONE shared assignments row (assignment_type 'team') + assignment_members (many-to-many,
+  // soft-removed for audit) + assignment_activity (comments + team output files).
+  var TEAM_COLS = ['assignment_type', 'team_lead_id', 'final_submitted_by'];
+  var CONTRIB = { not_started: 'Not started', in_progress: 'In progress', done: 'Contribution done' };
+  async function hasTeams(db) {
+    if (hasTeams._v != null) return hasTeams._v;
+    try { var r = await db.from('assignment_members').select('id').limit(1); hasTeams._v = !r.error; } catch (e) { hasTeams._v = false; }
+    return hasTeams._v;
+  }
+  function isTeam(t) { return t && t.assignment_type === 'team'; }
+  async function loadMembers(db, ids) {
+    var map = {}; ids = (ids || []).map(String);
+    if (!ids.length || !(await hasTeams(db))) return map;
+    var r = await db.from('assignment_members').select('*').in('assignment_id', ids).order('joined_at');
+    (r.data || []).forEach(function (m) { (map[String(m.assignment_id)] = map[String(m.assignment_id)] || []).push(m); });
+    return map;
+  }
+  function activeMembers(list) { return (list || []).filter(function (m) { return !m.removed_at; }); }
+  async function loadActivity(db, id) {
+    if (!(await hasTeams(db))) return [];
+    var r = await db.from('assignment_activity').select('*').eq('assignment_id', id).order('created_at');
+    return r.data || [];
+  }
+  var _teamLive = false;
+  function liveTeamBlocks() {
+    if (_teamLive || !window.BELive) return; _teamLive = true;
+    BELive.on('bework-team-live', ['assignment_activity', 'assignment_members'], function (evs, info) {
+      var ids = {}; (evs || []).forEach(function (e) { var n = e.new || {}, p = e.old || {}; ids[String(n.assignment_id || p.assignment_id)] = 1; });
+      document.querySelectorAll('.bw-teamblk[data-task]').forEach(function (b) { if ((info && info.resync) || ids[b.dataset.task]) { if (b._refresh) b._refresh(); } });
+    }, { debounce: 250 });
+  }
+  function teamBadge() { return '<span class="bw-team">TEAM WORK</span>'; }
+  function teamDeps(mem) { var d = {}; activeMembers(mem).forEach(function (m) { if (m.department) d[m.department] = 1; }); return Object.keys(d); }
+  function teamNames(mem, exceptEmail) { return activeMembers(mem).filter(function (m) { return lc(m.employee_email) !== lc(exceptEmail); }).map(function (m) { return m.employee_name || m.employee_email; }); }
+  function joinNames(a) { return a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  /** Team block for the task modal (members, roles, contributions, activity, team outputs). */
+  function teamHTML(t, mem, acts, o) {
+    return '<div class="bw-teamblk" data-task="' + esc(t.id) + '">' + teamInner(t, mem, acts, o) + '</div>';
+  }
+  function teamInner(t, mem, acts, o) {
+    o = o || {};
+    var act = activeMembers(mem), gone = (mem || []).filter(function (m) { return m.removed_at; });
+    var lead = act.find(function (m) { return m.member_role === 'lead'; });
+    var files = (acts || []).filter(function (a) { return a.kind === 'file' && a.file_url; });
+    var notes = (acts || []).filter(function (a) { return a.kind !== 'file'; });
+    return '<div class="bw-f"><span class="bw-l">Team members · ' + act.length + (lead ? ' · Team lead: ' + esc(lead.employee_name) : '') + '</span><div class="bw-mems">' +
+        act.map(function (m) {
+          var mine = o.me && lc(m.employee_email) === lc(o.me);
+          return '<div class="bw-mem"><span class="bw-ava">' + esc(initials(m.employee_name)) + '</span><div class="bw-mem-t"><b>' + esc(m.employee_name || m.employee_email) + (mine ? ' <em>(you)</em>' : '') + (m.member_role === 'lead' ? ' <i class="bw-lead">LEAD</i>' : '') + '</b>' + depChip(m.department) + '</div>' +
+            (mine && o.canContribute ? '<select class="bw-contrib" data-contrib="' + esc(m.id) + '">' + Object.keys(CONTRIB).map(function (k) { return '<option value="' + k + '"' + (m.contribution_status === k ? ' selected' : '') + '>' + CONTRIB[k] + '</option>'; }).join('') + '</select>'
+              : '<span class="bw-cs ' + esc(m.contribution_status) + '">' + esc(CONTRIB[m.contribution_status] || '') + '</span>') +
+            (o.manage && act.length > 1 ? '<button type="button" class="bw-btn ghost bw-rmm" data-rmm="' + esc(m.id) + '" aria-label="Remove ' + esc(m.employee_name) + '">Remove</button>' : '') + '</div>';
+        }).join('') +
+        (gone.length ? '<div class="bw-gone">Previously on this team: ' + esc(gone.map(function (m) { return m.employee_name; }).join(', ')) + '</div>' : '') +
+        (o.manage ? '<div class="bw-addm" id="bw-addm"><button type="button" class="bw-btn" data-addm>+ Add team member</button></div>' : '') +
+      '</div></div>' +
+      (files.length ? '<div class="bw-f"><span class="bw-l">Team outputs</span><div class="bw-files">' + files.map(function (f) {
+        return '<div class="bw-file">' + (KIND_ICON[kindOf(f.file_name, f.file_url)] || '📎') + '<span><b>' + esc(f.author_name || '') + '</b> – ' + esc(f.file_name || 'File') + '</span><a href="' + esc(f.file_url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') + '</div></div>' : '') +
+      '<div class="bw-f"><span class="bw-l">Task activity</span><div class="bw-acty">' +
+        (notes.length ? notes.map(function (a) { return '<div class="bw-actr"><b>' + esc(a.author_name || a.author_email || '') + '</b><span>' + esc(a.body || '') + '</span><small>' + esc(fmtTs(a.created_at)) + '</small></div>'; }).join('') : '<div class="bw-due" style="color:#5b638a">No activity yet.</div>') +
+      '</div>' +
+      (o.canPost ? '<div class="bw-post"><textarea id="bw-actin" rows="2" maxlength="600" placeholder="Share an update with the team…"></textarea><div class="bw-post-a"><label class="bw-btn ghost">📎 Share file<input type="file" hidden id="bw-actf"></label><button type="button" class="bw-btn pri" data-post>Post</button></div></div>' : '') +
+      '</div>';
+  }
+  /** Wire contribution / post / share-file controls of teamHTML. The block refreshes itself in
+   *  place (realtime or after an action) — the modal stays open and typed text is kept. */
+  function wireTeam(ov, db, t, who, reload, o) {
+    var blk = ov.querySelector('.bw-teamblk[data-task="' + t.id + '"]');
+    if (blk && !blk._refresh) blk._refresh = async function () {
+      var mem = (await loadMembers(db, [t.id]))[String(t.id)] || [], acts = await loadActivity(db, t.id);
+      var ta = blk.querySelector('#bw-actin'), keep = ta ? ta.value : '';
+      blk.innerHTML = teamInner(t, mem, acts, o);
+      var ta2 = blk.querySelector('#bw-actin'); if (ta2 && keep) ta2.value = keep;
+      wireTeam(ov, db, t, who, reload, o);
+      if (o && o.onRefresh) o.onRefresh(mem);
+    };
+    if (blk && !reload) reload = blk._refresh;
+    var sel = ov.querySelector('[data-contrib]');
+    if (sel) sel.onchange = async function () {
+      var r = await db.from('assignment_members').update({ contribution_status: sel.value }).eq('id', sel.dataset.contrib);
+      if (r.error) { toast('error', 'Could not update: ' + r.error.message); return; }
+      await db.from('assignment_activity').insert([{ assignment_id: t.id, author_email: who.email, author_name: who.name, kind: 'contribution', body: 'Contribution: ' + CONTRIB[sel.value] }]);
+      toast('success', 'Your contribution status is updated for the team.');
+      if (reload) reload();
+    };
+    var post = ov.querySelector('[data-post]');
+    if (post) post.onclick = async function () {
+      var ta = ov.querySelector('#bw-actin'), body = ta.value.trim(); if (!body) { ta.focus(); return; }
+      post.disabled = true;
+      var r = await db.from('assignment_activity').insert([{ assignment_id: t.id, author_email: who.email, author_name: who.name, kind: 'comment', body: body }]);
+      post.disabled = false;
+      if (r.error) { toast('error', 'Could not post: ' + r.error.message); return; }
+      ta.value = ''; if (reload) reload();
+    };
+    var fin = ov.querySelector('#bw-actf');
+    if (fin) fin.onchange = async function () {
+      var f = fin.files && fin.files[0]; fin.value = ''; if (!f) return;
+      if (f.size > 50 * 1024 * 1024) { toast('warning', 'Over 50 MB — share it as a Drive link in a post instead.'); return; }
+      toast('info', 'Uploading ' + f.name + '…');
+      try {
+        var up = await uploadFiles(db, [f]);
+        var r = await db.from('assignment_activity').insert([{ assignment_id: t.id, author_email: who.email, author_name: who.name, kind: 'file', file_name: up[0].name, file_url: up[0].url, body: 'Shared ' + up[0].name }]);
+        if (r.error) throw r.error;
+        toast('success', 'Shared with the team.'); if (reload) reload();
+      } catch (e) { toast('error', 'Upload failed: ' + (e.message || e)); }
+    };
   }
 
   // ── styles (injected once) ─────────────────────────────────────────────────────────────
@@ -285,7 +395,30 @@
       '.bw-pv-media{max-width:100%;max-height:70vh;border-radius:10px;object-fit:contain}.bw-pv-frame{width:100%;height:70vh;border:0;border-radius:10px;background:#0b0e18}',
       '@media(max-width:1100px){.bw-done .bw-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.bw-done .bw-row>:nth-child(3),.bw-done .bw-row>:nth-child(4),.bw-done .bw-row>:nth-child(5){display:none}}',
       '@media(max-width:1100px){.bw-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.bw-row.hd{display:none}.bw-row>.bw-c-pri,.bw-row>.bw-c-prog{display:none}.bw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}',
-      '@media(max-width:640px){.bw-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}.bw-row>.bw-c-who{grid-column:1/-1}.bw-row>.bw-c-due{grid-column:1}.bw-acts{grid-column:2;grid-row:1}.bw-kpis{grid-template-columns:1fr 1fr}.bw-g2,.bw-info{grid-template-columns:1fr}.bw-seg{grid-template-columns:1fr 1fr}.bw-mf .bw-btn{flex:1}.bw-search{min-width:100%}}'
+      '@media(max-width:640px){.bw-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}.bw-row>.bw-c-who{grid-column:1/-1}.bw-row>.bw-c-due{grid-column:1}.bw-acts{grid-column:2;grid-row:1}.bw-kpis{grid-template-columns:1fr 1fr}.bw-g2,.bw-info{grid-template-columns:1fr}.bw-seg{grid-template-columns:1fr 1fr}.bw-mf .bw-btn{flex:1}.bw-search{min-width:100%}}',
+      // team / collaborative work
+      '.bw-team{display:inline-flex;align-items:center;vertical-align:middle;margin-left:6px;padding:2px 8px;border-radius:999px;font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#c4b5fd;background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.35);white-space:nowrap}',
+      '.bw-tm{font-size:11.5px;color:#c4b5fd;margin:2px 0 6px;overflow-wrap:anywhere}',
+      '.bw-avas{display:flex}.bw-avas .bw-ava{margin-left:-8px;border:2px solid #0d1120}.bw-avas .bw-ava:first-child{margin-left:0}',
+      '.bw-mems{display:flex;flex-direction:column;gap:6px}',
+      '.bw-mem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--bw-b);border-radius:12px;background:var(--bw-s)}',
+      '.bw-mem-t{flex:1;min-width:140px;display:flex;flex-direction:column;gap:3px}.bw-mem-t b{font-size:13px}.bw-mem-t em{color:var(--bw-m);font-style:normal;font-weight:500}',
+      '.bw-lead{font-style:normal;font-size:9px;font-weight:800;letter-spacing:.08em;color:#fbbf24;border:1px solid rgba(251,191,36,.4);border-radius:6px;padding:1px 5px;margin-left:4px}',
+      '.bw-cs{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--bw-b);color:var(--bw-m);white-space:nowrap}.bw-cs.in_progress{color:#93c5fd;border-color:rgba(147,197,253,.35)}.bw-cs.done{color:#6ee7b7;border-color:rgba(110,231,183,.35)}',
+      '.bw-contrib{min-height:34px;border-radius:9px;border:1px solid var(--bw-b);background:rgba(0,0,0,.25);color:var(--bw-t);font:inherit;font-size:12px;padding:0 8px}',
+      '.bw-gone{font-size:11.5px;color:var(--bw-d);padding:2px 2px 0}',
+      '.bw-addm{margin-top:4px}.bw-addm .bw-g2{align-items:center}',
+      '.bw-acty{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;padding-right:2px}',
+      '.bw-actr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:8px 10px;border-radius:10px;background:var(--bw-s);border:1px solid var(--bw-b)}.bw-actr b{font-size:12px}.bw-actr span{grid-column:1/-1;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.bw-actr small{grid-row:1;grid-column:2;font-size:10.5px;color:var(--bw-d)}',
+      '.bw-post{display:flex;flex-direction:column;gap:6px;margin-top:8px}.bw-post-a{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.bw-post-a label{cursor:pointer}',
+      '.bw-pick{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;margin-top:8px;padding:2px}',
+      '.bw-pk{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 12px;border-radius:12px;border:1px solid var(--bw-b);background:var(--bw-s);cursor:pointer}',
+      '.bw [hidden]{display:none!important}',
+      '.bw-pk input[type=checkbox]{width:18px!important;height:18px!important;min-height:0!important;min-width:18px;padding:0!important;margin:0;border:0;flex:0 0 18px;accent-color:#ff6b06;box-shadow:none!important}',
+      '.bw-contrib{width:auto!important;flex:0 0 auto;max-width:190px}',
+      '.bw-pk input{accent-color:#ff6b06;flex-shrink:0}.bw-pk span{display:flex;flex-direction:column;min-width:0}.bw-pk b{font-size:13px}.bw-pk small{font-size:11px;color:var(--bw-m);overflow-wrap:anywhere}',
+      '.bw-pk.on{border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.08)}.bw-pk.off{opacity:.45;cursor:not-allowed}',
+      '@media(max-width:640px){.bw-mem{align-items:flex-start}.bw-pick{max-height:50vh}}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -313,16 +446,19 @@
   // Task detail (shared by employee + manager views)
   function detailHTML(t, opts) {
     var refs = parseRefs(t.reference_file), hist = Array.isArray(t.history) ? t.history.slice().reverse() : [];
-    return '<div class="bw-mh"><div><h3>' + esc(t.topic || 'Task') + '</h3><p>' + esc(t.type || 'Task') + ' · ' + depChip(t.department) + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
+    var team = isTeam(t), mem = (opts && opts.members) || [];
+    var deps = team ? teamDeps(mem) : [t.department];
+    return '<div class="bw-mh"><div><h3>' + esc(t.topic || 'Task') + (team ? ' ' + teamBadge() : '') + '</h3><p>' + esc(t.type || 'Task') + ' · ' + deps.map(depChip).join(' ') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
       '<div class="bw-mb">' +
         '<div class="bw-info"><div><small>Status</small>' + stPill(t) + '</div><div><small>Priority</small>' + priPill(t.priority) + '</div><div><small>Due</small><b class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</b></div>' +
-          '<div><small>Assigned to</small><b>' + esc(t.assigned_to || '—') + '</b></div><div><small>Assigned by</small><b>' + esc(t.assigned_by || '—') + '</b></div><div><small>Assigned on</small><b>' + esc(fmtD(t.assigned_date)) + '</b></div></div>' +
+          (team ? '<div><small>Team</small><b>' + activeMembers(mem).length + ' members' + (deps.length > 1 ? ' · ' + deps.length + ' departments' : '') + '</b></div>' : '<div><small>Assigned to</small><b>' + esc(t.assigned_to || '—') + '</b></div>') + '<div><small>Assigned by</small><b>' + esc(t.assigned_by || '—') + '</b></div><div><small>Assigned on</small><b>' + esc(fmtD(t.assigned_date)) + '</b></div></div>' +
         (typeof t.progress === 'number' && t.progress > 0 && t.status !== 'Completed' ? '<div class="bw-f"><span class="bw-l">Progress · ' + t.progress + '%</span><div class="bw-prog"><i style="width:' + t.progress + '%"></i></div></div>' : '') +
         '<div class="bw-f"><span class="bw-l">Instructions</span><div class="bw-desc">' + (t.description ? esc(t.description) : '<span style="color:#5b638a">No instructions added.</span>') + '</div></div>' +
         (t.rework_reason && t.status === 'Rework Required' ? '<div class="bw-warn"><b>Rework needed:</b> ' + esc(t.rework_reason) + '</div>' : '') +
         ((refs.length || t.reference_link) ? '<div class="bw-f"><span class="bw-l">Reference files &amp; links</span><div class="bw-files">' +
           refs.map(function (r) { return '<div class="bw-file">📎<span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') +
           (t.reference_link ? '<div class="bw-file">🔗<span>' + esc(t.reference_link) + '</span><a href="' + esc(t.reference_link) + '" target="_blank" rel="noopener">Open</a></div>' : '') + '</div></div>' : '') +
+        (team && opts && opts.teamBlock ? opts.teamBlock : '') +
         outputHTML(t) +
         (hist.length ? '<div class="bw-f"><span class="bw-l">History</span><div class="bw-hist">' + hist.map(function (h) {
           var o = h.output && parseOutput(h.output.asset_link);
@@ -338,19 +474,21 @@
     if (!files.length && !done) return '';
     var vers = (Array.isArray(t.history) ? t.history : []).filter(function (h) { return h.output && parseOutput(h.output.asset_link).length; }).length;
     return '<div class="bw-out"><div class="bw-out-h"><b>' + (done ? 'Completed output' : 'Latest submission') + '</b>' + (vers ? '<span>Version ' + (vers + 1) + '</span>' : '') + '</div>' +
-      '<div class="bw-out-m"><div><small>Submitted by</small><b>' + esc(t.assigned_to || '—') + '</b></div><div><small>Submitted</small><b>' + esc(when ? fmtFull(when) : '—') + '</b></div>' +
+      '<div class="bw-out-m"><div><small>' + (isTeam(t) ? 'Final submitted by' : 'Submitted by') + '</small><b>' + esc(t.final_submitted_by || t.assigned_to || '—') + (isTeam(t) ? ' <em style="color:#8b93b8;font-style:normal">· credited to the whole team</em>' : '') + '</b></div><div><small>Submitted</small><b>' + esc(when ? fmtFull(when) : '—') + '</b></div>' +
         (t.manager_approved ? '<div><small>Review</small><b style="color:#6ee7b7">Approved' + (t.approved_by ? ' · ' + esc(t.approved_by) : '') + '</b></div>' : '') + '</div>' +
       (files.length ? filesHTML(files) : '<div class="bw-empty" style="padding:14px">No file or link was attached to this submission.</div>') +
       (note ? '<div class="bw-out-note"><small>Employee note</small>“' + esc(note) + '”</div>' : '') + '</div>';
   }
   function histLabel(h) {
     switch (h.action) {
-      case 'created': return 'Assigned to ' + (h.to || '—');
+      case 'created': return (h.team ? 'Team work assigned to ' : 'Assigned to ') + (h.to || '—');
+      case 'member_added': return 'Team member added: ' + (h.to || '—');
+      case 'member_removed': return 'Team member removed: ' + (h.to || '—');
       case 'reassigned': return 'Reassigned from ' + (h.from || '—') + ' to ' + (h.to || '—');
       case 'edited': return 'Edited' + (h.fields ? ' (' + h.fields.join(', ') + ')' : '');
       case 'status': return 'Status → ' + (h.to || '');
       case 'update': return 'Progress update' + (h.progress != null ? ' · ' + h.progress + '%' : '');
-      case 'submitted': return 'Marked completed';
+      case 'submitted': return h.team ? 'Final team output submitted' : 'Marked completed';
       case 'rework': return 'Sent back for rework' + (h.output && parseOutput(h.output.asset_link).length ? ' — previous delivery kept' : '');
       case 'cancelled': return 'Cancelled';
       default: return h.action || 'Update';
@@ -358,10 +496,14 @@
   }
 
   // ── live alert ─────────────────────────────────────────────────────────────────────────
-  function alertNew(t, onView, kind) {
+  function alertNew(t, onView, kind, others) {
     css();
+    var team = isTeam(t);
+    var head = kind === 'rework' ? (team ? '↩️ TEAM WORK – REWORK REQUIRED' : '↩️ SENT BACK FOR REWORK') : (team ? '👥 NEW TEAM WORK ASSIGNED' : '🔔 NEW WORK ASSIGNED');
+    var body = kind === 'rework' ? 'Manager feedback: ' + (t.rework_reason || 'see the task')
+      : (team ? 'This is a collaborative task' + (others && others.length ? ' with ' + joinNames(others) : '') + '. ' : '') + dueText(t) + ' · from ' + (t.assigned_by || 'Manager');
     var a = document.createElement('div'); a.className = 'bw-alert bw'; a.setAttribute('role', 'status');
-    a.innerHTML = (kind === 'rework' ? '<small>↩️ SENT BACK FOR REWORK</small>' : '<small>🔔 NEW WORK ASSIGNED</small>') + '<b>' + esc(t.topic || 'New task') + '</b><span>' + esc(kind === 'rework' ? (t.rework_reason || 'See the feedback') : dueText(t) + ' · from ' + (t.assigned_by || 'Manager')) + '</span>' +
+    a.innerHTML = '<small>' + esc(head) + '</small><b>' + esc(t.topic || 'New task') + '</b><span>' + esc(body) + '</span>' +
       '<div class="bw-alert-a"><button class="bw-btn pri" data-v>View task</button><button class="bw-btn ghost" data-d>Dismiss</button></div>';
     document.body.appendChild(a);
     requestAnimationFrame(function () { a.classList.add('on'); });
@@ -369,7 +511,7 @@
     a.querySelector('[data-v]').onclick = function () { kill(); if (onView) onView(t); };
     a.querySelector('[data-d]').onclick = kill;
     setTimeout(kill, 15000);
-    try { if ('Notification' in window && Notification.permission === 'granted') new Notification('New work assigned', { body: (t.topic || '') + ' · ' + dueText(t) }); } catch (_) {}
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification(head.replace(/^\W+\s*/, ''), { body: (t.topic || '') + ' · ' + body }); } catch (_) {}
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════
@@ -378,7 +520,7 @@
   function mountMyTasks(el, o) {
     css();
     var db = o.db, me = lc(o.email), name = o.name || '';
-    var S = { rows: [], f: 'open', known: null, loading: true };
+    var S = { rows: [], f: 'open', known: null, loading: true, teamIds: new Set(), mem: {} };
     try { S.known = new Set(JSON.parse(localStorage.getItem('bw_seen_' + me) || '[]')); } catch (_) { S.known = new Set(); }
     el.classList.add('bw');
 
@@ -386,14 +528,30 @@
       var r = await db.from('assignments').select('*').ilike('employee_email', me).order('id', { ascending: false });
       S.loading = false;
       if (r.error) { el.innerHTML = '<div class="bw-empty"><b>Could not load your tasks</b>' + esc(r.error.message) + '</div>'; return; }
-      var prev = S.rows.length ? new Set(S.rows.map(function (x) { return String(x.id); })) : null;
+      // Team tasks I'm an active member of (one shared row each — never a copy per person).
+      var teamIds = [], extra = [];
+      if (await hasTeams(db)) {
+        var m = await db.from('assignment_members').select('assignment_id').ilike('employee_email', me).is('removed_at', null);
+        teamIds = (m.data || []).map(function (x) { return String(x.assignment_id); });
+        var have = new Set((r.data || []).map(function (x) { return String(x.id); }));
+        var need = teamIds.filter(function (id) { return !have.has(id); });
+        if (need.length) { var r2 = await db.from('assignments').select('*').in('id', need); extra = r2.data || []; }
+      }
+      S.teamIds = new Set(teamIds);
+      // After the first load, any new id is new work — also for someone whose list was empty
+      // (the old rows.length check never alerted an employee about their very first task).
+      var prev = S.loadedOnce ? new Set(S.rows.map(function (x) { return String(x.id); })) : null;
+      S.loadedOnce = true;
       var prevSt = {}; S.rows.forEach(function (x) { prevSt[String(x.id)] = x.status; });
-      S.rows = (r.data || []).filter(function (t) { return t.status !== 'cancelled'; });
-      // brand-new tasks while this page is open → live alert + page bell
+      // A team task where I was removed (and am not the primary) is no longer mine.
+      S.rows = (r.data || []).concat(extra).filter(function (t) { return t.status !== 'cancelled' && (!isTeam(t) || S.teamIds.has(String(t.id))); })
+        .sort(function (a, b) { return Number(b.id) - Number(a.id); });
+      S.mem = await loadMembers(db, S.rows.filter(isTeam).map(function (t) { return t.id; }));
+      // brand-new tasks while this page is open → live alert + page bell (each member gets their own)
       if (prev) S.rows.forEach(function (t) {
-        var id = String(t.id);
-        if (!prev.has(id) && isOpen(t)) { alertNew(t, openTask); if (o.onNotify) try { o.onNotify(t); } catch (_) {} }
-        else if (prev.has(id) && prevSt[id] !== 'Rework Required' && t.status === 'Rework Required') { alertNew(t, openTask, 'rework'); if (o.onNotify) try { o.onNotify(t); } catch (_) {} }
+        var id = String(t.id), others = isTeam(t) ? teamNames(S.mem[id], me) : null;
+        if (!prev.has(id) && isOpen(t)) { alertNew(t, openTask, 'new', others); if (o.onNotify) try { o.onNotify(t); } catch (_) {} }
+        else if (prev.has(id) && prevSt[id] !== 'Rework Required' && t.status === 'Rework Required') { alertNew(t, openTask, 'rework', others); if (o.onNotify) try { o.onNotify(t); } catch (_) {} }
       });
       if (o.onCount) try { o.onCount(S.rows.filter(isOpen).length); } catch (_) {}
       render();
@@ -415,7 +573,8 @@
         (list.length ? '<div class="bw-cards">' + list.map(function (t) {
           var isNew = isOpen(t) && !S.known.has(String(t.id));
           return '<button type="button" class="bw-card' + (isOverdue(t) ? ' od' : '') + (isNew ? ' new' : '') + '" data-id="' + esc(t.id) + '">' +
-            '<h4>' + esc(t.topic || 'Task') + '</h4>' + (t.description ? '<p>' + esc(t.description) + '</p>' : '') +
+            '<h4>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</h4>' + (t.description ? '<p>' + esc(t.description) + '</p>' : '') +
+            (isTeam(t) ? '<div class="bw-tm">With ' + esc(joinNames(teamNames(S.mem[String(t.id)], me)) || 'your team') + '</div>' : '') +
             '<div class="bw-card-m">' + stPill(t) + priPill(t.priority) + (t.type ? '<span class="bw-pri">' + esc(t.type) + '</span>' : '') + '</div>' +
             (t.progress > 0 && isOpen(t) ? '<div class="bw-prog"><i style="width:' + t.progress + '%"></i></div>' : '') +
             '<div class="bw-card-f"><span class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</span><span>From ' + esc(t.assigned_by || '—') + '</span></div></button>';
@@ -425,17 +584,24 @@
       el.querySelectorAll('.bw-card').forEach(function (b) { b.onclick = function () { openTask(S.rows.find(function (t) { return String(t.id) === b.dataset.id; })); }; });
     }
     function markSeen(id) { S.known.add(String(id)); try { localStorage.setItem('bw_seen_' + me, JSON.stringify([].concat(Array.from(S.known)).slice(-400))); } catch (_) {} }
-    function openTask(t) {
+    async function openTask(t) {
       if (!t) return; markSeen(t.id);
       var k = state(t), media = t.scope !== 'org' && t.department === 'production';
+      var team = isTeam(t), mem = S.mem[String(t.id)] || [], teamBlock = '';
+      var lead = activeMembers(mem).find(function (m) { return m.member_role === 'lead'; });
+      // One final submission: the team lead when there is one, otherwise any team member.
+      var canSubmit = !team || !lead || lc(lead.employee_email) === me;
+      if (team) teamBlock = teamHTML(t, mem, await loadActivity(db, t.id), { me: me, canContribute: isOpen(t), canPost: isOpen(t) });
       var acts = '';
       if (k === 'pending') acts = '<button class="bw-btn pri" data-a="start">Start task</button>';
-      else if (k === 'progress' || k === 'rework') acts = '<button class="bw-btn" data-a="update">Add progress update</button><button class="bw-btn green" data-a="submit">Mark completed</button>';
+      else if (k === 'progress' || k === 'rework') acts = '<button class="bw-btn" data-a="update">Add progress update</button>' + (canSubmit ? '<button class="bw-btn green" data-a="submit">' + (team ? 'Submit final team output' : 'Mark completed') + '</button>' : '');
+      if (team && !canSubmit && (k === 'progress' || k === 'rework')) teamBlock += '<div class="bw-note">' + esc(lead.employee_name) + ' (team lead) submits the final output for the team.</div>';
       var extra = (k === 'progress' || k === 'rework') ? '<div class="bw-f" id="bw-upd" hidden><span class="bw-l">Progress update</span><input type="range" class="bw-rng" min="0" max="100" step="5" value="' + (t.progress || 0) + '" id="bw-pg"><span class="bw-l" id="bw-pgt">' + (t.progress || 0) + '% done</span><textarea id="bw-note" placeholder="What did you do? Anything blocking you?"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="saveupd">Save update</button></div></div>' +
         '<div class="bw-f" id="bw-sub" hidden><span class="bw-l">Submit your work</span><div class="bw-files" id="bw-sfl"></div><label class="bw-drop"><input type="file" multiple hidden id="bw-sf">📎 Attach finished files (image, video, PDF, document, ZIP…)</label><input id="bw-out" type="url" placeholder="Or a link — Google Drive, Docs, YouTube…"><textarea id="bw-subnote" placeholder="Short note for your manager (optional)"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn green" data-a="dosubmit">Submit as completed</button></div></div>' : '';
       if (media && (k === 'progress' || k === 'rework')) extra += '<div class="bw-note">This is Media work — you can also submit it from the Media Suite as usual.</div>';
-      modal(detailHTML(t, { extra: extra }) + '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
+      modal(detailHTML(t, { extra: extra, members: mem, teamBlock: teamBlock }) + '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
         var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
+        if (team) wireTeam(ov, db, t, { email: me, name: name }, null, { me: me, canContribute: isOpen(t), canPost: isOpen(t) });
         var rng = ov.querySelector('#bw-pg'); if (rng) rng.oninput = function () { ov.querySelector('#bw-pgt').textContent = rng.value + '% done'; };
         var subFiles = [], sf = ov.querySelector('#bw-sf');
         function paintSub() { var box = ov.querySelector('#bw-sfl'); if (!box) return; box.innerHTML = subFiles.map(function (f, i) { return '<div class="bw-file">' + (KIND_ICON[kindOf(f.name, '')] || '📎') + '<span>' + esc(f.name) + '</span><a href="#" data-rms="' + i + '">Remove</a></div>'; }).join('');
@@ -460,9 +626,10 @@
               if (out) parts.push('Link|' + out);
               var nowIso = new Date().toISOString(), asset = parts.join(';;');
               patch = { status: 'Completed', progress: 100, completed_at: nowIso, submitted_at: nowIso, explanation: sn || 'None',
-                history: histAdd(t, name, 'submitted', { note: sn || undefined }) };
+                history: histAdd(t, name, 'submitted', { note: sn || undefined, team: team || undefined }) };
+              if (team) patch.final_submitted_by = name;
               if (asset) patch.asset_link = asset;
-              msg = 'Marked completed — your manager has been updated.'; }
+              msg = team ? 'Final team output submitted — your manager and team have been updated.' : 'Marked completed — your manager has been updated.'; }
             var r = await saveRow(db, t.id, patch);
             if (r.error) { toast('error', 'Could not save: ' + r.error.message); b.disabled = false; return; }
             toast('success', msg); close(); load();
@@ -471,9 +638,14 @@
       });
     }
     el.innerHTML = '<div class="bw-empty">Loading your tasks…</div>';
+    liveTeamBlocks();
     load().then(function () { S.rows.forEach(function (t) { if (!isOpen(t)) markSeen(t.id); }); });
-    if (window.BELive && me) BELive.on('bework-my', { table: 'assignments' }, function (evs, info) {
-      var mine = info.resync || (evs || []).some(function (e) { var n = e.new || {}, p = e.old || {}; return lc(n.employee_email) === me || lc(p.employee_email) === me || (!n.employee_email && !p.employee_email); });
+    if (window.BELive && me) BELive.on('bework-my', ['assignments', 'assignment_members'], function (evs, info) {
+      var mine = info.resync || (evs || []).some(function (e) {
+        var n = e.new || {}, p = e.old || {};
+        if (e.table === 'assignment_members') return lc(n.employee_email) === me || lc(p.employee_email) === me || S.teamIds.has(String(n.assignment_id || p.assignment_id));
+        return lc(n.employee_email) === me || lc(p.employee_email) === me || S.teamIds.has(String(n.id || p.id)) || (!n.employee_email && !p.employee_email);
+      });
       if (mine) load();
     }, { debounce: 300 });
     return { reload: load, open: function (id) { openTask(S.rows.find(function (t) { return String(t.id) === String(id); })); } };
@@ -485,7 +657,7 @@
   function mountManager(el, o) {
     css();
     var db = o.db, actor = (o.actor && o.actor.name) || 'Manager', deps = o.departments || null;
-    var S = { rows: [], emps: [], tab: 'active', dep: '', emp: '', pri: '', month: '', from: '', to: '', q: '', ready: false, cols: true };
+    var S = { rows: [], emps: [], tab: 'active', dep: '', emp: '', pri: '', month: '', from: '', to: '', q: '', ready: false, cols: true, teams: false, mem: {} };
     el.classList.add('bw');
 
     function allowedDep(d) { return !deps || deps.indexOf(d || 'production') > -1; }
@@ -499,7 +671,11 @@
       if (deps && S.cols) q = q.in('department', deps);
       var r = await q;
       if (r.error) { el.innerHTML = '<div class="bw-empty"><b>Could not load tasks</b>' + esc(r.error.message) + '</div>'; return; }
-      S.rows = (r.data || []).map(function (t) { if (!t.department) t.department = 'production'; return t; }).filter(function (t) { return allowedDep(t.department); });
+      S.teams = await hasTeams(db);
+      var all = (r.data || []).map(function (t) { if (!t.department) t.department = 'production'; return t; });
+      S.mem = await loadMembers(db, all.filter(isTeam).map(function (t) { return t.id; }));
+      // A department head sees team work that involves anyone from their departments.
+      S.rows = all.filter(function (t) { return allowedDep(t.department) || (isTeam(t) && activeMembers(S.mem[String(t.id)]).some(function (m) { return allowedDep(m.department); })); });
       S.ready = true; render();
     }
     function empById(id) { return S.emps.find(function (e) { return String(e.id) === String(id); }); }
@@ -515,12 +691,12 @@
         var tabOk = S.tab === 'all' || (S.tab === 'active' && isOpen(t)) || (S.tab === 'overdue' && isOverdue(t)) || (S.tab === k) || (S.tab === 'closed' && (k === 'cancelled' || k === 'rejected'));
         if (!tabOk) return false;
         if (S.dep && t.department !== S.dep) return false;
-        if (S.emp && lc(t.employee_email) !== lc(S.emp)) return false;
+        if (S.emp && lc(t.employee_email) !== lc(S.emp) && !(isTeam(t) && activeMembers(S.mem[String(t.id)]).some(function (m) { return lc(m.employee_email) === lc(S.emp); }))) return false;
         if (S.pri && (t.priority || 'medium') !== S.pri) return false;
         if (S.month && String(t.assigned_date || '').slice(0, 7) !== S.month) return false;
         if (S.from || S.to) { var dk = S.tab === 'completed' ? fmtIso(t.completed_at || t.submitted_at) : String(t.assigned_date || '').slice(0, 10);
           if (!dk || (S.from && dk < S.from) || (S.to && dk > S.to)) return false; }
-        if (q && [t.topic, t.assigned_to, DIV[t.department], t.type, t.description].join(' ').toLowerCase().indexOf(q) === -1) return false;
+        if (q && [t.topic, t.assigned_to, DIV[t.department], t.type, t.description, isTeam(t) ? 'team ' + teamNames(S.mem[String(t.id)]).join(' ') : ''].join(' ').toLowerCase().indexOf(q) === -1) return false;
         return true;
       });
     }
@@ -536,7 +712,8 @@
       var stuckList = Object.keys(stuck).map(function (k) { return stuck[k]; });
       var list = filtered();
       var depOpts = Object.keys(DIV).filter(allowedDep);
-      var empOpts = {}; S.rows.forEach(function (t) { if (t.employee_email) empOpts[lc(t.employee_email)] = t.assigned_to || t.employee_email; });
+      var empOpts = {}; S.rows.forEach(function (t) { if (t.employee_email) empOpts[lc(t.employee_email)] = t.assigned_to || t.employee_email;
+        if (isTeam(t)) activeMembers(S.mem[String(t.id)]).forEach(function (m) { empOpts[lc(m.employee_email)] = m.employee_name || m.employee_email; }); });
       var months = {}; S.rows.forEach(function (t) { var m = String(t.assigned_date || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) months[m] = 1; });
       var tabs = [['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled'], ['all', 'All']];
       el.innerHTML =
@@ -561,8 +738,8 @@
             var out = outputSummary(t), when = t.completed_at || t.submitted_at;
             var late = when && t.date && String(fmtIso(when)) > String(t.date).slice(0, 10);
             return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
-              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + '</b><span>' + esc(t.type || 'Task') + '</span></div>' +
-              '<div class="bw-who bw-c-who"><span class="bw-ava">' + esc(initials(t.assigned_to)) + '</span><div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>' +
+              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</b><span>' + esc(t.type || 'Task') + (isTeam(t) && t.final_submitted_by ? ' · submitted by ' + esc(t.final_submitted_by) : '') + '</span></div>' +
+              whoCell(t) +
               '<div class="bw-c-by bw-due">' + esc(t.assigned_by || '—') + '</div>' +
               '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
               '<div class="bw-c-due2 bw-due">' + esc(t.date ? fmtD(t.date) : '—') + '</div>' +
@@ -575,13 +752,13 @@
           list.slice(0, 300).map(function (t) {
             var pg = t.status === 'Completed' ? 100 : (t.progress || (t.status === 'In Progress' ? 10 : 0));
             return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
-              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + '</b><span>' + esc(t.type || 'Task') + ' · assigned ' + esc(fmtD(t.assigned_date)) + '</span></div>' +
-              '<div class="bw-who bw-c-who"><span class="bw-ava">' + esc(initials(t.assigned_to)) + '</span><div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>' +
+              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</b><span>' + esc(t.type || 'Task') + ' · assigned ' + esc(fmtD(t.assigned_date)) + '</span></div>' +
+              whoCell(t) +
               '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
               '<div class="bw-due bw-c-due' + (isOverdue(t) ? ' od' : '') + '">' + esc(t.date ? fmtD(t.date) : '—') + '<small>' + esc(isOpen(t) ? dueText(t) : '') + '</small></div>' +
               '<div>' + stPill(t) + '</div>' +
               '<div class="bw-c-prog"><div class="bw-prog"><i style="width:' + pg + '%"></i></div><div class="bw-prog-t">' + pg + '%</div></div>' +
-              '<div class="bw-acts">' + (isOpen(t) ? '<button class="bw-btn" data-edit="' + esc(t.id) + '">Edit</button><button class="bw-btn" data-re="' + esc(t.id) + '">Reassign</button>' : '<button class="bw-btn" data-view="' + esc(t.id) + '">View</button>') + '</div>' +
+              '<div class="bw-acts">' + (isOpen(t) ? '<button class="bw-btn" data-edit="' + esc(t.id) + '">Edit</button>' + (isTeam(t) ? '<button class="bw-btn" data-view="' + esc(t.id) + '">Team</button>' : '<button class="bw-btn" data-re="' + esc(t.id) + '">Reassign</button>') : '<button class="bw-btn" data-view="' + esc(t.id) + '">View</button>') + '</div>' +
             '</div>';
           }).join('') + '</div>'
           : '<div class="bw-list"><div class="bw-empty"><b>No tasks match</b>Try another tab or filter, or assign new work.</div></div>');
@@ -598,14 +775,23 @@
       el.querySelectorAll('[data-bulk]').forEach(function (b) { b.onclick = function () { var e = empById(b.dataset.bulk); reassign(S.rows.filter(function (t) { return isOpen(t) && empForTask(t) === e; }).map(function (t) { return String(t.id); }), e); }; });
     }
     function rowById(id) { return S.rows.find(function (t) { return String(t.id) === String(id); }); }
-    function view(id) {
+    function whoCell(t) {
+      if (!isTeam(t)) return '<div class="bw-who bw-c-who"><span class="bw-ava">' + esc(initials(t.assigned_to)) + '</span><div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>';
+      var mem = activeMembers(S.mem[String(t.id)]), d = teamDeps(mem);
+      return '<div class="bw-who bw-c-who"><span class="bw-avas">' + mem.slice(0, 3).map(function (m) { return '<span class="bw-ava">' + esc(initials(m.employee_name)) + '</span>'; }).join('') + '</span><div><b>Team · ' + mem.length + ' members</b><span class="bw-due">' + esc(d.map(function (x) { return DIV[x] || x; }).join(' + ')) + '</span></div></div>';
+    }
+    async function view(id) {
       var t = rowById(id); if (!t) return;
-      var open = isOpen(t), done = t.status === 'Completed';
-      var acts = (open ? '<button class="bw-btn red" data-a="cancel">Cancel task</button><button class="bw-btn" data-a="re">Reassign</button><button class="bw-btn pri" data-a="edit">Edit</button>' : '') +
+      var open = isOpen(t), done = t.status === 'Completed', team = isTeam(t), mem = S.mem[String(t.id)] || [];
+      var actorEmail = lc((o.actor && o.actor.email) || '');
+      var teamOpts = { manage: open, canPost: true, me: actorEmail };
+      var teamBlock = team ? teamHTML(t, mem, await loadActivity(db, t.id), teamOpts) : '';
+      var acts = (open ? '<button class="bw-btn red" data-a="cancel">Cancel task</button>' + (team ? '' : '<button class="bw-btn" data-a="re">Reassign</button>') + '<button class="bw-btn pri" data-a="edit">Edit</button>' : '') +
         (done ? '<button class="bw-btn" data-a="rework">Send back for rework</button>' : '');
-      modal(detailHTML(t, { extra: done ? '<div class="bw-f" id="bw-rw" hidden><span class="bw-l">What needs to change?</span><textarea id="bw-rwn" placeholder="Explain what to fix"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="dorework">Send back</button></div></div>' : '' }) +
+      modal(detailHTML(t, { members: mem, teamBlock: teamBlock, extra: done ? '<div class="bw-f" id="bw-rw" hidden><span class="bw-l">What needs to change?' + (team ? ' <em>— every team member is notified</em>' : '') + '</span><textarea id="bw-rwn" placeholder="Explain what to fix"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="dorework">Send back</button></div></div>' : '' }) +
         '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
         var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
+        if (team) { wireTeam(ov, db, t, { email: actorEmail, name: actor }, null, teamOpts); wireManage(ov, t); }
         ov.querySelectorAll('[data-a]').forEach(function (b) {
           b.onclick = async function () {
             var a = b.dataset.a;
@@ -624,6 +810,46 @@
         });
       });
     }
+    // Add / remove team members after assignment (soft removal keeps history, comments, files).
+    function wireManage(ov, t) {
+      if (ov._manage) return; ov._manage = true;
+      ov.addEventListener('click', async function (e) {
+        var rm = e.target.closest('[data-rmm]'), add = e.target.closest('[data-addm]'), go = e.target.closest('[data-addgo]');
+        var blk = ov.querySelector('.bw-teamblk');
+        var cur = function () { return S.mem[String(t.id)] || []; };
+        if (rm) {
+          var m = cur().find(function (x) { return String(x.id) === rm.dataset.rmm; }); if (!m) return;
+          if (!(await confirmBox(m.employee_name + ' will be removed from this team task. Their earlier comments and files stay in the task history.', 'Remove team member?', 'Remove'))) return;
+          var nowIso = new Date().toISOString();
+          var r = await db.from('assignment_members').update({ removed_at: nowIso, removed_by: actor }).eq('id', m.id);
+          if (r.error) { toast('error', 'Could not remove: ' + r.error.message); return; }
+          var rest = activeMembers(cur()).filter(function (x) { return x.id !== m.id; });
+          var lead = rest.find(function (x) { return x.member_role === 'lead'; }), primary = lead || rest[0];
+          var patch = { history: histAdd(t, actor, 'member_removed', { to: m.employee_name }) };
+          if (m.member_role === 'lead') patch.team_lead_id = null;
+          if (primary && lc(t.employee_email) === lc(m.employee_email)) Object.assign(patch, { assigned_to: primary.employee_name, employee_email: lc(primary.employee_email), employee_id: primary.employee_id, department: primary.department || t.department });
+          await saveRow(db, t.id, patch);
+          toast('success', m.employee_name + ' removed from the team.');
+          await load(); t = rowById(t.id) || t; if (blk && blk._refresh) blk._refresh();
+          return;
+        }
+        if (add) {
+          var box = ov.querySelector('#bw-addm'), inTeam = new Set(activeMembers(cur()).map(function (x) { return lc(x.employee_email); }));
+          var opts = activeTargets('').filter(function (x) { return x.portal_email && !inTeam.has(lc(x.portal_email)); });
+          box.innerHTML = '<div class="bw-g2"><select id="bw-addsel"><option value="">Choose employee</option>' + opts.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.full_name) + ' · ' + esc(DIV[x.division] || x.division || '') + '</option>'; }).join('') + '</select><button type="button" class="bw-btn pri" data-addgo>Add to team</button></div>';
+          return;
+        }
+        if (go) {
+          var emp = empById((ov.querySelector('#bw-addsel') || {}).value); if (!emp) { toast('warning', 'Choose an employee.'); return; }
+          go.disabled = true;
+          var r2 = await db.from('assignment_members').insert([{ assignment_id: t.id, employee_id: emp.id, employee_email: lc(emp.portal_email), employee_name: emp.full_name, department: emp.division || 'other', member_role: 'member', added_by: actor }]);
+          if (r2.error) { toast('error', 'Could not add: ' + r2.error.message); go.disabled = false; return; }
+          await saveRow(db, t.id, { history: histAdd(t, actor, 'member_added', { to: emp.full_name }) });
+          toast('success', emp.full_name + ' added — they have been notified.');
+          await load(); t = rowById(t.id) || t; if (blk && blk._refresh) blk._refresh();
+        }
+      });
+    }
     function empOptions(dep, selId) {
       var list = activeTargets(dep);
       return '<option value="">Select employee</option>' + list.map(function (e) {
@@ -640,8 +866,13 @@
       modal('<div class="bw-mh"><div><h3>' + (t ? 'Edit task' : 'Assign work') + '</h3><p>' + (t ? 'Changes are saved to the same task and recorded in its history.' : 'The employee is notified instantly in their own portal.') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
         '<div class="bw-mb">' +
           '<div class="bw-f"><label class="bw-l" for="bw-title">Task / work title <b>*</b></label><input id="bw-title" maxlength="140" placeholder="e.g. Prepare October Academic Report" value="' + esc(t ? t.topic : '') + '"></div>' +
-          (t ? '<div class="bw-f"><span class="bw-l">Assigned to</span><div class="bw-file"><span>' + esc(t.assigned_to || '—') + ' · ' + esc(DIV[t.department] || '') + '</span><a href="#" data-re-in>Reassign</a></div></div>'
-            : '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-dep">Department</label><select id="bw-dep">' + (depOpts.length > 1 ? '<option value="">All departments</option>' : '') + depOpts.map(function (d) { return '<option value="' + d + '"' + (dep0 === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select></div>' +
+          (t ? (isTeam(t) ? '<div class="bw-f"><span class="bw-l">Team ' + teamBadge() + '</span><div class="bw-file"><span>' + esc(teamNames(S.mem[String(t.id)]).join(', ')) + '</span><a href="#" data-team-in>Manage team</a></div></div>'
+              : '<div class="bw-f"><span class="bw-l">Assigned to</span><div class="bw-file"><span>' + esc(t.assigned_to || '—') + ' · ' + esc(DIV[t.department] || '') + '</span><a href="#" data-re-in>Reassign</a></div></div>')
+            : '<div class="bw-f"><span class="bw-l">Assignment type</span><div class="bw-seg" role="radiogroup" id="bw-type"><button type="button" data-ty="individual" class="on">Individual</button><button type="button" data-ty="team"' + (S.teams ? '' : ' disabled title="Run 20261013_work_teams.sql to enable team work"') + '>Team / Collaborative</button></div>' + (S.teams ? '' : '<span class="bw-due">Team work needs 20261013_work_teams.sql.</span>') + '</div>' +
+              '<div class="bw-f" id="bw-teamf" hidden><label class="bw-l" for="bw-tsearch">Assign team members <b>*</b></label><input class="bw-in" id="bw-tsearch" type="search" placeholder="Search employees…" autocomplete="off">' +
+                '<div class="bw-pick" id="bw-pick">' + activeTargets('').map(function (x) { var ok = !!x.portal_email; return '<label class="bw-pk' + (ok ? '' : ' off') + '" data-name="' + esc(lc(x.full_name + ' ' + (x.designation || '') + ' ' + (DIV[x.division] || ''))) + '"><input type="checkbox" value="' + esc(x.id) + '"' + (ok ? '' : ' disabled') + '><span><b>' + esc(x.full_name) + '</b><small>' + esc((x.designation ? x.designation + ' · ' : '') + (DIV[x.division] || x.division || '')) + (ok ? '' : ' · no login') + '</small></span></label>'; }).join('') + '</div>' +
+                '<div class="bw-g2"><div class="bw-f"><span class="bw-due" id="bw-tcount">0 selected — choose at least 2</span></div><div class="bw-f"><label class="bw-l" for="bw-lead">Team lead <em>optional</em></label><select id="bw-lead"><option value="">No team lead</option></select></div></div></div>' +
+              '<div class="bw-g2" id="bw-indf"><div class="bw-f"><label class="bw-l" for="bw-dep">Department</label><select id="bw-dep">' + (depOpts.length > 1 ? '<option value="">All departments</option>' : '') + depOpts.map(function (d) { return '<option value="' + d + '"' + (dep0 === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select></div>' +
               '<div class="bw-f"><label class="bw-l" for="bw-emp">Employee <b>*</b></label><select id="bw-emp">' + empOptions(dep0, '') + '</select></div></div>') +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-cat">Category <em>optional</em></label><input id="bw-cat" list="bw-cats" placeholder="e.g. Report, Poster Design" value="' + esc(t ? (t.type || '') : '') + '"><datalist id="bw-cats">' + Object.keys(cats).map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
             '<div class="bw-f"><span class="bw-l">Priority</span><div class="bw-seg" role="radiogroup">' + PRIO.map(function (p) { return '<button type="button" data-p="' + p[0] + '" class="' + (pr === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div></div></div>' +
@@ -658,6 +889,21 @@
         var dep = ov.querySelector('#bw-dep'), emp = ov.querySelector('#bw-emp');
         if (dep) dep.onchange = function () { emp.innerHTML = empOptions(dep.value, emp.value); };
         var reIn = ov.querySelector('[data-re-in]'); if (reIn) reIn.onclick = function (e) { e.preventDefault(); close(); reassign([t.id]); };
+        var tmIn = ov.querySelector('[data-team-in]'); if (tmIn) tmIn.onclick = function (e) { e.preventDefault(); close(); view(t.id); };
+        // assignment type + team picker
+        var type = 'individual';
+        ov.querySelectorAll('[data-ty]').forEach(function (b) { b.onclick = function () { if (b.disabled) return; type = b.dataset.ty;
+          ov.querySelectorAll('[data-ty]').forEach(function (x) { x.classList.toggle('on', x === b); });
+          ov.querySelector('#bw-teamf').hidden = type !== 'team'; ov.querySelector('#bw-indf').hidden = type === 'team';
+          var sv = ov.querySelector('[data-save]'); if (sv) sv.textContent = type === 'team' ? 'Assign team work' : 'Assign work'; }; });
+        var picked = function () { return Array.prototype.map.call(ov.querySelectorAll('#bw-pick input:checked'), function (c) { return c.value; }); };
+        var syncPick = function () {
+          var ids = picked(), lead = ov.querySelector('#bw-lead'), keep = lead ? lead.value : '';
+          var cnt = ov.querySelector('#bw-tcount'); if (cnt) cnt.textContent = ids.length + ' selected' + (ids.length < 2 ? ' — choose at least 2' : '');
+          if (lead) lead.innerHTML = '<option value="">No team lead</option>' + ids.map(function (id) { var x = empById(id); return '<option value="' + esc(id) + '"' + (keep === id ? ' selected' : '') + '>' + esc(x ? x.full_name : id) + '</option>'; }).join('');
+        };
+        ov.querySelectorAll('#bw-pick input').forEach(function (c) { c.onchange = function () { c.closest('.bw-pk').classList.toggle('on', c.checked); syncPick(); }; });
+        var ts = ov.querySelector('#bw-tsearch'); if (ts) ts.oninput = function () { var q = lc(ts.value); ov.querySelectorAll('#bw-pick .bw-pk').forEach(function (l) { l.hidden = !!q && l.dataset.name.indexOf(q) === -1; }); };
         var fi = ov.querySelector('#bw-file');
         function paintFiles() {
           var box = ov.querySelector('#bw-flist'); box.querySelectorAll('.bw-file.new').forEach(function (x) { x.remove(); });
@@ -669,10 +915,14 @@
           var btn = this, title = ov.querySelector('#bw-title').value.trim(), due = ov.querySelector('#bw-due').value, ad = ov.querySelector('#bw-ad').value || today();
           var link = ov.querySelector('#bw-link').value.trim(), cat = ov.querySelector('#bw-cat').value.trim(), desc = ov.querySelector('#bw-desc').value.trim();
           if (!title) { toast('warning', 'Add a task title.'); ov.querySelector('#bw-title').focus(); return; }
-          var e = t ? null : empById(emp.value);
+          var teamIds = !t && type === 'team' ? picked() : null;
+          var teamEmps = teamIds ? teamIds.map(empById).filter(Boolean) : null;
+          var leadId = teamIds ? (ov.querySelector('#bw-lead') || {}).value || '' : '';
+          if (teamEmps && teamEmps.length < 2) { toast('warning', 'Choose at least 2 team members.'); ov.querySelector('#bw-tsearch').focus(); return; }
+          var e = t ? null : (teamEmps ? (empById(leadId) || teamEmps[0]) : empById(emp.value));
           if (!t && !e) { toast('warning', 'Choose the employee.'); emp.focus(); return; }
           if (!due) { toast('warning', 'Set a due date.'); ov.querySelector('#bw-due').focus(); return; }
-          if (!t && !S.cols && e.division !== 'production') { toast('warning', 'Run 20261010_work_assignments.sql in Supabase first — until then only Media work can be assigned.'); return; }
+          if (!t && !teamEmps && !S.cols && e.division !== 'production') { toast('warning', 'Run 20261010_work_assignments.sql in Supabase first — until then only Media work can be assigned.'); return; }
           if (link && !/^https?:\/\//i.test(link)) { toast('warning', 'The link must start with https://'); return; }
           btn.disabled = true; btn.textContent = files.length ? 'Uploading…' : 'Saving…';
           var refStr = t ? (t.reference_file || '') : '';
@@ -687,17 +937,24 @@
             patch.history = histAdd(t, actor, 'edited', { fields: changed.map(function (k) { return { topic: 'title', type: 'category', date: 'due date', assigned_date: 'assigned date', reference_file: 'files', reference_link: 'link' }[k] || k; }) });
             r = await saveRow(db, t.id, patch);
           } else {
-            var media = e.division === 'production';
-            r = await saveRow(db, null, {
-              id: Date.now(), topic: title, type: cat || (media ? 'Video Editing' : 'Task'), description: desc,
+            var media = !teamEmps && e.division === 'production', newId = Date.now();
+            var row = {
+              id: newId, topic: title, type: cat || (media ? 'Video Editing' : 'Task'), description: desc,
               assigned_to: e.full_name, employee_email: lc(e.portal_email), employee_id: e.id, department: e.division || 'other',
               scope: media ? 'media' : 'org', assigned_date: ad, date: due, status: 'Pending', explanation: 'None', asset_link: '',
               reference_file: refStr, reference_link: link || null, assigned_by: actor, created_by: actor, priority: pri, assign_approved: true, progress: 0,
-              history: [{ at: new Date().toISOString(), by: actor, action: 'created', to: e.full_name }]
-            });
+              history: [{ at: new Date().toISOString(), by: actor, action: 'created', to: teamEmps ? teamEmps.map(function (x) { return x.full_name; }).join(', ') : e.full_name, team: teamEmps ? true : undefined }]
+            };
+            // Team: ONE shared task (team tasks stay out of the Media pipeline screens) + one member row each.
+            if (teamEmps) Object.assign(row, { assignment_type: 'team', team_lead_id: leadId || null, scope: 'org' });
+            r = await saveRow(db, null, row);
+            if (!r.error && teamEmps) {
+              var mr = await db.from('assignment_members').insert(teamEmps.map(function (x) { return { assignment_id: newId, employee_id: x.id, employee_email: lc(x.portal_email), employee_name: x.full_name, department: x.division || 'other', member_role: String(x.id) === String(leadId) ? 'lead' : 'member', added_by: actor }; }));
+              if (mr.error) r = mr;
+            }
           }
           if (r.error) { toast('error', 'Could not save: ' + r.error.message); btn.disabled = false; btn.textContent = t ? 'Save changes' : 'Assign work'; return; }
-          toast('success', t ? 'Task updated.' : 'Work assigned to ' + e.full_name + ' — they have been notified.');
+          toast('success', t ? 'Task updated.' : teamEmps ? 'Team work assigned to ' + teamEmps.length + ' people — each of them has been notified.' : 'Work assigned to ' + e.full_name + ' — they have been notified.');
           close(); load();
         };
       });
@@ -732,7 +989,8 @@
     }
     el.innerHTML = '<div class="bw-empty">Loading work assignments…</div>';
     Promise.all([loadEmps(), load()]).then(render);
-    if (window.BELive) BELive.on('bework-mgr' + (deps ? '-' + deps.join('_') : ''), ['assignments', 'hr_employees'], function (evs, info) {
+    liveTeamBlocks();
+    if (window.BELive) BELive.on('bework-mgr' + (deps ? '-' + deps.join('_') : ''), ['assignments', 'hr_employees', 'assignment_members'], function (evs, info) {
       if (info.resync || (evs || []).some(function (e) { return e.table === 'hr_employees'; })) loadEmps().then(load); else load();
     }, { debounce: 400 });
     return { reload: load, assign: function () { openForm(null); } };
