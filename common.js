@@ -1742,29 +1742,127 @@ function hrOfficialEventFor(employee, dateStr) {
             const leaveDeduction = Math.min(earnedBasic, r2(dailySalary * (lopDays + preJoiningBasisDays)));
             return { dailySalary, earnedBasic, leaveDeduction, preJoiningBasisDays: r2(preJoiningBasisDays), salaryDayBasis: HR_SALARY_DAY_BASIS };
         }
-        // Salary days the SAVED leave_deduction stands for (LOP + pre-joining, 30-day basis).
-        // Derived from the money itself, so any "(Nd)" label always matches the rupee figure —
-        // even when HR edited the deduction by hand.
-        function hrPayrollDeductionDays(p) {
-            const salary = hrGetEffectiveSalary(p.employee_id, p.month);
-            if (!(salary > 0) || !(+p.leave_deduction > 0)) return 0;
-            return Math.round((+p.leave_deduction) / (salary / HR_SALARY_DAY_BASIS) * 100) / 100;
-        }
-        // Snapshot of the day counts payroll was calculated from — saved on the hr_payroll row
-        // (day_breakdown jsonb) so the payslip prints the same days the money was built on,
-        // even if attendance is edited later.
-        function hrPayrollDayBreakdown(c) {
+        // ── Payroll record = single source of truth for the payslip ──────────────────────
+        // hr_payroll.day_breakdown (jsonb) holds TWO things, both written when payroll is saved:
+        //   1. the attendance snapshot the calculation ran on (present / paid_leave / weekly_off /
+        //      holiday / lop_days …) plus `calculated` = what Auto-Calculate produced in rupees;
+        //   2. `final` = the HR-approved figures derived from the SAVED money on that row
+        //      (monthly salary, daily rate, deducted days, payable days, overrides).
+        // The payslip only formats this. It never re-reads the employee's current salary or
+        // today's attendance, so a later profile/attendance change can't alter an old payslip.
+        const _r2 = v => Math.round((+v || 0) * 100) / 100;
+
+        // Attendance snapshot from one hrCalculatePayrollForMonth() result.
+        function hrPayrollDayBreakdown(c, employeeId, month) {
             return {
+                version: 2, for: employeeId && month ? employeeId + '|' + month : undefined,
                 basis: c.salaryDayBasis || HR_SALARY_DAY_BASIS, days_in_month: c.daysInMonth,
                 elapsed: c.elapsedDays, future: c.futureDays,
                 present: c.presentDays, paid_leave: c.paidLeaveDays, sl: c.slDays || 0, cl: c.clDays || 0, ml: c.maternityLeaveDays || 0,
                 weekly_off: c.weeklyOffDays, holiday: c.holidayDays, official_event: c.officialEventDays || 0,
-                half_day: c.halfDayDays, absent: c.absentDays, leave_lop: c.unpaidLeaveDays,
+                half_day: c.halfDayDays, half_day_paid: c.halfDayPaidDays || 0, absent: c.absentDays, leave_lop: c.unpaidLeaveDays,
                 incident_days: c.incidentDays || 0, double_days: c.doubleDeductionDays || 0,
                 unapproved_absence: c.unapprovedAbsenceDays || 0,
                 lop_days: c.lopDays, pre_joining: c.preJoiningDays, pre_joining_basis: c.preJoiningBasisDays || 0,
+                // What the engine produced — kept so a manual HR change is visible as an override.
+                calculated: { monthly_salary: _r2(c.salary), basic: _r2(c.earnedBasic), leave_deduction: _r2(c.leaveDeduction), lop_days: c.lopDays },
                 calculated_at: new Date().toISOString()
             };
+        }
+
+        // Final, HR-approved figures for one payroll row, derived ONLY from that row's saved
+        // money + its own snapshot. Used by save (stored as day_breakdown.final), by the
+        // payroll table, the export and the payslip — one formula everywhere.
+        //   monthly salary = saved Basic (scaled back up only when the month was still in
+        //                    progress, since Basic is then prorated to the elapsed days)
+        //   daily rate     = monthly salary ÷ basis (30)
+        //   deducted days  = saved LOP deduction ÷ daily rate  → so "(Nd)" always matches ₹
+        //   payable days   = basis − deducted days − not-yet-elapsed days, clamped to [0, basis]
+        function hrPayrollFinalFigures(p, snap) {
+            snap = snap || (p && p.day_breakdown && typeof p.day_breakdown === 'object' ? p.day_breakdown : null) || {};
+            const basis = +snap.basis > 0 ? +snap.basis : HR_SALARY_DAY_BASIS;
+            const dim = +snap.days_in_month || 0, elapsed = snap.elapsed != null ? +snap.elapsed : dim, future = +snap.future || 0;
+            const basic = +p.basic || 0, ld = +p.leave_deduction || 0;
+            const _c = snap.calculated;
+            const monthly = (_c && +_c.monthly_salary > 0 && Math.abs((+_c.basic || 0) - basic) <= 0.01) ? +_c.monthly_salary
+                : (dim && elapsed > 0 && elapsed < dim) ? _r2(basic * dim / elapsed) : basic;
+            const daily = monthly > 0 ? monthly / basis : 0;
+            const deductionDays = daily ? _r2(ld / daily) : 0;
+            const futureBasis = dim ? future * basis / dim : 0;
+            const rawPayable = _r2(basis - deductionDays - futureBasis);
+            const gross = _r2(basic + (+p.allowances || 0) + (+p.overtime || 0) + (+p.bonuses || 0));
+            const totalDeductions = _r2(ld + (+p.deductions || 0) + (+p.advances || 0));
+            const calc = snap.calculated || null;
+            const overrides = [];
+            if (calc) {
+                if (Math.abs(_r2(calc.basic) - _r2(basic)) > 0.01) overrides.push('basic');
+                if (Math.abs(_r2(calc.leave_deduction) - _r2(ld)) > 0.01) overrides.push('leave_deduction');
+            }
+            const preJoinBasis = +snap.pre_joining_basis || 0;
+            return {
+                basis, monthly_salary: monthly, daily_rate: _r2(daily),
+                deduction_days: deductionDays,
+                lop_deduction_days: Math.max(0, _r2(deductionDays - preJoinBasis)),
+                payable_days: Math.min(basis, Math.max(0, rawPayable)), raw_payable_days: rawPayable,
+                gross, total_deductions: totalDeductions, net: _r2(gross - totalDeductions),
+                overrides, hr_approved: !!(snap.final && snap.final.hr_approved),
+                pay_type: snap.pay_type || 'salary'
+            };
+        }
+
+        // Snapshot + final block to store on the row at save time.
+        function hrPayrollSnapshotForSave(payload, snap, opts) {
+            const base = Object.assign({}, snap || {});
+            delete base.final;
+            const f = hrPayrollFinalFigures(payload, base);
+            base.final = {
+                monthly_salary: f.monthly_salary, daily_rate: f.daily_rate, deduction_days: f.deduction_days,
+                payable_days: f.payable_days, gross: f.gross, total_deductions: f.total_deductions, net: f.net,
+                overrides: f.overrides, hr_approved: !!(opts && opts.hrApproved),
+                finalized_at: new Date().toISOString(), finalized_by: (opts && opts.by) || null
+            };
+            return base;
+        }
+
+        // Salary days the SAVED leave_deduction stands for — from the row's own salary, never
+        // the employee's current profile salary (that mismatch printed "1.5d" for ₹1,000).
+        function hrPayrollDeductionDays(p) { return hrPayrollFinalFigures(p).deduction_days; }
+
+        // Consistency check before any payslip is built / marked ready / sent. Returns a list
+        // of human-readable problems ([] = OK).
+        const HR_PAYSLIP_INCONSISTENT_MSG = 'Payroll contains inconsistent values. Please review before generating Payslip.';
+        function hrValidatePayrollForPayslip(p) {
+            const issues = [];
+            if (!p) return ['Payroll record not found.'];
+            const snap = p.day_breakdown && typeof p.day_breakdown === 'object' ? p.day_breakdown : null;
+            const f = hrPayrollFinalFigures(p, snap);
+            if (!/^\d{4}-\d{2}$/.test(p.month || '')) issues.push('Salary month is missing or invalid.');
+            if (snap && snap.for && snap.for !== p.employee_id + '|' + p.month) issues.push('Attendance snapshot belongs to a different employee or month — re-run Auto-calculate.');
+            if (f.gross < 0) issues.push('Gross earnings are negative.');
+            if (f.total_deductions < 0) issues.push('Total deductions are negative.');
+            if (['basic','allowances','overtime','bonuses','leave_deduction','deductions','advances'].some(k => (+p[k] || 0) < 0)) issues.push('A salary component is negative.');
+            if (Math.abs(f.net - _r2(p.net_salary)) > 0.01) issues.push(`Net salary ₹${_r2(p.net_salary)} ≠ gross ₹${f.gross} − deductions ₹${f.total_deductions}.`);
+            if (f.pay_type === 'salary') {
+                if (f.raw_payable_days > f.basis + 0.001 || f.raw_payable_days < -0.001) issues.push(`Payable days ${f.raw_payable_days} are outside 0–${f.basis}.`);
+                if ((+p.leave_deduction || 0) > 0 && !(f.monthly_salary > 0)) issues.push('LOP deduction without a basic salary.');
+                if (snap && snap.days_in_month) {
+                    // No calendar day may be counted twice.
+                    const counted = (+snap.present || 0) + (+snap.paid_leave || 0) + (+snap.weekly_off || 0) + (+snap.holiday || 0) + (+snap.official_event || 0);
+                    const available = (snap.elapsed != null ? +snap.elapsed : +snap.days_in_month) - (+snap.pre_joining || 0);
+                    if (counted > available + 0.001) issues.push(`Attendance snapshot counts ${counted} days but only ${available} day(s) were available — days counted twice.`);
+                    // LOP days must agree with the LOP rupees, unless HR knowingly changed the figures.
+                    const snapDays = _r2((+snap.lop_days || 0) + (+snap.pre_joining_basis || 0));
+                    const approved = f.overrides.length > 0 || (snap.final && snap.final.hr_approved);
+                    if (Math.abs(snapDays - f.deduction_days) > 0.01 && !approved)
+                        issues.push(`Attendance shows ${snapDays} LOP day(s) but the LOP deduction equals ${f.deduction_days} day(s) at ₹${f.daily_rate}/day.`);
+                }
+            }
+            return issues;
+        }
+        function hrPayslipValidationError(issues) {
+            const err = new Error(HR_PAYSLIP_INCONSISTENT_MSG + (issues && issues.length ? '\n• ' + issues.join('\n• ') : ''));
+            err.code = 'payroll_inconsistent'; err.issues = issues || [];
+            return err;
         }
 
 // ── hrIsHoliday (orig line 10325) ──
@@ -2129,23 +2227,28 @@ function hrOfficialEventFor(employee, dateStr) {
             const marginX = 14;
             const rightX = pageW - marginX;
 
+            // Refuse to print a payslip whose figures don't agree with each other.
+            const _issues = hrValidatePayrollForPayslip(p);
+            if (_issues.length) throw hrPayslipValidationError(_issues);
+
             const [y, m] = p.month.split('-').map(Number);
-            const daysInMonth = new Date(y, m, 0).getDate();
             const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-            // Day-count breakdown (Present/Leave/Weekly Off/Holiday/LOP) is recomputed live from
-            // current attendance + approved-leave records — always automatic, per the payroll
-            // rule: Present→Present, Approved Paid Leave→Leave (not LOP), Sunday/Weekly Off and
-            // Company Holiday→not LOP, Absent with nothing approved→LOP.
-            // Day counts come from the snapshot saved with this payroll (day_breakdown), i.e. the
-            // exact attendance the money was calculated from. Rows saved before that column
-            // existed fall back to a live calculation.
+            // Everything below comes from THIS saved payroll row: its money columns and its own
+            // attendance snapshot (day_breakdown). No live attendance, no profile salary lookup —
+            // the payslip formats the payroll, it is not a second calculation engine.
             const bd = p.day_breakdown && typeof p.day_breakdown === 'object' ? p.day_breakdown : null;
+            const fin = hrPayrollFinalFigures(p, bd);
+            const isSessionPay = fin.pay_type === 'sessions';
             const dayInfo = bd ? {
-                presentDays: bd.present || 0, paidLeaveDays: bd.paid_leave || 0, weeklyOffDays: bd.weekly_off || 0,
-                holidayDays: (bd.holiday || 0) + (bd.official_event || 0), lopDays: bd.lop_days || 0,
-                preJoiningDays: bd.pre_joining || 0, elapsedDays: bd.elapsed ?? daysInMonth, futureDays: bd.future || 0
-            } : hrCalculatePayrollForMonth(p.employee_id, p.month);
-            const lopDays = dayInfo.lopDays;
+                presentDays: +bd.present || 0, paidLeaveDays: +bd.paid_leave || 0, weeklyOffDays: +bd.weekly_off || 0,
+                holidayDays: (+bd.holiday || 0) + (+bd.official_event || 0), attendanceLopDays: _r2((+bd.lop_days || 0)),
+                preJoiningDays: +bd.pre_joining || 0, elapsedDays: bd.elapsed ?? null, futureDays: +bd.future || 0
+            } : null;
+            // LOP days printed = the days the approved LOP rupees stand for (so days, label and
+            // amount always agree). If attendance said something different, HR changed the
+            // deduction on purpose — the payslip says so instead of printing two numbers.
+            const lopDays = fin.lop_deduction_days;
+            const lopAdjusted = dayInfo && Math.abs(dayInfo.attendanceLopDays - lopDays) > 0.01;
             // Payment Date is a distinct thing from the Pay Period — salary for August is paid
             // in September. Uses whatever was actually saved on this payroll row; falls back to
             // the standard default (10th of the following month) for older rows saved before
@@ -2154,26 +2257,14 @@ function hrOfficialEventFor(employee, dateStr) {
             const [pdy, pdm, pdd] = payDateStr.split('-').map(Number);
             const payDate = new Date(pdy, pdm - 1, pdd).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-            // "Basic Salary" on the payslip is p.basic — the stored, HR-approved figure (full
-            // month's salary once the whole period has elapsed; prorated to the elapsed portion
-            // if payroll's being checked mid-month — see hrCalculatePayrollForMonth). It's
-            // deliberately NOT re-derived independently here: doing that used to make the
-            // printed Gross Earnings disagree with the actual Net Pay whenever Basic had been
-            // prorated, since Gross would show the full salary while Net reflected the smaller
-            // prorated+LOP-adjusted figure. Using the same stored value everywhere means the
-            // printed arithmetic always adds up, and this can never drift from what HR approved.
-            const monthlySalary = hrGetEffectiveSalary(p.employee_id, p.month); // full contracted salary — shown as a reference only
-            const basicForPayslip = p.basic != null ? p.basic : monthlySalary;
-            const grossEarnings = basicForPayslip + (p.allowances||0) + (p.overtime||0) + (p.bonuses||0);
-            const totalDeductions = (p.leave_deduction||0) + (p.deductions||0) + (p.advances||0);
-            const netPay = p.net_salary != null ? p.net_salary : (grossEarnings - totalDeductions);
-            // Paid Days / deducted days on the 30-day salary basis, taken from the SAVED payroll
-            // money (not today's attendance), so they always agree with the rupee figures:
-            // e.g. full month, 1 LOP → Paid Days 29 of 30, whatever the month length.
-            const _daily = monthlySalary > 0 ? monthlySalary / HR_SALARY_DAY_BASIS : 0;
-            const _d2 = v => Math.round(v * 100) / 100;
-            const savedDeductionDays = hrPayrollDeductionDays(p);
-            const paidDays = _daily ? `${_d2(Math.max(0, basicForPayslip / _daily - savedDeductionDays))} of ${HR_SALARY_DAY_BASIS}` : '—';
+            const monthlySalary = fin.monthly_salary;          // salary this payroll was built on
+            const basicForPayslip = +p.basic || 0;
+            const grossEarnings = fin.gross;
+            const totalDeductions = fin.total_deductions;
+            const netPay = _r2(p.net_salary);                   // validated = gross − deductions
+            const _fmtD = v => String(_r2(v));
+            const paidDays = isSessionPay ? '—' : `${_fmtD(fin.payable_days)} of ${fin.basis}`;
+            const savedDeductionDays = fin.deduction_days;
             // jsPDF's built-in fonts (Helvetica etc.) have no ₹ glyph — it silently renders as
             // a broken superscript-1. "Rs." is what actually prints correctly.
             const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2216,17 +2307,31 @@ function hrOfficialEventFor(employee, dateStr) {
             summaryRow('Pay Period', monthLabel);
             summaryRow('Pay Date', payDate);
             if (p.payslip_generated_at) summaryRow('Generated On', new Date(p.payslip_generated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
-            // Full contracted salary, always — a fixed reference point so it's clear the payslip
-            // isn't wrong when Basic Salary below is lower (mid-period check or partial month).
-            summaryRow('Monthly Salary', rupee(monthlySalary));
+            // The monthly salary THIS payroll was built on (saved Basic; scaled up only when the
+            // period was still in progress) — never the employee's current profile salary.
+            summaryRow(isSessionPay ? 'Pay Basis' : 'Monthly Salary', isSessionPay ? 'Teaching sessions' : rupee(monthlySalary));
 
             // PAYROLL SUMMARY stats stacked one-per-line (not side-by-side) — values here can
             // run to a decimal like "28.5", which would collide with a neighboring label if two
             // were placed on the same line. Pre-Joining only shows when it's actually nonzero
             // (mid-month joiner) — no clutter for the normal case.
-            const hasPreJoining = dayInfo.preJoiningDays > 0;
-            const hasFutureDays = dayInfo.futureDays > 0;
-            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = hasPreJoining ? 76 : 70;
+            const hasPreJoining = !!(dayInfo && dayInfo.preJoiningDays > 0);
+            const hasFutureDays = !!(dayInfo && dayInfo.futureDays > 0);
+            // Payable Days (salary basis) and the attendance breakdown are different things —
+            // the breakdown is shown as-is, never summed into Payable Days here.
+            const stats = isSessionPay ? [] : [
+                ['Payroll Basis', `${fin.basis} Days`],
+                ['Payable Days', paidDays],
+            ];
+            if (!isSessionPay && dayInfo) stats.push(
+                ['Present', _fmtD(dayInfo.presentDays)],
+                ['Paid Leave', _fmtD(dayInfo.paidLeaveDays)],
+                ['Weekly Off', _fmtD(dayInfo.weeklyOffDays)],
+                ['Company Holidays', _fmtD(dayInfo.holidayDays)],
+                ['LOP', _fmtD(lopDays)]);
+            else if (!isSessionPay) stats.push(['LOP', _fmtD(lopDays)]);
+            if (hasPreJoining) stats.push(['Before Joining', _fmtD(dayInfo.preJoiningDays)]);
+            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = Math.max(34, 28 + stats.length * 6.2);
             doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
             doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
             doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
@@ -2235,26 +2340,20 @@ function hrOfficialEventFor(employee, dateStr) {
             doc.text('Total Net Pay', boxX + 9, boxY + 18);
             doc.setDrawColor(200, 230, 215); doc.line(boxX + 4, boxY + 21, boxX + boxW - 4, boxY + 21);
             doc.setFontSize(8.5); doc.setTextColor(60);
-            const statRow = (label, val, i) => {
+            stats.forEach(([label, val], i) => {
                 const ry = boxY + 26 + i * 6.2;
                 doc.text(label, boxX + 9, ry); doc.text(':', boxX + 34, ry); doc.text(String(val), boxX + 38, ry);
-            };
-            statRow('Paid Days', paidDays, 0);
-            statRow('Present Days', dayInfo.presentDays, 1);
-            statRow('Paid Leave', dayInfo.paidLeaveDays, 2);
-            statRow('Weekly Off', dayInfo.weeklyOffDays, 3);
-            statRow('Company Holidays', dayInfo.holidayDays, 4);
-            statRow('LOP Days', lopDays, 5);
-            if (hasPreJoining) statRow('Before Joining', dayInfo.preJoiningDays, 6);
+            });
 
             let y2 = Math.max(sy, boxY + boxH) + 6;
-            if (lopDays > 0 || hasPreJoining) {
+            if (lopDays > 0 || hasPreJoining || lopAdjusted) {
                 doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
                 doc.setFontSize(9); doc.setTextColor(120); doc.text('LOP', marginX, y2);
                 doc.text(':', marginX + 34, y2); doc.setTextColor(20);
-                const lopNote = lopDays > 0
-                    ? `${lopDays} day${lopDays===1?'':'s'} — absent or unpaid leave (not Sunday/weekly-off, holiday, or approved paid leave)`
-                    : 'No absence-based LOP this period.';
+                let lopNote = lopDays > 0
+                    ? `${_fmtD(lopDays)} day${lopDays===1?'':'s'} deducted at ${rupee(fin.daily_rate)}/day (${fin.basis}-day basis) — absent or unpaid leave.`
+                    : 'No LOP deducted this period.';
+                if (lopAdjusted) lopNote += ` Attendance recorded ${_fmtD(dayInfo.attendanceLopDays)} LOP day(s); the deduction was adjusted by HR.`;
                 const joinNote = hasPreJoining ? ` Plus ${dayInfo.preJoiningDays} day(s) before this employee's joining date — also unpaid, but not attendance-related.` : '';
                 const noteLines = doc.splitTextToSize(lopNote + joinNote, rightX - marginX - 38);
                 doc.text(noteLines, marginX + 38, y2);
@@ -2264,7 +2363,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 doc.setDrawColor(230); doc.line(marginX, y2, rightX, y2); y2 += 6;
                 doc.setFontSize(9); doc.setTextColor(120); doc.text('Note', marginX, y2);
                 doc.text(':', marginX + 34, y2); doc.setTextColor(20);
-                const futureNote = doc.splitTextToSize(`This pay period isn't finished yet — ${dayInfo.futureDays} day(s) haven't happened. Basic Salary above reflects only the ${dayInfo.elapsedDays} elapsed day(s) so far; re-generate this payslip after the period ends for the final figure.`, rightX - marginX - 38);
+                const futureNote = doc.splitTextToSize(`This pay period wasn't finished when payroll was calculated — ${dayInfo.futureDays} day(s) hadn't happened. Basic Salary reflects only the ${dayInfo.elapsedDays} elapsed day(s); recalculate after the period ends for the final figure.`, rightX - marginX - 38);
                 doc.text(futureNote, marginX + 38, y2);
                 y2 += 5 * futureNote.length + 3;
             }
@@ -2290,7 +2389,7 @@ function hrOfficialEventFor(employee, dateStr) {
             // Day count in the label matches exactly what the rupee figure was calculated over
             // — LOP days plus any pre-joining days, since both reduce this same deduction line.
             const deductionDays = savedDeductionDays;
-            if (p.leave_deduction) deductions.push([`LOP Deduction${deductionDays ? ` (${deductionDays}d)` : ''}`, p.leave_deduction]);
+            if (p.leave_deduction) deductions.push([`LOP Deduction${deductionDays ? ` (${_fmtD(deductionDays)}d)` : ''}`, p.leave_deduction]);
             if (p.deductions) deductions.push(['Other Deductions', p.deductions]);
             if (p.advances) deductions.push(['Advances', p.advances]);
             if (!deductions.length) deductions.push(['—', 0]);
@@ -2362,7 +2461,9 @@ function hrOfficialEventFor(employee, dateStr) {
                 if (typeof showToast === 'function') showToast('success', 'Payslip downloaded successfully.');
             } catch (err) {
                 console.warn('Payslip download failed:', err.message);
-                if (typeof showToast === 'function') showToast('error', 'Unable to download payslip.');
+                if (typeof showToast === 'function') showToast('error', err && err.code === 'payroll_inconsistent'
+                    ? (typeof hrPayroll !== 'undefined' && typeof hrSavePayrollRow === 'function' ? HR_PAYSLIP_INCONSISTENT_MSG : 'This payslip needs to be corrected by HR before it can be downloaded.')
+                    : 'Unable to download payslip.');
             } finally {
                 if (btnEl) { btnEl.disabled = false; btnEl.textContent = originalLabel; }
             }
@@ -2386,7 +2487,11 @@ function hrOfficialEventFor(employee, dateStr) {
             try {
                 const doc = await _buildHRPayslipDoc(p, e);   // the existing payslip — never a second one
                 pdf_base64 = doc.output('datauristring');     // data:application/pdf;base64,...
-            } catch (err) { console.warn('payslip PDF build failed (emailing without attachment):', err && err.message); }
+            } catch (err) {
+                // Never email a payslip whose figures disagree.
+                if (err && err.code === 'payroll_inconsistent') return { ok: false, error: 'payroll_inconsistent', detail: err.issues.join('; ') };
+                console.warn('payslip PDF build failed (emailing without attachment):', err && err.message);
+            }
             try {
                 const { data, error } = await dbInstance.functions.invoke('send-payslip-email', {
                     body: {
@@ -2411,6 +2516,7 @@ function hrOfficialEventFor(employee, dateStr) {
             if (res.ok && res.sent) { if (typeof showToast==='function') showToast('success', 'Email sent to employee' + who + '.'); return; }
             if (res.error === 'no_personal_email') { if (typeof showToast==='function') showToast('warning', 'Payslip generated, but employee personal email is missing' + who + '.'); return; }
             if (res.error === 'brevo_not_configured') { if (typeof showToast==='function') showToast('warning', 'Email not sent — Brevo is not configured yet (ask admin to set the API key).'); return; }
+            if (res.error === 'payroll_inconsistent') { if (typeof showToast==='function') showToast('error', HR_PAYSLIP_INCONSISTENT_MSG + who); return; }
             if (res.error === 'not_authorized') { if (typeof showToast==='function') showToast('error', 'Not authorized to email payslips.'); return; }
             if (typeof showToast==='function') showToast('error', 'Email delivery failed' + who + (res.detail ? ' (' + String(res.detail).slice(0,120) + ')' : '') + '.');
         }
