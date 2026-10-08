@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.06.1830-yjsm">
-<script src="be-update.js?v=2026.10.06.1830-yjsm"></script>
+<meta name="be-version" content="2026.10.08.1114-vmhh">
+<script src="be-update.js?v=2026.10.08.1114-vmhh"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Broken English | Manager Command Center</title>
 <link rel="icon" type="image/png" href="Broken English Final Logo-02 (1).png">
@@ -11,14 +11,14 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.06.1830-yjsm"></script>
-<link rel="stylesheet" href="account-menu.css?v=2026.10.06.1830-yjsm">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.06.1830-yjsm">
-<script src="be-mobile.js?v=2026.10.06.1830-yjsm"></script>
-<script src="account-menu.js?v=2026.10.06.1830-yjsm"></script>
-<script src="photo-preview.js?v=2026.10.06.1830-yjsm"></script>
-<script src="shared-greeting.js?v=2026.10.06.1830-yjsm"></script>
-<script src="be-shell.js?v=2026.10.06.1830-yjsm"></script>
+<script src="be-live.js?v=2026.10.08.1114-vmhh"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.08.1114-vmhh">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.08.1114-vmhh">
+<script src="be-mobile.js?v=2026.10.08.1114-vmhh"></script>
+<script src="account-menu.js?v=2026.10.08.1114-vmhh"></script>
+<script src="photo-preview.js?v=2026.10.08.1114-vmhh"></script>
+<script src="shared-greeting.js?v=2026.10.08.1114-vmhh"></script>
+<script src="be-shell.js?v=2026.10.08.1114-vmhh"></script>
 <style>
   :root{ --bg:#08070b; --panel:#0f0d14; --panel2:#141019; --bd:rgba(255,255,255,0.07);
          --tx:#f4f4f8; --tx2:rgba(255,255,255,0.55); --tx3:rgba(255,255,255,0.30);
@@ -148,6 +148,13 @@
   .actcard.needs{border-color:rgba(255,107,6,.35);background:rgba(255,107,6,.06)}
   .actcard.needs .n{color:#ff8a3c}
   .sec .h .t i{flex-shrink:0}
+  .mw{padding:20px 26px 60px}
+  @media(max-width:768px){ .mw{padding:14px 14px 100px} }
+  .mw-sw{display:inline-flex;gap:4px;padding:4px;margin-bottom:16px;border-radius:12px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.08)}
+  .mw-sw button{min-height:34px;padding:0 14px;border-radius:9px;border:1px solid transparent;background:none;color:#8b93b8;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .mw-sw button.on{color:#fff;background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12)}
+  .mw-sw button i{font-style:normal;margin-left:5px;font-size:11px;color:#ff8a3c}
+  .mw-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f9182f;margin-left:6px;vertical-align:middle}
 </style>
 </head>
 <body class="role-manager">
@@ -160,6 +167,7 @@
       <a class="navlink" data-sec="hr" onclick="mgrSection('hr')"><i data-lucide="users"></i> HR</a>
       <a class="navlink" data-sec="academics" onclick="mgrSection('academics')"><i data-lucide="graduation-cap"></i> Academics</a>
       <a class="navlink" data-sec="sales" onclick="mgrSection('sales')"><i data-lucide="trending-up"></i> Sales</a>
+      <a class="navlink" data-sec="work" onclick="mgrSection('work')"><i data-lucide="clipboard-list"></i> Work Assignment <span id="mgr-work-dot" class="mw-dot" hidden></span></a>
       <a class="navlink" data-sec="announcements" onclick="mgrSection('dashboard'); document.getElementById('mgr-ann')?.scrollIntoView({behavior:'smooth'})"><i data-lucide="megaphone"></i> Announcements</a>
       <a class="navlink" data-sec="notifications" onclick="mgrSection('dashboard'); document.getElementById('mgr-ann')?.scrollIntoView({behavior:'smooth'})"><i data-lucide="bell"></i> Notifications <span class="badge" id="mgr-nav-notif"></span></a>
       <div class="navsep">My Workspace</div>
@@ -188,6 +196,11 @@
       </div>
 
       <div class="content" id="mgr-content">
+        <div id="mgr-work" class="mw" hidden>
+          <div class="mw-sw" role="tablist"><button type="button" data-mw="board" class="on">Team work</button><button type="button" data-mw="mine">Assigned to me <i id="mw-mine-n"></i></button></div>
+          <div id="mw-board"></div>
+          <div id="mw-mine" hidden></div>
+        </div>
         <div class="dash" id="mgr-dash">
           <!-- Shared top stack (be-shell.js): banner → welcome, same order and spacing as
                every department dashboard. -->
@@ -251,6 +264,7 @@
             <div class="tab" data-tab="hr" onclick="mgrSection('hr')"><i data-lucide="users"></i> HR Panel</div>
             <div class="tab" data-tab="academics" onclick="mgrSection('academics')"><i data-lucide="graduation-cap"></i> Academics Panel</div>
             <div class="tab" data-tab="sales" onclick="mgrSection('sales')"><i data-lucide="trending-up"></i> Sales Panel</div>
+            <div class="tab" data-tab="work" onclick="mgrSection('work')"><i data-lucide="clipboard-list"></i> Work</div>
             <span class="tabhint">Switch between departments<br>without leaving the Manager Portal.</span>
           </div>
 
@@ -274,10 +288,11 @@
     </main>
   </div>
 
-<script src="common.js?v=2026.10.06.1830-yjsm"></script>
-<script src="access-guard.js?v=2026.10.06.1830-yjsm"></script>
-<script src="announcements.js?v=2026.10.06.1830-yjsm"></script>
-<script src="leave-policy.js?v=2026.10.06.1830-yjsm"></script>
+<script src="common.js?v=2026.10.08.1114-vmhh"></script>
+<script src="work-tasks.js?v=2026.10.08.1114-vmhh"></script>
+<script src="access-guard.js?v=2026.10.08.1114-vmhh"></script>
+<script src="announcements.js?v=2026.10.08.1114-vmhh"></script>
+<script src="leave-policy.js?v=2026.10.08.1114-vmhh"></script>
 <script>
 (async function(){
   'use strict';
@@ -315,7 +330,20 @@
   var _q = 'embed=1&e=' + encodeURIComponent(email) + '&n=' + encodeURIComponent((meRec&&meRec.full_name)||'');
   var SEC = { media:{src:'index.html?'+_q,title:'Media / Production'}, hr:{src:'hr.html?'+_q,title:'HR Management'},
     academics:{src:'academics.html?'+_q,title:'Academics'}, sales:{src:'sales.html?'+_q,title:'Sales'},
-    'ws-profile':{src:'index.html?'+_q+'&tab=my-profile',title:'My Profile'} };
+    'ws-profile':{src:'index.html?'+_q+'&tab=my-profile',title:'My Profile'}, work:{title:'Work Assignment'} };
+  // ── Work Assignment (central engine, work-tasks.js) — organisation-wide board + the
+  //    manager's own "Assigned to me" list; mounted once at load so live alerts work anywhere.
+  (function mountWork(){
+    if (!window.BEWork) return;
+    var host = document.getElementById('mgr-work'); if (!host) return;
+    var meName = (meRec && meRec.full_name) || 'Manager';
+    BEWork.mountManager(host.querySelector('#mw-board'), { db: db, actor: { name: meName, email: email } });
+    BEWork.mountMyTasks(host.querySelector('#mw-mine'), { db: db, email: email, name: meName, title: 'Assigned to me',
+      onCount: function(n){ var b=document.getElementById('mw-mine-n'); if(b) b.textContent = n ? n : ''; var d=document.getElementById('mgr-work-dot'); if(d) d.hidden = !n; },
+      onNotify: function(){ var d=document.getElementById('mgr-work-dot'); if(d) d.hidden=false; } });
+    host.querySelectorAll('[data-mw]').forEach(function(b){ b.onclick=function(){ host.querySelectorAll('[data-mw]').forEach(function(x){ x.classList.toggle('on', x===b); });
+      host.querySelector('#mw-board').hidden = b.dataset.mw!=='board'; host.querySelector('#mw-mine').hidden = b.dataset.mw!=='mine'; }; });
+  })();
   var frames = {};
   window.mgrSection = function(sec){
     var content=document.getElementById('mgr-content'), dash=document.getElementById('mgr-dash');
@@ -323,6 +351,8 @@
     document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('on', t.getAttribute('data-tab')===(sec==='dashboard'?'overview':sec)); });
     document.getElementById('mgr-section-title').textContent = (sec==='dashboard') ? 'Manager Command Center' : (SEC[sec]&&SEC[sec].title)||'Manager Command Center';
     dash.hidden = (sec!=='dashboard');
+    var wk = document.getElementById('mgr-work'); if (wk) wk.hidden = (sec!=='work');
+    if (sec==='work') { Object.keys(frames).forEach(function(k){ frames[k].hidden = true; }); return; }
     Object.keys(frames).forEach(function(k){ frames[k].hidden = (k!==sec); });
     if (sec==='dashboard') return;
     if (!frames[sec]) { var f=document.createElement('iframe'); f.className='frame'; f.src=SEC[sec].src; f.title=SEC[sec].title; content.appendChild(f); frames[sec]=f; }
@@ -407,7 +437,7 @@
         });
       }).catch(function(e){ console.warn('[manager] Academics/Sales metrics', e); failKpi(['ac-tr','ac-bt','ac-st','ac-crs','ac-trainers','ac-enrol','sl-tot','sl-fc','sl-en','sl-nw']); }),
       // ── Media (index.html rules) ──
-      rows(db.from('assignments').select('id,topic,type,status,assigned_to,manager_approved')).then(function(a){
+      rows(db.from('assignments').select('*')).then(function(a){ a = a.filter(function(t){ return t.scope!=='org'; }); // Media KPIs = Media pipeline only
         var mc=[['Work','topic'],['Type','type'],['Assigned to','assigned_to'],['Status','status']];
         setKpi('m-queue', a.filter(function(t){ return t.status==='Pending'||t.status==='In Progress'; }), { title:'Active media queue', cols:mc });
         setKpi('m-vid', a.filter(function(t){ return t.status==='Completed' && /video/i.test(t.type||''); }), { title:'Completed videos', cols:mc });

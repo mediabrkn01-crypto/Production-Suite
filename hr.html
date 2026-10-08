@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.06.1830-yjsm">
-<script src="be-update.js?v=2026.10.06.1830-yjsm"></script>
+<meta name="be-version" content="2026.10.08.1114-vmhh">
+<script src="be-update.js?v=2026.10.08.1114-vmhh"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Broken English | HR Management</title>
 
@@ -23,8 +23,9 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.06.1830-yjsm"></script>
-<script src="session-credit.js?v=2026.10.06.1830-yjsm"></script>
+<script src="be-live.js?v=2026.10.08.1114-vmhh"></script>
+<script src="session-credit.js?v=2026.10.08.1114-vmhh"></script>
+<script src="work-tasks.js?v=2026.10.08.1114-vmhh"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- jsPDF's autoTable plugin — only new dependency added for the Attendance Report export
          (spec: PDF required). Same jsPDF instance already loaded/used for payslips; autoTable
@@ -35,20 +36,20 @@
     <!-- Shared collapsible sidebar (index.html/hr.html/academics.html all include the same
          two files) — see sidebar-collapse.js's own header comment. defer so it never blocks
          first paint. -->
-    <link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.06.1830-yjsm">
-    <script src="sidebar-collapse.js?v=2026.10.06.1830-yjsm"></script>
-<script src="be-select.js?v=2026.10.06.1830-yjsm"></script>
-<script src="be-mobile.js?v=2026.10.06.1830-yjsm"></script>
-    <link rel="stylesheet" href="account-menu.css?v=2026.10.06.1830-yjsm">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.06.1830-yjsm">
-    <script src="account-menu.js?v=2026.10.06.1830-yjsm"></script>
-<script src="photo-preview.js?v=2026.10.06.1830-yjsm"></script>
-<link rel="stylesheet" href="be-timepicker.css?v=2026.10.06.1830-yjsm">
-<script src="be-timepicker.js?v=2026.10.06.1830-yjsm"></script>
-    <link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.06.1830-yjsm">
-    <script src="dashboard-metrics.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="shared-greeting.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="be-shell.js?v=2026.10.06.1830-yjsm"></script>
+    <link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.08.1114-vmhh">
+    <script src="sidebar-collapse.js?v=2026.10.08.1114-vmhh"></script>
+<script src="be-select.js?v=2026.10.08.1114-vmhh"></script>
+<script src="be-mobile.js?v=2026.10.08.1114-vmhh"></script>
+    <link rel="stylesheet" href="account-menu.css?v=2026.10.08.1114-vmhh">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.08.1114-vmhh">
+    <script src="account-menu.js?v=2026.10.08.1114-vmhh"></script>
+<script src="photo-preview.js?v=2026.10.08.1114-vmhh"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.08.1114-vmhh">
+<script src="be-timepicker.js?v=2026.10.08.1114-vmhh"></script>
+    <link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.08.1114-vmhh">
+    <script src="dashboard-metrics.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="shared-greeting.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="be-shell.js?v=2026.10.08.1114-vmhh"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════
@@ -1648,6 +1649,11 @@
                         <i data-lucide="crown" style="width:14px;height:14px"></i> Management
                     </button>
 
+                    <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">WORK</div>
+                    <button id="hrtree-mytasks" onclick="switchHRSubtab('mytasks')" class="sidebar-link" style="width:100%;text-align:left;display:flex;align-items:center;gap:8px">
+                        <i data-lucide="clipboard-list" style="width:14px;height:14px"></i> My Assigned Tasks <span id="hr-work-n" style="margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:#f9182f;color:#fff;font-size:10.5px;font-weight:800;display:none;align-items:center;justify-content:center"></span>
+                    </button>
+
                     <div class="nav-section-title" style="font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600">ATTENDANCE</div>
                     <button id="hrtree-attendance" onclick="switchHRSubtab('attendance')" class="sidebar-link" style="width:100%;text-align:left">
                         <i data-lucide="clock" style="width:14px;height:14px"></i> Attendance
@@ -1992,6 +1998,12 @@
                 </div>
 
                 <!-- HR: DESIGNATIONS -->
+                <!-- HR: MY ASSIGNED TASKS — central Work Assignment (work-tasks.js) -->
+                <div id="hr-sub-mytasks" class="space-y-4 hidden">
+                    <div id="hr-work-board" hidden style="margin-bottom:26px"></div>
+                    <div id="hr-work-mine"></div>
+                </div>
+
                 <div id="hr-sub-designations" class="space-y-4 hidden">
                     <div class="dgx-head">
                         <div><h1 class="text-xl font-bold tracking-tight">Designations</h1>
@@ -3496,12 +3508,12 @@
         <span id="call-toast-text"></span>
     </div>
 
-    <script src="common.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="access-guard.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="announcements.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="policy-config.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="leave-policy.js?v=2026.10.06.1830-yjsm"></script>
-    <script src="tab-builder.js?v=2026.10.06.1830-yjsm"></script>
+    <script src="common.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="access-guard.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="announcements.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="policy-config.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="leave-policy.js?v=2026.10.08.1114-vmhh"></script>
+    <script src="tab-builder.js?v=2026.10.08.1114-vmhh"></script>
     <script>
         // ══════════════════════════════════════════════════════════════
         // ══════════════════════════ HR PANEL (admin-only) ═══════════════
@@ -3511,7 +3523,7 @@
             production: ['Directors', 'Cinematographers', 'Photographers', 'Video Editors', 'Colorists', 'VFX / Motion Graphics', 'Production Coordinators', 'Graphic Designers', 'Designers'],
             other: ['HR', 'Finance', 'Marketing', 'Administration', 'IT / Technical Support']
         };
-        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-exceptions','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','policy','tab-builder','accounts'];
+        const HR_ALL_SUBTABS = ['dashboard','employees','management','departments','designations','attendance','att-exceptions','att-reports','workforce','leave','leave-balance','leave-calendar','payroll','payslips','recruitment','performance','schedule','holidays','documents','hr-reports','announcements','notifications','policy','tab-builder','accounts','mytasks'];
         const HR_DOCUMENT_TYPES = ['ID Card / Government ID', 'Address Proof', 'Educational Certificates', 'Experience Certificates', 'Resume', 'Employment Documents', 'Other'];
         const HR_APPLICANT_STATUSES = ['Applied','Shortlisted','Interview','Selected','Rejected','Joined'];
         const HR_PAYROLL_OPTIONAL_COLUMNS = {
@@ -3873,6 +3885,7 @@
             try { hrUpdateAttxBadge(); } catch (_) {}
             try { hrAnnCheckSchema().then(() => { if (hrCurrentSubtab === 'announcements') hrRenderAnnouncementsAdminList(); }); } catch (_) {}
             hrInitLive();
+            try { hrMountWork(); } catch (e) { console.warn('[work] mount:', e && e.message); }
         }
 
         // Live HR data (be-live.js). Any change by another HR user or by an employee (new leave
@@ -4473,6 +4486,7 @@
             else if (tab === 'management') renderHRManagement();
             else if (tab === 'departments') renderHRDepartments();
             else if (tab === 'designations') renderHRDesignations();
+            else if (tab === 'mytasks') hrMountWork();
             else if (tab === 'attendance') renderHRAttendance();
             else if (tab === 'att-exceptions') renderHRAttExceptions();
             else if (tab === 'att-reports') renderHRMonthlyAttendance();
@@ -5500,6 +5514,19 @@
         }
 
 // ── updateHREmpPhotoPreview (orig line 9108) ──
+        // ── Work Assignment (central engine, work-tasks.js): own tasks for every HR user; HR
+        //    admins also assign / track HR-department work. Mounted at load so live alerts work. ──
+        function hrMountWork() {
+            if (window._hrWorkMounted || !window.BEWork || typeof activeEmail === 'undefined' || !activeEmail) return;
+            window._hrWorkMounted = true;
+            const me = (typeof hrEmployees !== 'undefined' ? hrEmployees : []).find(e => (e.portal_email || '').toLowerCase() === activeEmail.toLowerCase());
+            const nm = (me && me.full_name) || (typeof activeUser !== 'undefined' && activeUser) || 'HR';
+            BEWork.mountMyTasks(document.getElementById('hr-work-mine'), { db: dbInstance, email: activeEmail, name: nm,
+                onCount: n => { const c = document.getElementById('hr-work-n'); if (c) { c.textContent = n || ''; c.style.display = n ? 'inline-flex' : 'none'; } } });
+            const isHrAdmin = (typeof activeRole !== 'undefined' && activeRole === 'admin') || ['hr_admin'].includes(String((me && me.system_role) || '').toLowerCase());
+            if (isHrAdmin) { const b = document.getElementById('hr-work-board'); b.hidden = false;
+                BEWork.mountManager(b, { db: dbInstance, actor: { name: nm, email: activeEmail }, departments: ['hr'], title: 'HR Work Assignment' }); }
+        }
         // ── Basic Info helpers: live header name/ID, age, tenure, status toggle ──
         function hrBiSync() {
             const n = (document.getElementById('hr-emp-name')?.value || '').trim(), id = (document.getElementById('hr-emp-id')?.value || '').trim();
@@ -8274,7 +8301,7 @@ async function populateHRJobDeptOptions() {
             try {
                 const { data: tasks, error: errT } = await dbInstance.from('assignments').select('*');
                 if (!errT && tasks) {
-                    assignmentsList = tasks.map(t => ({
+                    assignmentsList = tasks.filter(t => t.scope !== 'org').map(t => ({
                         id: t.id, topic: t.topic, type: t.type, assignedTo: t.assigned_to,
                         employeeEmail: t.employee_email, status: t.status, assetLink: t.asset_link
                     }));
