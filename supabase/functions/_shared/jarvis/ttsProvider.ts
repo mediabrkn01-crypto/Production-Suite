@@ -40,9 +40,8 @@ export class SarvamTtsProvider implements TtsProvider {
     const body = speakable(text);
     if (!body) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
-      // deno-lint-ignore no-explicit-any
-      const ws = new (WebSocket as any)(`${config.sarvamWsBase}/text-to-speech/ws?model=bulbul:v3&send_completion_event=true`,
-        { headers: { "Api-Subscription-Key": config.sarvamApiKey } }) as WebSocket;
+      // Key as a subprotocol (edge runtime can't send custom WebSocket headers) — see sttProvider.
+      const ws = new WebSocket(`${config.sarvamWsBase}/text-to-speech/ws?model=bulbul:v3&send_completion_event=true`, [`api-subscription-key.${config.sarvamApiKey}`]);
       let settled = false, got = 0;
       const timer = setTimeout(() => done(got ? null : new TtsError("TTS_TIMEOUT", "no audio")), 25_000);
       function done(err: Error | null) {

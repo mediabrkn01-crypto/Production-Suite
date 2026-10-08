@@ -87,8 +87,9 @@ export class SarvamSttProvider implements SttProvider {
     const terms = [...new Set((opts.keyterms || BASE_KEYTERMS).map((t) => t.trim()).filter((t) => t && t.length <= 64))].slice(0, 50);
     if (terms.length) q.set("keyterms", JSON.stringify(terms));
     return new Promise<SttResult>((resolve, reject) => {
-      // deno-lint-ignore no-explicit-any
-      const ws = new (WebSocket as any)(`${config.sarvamWsBase}/speech-to-text/ws?${q}`, { headers: { "Api-Subscription-Key": config.sarvamApiKey } }) as WebSocket;
+      // Key as a WebSocket subprotocol: the Supabase edge runtime cannot set custom headers on
+      // outgoing sockets ("Invalid protocol value"); Sarvam accepts api-subscription-key.<key>.
+      const ws = new WebSocket(`${config.sarvamWsBase}/speech-to-text/ws?${q}`, [`api-subscription-key.${config.sarvamApiKey}`]);
       const parts: string[] = [];
       let lang: string | null = null, flushed = false, settled = false;
       let idle: ReturnType<typeof setTimeout> | undefined;
