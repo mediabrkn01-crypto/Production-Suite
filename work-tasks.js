@@ -33,6 +33,7 @@
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function today() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()); }
   function fmtD(s) { if (!s) return '—'; var d = new Date(String(s).slice(0, 10) + 'T00:00:00'); return isNaN(d) ? String(s) : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  function fmtIso(s) { if (!s) return ''; var d = new Date(s); return isNaN(d) ? String(s).slice(0, 10) : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d); }
   function fmtTs(s) { if (!s) return ''; var d = new Date(s); return isNaN(d) ? '' : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); }
   function initials(n) { return String(n || '?').trim().split(/\s+/).map(function (w) { return w[0] || ''; }).slice(0, 2).join('').toUpperCase() || '?'; }
   function lc(s) { return String(s || '').trim().toLowerCase(); }
@@ -59,6 +60,85 @@
       var k = p.indexOf('|'); var name = k > -1 ? p.slice(0, k) : 'Reference'; var url = k > -1 ? p.slice(k + 1) : p;
       return { name: name === '__folder__' ? 'All reference files (folder)' : name, url: url };
     }).filter(function (r) { return /^https?:\/\//i.test(r.url); });
+  }
+  // ── Delivered output ───────────────────────────────────────────────────────────────
+  // asset_link holds what the employee submitted. Media stores "name|url;;name|url" (Drive files)
+  // plus an optional "__folder__|<drive folder>"; BEWork submissions use the same format, and a
+  // bare URL is a plain link. Everything is parsed here so every view shows the real output.
+  var EXT = { image: /\.(jpe?g|png|gif|webp|bmp|svg|heic|avif)$/i, video: /\.(mp4|mov|m4v|webm|mkv|avi)$/i, pdf: /\.pdf$/i,
+    doc: /\.(docx?|xlsx?|pptx?|csv|txt|rtf|odt|ods|odp|key|pages|numbers)$/i, zip: /\.(zip|rar|7z|tar|gz)$/i, audio: /\.(mp3|wav|m4a|aac|ogg)$/i };
+  function kindOf(name, url) {
+    var n = String(name || '') + ' ' + String(url || '').split('?')[0];
+    for (var k in EXT) if (EXT[k].test(String(name || '')) || EXT[k].test(String(url || '').split('?')[0])) return k;
+    if (/drive\.google\.com\/drive\/folders\//i.test(url)) return 'folder';
+    if (/docs\.google\.com\/(document|spreadsheets|presentation)/i.test(url)) return 'doc';
+    return /drive\.google\.com\/file\//i.test(url) ? 'file' : 'link';
+  }
+  function parseOutput(str) {
+    var raw = String(str || '').trim(); if (!raw || raw === 'None') return [];
+    var parts = raw.indexOf('|') > -1 || raw.indexOf(';;') > -1 ? raw.split(';;') : [raw];
+    return parts.map(function (p) {
+      p = p.trim(); var k = p.indexOf('|'); var name = k > -1 ? p.slice(0, k) : ''; var url = (k > -1 ? p.slice(k + 1) : p).trim();
+      if (!/^https?:\/\//i.test(url)) return null;
+      var folder = name === '__folder__';
+      var kind = folder ? 'folder' : kindOf(name, url);
+      if (!name || folder) { try { name = folder ? 'Delivery folder' : (new URL(url).hostname.replace(/^www\./, '') + (kind === 'link' ? '' : ' file')); } catch (_) { name = 'Link'; } }
+      return { name: name, url: url, kind: kind };
+    }).filter(Boolean);
+  }
+  function driveId(url) { var m = String(url).match(/\/file\/d\/([\w-]{10,})/) || String(url).match(/[?&]id=([\w-]{10,})/); return m ? m[1] : null; }
+  function previewSrc(f) {
+    var id = driveId(f.url);
+    if (id) return f.kind === 'image' ? 'https://drive.google.com/thumbnail?id=' + id + '&sz=w2000' : 'https://drive.google.com/file/d/' + id + '/preview';
+    return f.url;
+  }
+  function thumbSrc(f) { var id = driveId(f.url); return id ? 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1000' : f.url; }
+  function downloadSrc(f) { var id = driveId(f.url); return id ? 'https://drive.google.com/uc?export=download&id=' + id : f.url; }
+  function canPreview(f) { return ['image', 'video', 'pdf', 'audio'].indexOf(f.kind) > -1 || (f.kind === 'file' || f.kind === 'doc') && !!driveId(f.url); }
+  var KIND_ICON = { image: '🖼️', video: '🎬', pdf: '📄', doc: '📝', zip: '🗜️', audio: '🎵', folder: '📁', file: '📎', link: '🔗' };
+  var KIND_LABEL = { image: 'Image', video: 'Video', pdf: 'PDF', doc: 'Document', zip: 'Archive', audio: 'Audio', folder: 'Folder', file: 'File', link: 'Link' };
+  function outputSummary(t) {
+    var f = parseOutput(t.asset_link).filter(function (x) { return x.kind !== 'folder'; });
+    if (!f.length) return parseOutput(t.asset_link).length ? 'Folder' : '';
+    var files = f.filter(function (x) { return x.kind !== 'link'; }).length, links = f.length - files;
+    return (files ? files + ' file' + (files === 1 ? '' : 's') : '') + (files && links ? ' · ' : '') + (links ? links + ' link' + (links === 1 ? '' : 's') : '');
+  }
+  function outputNote(t) {
+    var n = String(t.explanation || '').trim(); if (n && n !== 'None') return n;
+    var h = Array.isArray(t.history) ? t.history : [];
+    for (var i = h.length - 1; i >= 0; i--) if (h[i].action === 'submitted') return h[i].note || '';
+    return '';
+  }
+  function fmtFull(s) { if (!s) return ''; var d = new Date(s); return isNaN(d) ? '' : d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  function filesHTML(files) {
+    var imgs = files.filter(function (f) { return f.kind === 'image'; });
+    return (imgs.length ? '<div class="bw-thumbs">' + imgs.map(function (f) { var i = files.indexOf(f); return '<button type="button" class="bw-thumb" data-pv="' + i + '" title="Preview ' + esc(f.name) + '"><img src="' + esc(thumbSrc(f)) + '" alt="' + esc(f.name) + '" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{textContent:\'🖼️\'}))"></button>'; }).join('') + '</div>' : '') +
+      '<div class="bw-files">' + files.map(function (f, i) {
+        return '<div class="bw-file bw-of"><span class="bw-fk">' + (KIND_ICON[f.kind] || '📎') + '</span><span class="bw-fn"><b>' + esc(f.name) + '</b><small>' + esc(KIND_LABEL[f.kind] || 'File') + (driveId(f.url) ? ' · Google Drive' : '') + '</small></span>' +
+          '<span class="bw-fa">' + (canPreview(f) ? '<button type="button" class="bw-btn" data-pv="' + i + '">Preview</button>' : '') +
+          (f.kind === 'link' || f.kind === 'folder' || f.kind === 'doc' && !driveId(f.url) ? '<a class="bw-btn" href="' + esc(f.url) + '" target="_blank" rel="noopener">Open link</a>'
+            : '<a class="bw-btn" href="' + esc(downloadSrc(f)) + '" target="_blank" rel="noopener">Download</a>') + '</span></div>';
+      }).join('') + '</div>';
+  }
+  function wirePreviews(root, files) {
+    root.querySelectorAll('[data-pv]').forEach(function (b) { b.onclick = function () { preview(files[+b.dataset.pv], files); }; });
+  }
+  function preview(f, all) {
+    if (!f) return;
+    var src = previewSrc(f), drive = !!driveId(f.url), body;
+    if (f.kind === 'image') body = '<img class="bw-pv-media" src="' + esc(src) + '" alt="' + esc(f.name) + '">';
+    else if (f.kind === 'video' && !drive) body = '<video class="bw-pv-media" src="' + esc(src) + '" controls playsinline></video>';
+    else if (f.kind === 'audio' && !drive) body = '<audio src="' + esc(src) + '" controls style="width:100%"></audio>';
+    else body = '<iframe class="bw-pv-frame" src="' + esc(src) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+    var idx = all ? all.indexOf(f) : -1, nav = all && all.filter(canPreview).length > 1;
+    modal('<div class="bw-mh"><div><h3>' + esc(f.name) + '</h3><p>' + esc(KIND_LABEL[f.kind] || 'File') + (drive ? ' · Google Drive' : '') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
+      '<div class="bw-pv">' + body + '</div>' +
+      '<div class="bw-mf">' + (nav ? '<button class="bw-btn ghost" data-nav="-1">‹ Previous</button><button class="bw-btn ghost" data-nav="1">Next ›</button>' : '') +
+      '<a class="bw-btn" href="' + esc(f.url) + '" target="_blank" rel="noopener">Open original</a><a class="bw-btn pri" href="' + esc(downloadSrc(f)) + '" target="_blank" rel="noopener">Download</a></div>', function (ov, close) {
+      ov.querySelector('.bw-modal').classList.add('bw-wide');
+      ov.querySelectorAll('[data-nav]').forEach(function (b) { b.onclick = function () {
+        var list = all.filter(canPreview), j = list.indexOf(f), n = list[(j + (+b.dataset.nav) + list.length) % list.length]; close(); preview(n, all); }; });
+    });
   }
   function dueText(t) {
     if (!t.date) return 'No due date';
@@ -156,7 +236,7 @@
       '.bw-card-m{display:flex;gap:6px;flex-wrap:wrap;align-items:center}',
       '.bw-card-f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--bw-d)}',
       // modal
-      '.bw-ov{position:fixed;inset:0;z-index:2147482000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(4,6,12,.72);backdrop-filter:blur(4px)}',
+      '.bw-ov{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(4,6,12,.72);backdrop-filter:blur(4px)}',
       '.bw-modal{width:100%;max-width:620px;max-height:min(92vh,880px);display:flex;flex-direction:column;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:#0f1322;box-shadow:0 30px 80px -20px rgba(0,0,0,.8);overflow:hidden}',
       '.bw-mh{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,.07)}',
       '.bw-mh h3{margin:0;font-size:17px;font-weight:800;color:#fff}.bw-mh p{margin:3px 0 0;font-size:12.5px;color:var(--bw-m)}',
@@ -184,10 +264,26 @@
       '.bw-h small{display:block;font-size:11px;color:var(--bw-d)}.bw-h q{display:block;margin-top:3px;color:#e5e7eb;quotes:none}',
       '.bw-rng{width:100%;accent-color:#ff6b06}',
       // alert card
-      '.bw-alert{position:fixed;top:18px;right:18px;z-index:2147482500;width:min(360px,calc(100vw - 32px));padding:14px 16px;border-radius:14px;background:#11162a;border:1px solid rgba(255,107,6,.45);box-shadow:0 20px 50px -12px rgba(0,0,0,.8);color:#e5e7eb;transform:translateY(-12px);opacity:0;transition:all .2s}',
+      '.bw-alert{position:fixed;top:18px;right:18px;z-index:9500;width:min(360px,calc(100vw - 32px));padding:14px 16px;border-radius:14px;background:#11162a;border:1px solid rgba(255,107,6,.45);box-shadow:0 20px 50px -12px rgba(0,0,0,.8);color:#e5e7eb;transform:translateY(-12px);opacity:0;transition:all .2s}',
       '.bw-alert.on{transform:none;opacity:1}.bw-alert small{display:block;font-size:10.5px;font-weight:800;letter-spacing:.1em;color:#ff8a3c}',
       '.bw-alert b{display:block;margin:4px 0 2px;font-size:14.5px;color:#fff}.bw-alert span{font-size:12px;color:#8b93b8}',
       '.bw-alert-a{display:flex;gap:8px;margin-top:10px}',
+      '.bw-done .bw-row{grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 110px 82px 96px 110px 110px auto}',
+      '.bw-range{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--bw-m)}.bw-range .bw-in{width:140px}',
+      '.bw-outpill{display:inline-flex;font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px;color:#93c5fd;background:rgba(59,130,246,.12);white-space:nowrap}',
+      '.bw-out{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;border:1px solid rgba(52,211,153,.3);background:linear-gradient(180deg,rgba(16,185,129,.07),rgba(255,255,255,.015))}',
+      '.bw-out-h{display:flex;align-items:center;justify-content:space-between;gap:8px}.bw-out-h b{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6ee7b7}.bw-out-h span{font-size:11px;font-weight:700;color:#a5adcf;background:rgba(255,255,255,.06);border-radius:999px;padding:2px 8px}',
+      '.bw-out-m{display:flex;gap:18px;flex-wrap:wrap}.bw-out-m small,.bw-out-note small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bw-d)}.bw-out-m b{font-size:13px;color:#fff}',
+      '.bw-out-note{font-size:13px;color:#e5e7eb;font-style:italic;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.2)}.bw-out-note small{font-style:normal;margin-bottom:3px}',
+      '.bw-thumbs{display:flex;gap:8px;flex-wrap:wrap}.bw-thumb{width:120px;height:90px;padding:0;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:#0b0e18;cursor:zoom-in;display:grid;place-items:center;font-size:22px}',
+      '.bw-thumb img{width:100%;height:100%;object-fit:cover}.bw-thumb:hover{border-color:rgba(255,107,6,.6)}',
+      '.bw-of{gap:10px!important;padding:9px 10px!important}.bw-fk{font-size:18px}.bw-fn{flex:1;min-width:0;display:flex;flex-direction:column}.bw-fn b{font-size:12.5px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bw-fn small{font-size:10.5px;color:var(--bw-d)}',
+      '.bw-fa{display:flex;gap:6px;flex-shrink:0}.bw-fa .bw-btn{min-height:30px;text-decoration:none}',
+      '.bw-ver{display:flex;flex-direction:column;gap:3px;margin-top:6px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}',
+      '.bw-ver span{font-size:11px;font-weight:700;color:#a5adcf}.bw-ver a{font-size:12px;color:#93c5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bw-ver em{font-size:12px;color:#cbd5e1}',
+      '.bw-modal.bw-wide{max-width:1000px}.bw-pv{flex:1;min-height:0;display:grid;place-items:center;padding:12px;background:#05070e}',
+      '.bw-pv-media{max-width:100%;max-height:70vh;border-radius:10px;object-fit:contain}.bw-pv-frame{width:100%;height:70vh;border:0;border-radius:10px;background:#0b0e18}',
+      '@media(max-width:1100px){.bw-done .bw-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.bw-done .bw-row>:nth-child(3),.bw-done .bw-row>:nth-child(4),.bw-done .bw-row>:nth-child(5){display:none}}',
       '@media(max-width:1100px){.bw-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.bw-row.hd{display:none}.bw-row>.bw-c-pri,.bw-row>.bw-c-prog{display:none}.bw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}',
       '@media(max-width:640px){.bw-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}.bw-row>.bw-c-who{grid-column:1/-1}.bw-row>.bw-c-due{grid-column:1}.bw-acts{grid-column:2;grid-row:1}.bw-kpis{grid-template-columns:1fr 1fr}.bw-g2,.bw-info{grid-template-columns:1fr}.bw-seg{grid-template-columns:1fr 1fr}.bw-mf .bw-btn{flex:1}.bw-search{min-width:100%}}'
     ].join('\n');
@@ -201,7 +297,9 @@
     ov.innerHTML = '<div class="bw-modal" role="dialog" aria-modal="true">' + html + '</div>';
     document.body.appendChild(ov);
     var close = function () { ov.remove(); document.removeEventListener('keydown', onKey); };
-    var onKey = function (e) { if (e.key === 'Escape') close(); };
+    // Escape closes an open branded dropdown / calendar first, never the whole popup with it.
+    var popOpen = function () { return Array.prototype.some.call(document.querySelectorAll('.be-sel-menu,.be-cal'), function (m) { return m.offsetParent !== null && getComputedStyle(m).display !== 'none' && getComputedStyle(m).visibility !== 'hidden'; }); };
+    var onKey = function (e) { if (e.key === 'Escape' && !e.defaultPrevented && !popOpen() && ov === document.querySelector('.bw-ov:last-of-type')) close(); };
     document.addEventListener('keydown', onKey);
     ov.addEventListener('mousedown', function (e) { if (e.target === ov) close(); });
     ov.querySelectorAll('[data-bw-close]').forEach(function (b) { b.onclick = close; });
@@ -215,7 +313,6 @@
   // Task detail (shared by employee + manager views)
   function detailHTML(t, opts) {
     var refs = parseRefs(t.reference_file), hist = Array.isArray(t.history) ? t.history.slice().reverse() : [];
-    var out = t.asset_link && /^https?:/i.test(t.asset_link) ? t.asset_link : '';
     return '<div class="bw-mh"><div><h3>' + esc(t.topic || 'Task') + '</h3><p>' + esc(t.type || 'Task') + ' · ' + depChip(t.department) + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
       '<div class="bw-mb">' +
         '<div class="bw-info"><div><small>Status</small>' + stPill(t) + '</div><div><small>Priority</small>' + priPill(t.priority) + '</div><div><small>Due</small><b class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</b></div>' +
@@ -226,11 +323,25 @@
         ((refs.length || t.reference_link) ? '<div class="bw-f"><span class="bw-l">Reference files &amp; links</span><div class="bw-files">' +
           refs.map(function (r) { return '<div class="bw-file">📎<span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') +
           (t.reference_link ? '<div class="bw-file">🔗<span>' + esc(t.reference_link) + '</span><a href="' + esc(t.reference_link) + '" target="_blank" rel="noopener">Open</a></div>' : '') + '</div></div>' : '') +
-        (out ? '<div class="bw-f"><span class="bw-l">Submitted work</span><div class="bw-file">✅<span>' + esc(out) + '</span><a href="' + esc(out) + '" target="_blank" rel="noopener">Open</a></div></div>' : '') +
+        outputHTML(t) +
         (hist.length ? '<div class="bw-f"><span class="bw-l">History</span><div class="bw-hist">' + hist.map(function (h) {
-          return '<div class="bw-h">' + esc(histLabel(h)) + '<small>' + esc(h.by || '') + ' · ' + esc(fmtTs(h.at)) + '</small>' + (h.note ? '<q>' + esc(h.note) + '</q>' : '') + '</div>'; }).join('') + '</div></div>' : '') +
+          var o = h.output && parseOutput(h.output.asset_link);
+          return '<div class="bw-h">' + esc(histLabel(h)) + '<small>' + esc(h.by || '') + ' · ' + esc(fmtTs(h.at)) + '</small>' + (h.note ? '<q>' + esc(h.note) + '</q>' : '') +
+            (o && o.length ? '<div class="bw-ver"><span>' + esc(h.version ? 'Submission version ' + h.version : 'Submission kept') + (h.output.submitted_at ? ' · submitted ' + esc(fmtFull(h.output.submitted_at)) : '') + '</span>' +
+              o.map(function (f) { return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + (KIND_ICON[f.kind] || '📎') + ' ' + esc(f.name) + '</a>'; }).join('') + (h.output.note ? '<em>“' + esc(h.output.note) + '”</em>' : '') + '</div>' : '') + '</div>'; }).join('') + '</div></div>' : '') +
         (opts && opts.extra ? opts.extra : '') +
       '</div>';
+  }
+  function outputHTML(t) {
+    var files = parseOutput(t.asset_link), done = t.status === 'Completed', note = outputNote(t);
+    var when = t.submitted_at || t.completed_at;
+    if (!files.length && !done) return '';
+    var vers = (Array.isArray(t.history) ? t.history : []).filter(function (h) { return h.output && parseOutput(h.output.asset_link).length; }).length;
+    return '<div class="bw-out"><div class="bw-out-h"><b>' + (done ? 'Completed output' : 'Latest submission') + '</b>' + (vers ? '<span>Version ' + (vers + 1) + '</span>' : '') + '</div>' +
+      '<div class="bw-out-m"><div><small>Submitted by</small><b>' + esc(t.assigned_to || '—') + '</b></div><div><small>Submitted</small><b>' + esc(when ? fmtFull(when) : '—') + '</b></div>' +
+        (t.manager_approved ? '<div><small>Review</small><b style="color:#6ee7b7">Approved' + (t.approved_by ? ' · ' + esc(t.approved_by) : '') + '</b></div>' : '') + '</div>' +
+      (files.length ? filesHTML(files) : '<div class="bw-empty" style="padding:14px">No file or link was attached to this submission.</div>') +
+      (note ? '<div class="bw-out-note"><small>Employee note</small>“' + esc(note) + '”</div>' : '') + '</div>';
   }
   function histLabel(h) {
     switch (h.action) {
@@ -240,17 +351,17 @@
       case 'status': return 'Status → ' + (h.to || '');
       case 'update': return 'Progress update' + (h.progress != null ? ' · ' + h.progress + '%' : '');
       case 'submitted': return 'Marked completed';
-      case 'rework': return 'Sent back for rework';
+      case 'rework': return 'Sent back for rework' + (h.output && parseOutput(h.output.asset_link).length ? ' — previous delivery kept' : '');
       case 'cancelled': return 'Cancelled';
       default: return h.action || 'Update';
     }
   }
 
   // ── live alert ─────────────────────────────────────────────────────────────────────────
-  function alertNew(t, onView) {
+  function alertNew(t, onView, kind) {
     css();
     var a = document.createElement('div'); a.className = 'bw-alert bw'; a.setAttribute('role', 'status');
-    a.innerHTML = '<small>🔔 NEW WORK ASSIGNED</small><b>' + esc(t.topic || 'New task') + '</b><span>' + esc(dueText(t)) + ' · from ' + esc(t.assigned_by || 'Manager') + '</span>' +
+    a.innerHTML = (kind === 'rework' ? '<small>↩️ SENT BACK FOR REWORK</small>' : '<small>🔔 NEW WORK ASSIGNED</small>') + '<b>' + esc(t.topic || 'New task') + '</b><span>' + esc(kind === 'rework' ? (t.rework_reason || 'See the feedback') : dueText(t) + ' · from ' + (t.assigned_by || 'Manager')) + '</span>' +
       '<div class="bw-alert-a"><button class="bw-btn pri" data-v>View task</button><button class="bw-btn ghost" data-d>Dismiss</button></div>';
     document.body.appendChild(a);
     requestAnimationFrame(function () { a.classList.add('on'); });
@@ -276,9 +387,14 @@
       S.loading = false;
       if (r.error) { el.innerHTML = '<div class="bw-empty"><b>Could not load your tasks</b>' + esc(r.error.message) + '</div>'; return; }
       var prev = S.rows.length ? new Set(S.rows.map(function (x) { return String(x.id); })) : null;
+      var prevSt = {}; S.rows.forEach(function (x) { prevSt[String(x.id)] = x.status; });
       S.rows = (r.data || []).filter(function (t) { return t.status !== 'cancelled'; });
       // brand-new tasks while this page is open → live alert + page bell
-      if (prev) S.rows.forEach(function (t) { if (!prev.has(String(t.id)) && isOpen(t)) { alertNew(t, openTask); if (o.onNotify) try { o.onNotify(t); } catch (_) {} } });
+      if (prev) S.rows.forEach(function (t) {
+        var id = String(t.id);
+        if (!prev.has(id) && isOpen(t)) { alertNew(t, openTask); if (o.onNotify) try { o.onNotify(t); } catch (_) {} }
+        else if (prev.has(id) && prevSt[id] !== 'Rework Required' && t.status === 'Rework Required') { alertNew(t, openTask, 'rework'); if (o.onNotify) try { o.onNotify(t); } catch (_) {} }
+      });
       if (o.onCount) try { o.onCount(S.rows.filter(isOpen).length); } catch (_) {}
       render();
     }
@@ -316,10 +432,15 @@
       if (k === 'pending') acts = '<button class="bw-btn pri" data-a="start">Start task</button>';
       else if (k === 'progress' || k === 'rework') acts = '<button class="bw-btn" data-a="update">Add progress update</button><button class="bw-btn green" data-a="submit">Mark completed</button>';
       var extra = (k === 'progress' || k === 'rework') ? '<div class="bw-f" id="bw-upd" hidden><span class="bw-l">Progress update</span><input type="range" class="bw-rng" min="0" max="100" step="5" value="' + (t.progress || 0) + '" id="bw-pg"><span class="bw-l" id="bw-pgt">' + (t.progress || 0) + '% done</span><textarea id="bw-note" placeholder="What did you do? Anything blocking you?"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="saveupd">Save update</button></div></div>' +
-        '<div class="bw-f" id="bw-sub" hidden><span class="bw-l">Submit your work</span><input id="bw-out" type="url" placeholder="Link to the finished work (optional) — Drive, Docs, sheet…" value="' + esc(t.asset_link && /^https?:/.test(t.asset_link) ? t.asset_link : '') + '"><textarea id="bw-subnote" placeholder="Short note for your manager (optional)"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn green" data-a="dosubmit">Submit as completed</button></div></div>' : '';
+        '<div class="bw-f" id="bw-sub" hidden><span class="bw-l">Submit your work</span><div class="bw-files" id="bw-sfl"></div><label class="bw-drop"><input type="file" multiple hidden id="bw-sf">📎 Attach finished files (image, video, PDF, document, ZIP…)</label><input id="bw-out" type="url" placeholder="Or a link — Google Drive, Docs, YouTube…"><textarea id="bw-subnote" placeholder="Short note for your manager (optional)"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn green" data-a="dosubmit">Submit as completed</button></div></div>' : '';
       if (media && (k === 'progress' || k === 'rework')) extra += '<div class="bw-note">This is Media work — you can also submit it from the Media Suite as usual.</div>';
       modal(detailHTML(t, { extra: extra }) + '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
+        var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
         var rng = ov.querySelector('#bw-pg'); if (rng) rng.oninput = function () { ov.querySelector('#bw-pgt').textContent = rng.value + '% done'; };
+        var subFiles = [], sf = ov.querySelector('#bw-sf');
+        function paintSub() { var box = ov.querySelector('#bw-sfl'); if (!box) return; box.innerHTML = subFiles.map(function (f, i) { return '<div class="bw-file">' + (KIND_ICON[kindOf(f.name, '')] || '📎') + '<span>' + esc(f.name) + '</span><a href="#" data-rms="' + i + '">Remove</a></div>'; }).join('');
+          box.querySelectorAll('[data-rms]').forEach(function (a) { a.onclick = function (e) { e.preventDefault(); subFiles.splice(+a.dataset.rms, 1); paintSub(); }; }); }
+        if (sf) sf.onchange = function () { Array.prototype.forEach.call(sf.files, function (f) { if (f.size > 50 * 1024 * 1024) toast('warning', f.name + ' is over 50 MB — share it as a Drive link instead.'); else subFiles.push(f); }); sf.value = ''; paintSub(); };
         ov.querySelectorAll('[data-a]').forEach(function (b) {
           b.onclick = async function () {
             var a = b.dataset.a;
@@ -333,8 +454,15 @@
               patch = { progress: pg, history: histAdd(t, name, 'update', { progress: pg, note: note || undefined }) }; if (t.status === 'Pending') patch.status = 'In Progress'; msg = 'Update saved.'; }
             if (a === 'dosubmit') { var out = ov.querySelector('#bw-out').value.trim(), sn = ov.querySelector('#bw-subnote').value.trim();
               if (out && !/^https?:\/\//i.test(out)) { toast('warning', 'The work link must start with https://'); b.disabled = false; return; }
-              patch = { status: 'Completed', progress: 100, completed_at: new Date().toISOString(), submitted_at: new Date().toISOString(), history: histAdd(t, name, 'submitted', { note: sn || undefined }) };
-              if (out) patch.asset_link = out; if (sn) patch.explanation = sn; msg = 'Marked completed — your manager has been updated.'; }
+              var parts = [];
+              if (subFiles.length) { b.textContent = 'Uploading…'; try { (await uploadFiles(db, subFiles, function (p) { b.textContent = 'Uploading ' + p + '%…'; })).forEach(function (u) { parts.push(u.name + '|' + u.url); }); }
+                catch (err) { toast('error', 'Upload failed: ' + (err.message || err)); b.disabled = false; b.textContent = 'Submit as completed'; return; } }
+              if (out) parts.push('Link|' + out);
+              var nowIso = new Date().toISOString(), asset = parts.join(';;');
+              patch = { status: 'Completed', progress: 100, completed_at: nowIso, submitted_at: nowIso, explanation: sn || 'None',
+                history: histAdd(t, name, 'submitted', { note: sn || undefined }) };
+              if (asset) patch.asset_link = asset;
+              msg = 'Marked completed — your manager has been updated.'; }
             var r = await saveRow(db, t.id, patch);
             if (r.error) { toast('error', 'Could not save: ' + r.error.message); b.disabled = false; return; }
             toast('success', msg); close(); load();
@@ -357,7 +485,7 @@
   function mountManager(el, o) {
     css();
     var db = o.db, actor = (o.actor && o.actor.name) || 'Manager', deps = o.departments || null;
-    var S = { rows: [], emps: [], tab: 'active', dep: '', emp: '', pri: '', month: '', q: '', ready: false, cols: true };
+    var S = { rows: [], emps: [], tab: 'active', dep: '', emp: '', pri: '', month: '', from: '', to: '', q: '', ready: false, cols: true };
     el.classList.add('bw');
 
     function allowedDep(d) { return !deps || deps.indexOf(d || 'production') > -1; }
@@ -390,6 +518,8 @@
         if (S.emp && lc(t.employee_email) !== lc(S.emp)) return false;
         if (S.pri && (t.priority || 'medium') !== S.pri) return false;
         if (S.month && String(t.assigned_date || '').slice(0, 7) !== S.month) return false;
+        if (S.from || S.to) { var dk = S.tab === 'completed' ? fmtIso(t.completed_at || t.submitted_at) : String(t.assigned_date || '').slice(0, 10);
+          if (!dk || (S.from && dk < S.from) || (S.to && dk > S.to)) return false; }
         if (q && [t.topic, t.assigned_to, DIV[t.department], t.type, t.description].join(' ').toLowerCase().indexOf(q) === -1) return false;
         return true;
       });
@@ -424,8 +554,24 @@
           '<select class="bw-sel" data-emp><option value="">All employees</option>' + Object.keys(empOpts).sort(function (a, b) { return empOpts[a].localeCompare(empOpts[b]); }).map(function (e) { return '<option value="' + esc(e) + '"' + (lc(S.emp) === e ? ' selected' : '') + '>' + esc(empOpts[e]) + '</option>'; }).join('') + '</select>' +
           '<select class="bw-sel" data-pri><option value="">Any priority</option>' + PRIO.map(function (p) { return '<option value="' + p[0] + '"' + (S.pri === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select>' +
           '<select class="bw-sel" data-month><option value="">Any month</option>' + Object.keys(months).sort().reverse().map(function (m) { return '<option value="' + m + '"' + (S.month === m ? ' selected' : '') + '>' + new Date(m + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) + '</option>'; }).join('') + '</select>' +
+          '<span class="bw-range"><span>' + (S.tab === 'completed' ? 'Completed' : 'Assigned') + '</span><input type="date" class="bw-in" data-from value="' + esc(S.from) + '" aria-label="From date"><span>–</span><input type="date" class="bw-in" data-to value="' + esc(S.to) + '" aria-label="To date">' + (S.from || S.to ? '<button type="button" class="bw-btn ghost" data-clr>Clear</button>' : '') + '</span>' +
         '</div>' +
-        (list.length ? '<div class="bw-list"><div class="bw-row hd"><span>Task</span><span>Assigned to</span><span class="bw-c-pri">Priority</span><span>Due</span><span>Status</span><span class="bw-c-prog">Progress</span><span></span></div>' +
+        (list.length && S.tab === 'completed' ? '<div class="bw-list bw-done"><div class="bw-row hd"><span>Task</span><span>Assigned to</span><span class="bw-c-by">Assigned by</span><span class="bw-c-pri">Priority</span><span class="bw-c-due2">Due</span><span>Completed</span><span>Output</span><span></span></div>' +
+          list.slice(0, 400).map(function (t) {
+            var out = outputSummary(t), when = t.completed_at || t.submitted_at;
+            var late = when && t.date && String(fmtIso(when)) > String(t.date).slice(0, 10);
+            return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
+              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + '</b><span>' + esc(t.type || 'Task') + '</span></div>' +
+              '<div class="bw-who bw-c-who"><span class="bw-ava">' + esc(initials(t.assigned_to)) + '</span><div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>' +
+              '<div class="bw-c-by bw-due">' + esc(t.assigned_by || '—') + '</div>' +
+              '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
+              '<div class="bw-c-due2 bw-due">' + esc(t.date ? fmtD(t.date) : '—') + '</div>' +
+              '<div class="bw-due bw-c-due">' + esc(when ? fmtD(fmtIso(when)) : '—') + (late ? '<small style="color:#fb923c">after due</small>' : (t.manager_approved ? '<small style="color:#6ee7b7">approved</small>' : '<small>awaiting review</small>')) + '</div>' +
+              '<div>' + (out ? '<span class="bw-outpill">' + esc(out) + '</span>' : '<span class="bw-due" style="color:#5b638a">No output</span>') + '</div>' +
+              '<div class="bw-acts"><button class="bw-btn' + (out ? ' green' : '') + '" data-view="' + esc(t.id) + '">View output</button></div>' +
+            '</div>';
+          }).join('') + '</div>'
+        : list.length ? '<div class="bw-list"><div class="bw-row hd"><span>Task</span><span>Assigned to</span><span class="bw-c-pri">Priority</span><span>Due</span><span>Status</span><span class="bw-c-prog">Progress</span><span></span></div>' +
           list.slice(0, 300).map(function (t) {
             var pg = t.status === 'Completed' ? 100 : (t.progress || (t.status === 'In Progress' ? 10 : 0));
             return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
@@ -443,7 +589,8 @@
       el.querySelector('[data-new]').onclick = function () { openForm(null); };
       el.querySelectorAll('[data-tab]').forEach(function (b) { b.onclick = function () { S.tab = b.dataset.tab; render(); }; });
       var qi = el.querySelector('[data-q]'); qi.oninput = function () { S.q = qi.value; var pos = qi.selectionStart; render(); var n = el.querySelector('[data-q]'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (_) {} };
-      [['dep', 'dep'], ['emp', 'emp'], ['pri', 'pri'], ['month', 'month']].forEach(function (p) { var s = el.querySelector('[data-' + p[0] + ']'); if (s) s.onchange = function () { S[p[1]] = s.value; render(); }; });
+      [['dep', 'dep'], ['emp', 'emp'], ['pri', 'pri'], ['month', 'month'], ['from', 'from'], ['to', 'to']].forEach(function (p) { var s = el.querySelector('[data-' + p[0] + ']'); if (s) s.onchange = function () { S[p[1]] = s.value; render(); }; });
+      var clr = el.querySelector('[data-clr]'); if (clr) clr.onclick = function () { S.from = S.to = ''; render(); };
       el.querySelectorAll('.bw-row[data-id]').forEach(function (r) { r.onclick = function (e) { if (e.target.closest('button')) return; view(r.dataset.id); }; });
       el.querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openForm(b.dataset.edit); }; });
       el.querySelectorAll('[data-re]').forEach(function (b) { b.onclick = function () { reassign([b.dataset.re]); }; });
@@ -458,6 +605,7 @@
         (done ? '<button class="bw-btn" data-a="rework">Send back for rework</button>' : '');
       modal(detailHTML(t, { extra: done ? '<div class="bw-f" id="bw-rw" hidden><span class="bw-l">What needs to change?</span><textarea id="bw-rwn" placeholder="Explain what to fix"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="dorework">Send back</button></div></div>' : '' }) +
         '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
+        var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
         ov.querySelectorAll('[data-a]').forEach(function (b) {
           b.onclick = async function () {
             var a = b.dataset.a;
@@ -465,7 +613,9 @@
             if (a === 're') { close(); reassign([t.id]); return; }
             if (a === 'rework') { ov.querySelector('#bw-rw').hidden = false; ov.querySelector('#bw-rwn').focus(); return; }
             if (a === 'dorework') { var n = ov.querySelector('#bw-rwn').value.trim(); if (!n) { toast('warning', 'Explain what needs to change.'); return; }
-              var r = await saveRow(db, t.id, { status: 'Rework Required', rework_reason: n, reviewed_by: actor, reviewed_at: new Date().toISOString(), completed_at: null, history: histAdd(t, actor, 'rework', { note: n }) });
+              var vno = (Array.isArray(t.history) ? t.history : []).filter(function (h) { return h.output && parseOutput(h.output.asset_link).length; }).length + 1;
+              var r = await saveRow(db, t.id, { status: 'Rework Required', rework_reason: n, reviewed_by: actor, reviewed_at: new Date().toISOString(), completed_at: null, manager_approved: false,
+                history: histAdd(t, actor, 'rework', { note: n, version: vno, output: { asset_link: t.asset_link || '', submitted_at: t.submitted_at || t.completed_at || null, note: outputNote(t) } }) });
               if (r.error) { toast('error', 'Could not save: ' + r.error.message); return; } toast('success', 'Sent back for rework.'); close(); load(); return; }
             if (a === 'cancel') { if (!(await confirmBox('"' + (t.topic || 'This task') + '" will be cancelled. It stays in history.', 'Cancel this task?', 'Cancel task'))) return;
               var r2 = await saveRow(db, t.id, { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: actor, history: histAdd(t, actor, 'cancelled') });

@@ -26,6 +26,7 @@
    ============================================================================ */
 (function () {
   if (window.__beSelectInit) return;
+  // "Today" for the branded calendar = Asia/Kolkata calendar date, whatever the device timezone.
   window.__beSelectInit = true;
 
   var CSS = [
@@ -355,6 +356,7 @@
    behaviour changed — only the visible picker.
    ============================================================================ */
 (function () {
+  function istNow() { try { return new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()) + 'T00:00:00'); } catch (_) { return new Date(); } }
   if (window.__beDateInit) return;
   window.__beDateInit = true;
 
@@ -463,7 +465,7 @@
     cal.querySelector('[data-next]').addEventListener('click', function () { navNext(); });
     cal.querySelector('[data-clear]').addEventListener('click', function () { setValue(''); closeCal(); });
     cal.querySelector('[data-today]').addEventListener('click', function () {
-      var n = new Date();
+      var n = istNow();
       if (isMonth(openInput)) { setValue(n.getFullYear() + '-' + pad(n.getMonth() + 1)); closeCal(); return; }
       viewY = n.getFullYear(); viewM = n.getMonth(); calView = 'days'; pick(n.getFullYear(), n.getMonth(), n.getDate());
     });
@@ -510,7 +512,7 @@
     var daysIn = new Date(viewY, viewM + 1, 0).getDate();
     var prevDays = new Date(viewY, viewM, 0).getDate();
     var sel = parseISO(openInput.value);
-    var today = new Date();
+    var today = istNow();
     var b = bounds(openInput);
     var cells = [];
     for (var i = 0; i < first; i++) cells.push({ d: prevDays - first + 1 + i, other: -1 });
@@ -539,7 +541,7 @@
     calGrid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 0;';
     var monthMode = isMonth(openInput);
     var sel = openInput ? parseFor(openInput, openInput.value) : null;
-    var now = new Date();
+    var now = istNow();
     for (var i = 0; i < 12; i++) {
       var el = document.createElement('div');
       el.className = 'be-cal-mcell';
@@ -571,7 +573,7 @@
     grid.className = 'be-cal-ygrid';
     grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:4px 0;';
     var sel = openInput ? parseFor(openInput, openInput.value) : null;
-    var now = new Date();
+    var now = istNow();
     var centerY = viewY;
     var startY = centerY - 50, endY = centerY + 20;
     for (var y = endY; y >= startY; y--) {
@@ -624,7 +626,7 @@
     if (!cal) buildCal();
     openInput = input;
     calView = isMonth(input) ? 'months' : 'days';
-    var p = parseFor(input, input.value) || (function () { var n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; })();
+    var p = parseFor(input, input.value) || (function () { var n = istNow(); return { y: n.getFullYear(), m: n.getMonth() }; })();
     viewY = p.y; viewM = p.m;
     var todayBtn = cal.querySelector('[data-today]'); if (todayBtn) todayBtn.textContent = isMonth(input) ? 'This month' : 'Today';
     input.__beDateTrigger.setAttribute('data-open', '');
