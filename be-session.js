@@ -35,7 +35,7 @@
     currentEmail: currentEmail,
     /** Called by the ERP login after its own check succeeds. Never blocks the login. */
     issue: function (identifier, password) {
-      return fetch(URL_ + '/functions/v1/erp-session', {
+      var p = fetch(URL_ + '/functions/v1/erp-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': ANON, 'Authorization': 'Bearer ' + ANON },
         body: JSON.stringify({ identifier: identifier, password: password })
@@ -44,6 +44,15 @@
         var m = load(); m[norm(j.email)] = { t: j.token, exp: j.exp }; save(m);
         return j.token;
       }).catch(function () { return null; });
+      window.BESession.pending = p;
+      return p;
+    },
+    /** Wait (max ms) for a token request started by the login, so a redirect right after
+     *  sign-in (manager / sales / academics routing) can't cancel it mid-flight. */
+    ready: function (ms) {
+      var p = window.BESession.pending;
+      if (!p) return Promise.resolve();
+      return Promise.race([p, new Promise(function (r) { setTimeout(r, ms || 4000); })]).then(function () { window.BESession.pending = null; });
     },
     /** Valid token for this account (default: the signed-in one), or null. */
     token: function (email) {
