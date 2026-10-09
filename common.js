@@ -2286,16 +2286,18 @@ function hrOfficialEventFor(employee, dateStr) {
             const rupee = v => 'Rs. ' + Number(v||0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
             const logo = await _loadPayslipLogo();
-            let headerY = 20;
+            // Branding = the official logo only (no repeated name / tagline under it). The text
+            // name is printed only if the logo image couldn't load, so the payslip is never unbranded.
+            let divY = 32;
             if (logo) {
                 const logoW = 34, logoH = logoW * (logo.h / logo.w);
                 doc.addImage(logo.dataUrl, 'PNG', marginX, 12, logoW, logoH);
-                headerY = 12 + logoH + 7;
+                divY = Math.max(32, 12 + logoH + 6);
+            } else {
+                doc.setFontSize(15); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
+                doc.text('Broken English', marginX, 22);
+                doc.setFont(undefined, 'normal');
             }
-            doc.setFontSize(15); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
-            doc.text('Broken English', marginX, headerY);
-            doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(120);
-            doc.text('Production Studio Network', marginX, headerY + 5);
 
             doc.setFontSize(9); doc.setTextColor(120);
             // Always the SALARY month (p.month) — never the date HR processed it, so September
@@ -2305,10 +2307,10 @@ function hrOfficialEventFor(employee, dateStr) {
             doc.text('Salary for ' + monthLabel, rightX, 24, { align: 'right' });
             doc.setFont(undefined, 'normal');
 
-            doc.setDrawColor(225); doc.line(marginX, 32, rightX, 32);
+            doc.setDrawColor(225); doc.line(marginX, divY, rightX, divY);
 
             // Employee Summary (left) + Net Pay box (right)
-            let sy = 42;
+            let sy = divY + 10;
             doc.setFontSize(9); doc.setTextColor(140);
             doc.text('EMPLOYEE SUMMARY', marginX, sy);
             sy += 7;
@@ -2347,7 +2349,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 ['LOP', _fmtD(lopDays)]);
             else if (!isSessionPay) stats.push(['LOP', _fmtD(lopDays)]);
             if (hasPreJoining) stats.push(['Before Joining', _fmtD(dayInfo.preJoiningDays)]);
-            const boxX = 122, boxW = rightX - boxX, boxY = 40, boxH = Math.max(34, 28 + stats.length * 6.2);
+            const boxX = 122, boxW = rightX - boxX, boxY = divY + 8, boxH = Math.max(34, 28 + stats.length * 6.2);
             doc.setFillColor(230, 250, 240); doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
             doc.setDrawColor(52, 199, 130); doc.setLineWidth(1); doc.line(boxX + 4, boxY + 4, boxX + 4, boxY + boxH - 4); doc.setLineWidth(0.2);
             doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(20, 110, 70);
