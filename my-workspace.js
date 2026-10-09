@@ -406,7 +406,7 @@
       doc.setFontSize(10);
       [['Employee', e.full_name], ['Employee ID', e.employee_id || '—'], ['Department', DIV[e.division] || e.division || '—'], ['Designation', e.designation || '—'], ['Payment status', p.payment_status || '—'], ['Payment date', p.payment_date || '—']].forEach(function (r2) { doc.setTextColor(110); doc.text(r2[0], 14, y); doc.setTextColor(20); doc.text(String(r2[1]), 70, y); y += 7; });
       y += 4; doc.setDrawColor(220); doc.line(14, y, W - 14, y); y += 8;
-      var lines = [['Basic', p.basic], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses], ['Leave deduction', -(+p.leave_deduction || 0)], ['Other deductions', -(+p.deductions || 0)], ['Advances', -(+p.advances || 0)]];
+      var lines = [['Basic', p.basic], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonus', p.bonuses], ['Incentive', +p.incentive_amount || 0], ['Leave deduction', -(+p.leave_deduction || 0)], ['Other deductions', -(+p.deductions || 0)], ['Advances', -(+p.advances || 0)]];
       lines.forEach(function (l) { if (l[1] == null) return; doc.setTextColor(60); doc.text(l[0], 14, y); doc.text((l[1] < 0 ? '- ' : '') + 'Rs ' + Math.abs(+l[1] || 0).toLocaleString('en-IN'), W - 14, y, { align: 'right' }); y += 7; });
       y += 2; doc.line(14, y, W - 14, y); y += 9; doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Net salary', 14, y); doc.text('Rs ' + Number(p.net_salary || 0).toLocaleString('en-IN'), W - 14, y, { align: 'right' });
       if (p.unpaid_leave_days) { y += 8; doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(120); doc.text('Includes ' + p.unpaid_leave_days + ' unpaid leave day(s).', 14, y); }

@@ -1790,7 +1790,7 @@ function hrOfficialEventFor(employee, dateStr) {
             const deductionDays = daily ? _r2(ld / daily) : 0;
             const futureBasis = dim ? future * basis / dim : 0;
             const rawPayable = _r2(basis - deductionDays - futureBasis);
-            const gross = _r2(basic + (+p.allowances || 0) + (+p.overtime || 0) + (+p.bonuses || 0));
+            const gross = _r2(basic + (+p.allowances || 0) + (+p.overtime || 0) + (+p.bonuses || 0) + (+p.incentive_amount || 0));
             const totalDeductions = _r2(ld + (+p.deductions || 0) + (+p.advances || 0));
             const calc = snap.calculated || null;
             const overrides = [];
@@ -1824,6 +1824,22 @@ function hrOfficialEventFor(employee, dateStr) {
             return base;
         }
 
+        // Field-level change history kept inside day_breakdown.audit_log (survives every save /
+        // recalculation), e.g. { field:'incentive_amount', label:'Incentive', from:3000, to:5000, by, at }.
+        const HR_PAYROLL_AUDIT_FIELDS = { basic: 'Basic Salary', allowances: 'Allowances', overtime: 'Overtime', bonuses: 'Bonus', incentive_amount: 'Incentive',
+            leave_deduction: 'LOP Deduction', deductions: 'Other Deductions', advances: 'Advances', net_salary: 'Net Salary' };
+        function hrPayrollAuditLog(existing, payload, by) {
+            const prev = (existing && existing.day_breakdown && Array.isArray(existing.day_breakdown.audit_log)) ? existing.day_breakdown.audit_log.slice() : [];
+            if (!existing) return prev;
+            const at = new Date().toISOString();
+            Object.keys(HR_PAYROLL_AUDIT_FIELDS).forEach(k => {
+                if (!(k in payload)) return;
+                const from = _r2(existing[k]), to = _r2(payload[k]);
+                if (Math.abs(from - to) > 0.001) prev.push({ field: k, label: HR_PAYROLL_AUDIT_FIELDS[k], from, to, by: by || null, at });
+            });
+            return prev.slice(-100);
+        }
+
         // Salary days the SAVED leave_deduction stands for — from the row's own salary, never
         // the employee's current profile salary (that mismatch printed "1.5d" for ₹1,000).
         function hrPayrollDeductionDays(p) { return hrPayrollFinalFigures(p).deduction_days; }
@@ -1840,7 +1856,7 @@ function hrOfficialEventFor(employee, dateStr) {
             if (snap && snap.for && snap.for !== p.employee_id + '|' + p.month) issues.push('Attendance snapshot belongs to a different employee or month — re-run Auto-calculate.');
             if (f.gross < 0) issues.push('Gross earnings are negative.');
             if (f.total_deductions < 0) issues.push('Total deductions are negative.');
-            if (['basic','allowances','overtime','bonuses','leave_deduction','deductions','advances'].some(k => (+p[k] || 0) < 0)) issues.push('A salary component is negative.');
+            if (['basic','allowances','overtime','bonuses','incentive_amount','leave_deduction','deductions','advances'].some(k => (+p[k] || 0) < 0)) issues.push('A salary component is negative.');
             if (Math.abs(f.net - _r2(p.net_salary)) > 0.01) issues.push(`Net salary ₹${_r2(p.net_salary)} ≠ gross ₹${f.gross} − deductions ₹${f.total_deductions}.`);
             if (f.pay_type === 'salary') {
                 if (f.raw_payable_days > f.basis + 0.001 || f.raw_payable_days < -0.001) issues.push(`Payable days ${f.raw_payable_days} are outside 0–${f.basis}.`);
@@ -2384,7 +2400,8 @@ function hrOfficialEventFor(employee, dateStr) {
             y2 += 6;
             doc.setFont(undefined, 'normal'); doc.setFontSize(9.5);
 
-            const earnings = [['Basic Salary', basicForPayslip], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonuses', p.bonuses]];
+            // Bonus and Incentive are separate lines; old rows without an incentive print 0.00.
+            const earnings = [['Basic Salary', basicForPayslip], ['Allowances', p.allowances], ['Overtime', p.overtime], ['Bonus', p.bonuses], ['Incentive', +p.incentive_amount || 0]];
             const deductions = [];
             // Day count in the label matches exactly what the rupee figure was calculated over
             // — LOP days plus any pre-joining days, since both reduce this same deduction line.
