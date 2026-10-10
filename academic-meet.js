@@ -23,7 +23,7 @@
 
   var TZ = 'Asia/Kolkata';
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  var REMINDER_CHOICES = [10, 30, 60];
+  var REMINDER_CHOICES = [10, 15, 30, 60];
   var SESSION_MSG = 'Your session has expired. Please sign in again to continue.';
 
   var S = {
@@ -691,12 +691,28 @@
     var sel = {}; cur.forEach(function (m) { sel[m] = 1; });
     var box = document.getElementById('am-m-body');
     S.modalKey = null;
+    var orig = cur.slice().sort().join(',');
     function paint() {
-      box.innerHTML = '<div class="am-m-eyebrow">Live Classes</div><h3 class="am-m-title" id="am-m-title">Google settings</h3>'
-        + '<div class="am-m-sec" style="border:0;padding-top:0;margin-top:0"><h4>Organizer account</h4><div style="font-size:13.5px;font-weight:600">' + esc((S.status && S.status.organizerEmail) || 'Connected account') + '</div><div class="am-meet-link" style="margin-top:4px">Every class event is created by this account; trainers and students are attendees.</div>'
-        + '<div class="am-m-actions"><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-reconnect><i data-lucide="link"></i>Reconnect another account</button></div></div>'
-        + '<div class="am-m-sec"><h4>Default reminder</h4><div class="am-rem">' + REMINDER_CHOICES.map(function (m) { return '<button type="button" data-rem="' + m + '" class="' + (sel[m] ? 'on' : '') + '">' + (m === 60 ? '1 hour' : m + ' min') + '</button>'; }).join('') + '</div><div class="am-meet-link" style="margin-top:6px">Up to two. Applies to new Meet links and to classes when they are next updated.</div>'
-        + '<div class="am-m-actions"><button type="button" class="am-btn" data-rem-save>Save</button></div></div>';
+      var email = (S.status && S.status.organizerEmail) || 'Connected account';
+      var picked = Object.keys(sel).map(Number).sort(function (x, y) { return y - x; });
+      var dirty = picked.slice().sort().join(',') !== orig;
+      box.innerHTML = '<div class="am-mh"><div class="am-mh-pills"><span class="am-pill">Live Classes</span><span class="am-pill st-live">Connected</span></div>'
+        + '<h3 class="am-m-title" id="am-m-title">Google settings</h3><div class="am-mh-when"><span><i data-lucide="calendar-check"></i>Google Calendar + Google Meet</span></div></div>'
+        + '<div class="am-m-scroll">'
+        // organizer
+        + '<div class="am-set-h">Organizer account</div>'
+        + '<div class="am-org"><span class="am-av is-tr am-av-lg">' + esc(initials(email.split('@')[0].replace(/[._-]+/g, ' '))) + '</span>'
+        + '<div class="am-org-t"><b>' + esc(email) + '</b><span>Creates every class event and Meet link. Trainers and students are invited as guests.</span></div>'
+        + '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-reconnect><i data-lucide="refresh-cw"></i>Change</button></div>'
+        // reminders
+        + '<div class="am-set-h">Default reminder <span>Choose up to two</span></div>'
+        + '<div class="am-rem-grid">' + REMINDER_CHOICES.map(function (m) {
+            var on = !!sel[m];
+            return '<button type="button" data-rem="' + m + '" class="am-rem-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '"><i data-lucide="' + (on ? 'check' : 'bell') + '"></i><b>' + (m >= 60 ? m / 60 : m) + '</b><span>' + (m >= 60 ? 'hour' : 'min') + ' before</span></button>';
+          }).join('') + '</div>'
+        + '<div class="am-rem-prev"><i data-lucide="info"></i><span>' + (picked.length ? 'Popup and email reminder <b>' + esc(remText(picked)) + '</b> each class.' : 'Pick at least one reminder.') + ' Used for new Meet links and when a class is next updated. Each person’s own Google Calendar settings also apply.</span></div>'
+        + '</div>'
+        + '<div class="am-mf"><button type="button" class="am-btn am-btn-ghost" data-close>Cancel</button><button type="button" class="am-btn" data-rem-save' + (dirty && picked.length ? '' : ' disabled') + '><i data-lucide="check"></i>Save changes</button></div>';
       icons();
     }
     paint();
