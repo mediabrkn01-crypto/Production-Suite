@@ -409,7 +409,8 @@
       await reloadLinks().catch(function () {});
       return null;
     } finally {
-      delete S.busy[key]; render(); if (S.modalKey === key) { S.modalDetails = null; renderModal(); fetchDetails(key); }
+      // Keep the current attendee list on screen while it refreshes (no empty flash).
+      delete S.busy[key]; render(); if (S.modalKey === key) { renderModal(); fetchDetails(key); }
     }
   }
 
@@ -661,7 +662,7 @@
     if (w) { try { w.opener = null; } catch (e) {} } else toast('warning', 'Your browser blocked the new tab — allow pop-ups for this site, or use the Meet link.', 7000);
     api('join', { key: o.key, start: startHint(o) }).then(function (j) {
       if (j.row) { S.links[o.key] = j.row; S.touched[o.key] = Date.now(); }
-      render(); if (S.modalKey === o.key) { S.modalDetails = null; renderModal(); fetchDetails(o.key); }
+      render(); if (S.modalKey === o.key) { renderModal(); fetchDetails(o.key); }
     }, function (e) { if (!sessionGuard(e)) toast('error', e.message, 6000); });
   }
 

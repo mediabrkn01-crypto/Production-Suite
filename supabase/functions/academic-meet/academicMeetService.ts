@@ -441,9 +441,12 @@ export async function syncMeetReport(a: JarvisAuthContext, key: string, hint: { 
       return t >= schedStart - 3 * 3600e3 && t <= schedEnd + 6 * 3600e3;
     });
     if (!records.length || records.some((r: any) => !r.endTime)) {
-      const msg = !records.length
-        ? "Google hasn't published the Meet report yet — it appears a few minutes after everyone leaves the call."
-        : "The Meet is still in progress — the report is ready once everyone has left.";
+      const endedMinsAgo = row.ended_at ? (Date.now() - new Date(row.ended_at).getTime()) / 60000 : 0;
+      const msg = records.length
+        ? "The Meet is still in progress — the report is ready once everyone has left."
+        : endedMinsAgo > 30
+          ? "Google Meet has no call for this class — nobody joined this Meet link, or the class ran on a different link."
+          : "Google hasn't published the Meet report yet — it appears a few minutes after everyone leaves the call.";
       row = await save(key, { meet_sync_status: "waiting", meet_sync_error: msg });
       return { row, waiting: true, message: msg };
     }
