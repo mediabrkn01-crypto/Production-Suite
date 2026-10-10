@@ -10,7 +10,7 @@ saved in the ERP. The ERP stays the source of truth; Google is the meeting + inv
 | `academic-meet.html` / `.js` / `.css` (site root) | The Live Classes tab. Loaded **into** `academics.html` (`acadLoadLiveClasses`) — never a page navigation |
 | `supabase/functions/academic-meet` | This function: `academicMeetService.ts` (create / update / cancel / resend / details) |
 | `supabase/functions/_shared/google/` | `googleAuthService`, `googleCalendarService`, `googleMeetService` |
-| `supabase/migrations/20261016_academic_live_classes.sql` | `academic_live_classes` (link per class occurrence), `academic_meet_batches` (online batches), `academic_meet_config` (organizer token, no browser access) |
+| `supabase/migrations/20261016_academic_live_classes.sql` + `20261017_live_class_report.sql` | `academic_live_classes` (link per class occurrence), `academic_meet_batches` (online batches), `academic_meet_config` (organizer token, no browser access) |
 
 A class is identified by its ERP occurrence: `class:<batch_id>:<original_date>` for batch classes,
 `oto:<oto_sessions.id>` for group 1:1 sessions. A postponed class keeps its key, so its **same**
@@ -66,3 +66,23 @@ never make a second event or a second Meet link.
   never writes attendance from Meet.
 - Later, Google Workspace domain-wide delegation can replace the single organizer token inside
   `googleAuthService.getAccessToken()` without touching anything else.
+
+## Live class workflow (part 2)
+
+- **Review email**: every class event also invites the review address (Live Classes → Settings,
+  default `reviewbrk@gmail.com`; the `ACADEMIC_MEET_REVIEW_EMAIL` secret overrides it). Emails are
+  normalised and de-duplicated before they're sent to Google.
+- **Copy Details / Share**: a WhatsApp-ready class message (class, course, day + date, time,
+  trainer, type, students, Meet link). Share uses the Web Share API, otherwise copies.
+- **Join Live** opens Meet in a new tab and records the join in the ERP (class shows *Live*).
+- **End Class** marks the class ended in the ERP and starts the Meet report sync. These two clicks
+  are ERP activity only — the official times come from Google Meet conference records.
+- **Meet report**: conference records → participants → sessions give actual start/end/duration,
+  trainer join/leave/presence and each participant's minutes. Meet shares display names, not
+  emails, so people are matched to the roster by name. If Google hasn't published the report yet
+  the class shows *Waiting* and re-checks when the popup is opened (every 2 min at most).
+- **Attendance**: suggestions only (Present ≥ half the scheduled class, Review < half, Absent =
+  didn't join). *Confirm in Class & Attendance* opens the existing attendance screen pre-filled;
+  saving there is the only way attendance is recorded. The class then shows *Attendance confirmed*.
+- **History**: `academic_live_class_events` (Meet created, invitation sent, review email invited,
+  joined live, meeting started/ended, trainer joined, report synced, attendance confirmed…).

@@ -28,7 +28,7 @@
 
   var S = {
     root: null, view: 'day', anchor: null, status: null, statusErr: null, tableMissing: false,
-    occ: [], links: {}, touched: {}, online: {}, busy: {}, autoDone: {}, seq: 0, modalKey: null, modalDetails: null, loading: false
+    occ: [], links: {}, touched: {}, autoSyncAt: {}, online: {}, busy: {}, autoDone: {}, seq: 0, modalKey: null, modalDetails: null, loading: false
   };
 
   // ── small helpers ─────────────────────────────────────────────────────────
@@ -240,7 +240,11 @@
     return 'none';
   }
   var SYNC_LABEL = { none: 'No Meet', syncing: 'Syncing…', synced: 'Synced', failed: 'Sync Failed', cancelled: 'Cancelled' };
-  function chip(o) { var s = syncState(o); return '<span class="am-chip s-' + s + '"' + (s === 'failed' && linkOf(o) && linkOf(o).google_sync_error ? ' title="' + esc(linkOf(o).google_sync_error) + '"' : '') + '>' + SYNC_LABEL[s] + '</span>'; }
+  function chip(o) {
+    var l = linkOf(o);
+    if (l && l.class_status !== 'cancelled' && l.live_status === 'live') return '<span class="am-chip s-live">Live</span>';
+    if (l && l.meet_sync_status === 'synced') return '<span class="am-chip s-synced">Completed · ' + (l.actual_duration_minutes != null ? l.actual_duration_minutes + ' min' : 'report') + '</span>';
+    var s = syncState(o); return '<span class="am-chip s-' + s + '"' + (s === 'failed' && linkOf(o) && linkOf(o).google_sync_error ? ' title="' + esc(linkOf(o).google_sync_error) + '"' : '') + '>' + SYNC_LABEL[s] + '</span>'; }
 
   function render() {
     paintRange(); renderSetup(); renderStats();
@@ -467,8 +471,8 @@
 
   function openModal(key) {
     if (!occByKey(key)) return;
-    S.modalKey = key; S.modalDetails = null; S.cancelOpen = false; S.fixOpen = false;
-    var box = document.getElementById('am-m-body'); if (box) box.onclick = null;
+    S.modalKey = key; S.modalDetails = null; S.cancelOpen = false; S.fixOpen = false; S.endOpen = false; S.revOpen = false; S.repOpen = false; S.histOpen = false;
+    var box = document.getElementById('am-m-body'); if (box) { box.onclick = null; box.oninput = null; }
     renderModal();
     var m = modalEl(); m.classList.add('on'); m.setAttribute('aria-hidden', 'false');
     fetchDetails(key);
@@ -482,6 +486,12 @@
       if (S.modalKey !== key) return;
       if (j.row) S.links[key] = j.row;
       S.modalDetails = j;
+      var r = j.row;
+      if (r && r.google_meet_url && (r.meet_sync_status === 'pending' || r.meet_sync_status === 'waiting') && !S.busy[key]
+          && Date.now() - Date.parse(r.updated_at || 0) > 120000 && Date.now() - (S.autoSyncAt[key] || 0) > 120000) {
+        S.autoSyncAt[key] = Date.now();
+        setTimeout(function () { if (S.modalKey === key) run(key, 'sync_report', null, null).then(reportToast); }, 300);
+      }
     } catch (e) {
       if (S.modalKey !== key) return;
       S.modalDetails = { error: e.code === 'SESSION_EXPIRED' ? SESSION_MSG : e.message };
@@ -496,7 +506,7 @@
     var key = S.modalKey, o = key && occByKey(key), box = document.getElementById('am-m-body');
     if (!o || !box) return;
     var l = linkOf(o), d = S.modalDetails, s = syncState(o), man = canManage(), isC = cancelled(o), isEnded = ended(o), busy = !!S.busy[key];
-    var status = isC ? ['Cancelled', 'st-cancel'] : liveNow(o) ? ['Live now', 'st-live'] : isEnded ? ['Ended', 'st-ended'] : ['Scheduled', 'st-sched'];
+    var status = isC ? ['Cancelled', 'st-cancel'] : (l && l.meet_sync_status === 'synced') ? ['Completed', 'st-live'] : (l && l.live_status === 'live') ? ['Live', 'st-live'] : (l && l.live_status === 'ended') ? ['Ended', 'st-ended'] : liveNow(o) ? ['Live now', 'st-live'] : isEnded ? ['Ended', 'st-ended'] : ['Scheduled', 'st-sched'];
     var hasMeet = !!(l && l.google_meet_url && !isC);
 
     // ── header
@@ -511,10 +521,17 @@
 
     // ── Google Meet hero
     if (l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync failed.</b> ' + esc(l.google_sync_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>' : '') + '</div>';
+    var canRun = !!(d && d.canRun), isLive = !!(l && l.live_status === 'live'), erpEnded = !!(l && l.live_status === 'ended');
     if (hasMeet) {
-      html += '<section class="am-hero is-ready"><div class="am-hero-ic"><i data-lucide="video"></i></div><div class="am-hero-t"><b>Google Meet</b><span>' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</span></div>'
-        + '<button type="button" class="am-ic-btn" data-copy title="Copy Meet link" aria-label="Copy Meet link"><i data-lucide="copy"></i></button>'
-        + (isEnded ? '' : '<a class="am-btn am-btn-meet am-hero-join" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener"><i data-lucide="video"></i>Join with Google Meet</a>') + '</section>';
+      html += '<section class="am-hero is-ready' + (isLive ? ' is-live' : '') + '"><div class="am-hero-ic"><i data-lucide="' + (isLive ? 'radio' : 'video') + '"></i></div><div class="am-hero-t"><b>' + (isLive ? 'Class is live' : erpEnded ? 'Class ended' : 'Google Meet') + '</b><span>' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</span></div>'
+        + '<button type="button" class="am-ic-btn" data-copy title="Copy Meet link" aria-label="Copy Meet link"><i data-lucide="link"></i></button>'
+        + (isLive ? '<div class="am-live-row"><span class="am-live-dot"></span>Live in ERP since ' + esc(clock(l.joined_at)) + (l.joined_by ? ' · ' + esc(l.joined_by.split('@')[0]) : '') + '</div>' : '')
+        + (!erpEnded && (!isEnded || isLive) ? '<button type="button" class="am-btn am-btn-meet am-hero-join" data-join><i data-lucide="video"></i>' + (isLive ? 'Rejoin Google Meet' : 'Join Live') + '</button>' : '')
+        + (isLive && canRun && !S.endOpen ? '<button type="button" class="am-btn am-btn-danger am-hero-join" data-end-open><i data-lucide="square"></i>End Class</button>' : '')
+        + '</section>';
+      if (S.endOpen && canRun) html += '<section class="am-cancel"><b>End this live class?</b><span>The ERP marks the class ended and starts syncing the Google Meet report. The official duration comes from Google Meet, not from this button.</span>'
+        + '<div class="am-m-actions"><button type="button" class="am-btn am-btn-ghost" data-end-no>Cancel</button><button type="button" class="am-btn am-btn-danger" data-end-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Ending…' : 'End Class') + '</button></div></section>';
+      html += reportHTML(o, l, d, canRun, busy);
     } else if (isC) {
       html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="calendar-x"></i></div><div class="am-hero-t"><b>Class cancelled</b><span>' + (l && l.google_calendar_event_id ? (s === 'cancelled' ? 'Google Calendar sent the cancellation to every attendee.' : 'The Calendar event still needs to be cancelled — Retry Sync.') : 'Only this date is affected.') + '</span></div></section>';
     } else if (man && ready() && !isEnded) {
@@ -543,7 +560,7 @@
         + '<div class="am-bar-t"><i style="width:' + pct + '%"></i></div>';
       if (inv.length) {
         html += '<div class="am-people">';
-        inv.forEach(function (p) { html += '<div class="am-person"><span class="am-av' + (p.role === 'trainer' ? ' is-tr' : '') + '">' + esc(initials(p.name)) + '</span><div class="am-p-n"><b>' + esc(p.name) + '</b><span>' + esc(p.email) + '</span></div><span class="am-role">' + (p.role === 'trainer' ? 'Trainer' : 'Student') + '</span></div>'; });
+        inv.forEach(function (p) { html += '<div class="am-person"><span class="am-av' + (p.role === 'trainer' ? ' is-tr' : p.role === 'review' ? ' is-rv' : '') + '">' + (p.role === 'review' ? '<i data-lucide="eye"></i>' : esc(initials(p.name))) + '</span><div class="am-p-n"><b>' + esc(p.role === 'review' ? p.email : p.name) + '</b><span>' + esc(p.role === 'review' ? 'Review / Academic Monitoring' : p.email) + '</span></div><span class="am-role">' + (p.role === 'trainer' ? 'Trainer' : p.role === 'review' ? 'Review' : 'Student') + '</span></div>'; });
         html += '</div>';
       }
       if (miss.length) {
@@ -563,6 +580,15 @@
     }
     html += '</section>';
 
+    // ── class history
+    if (d && d.events && d.events.length) {
+      html += '<section class="am-hist"><button type="button" class="am-hist-h" data-hist-toggle aria-expanded="' + !!S.histOpen + '"><b>Class history</b><span>' + d.events.length + ' event' + (d.events.length === 1 ? '' : 's') + '</span><i data-lucide="chevron-' + (S.histOpen ? 'up' : 'down') + '"></i></button>';
+      if (S.histOpen) html += '<ol class="am-tl">' + d.events.slice().reverse().map(function (ev) {
+        return '<li><time>' + esc(new Date(ev.at).toLocaleString('en-IN', { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</time><b>' + esc(ev.event) + '</b>' + (ev.detail ? '<span>' + esc(ev.detail) + '</span>' : '') + '</li>';
+      }).join('') + '</ol>';
+      html += '</section>';
+    }
+
     // ── online batch
     if (man && o.kind === 'class' && !S.tableMissing) {
       html += '<label class="am-switch am-online"><input type="checkbox" data-online="' + esc(o.batch.id) + '"' + (S.online[o.batch.id] ? ' checked' : '') + '><span><b>Online batch</b>Create the Meet automatically for every upcoming class of ' + esc(o.batch.name) + '</span></label>';
@@ -579,19 +605,146 @@
     var acts = '';
     if (typeof g('openBatchDetails') === 'function' && o.batch && o.batch.id) acts += '<button type="button" class="am-btn am-btn-ghost" data-attendance><i data-lucide="clipboard-check"></i>Attendance</button>';
     if (man && d && d.invited && d.invited.length) acts += '<a class="am-btn am-btn-ghost" href="' + esc(mailto(o, d.invited, l)) + '"><i data-lucide="mail"></i>Email</a>';
-    if (man && l && l.google_calendar_event_id && !isC && !isEnded) acts += '<button type="button" class="am-btn am-btn-ghost" data-resend="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="send"></i>Resend Invitation</button>';
-    if (man && !isC && !isEnded && canEditTime(o)) acts += '<button type="button" class="am-btn am-btn-ghost" data-edit-time><i data-lucide="clock"></i>Edit Time</button>';
-    if (man && !isC && !isEnded && !S.cancelOpen) acts += '<button type="button" class="am-btn am-btn-danger" data-cancel-open><i data-lucide="x-circle"></i>Cancel</button>';
+    if (!isC) acts += '<button type="button" class="am-btn am-btn-ghost" data-copy-details><i data-lucide="clipboard-copy"></i>Copy Details</button>';
+    if (!isC && navigator.share) acts += '<button type="button" class="am-btn am-btn-ghost" data-share><i data-lucide="share-2"></i>Share</button>';
+    if (man && l && l.google_calendar_event_id && !isC && !isEnded && !erpEnded) acts += '<button type="button" class="am-btn am-btn-ghost" data-resend="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="send"></i>Resend Invitation</button>';
+    if (man && !isC && !isEnded && !isLive && !erpEnded && canEditTime(o)) acts += '<button type="button" class="am-btn am-btn-ghost" data-edit-time><i data-lucide="clock"></i>Edit Time</button>';
+    if (man && !isC && !isEnded && !isLive && !erpEnded && !S.cancelOpen) acts += '<button type="button" class="am-btn am-btn-danger" data-cancel-open><i data-lucide="x-circle"></i>Cancel</button>';
     if (acts) html += '<div class="am-mf">' + acts + '</div>';
 
     box.innerHTML = html;
     icons();
   }
 
+  var DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var MON_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function clock(ts) { return ts ? new Date(ts).toLocaleTimeString('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) : '—'; }
+  function mins(n) { return n == null ? '—' : n + ' min'; }
+
+  /** WhatsApp-ready class message (also used by Share and Email). No internal ids. */
+  function detailsText(o, l) {
+    var d = o.date.split('-').map(Number);
+    var lines = ['BROKEN ENGLISH – LIVE CLASS', '', 'Class: ' + o.title];
+    if (o.course && o.title.toLowerCase().indexOf(o.course.toLowerCase()) < 0) lines.push('Course: ' + o.course);
+    lines.push('Date: ' + DOW_LONG[dowOf(o.date)] + ', ' + d[2] + ' ' + MON_LONG[d[1] - 1] + ' ' + d[0]);
+    lines.push('Time: ' + fmt(o.startMin) + ' – ' + fmt(o.endMin));
+    lines.push('Trainer: ' + o.trainerName);
+    lines.push('Type: ' + (o.kind === 'oto' ? '1:1' : o.typeLabel));
+    if (!o.isOne) lines.push('Students: ' + o.students.length);
+    if (l && l.google_meet_url && l.class_status !== 'cancelled') lines.push('', 'Google Meet:', l.google_meet_url);
+    lines.push('', 'Please join the class on time.');
+    return lines.join('\n');
+  }
+
+  function copyText(text, okMsg) {
+    function fallback() {
+      var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      toast(ok ? 'success' : 'error', ok ? okMsg : 'Copy failed — your browser blocked the clipboard.');
+    }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { toast('success', okMsg); }, fallback);
+    else fallback();
+  }
+
+  function shareDetails(o, l) {
+    var text = detailsText(o, l);
+    if (!navigator.share) return copyText(text, 'Class details copied.');
+    navigator.share({ title: 'Broken English – ' + o.title, text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copyText(text, 'Class details copied.'); });
+  }
+
+  /** Join Live: Meet opens in its own tab; the ERP stays here and records the join. */
+  function joinLive(o) {
+    var l = linkOf(o); if (!l || !l.google_meet_url) return;
+    var w = window.open(l.google_meet_url, '_blank');
+    if (w) { try { w.opener = null; } catch (e) {} } else toast('warning', 'Your browser blocked the new tab — allow pop-ups for this site, or use the Meet link.', 7000);
+    api('join', { key: o.key, start: startHint(o) }).then(function (j) {
+      if (j.row) { S.links[o.key] = j.row; S.touched[o.key] = Date.now(); }
+      render(); if (S.modalKey === o.key) { S.modalDetails = null; renderModal(); fetchDetails(o.key); }
+    }, function (e) { if (!sessionGuard(e)) toast('error', e.message, 6000); });
+  }
+
+  function reportToast(j) {
+    if (!j) return;
+    if (j.waiting) toast('info', j.message || 'Waiting for the Google Meet report.', 7000);
+    else if (j.row && j.row.meet_sync_status === 'synced') toast('success', 'Meet report synced — ' + (j.row.actual_duration_minutes != null ? j.row.actual_duration_minutes + ' min class.' : 'ready.'));
+  }
+
+  // ── after the class: official Meet report + attendance review ──
+  function reportHTML(o, l, d, canRun, busy) {
+    var st = l.meet_sync_status || 'none';
+    if (st === 'none' && l.live_status !== 'ended') return '';
+    if (st === 'pending' || st === 'waiting' || st === 'none') {
+      return '<section class="am-report is-wait"><div class="am-rp-h"><i data-lucide="hourglass"></i><div><b>Waiting for the Google Meet report</b><span>' + esc(l.meet_sync_error || 'The report appears a few minutes after everyone leaves the call.') + '</span></div>'
+        + '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-sync' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>' + (busy ? 'Checking…' : 'Check now') + '</button></div></section>';
+    }
+    if (st === 'failed') {
+      return '<div class="am-err"><b>Meet report not synced.</b> ' + esc(l.meet_sync_error || '') + '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-sync' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Try again</button></div>';
+    }
+    var parts = l.meet_participants || [], sugg = l.attendance_suggestion || [];
+    var invitedCount = ((d && d.invited) || l.invited || []).filter(function (p) { return p.role !== 'review'; }).length;
+    var joined = parts.filter(function (p) { return p.role !== 'unmatched'; }).length;
+    var schedDur = o.endMin - o.startMin, diff = l.actual_duration_minutes != null ? l.actual_duration_minutes - schedDur : null;
+    var attLabel = l.attendance_review_status === 'confirmed' ? ['Confirmed', 'ok'] : sugg.length ? ['Ready for review', 'warn'] : ['No students to review', ''];
+    var h = '<section class="am-report"><div class="am-rp-top"><span class="am-pill st-live">Class completed</span><span class="am-rp-sync">Meet report · ' + esc(clock(l.meet_report_synced_at)) + '</span></div>'
+      + '<div class="am-rp-grid">'
+      + '<div><small>Scheduled</small><b>' + esc(fmt(o.startMin) + ' – ' + fmt(o.endMin)) + '</b><span>' + schedDur + ' min</span></div>'
+      + '<div><small>Actual (Google Meet)</small><b>' + esc(clock(l.actual_start) + ' – ' + clock(l.actual_end)) + '</b><span>' + mins(l.actual_duration_minutes) + (diff ? ' · ' + (diff > 0 ? '+' : '') + diff + ' min' : '') + '</span></div>'
+      + '<div><small>Trainer presence</small><b>' + mins(l.trainer_presence_minutes) + '</b><span>' + (l.trainer_join_at ? esc(clock(l.trainer_join_at) + ' – ' + clock(l.trainer_leave_at)) : 'Trainer not matched in Meet') + '</span></div>'
+      + '<div><small>Participants</small><b>' + joined + ' joined</b><span>' + invitedCount + ' invited' + (parts.length > joined ? ' · ' + (parts.length - joined) + ' other' : '') + '</span></div>'
+      + '</div>'
+      + '<div class="am-rp-att' + (attLabel[1] ? ' is-' + attLabel[1] : '') + '"><i data-lucide="' + (attLabel[1] === 'ok' ? 'check-circle-2' : 'clipboard-list') + '"></i><span>Attendance: <b>' + attLabel[0] + '</b></span></div>'
+      + '<div class="am-rp-btns">'
+      + (sugg.length ? '<button type="button" class="am-btn am-btn-sm' + (S.revOpen ? '' : ' am-btn-ghost') + '" data-rev-toggle><i data-lucide="user-check"></i>Review Attendance</button>' : '')
+      + '<button type="button" class="am-btn am-btn-sm' + (S.repOpen ? '' : ' am-btn-ghost') + '" data-rep-toggle><i data-lucide="file-bar-chart"></i>Meet Report</button>'
+      + '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-sync title="Sync the report again"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i></button>'
+      + '</div>';
+    if (S.revOpen && sugg.length) {
+      var LBL = { present: 'Present', review: 'Review', absent: 'Absent' };
+      h += '<div class="am-rp-list"><div class="am-rp-note">Suggested from Google Meet (present = at least half the class). Confirm in Class &amp; Attendance — nothing is saved from here.</div>'
+        + sugg.map(function (x) { return '<div class="am-rp-row"><span class="am-av">' + esc(initials(x.name)) + '</span><b>' + esc(x.name) + '</b><span class="am-rp-min">' + (x.minutes ? x.minutes + ' min' : 'Did not join') + '</span><span class="am-sg sg-' + x.suggested + '">' + LBL[x.suggested] + '</span></div>'; }).join('')
+        + (canRun && l.attendance_review_status !== 'confirmed' ? '<button type="button" class="am-btn am-rp-go" data-att-confirm><i data-lucide="clipboard-check"></i>Confirm in Class &amp; Attendance</button>' : '')
+        + '</div>';
+    }
+    if (S.repOpen) {
+      h += '<div class="am-rp-list">' + (parts.length ? parts.map(function (p) {
+        return '<div class="am-rp-row"><span class="am-av' + (p.role === 'trainer' ? ' is-tr' : '') + '">' + esc(initials(p.name)) + '</span><b>' + esc(p.name) + '<em>' + (p.role === 'trainer' ? 'Trainer' : p.role === 'student' ? 'Student' : 'Not on roster') + '</em></b><span class="am-rp-min">' + esc(clock(p.first) + ' – ' + clock(p.last)) + (p.sessions > 1 ? ' · ' + p.sessions + ' joins' : '') + '</span><span class="am-sg">' + p.minutes + ' min</span></div>';
+      }).join('') : '<div class="am-rp-note">Nobody joined this Meet.</div>') + '<div class="am-rp-note">Names are matched from Google Meet display names — Meet does not share email addresses.</div></div>';
+    }
+    return h + '</section>';
+  }
+
+  /** Opens the EXISTING attendance modal for this class date, pre-filled with the Meet suggestion. */
+  async function confirmAttendance(o, l) {
+    var sugg = (l && l.attendance_suggestion) || [];
+    closeModal();
+    var list = window._liveBatches || [], idx = -1;
+    for (var i = 0; i < list.length; i++) if ((list[i].raw || list[i].name) === o.batch.name) { idx = i; break; }
+    if (o.kind === 'oto' || idx < 0 || typeof window.openAtt !== 'function') {
+      if (typeof g('openBatchDetails') === 'function') g('openBatchDetails')(o.batch.id);
+      toast('info', 'Mark this session in the batch — Meet suggestion: ' + sugg.map(function (x) { return x.name + ' ' + (x.minutes || 0) + ' min'; }).join(', '), 9000);
+      return;
+    }
+    await window.openAtt(idx);
+    var dt = document.getElementById('att_date');
+    if (dt && dt.value !== o.date) { dt.value = o.date; dt.dispatchEvent(new Event('change', { bubbles: true })); }
+    var norm = function (x) { return String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); };
+    var by = {}; sugg.forEach(function (x) { by[norm(x.name)] = x; });
+    (list[idx].students || []).forEach(function (st, j) {
+      var x = by[norm(st.name)]; if (!x) return;
+      if (typeof window.setAtt === 'function') window.setAtt(j, x.suggested === 'present');
+      var row = document.getElementById('att_' + j); row = row && row.closest('.att-row');
+      if (row && !row.querySelector('.am-att-hint')) { var tag = document.createElement('span'); tag.className = 'am-att-hint sg-' + x.suggested; tag.textContent = 'Meet ' + (x.minutes || 0) + ' min · ' + (x.suggested === 'present' ? 'Present' : x.suggested === 'review' ? 'Review' : 'Absent'); row.querySelector('.att-name').appendChild(tag); }
+    });
+    var listEl = document.getElementById('att_list');
+    if (listEl && !listEl.querySelector('.am-att-note')) { var n = document.createElement('div'); n.className = 'am-att-note'; n.textContent = 'Pre-filled from Google Meet for ' + fmtDate(o.date) + '. Check every student, then save.'; listEl.prepend(n); }
+  }
+
   function mailto(o, people, l) {
     var to = people.map(function (p) { return p.email; }).filter(Boolean);
     var subj = 'Broken English | ' + o.title + ' — ' + fmtDate(o.date, { day: '2-digit', month: 'short' }) + ', ' + fmt(o.startMin);
-    var bodyTxt = 'Hello,\n\n' + o.title + '\n' + fmtDate(o.date, { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' }) + ' · ' + fmt(o.startMin) + ' – ' + fmt(o.endMin) + ' (India time)\n' + (l && l.google_meet_url ? 'Join: ' + l.google_meet_url + '\n' : '') + '\n— Broken English Academic';
+    var bodyTxt = 'Hello,\n\n' + detailsText(o, l) + '\n\n— Broken English Academic';
     return 'mailto:?bcc=' + encodeURIComponent(to.join(',')) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(bodyTxt);
   }
 
@@ -658,8 +811,19 @@
       if (t.hasAttribute('data-create')) return createMeet(key);
       if (t.hasAttribute('data-retry')) return retry(key);
       if (t.hasAttribute('data-resend')) return run(key, 'resend', null, 'Invitations sent again.');
-      if (t.hasAttribute('data-copy')) { var u = (linkOf(o) || {}).google_meet_url; if (navigator.clipboard) navigator.clipboard.writeText(u).then(function () { toast('success', 'Meet link copied.'); }, function () { toast('error', 'Copy failed — select the link instead.'); }); return; }
+      if (t.hasAttribute('data-copy')) { copyText((linkOf(o) || {}).google_meet_url || '', 'Meet link copied.'); return; }
       if (t.hasAttribute('data-edit-time')) return editTime(o);
+      if (t.hasAttribute('data-copy-details')) { copyText(detailsText(o, linkOf(o)), 'Class details copied — paste into WhatsApp.'); return; }
+      if (t.hasAttribute('data-share')) { shareDetails(o, linkOf(o)); return; }
+      if (t.hasAttribute('data-join')) { joinLive(o); return; }
+      if (t.hasAttribute('data-end-open')) { S.endOpen = true; renderModal(); return; }
+      if (t.hasAttribute('data-end-no')) { S.endOpen = false; renderModal(); return; }
+      if (t.hasAttribute('data-end-go')) { S.endOpen = false; return run(key, 'end', null, null).then(reportToast); }
+      if (t.hasAttribute('data-sync')) { return run(key, 'sync_report', null, null).then(reportToast); }
+      if (t.hasAttribute('data-rev-toggle')) { S.revOpen = !S.revOpen; S.repOpen = false; renderModal(); return; }
+      if (t.hasAttribute('data-rep-toggle')) { S.repOpen = !S.repOpen; S.revOpen = false; renderModal(); return; }
+      if (t.hasAttribute('data-hist-toggle')) { S.histOpen = !S.histOpen; renderModal(); return; }
+      if (t.hasAttribute('data-att-confirm')) { confirmAttendance(o, linkOf(o)); return; }
       if (t.hasAttribute('data-fix-toggle')) { S.fixOpen = !S.fixOpen; renderModal(); var fi = m.querySelector('[data-fix-input]'); if (fi) fi.focus(); return; }
       if (t.hasAttribute('data-cancel-open')) { S.cancelOpen = true; renderModal(); var r = document.getElementById('am-cancel-reason'); if (r) r.focus(); return; }
       if (t.hasAttribute('data-cancel-no')) { S.cancelOpen = false; renderModal(); return; }
@@ -692,10 +856,11 @@
     var box = document.getElementById('am-m-body');
     S.modalKey = null;
     var orig = cur.slice().sort().join(',');
+    var rvOrig = (S.status && S.status.reviewEmail) || '', rv = rvOrig;
     function paint() {
       var email = (S.status && S.status.organizerEmail) || 'Connected account';
       var picked = Object.keys(sel).map(Number).sort(function (x, y) { return y - x; });
-      var dirty = picked.slice().sort().join(',') !== orig;
+      var dirty = picked.slice().sort().join(',') !== orig || rv.trim().toLowerCase() !== rvOrig;
       box.innerHTML = '<div class="am-mh"><div class="am-mh-pills"><span class="am-pill">Live Classes</span><span class="am-pill st-live">Connected</span></div>'
         + '<h3 class="am-m-title" id="am-m-title">Google settings</h3><div class="am-mh-when"><span><i data-lucide="calendar-check"></i>Google Calendar + Google Meet</span></div></div>'
         + '<div class="am-m-scroll">'
@@ -711,6 +876,9 @@
             return '<button type="button" data-rem="' + m + '" class="am-rem-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '"><i data-lucide="' + (on ? 'check' : 'bell') + '"></i><b>' + (m >= 60 ? m / 60 : m) + '</b><span>' + (m >= 60 ? 'hour' : 'min') + ' before</span></button>';
           }).join('') + '</div>'
         + '<div class="am-rem-prev"><i data-lucide="info"></i><span>' + (picked.length ? 'Popup and email reminder <b>' + esc(remText(picked)) + '</b> each class.' : 'Pick at least one reminder.') + ' Used for new Meet links and when a class is next updated. Each person’s own Google Calendar settings also apply.</span></div>'
+        // review email
+        + '<div class="am-set-h">Meet review email <span>Invited to every class</span></div>'
+        + '<div class="am-org"><span class="am-av is-rv am-av-lg"><i data-lucide="eye"></i></span><div class="am-org-t"><input type="email" class="am-rv-in" data-rv value="' + esc(rv) + '" placeholder="review@example.com" autocomplete="off"><span>Gets the Google Calendar / Meet invitation for every new class (Academic review &amp; monitoring). Leave empty to stop.</span></div></div>'
         + '</div>'
         + '<div class="am-mf"><button type="button" class="am-btn am-btn-ghost" data-close>Cancel</button><button type="button" class="am-btn" data-rem-save' + (dirty && picked.length ? '' : ' disabled') + '><i data-lucide="check"></i>Save changes</button></div>';
       icons();
@@ -722,11 +890,22 @@
       if (t.hasAttribute('data-rem')) { var v = +t.getAttribute('data-rem'); if (sel[v]) delete sel[v]; else { sel[v] = 1; var ks = Object.keys(sel); if (ks.length > 2) delete sel[ks[0] == v ? ks[1] : ks[0]]; } paint(); return; }
       if (t.hasAttribute('data-reconnect')) { connect(t); return; }
       if (t.hasAttribute('data-rem-save')) {
-        var mins = Object.keys(sel).map(Number); if (!mins.length) { toast('error', 'Choose at least one reminder.'); return; }
+        var picks = Object.keys(sel).map(Number); if (!picks.length) { toast('error', 'Choose at least one reminder.'); return; }
+        var rvNew = rv.trim().toLowerCase();
+        if (rvNew && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(rvNew)) { toast('error', 'Enter a valid review email, or leave it empty.'); return; }
         t.disabled = true;
-        try { var j = await api('set_reminders', { reminders: mins }); S.status.defaultReminders = j.defaultReminders; toast('success', 'Reminder saved.'); closeModal(); render(); }
-        catch (x) { toast('error', x.message); t.disabled = false; }
+        try {
+          if (picks.slice().sort().join(',') !== orig) { var j = await api('set_reminders', { reminders: picks }); S.status.defaultReminders = j.defaultReminders; }
+          if (rvNew !== rvOrig) { var k = await api('set_review_email', { email: rvNew }); S.status.reviewEmail = k.reviewEmail; }
+          toast('success', 'Settings saved.'); closeModal(); render();
+        } catch (x) { toast('error', x.message); t.disabled = false; }
       }
+    };
+    box.oninput = function (e) {
+      if (!e.target.hasAttribute('data-rv')) return;
+      rv = e.target.value;
+      var picked = Object.keys(sel).map(Number).sort().join(','), btn = box.querySelector('[data-rem-save]');
+      if (btn) btn.disabled = !(picked && (picked !== orig || rv.trim().toLowerCase() !== rvOrig));
     };
   }
 

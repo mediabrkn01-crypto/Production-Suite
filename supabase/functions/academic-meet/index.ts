@@ -8,7 +8,8 @@
 // Google credentials never leave the server.
 //
 // POST JSON { action, key?, start?, reason?, reminders? }
-//   status | details | create | update | cancel | resend | retry | oauth_url | set_reminders
+//   status | details | create | update | cancel | resend | retry | join | end | sync_report
+//   oauth_url | set_reminders | set_review_email
 // GET ?action=oauth_callback   — Google's redirect after "Connect Google account"
 //
 // Deploy with --no-verify-jwt (Google's OAuth redirect carries no Supabase JWT; every other call
@@ -19,7 +20,7 @@ import { consentUrl, exchangeCode, googleConfig, GoogleApiError, loadOrganizer }
 import { calendarIdentity } from "../_shared/google/googleCalendarService.ts";
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
-  retryCancel, retrySync, updateClassMeeting,
+  retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport,
 } from "./academicMeetService.ts";
 import { can } from "../_shared/jarvis/auth.ts";
 
@@ -90,7 +91,7 @@ Deno.serve(async (req) => {
         const org = await loadOrganizer();
         return json({
           ok: true, configured: !!(googleConfig.clientId && googleConfig.clientSecret), connected: !!org.refreshToken,
-          organizerEmail: org.organizerEmail, calendarId: org.calendarId, defaultReminders: org.defaultReminders,
+          organizerEmail: org.organizerEmail, calendarId: org.calendarId, defaultReminders: org.defaultReminders, reviewEmail: org.reviewEmail,
           canManage: canManage(a), canViewAll: can(a, "academic.all"), trainerId: a.trainerId,
         });
       }
@@ -102,6 +103,9 @@ Deno.serve(async (req) => {
         const { data: r } = await adminClient().from("academic_live_classes").select("class_status").eq("occurrence_key", key).maybeSingle();
         return json({ ok: true, ...(r?.class_status === "cancelled" ? await retryCancel(a, key) : await retrySync(a, key, hint)) });
       }
+      case "join": return json({ ok: true, ...(await joinLive(a, key, hint)) });
+      case "end": return json({ ok: true, ...(await endClass(a, key, hint)) });
+      case "sync_report": return json({ ok: true, ...(await syncMeetReport(a, key, hint)) });
       case "cancel": return json({ ok: true, ...(await cancelClassMeeting(a, key, String(body.reason || "").slice(0, 300), hint)) });
       case "oauth_url": {
         if (!canManage(a)) return json({ ok: false, code: "FORBIDDEN", message: "Only Academic Head, Class Coordinator or Operations Manager can connect Google." }, 403);
@@ -115,6 +119,13 @@ Deno.serve(async (req) => {
         if (!mins.length) return json({ ok: false, message: "Choose at least one reminder." }, 400);
         await adminClient().from("academic_meet_config").upsert({ id: 1, default_reminders: mins, updated_at: new Date().toISOString() });
         return json({ ok: true, defaultReminders: mins });
+      }
+      case "set_review_email": {
+        if (!canManage(a)) return json({ ok: false, code: "FORBIDDEN", message: "Not allowed." }, 403);
+        const em = String(body.email || "").trim().toLowerCase();
+        if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) return json({ ok: false, message: "Enter a valid email address." }, 400);
+        await adminClient().from("academic_meet_config").upsert({ id: 1, review_email: em || null, updated_at: new Date().toISOString() });
+        return json({ ok: true, reviewEmail: em || null });
       }
       default: return json({ ok: false, message: "Unknown action." }, 400);
     }

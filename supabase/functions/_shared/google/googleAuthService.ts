@@ -16,6 +16,7 @@
 //   GOOGLE_REFRESH_TOKEN    optional; overrides the stored token
 //   GOOGLE_CALENDAR_ID      optional; overrides the stored calendar (default "primary")
 //   GOOGLE_ORGANIZER_EMAIL  optional; display only
+//   ACADEMIC_MEET_REVIEW_EMAIL optional; overrides the review email set in Live Classes → Settings
 import { adminClient } from "../jarvis/auth.ts";
 
 const env = (k: string, d = ""): string => (Deno.env.get(k) ?? d).trim();
@@ -41,6 +42,8 @@ export interface OrganizerConfig {
   calendarId: string;
   refreshToken: string | null;
   defaultReminders: number[];
+  /** Always invited to every class event (Academic review / monitoring). Empty = none. */
+  reviewEmail: string | null;
 }
 
 export async function loadOrganizer(): Promise<OrganizerConfig> {
@@ -50,6 +53,8 @@ export async function loadOrganizer(): Promise<OrganizerConfig> {
     calendarId: env("GOOGLE_CALENDAR_ID") || data?.calendar_id || "primary",
     refreshToken: env("GOOGLE_REFRESH_TOKEN") || data?.refresh_token || null,
     defaultReminders: Array.isArray(data?.default_reminders) && data.default_reminders.length ? data.default_reminders : [30],
+    // ACADEMIC_MEET_REVIEW_EMAIL (secret) overrides the Live Classes → Settings value.
+    reviewEmail: (env("ACADEMIC_MEET_REVIEW_EMAIL") || data?.review_email || "").trim().toLowerCase() || null,
   };
 }
 

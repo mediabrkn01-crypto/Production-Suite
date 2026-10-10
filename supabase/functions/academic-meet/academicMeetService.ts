@@ -19,7 +19,7 @@
 import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
 import { GoogleApiError, loadOrganizer, googleConfig } from "../_shared/google/googleAuthService.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
-import { getSpaceByMeetingCode } from "../_shared/google/googleMeetService.ts";
+import { getSpaceByMeetingCode, listConferenceRecords, listParticipants, listParticipantSessions } from "../_shared/google/googleMeetService.ts";
 
 export class MeetError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -46,13 +46,14 @@ export const canManage = (a: JarvisAuthContext) => a.role === "academic_head" &&
 const canView = (a: JarvisAuthContext, trainerId: string | null) =>
   can(a, "academic.all") || (can(a, "academic.own") && !!a.trainerId && a.trainerId === trainerId);
 
-interface Person { role: "trainer" | "student"; id: string; name: string; email: string | null }
+interface Person { role: "trainer" | "student" | "review"; id: string; name: string; email: string | null }
 export interface ClassInfo {
   key: string; kind: "class" | "oto";
   batchId: string | null; otoId: string | null; originalDate: string;
   date: string; startMin: number; endMin: number;
   trainerId: string | null; trainer: Person | null; students: Person[];
   batchName: string; course: string; typeLabel: string; isOne: boolean; title: string; description: string;
+  reviewEmail: string | null;
 }
 
 export function parseKey(key: string): { kind: "class"; batchId: string; date: string } | { kind: "oto"; otoId: string } {
@@ -126,8 +127,9 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     "Managed through Broken English ERP.",
   ].join("\n");
 
+  const org = await loadOrganizer();
   return { key, kind: k.kind, batchId: batch?.id || null, otoId: k.kind === "oto" ? k.otoId : null, originalDate, date, startMin: startMin!, endMin: endMin!,
-    trainerId, trainer, students, batchName, course, typeLabel, isOne, title, description };
+    trainerId, trainer, students, batchName, course, typeLabel, isOne, title, description, reviewEmail: isEmail(org.reviewEmail) ? org.reviewEmail : null };
 }
 
 function attendeesOf(info: ClassInfo) {
@@ -138,6 +140,12 @@ function attendeesOf(info: ClassInfo) {
       attendees.push({ email: p.email, displayName: p.name });
       invited.push({ role: p.role, id: p.id, name: p.name, email: p.email });
     } else if (!p.email) notInvited.push({ role: p.role, id: p.id, name: p.name, reason: "missing" });
+  }
+  // Academic review / monitoring address — invited to every class, never twice.
+  if (info.reviewEmail && !seen.has(info.reviewEmail.toLowerCase())) {
+    seen.add(info.reviewEmail.toLowerCase());
+    attendees.push({ email: info.reviewEmail, displayName: "Broken English Review" });
+    invited.push({ role: "review", id: "review", name: "Review / Academic Monitoring", email: info.reviewEmail });
   }
   return { attendees, invited, notInvited };
 }
@@ -172,7 +180,27 @@ const rowFields = (info: ClassInfo) => ({
   occurrence_key: info.key, class_kind: info.kind, batch_id: info.batchId, oto_session_id: info.otoId, trainer_id: info.trainerId,
   original_date: info.originalDate, class_date: info.date, start_time: hm(info.startMin) + ":00",
   end_time: info.endMin >= 1440 ? "23:59:59" : hm(info.endMin) + ":00", summary: info.title,
+  scheduled_start: istTs(info.date, info.startMin), scheduled_end: istTs(info.date, info.endMin),
 });
+/** Wall-clock IST date + minutes → ISO timestamp (minutes may run past midnight). */
+function istTs(date: string, min: number) {
+  const d = new Date(`${date}T00:00:00+05:30`);
+  return new Date(d.getTime() + min * 60000).toISOString();
+}
+
+/** Class history (timestamps). `at` lets Meet-derived events carry Google's own time. */
+async function logEvent(key: string, event: string, detail: string | null, actor: string | null, at?: string) {
+  await adminClient().from("academic_live_class_events")
+    .upsert({ occurrence_key: key, event, detail, actor, at: at || new Date().toISOString() }, { onConflict: "occurrence_key,event,at", ignoreDuplicates: true })
+    .then(() => {}, () => {});
+}
+function inviteEvents(key: string, row: any, actor: string, resent: boolean) {
+  const inv = (row?.invited || []) as any[];
+  const people = inv.filter((p) => p.role !== "review");
+  const jobs = [logEvent(key, resent ? "Invitation re-sent" : "Invitation sent", people.length ? people.map((p) => p.name).join(", ") : "No participant email on file", actor)];
+  if (inv.some((p) => p.role === "review")) jobs.push(logEvent(key, "Review email invited", inv.find((p) => p.role === "review").email, actor));
+  return Promise.all(jobs);
+}
 
 async function getRow(key: string) {
   const { data } = await adminClient().from(T).select("*").eq("occurrence_key", key).maybeSingle();
@@ -263,6 +291,8 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
     }
     ev = await settle(org.calendarId, ev);
     const row = await save(key, { ...(await linkFields(org, ev, info, reminders)), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
+    await logEvent(key, "Meet created", row?.google_meet_url || null, a.email);
+    await inviteEvents(key, row, a.email, false);
     return { row, already: false, notInvited: row?.not_invited || [] };
   } catch (e) {
     await fail(key, e, a.email);
@@ -272,7 +302,7 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
 
 /** Mirrors the ERP's current time/attendees onto the SAME event. Anyone who can see the class may
  *  trigger it (e.g. a trainer who just postponed their own class) — the data comes from the ERP. */
-export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
+export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint: { start?: string } = {}, why: "time" | "resend" | "retry" = "time") {
   const info = await resolveClass(key, hint);
   if (!canView(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "You can only update your own classes.");
   const row = await getRow(key);
@@ -287,6 +317,9 @@ export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint
     if (!Cal.meetFromEvent(ev).url) ev = await Cal.patchEvent(cal, ev.id, { conferenceData: newConference() }, false);
     ev = await settle(cal, ev);
     const saved = await save(key, { ...(await linkFields({ ...org, calendarId: cal }, ev, info, reminders)), updated_by: a.email });
+    if (why === "resend") await inviteEvents(key, saved, a.email, true);
+    else if (why === "time" && row.start_time !== saved?.start_time) await logEvent(key, "Time changed", `${fmt12(toMin(row.start_time) ?? 0)} → ${fmt12(info.startMin)}`, a.email);
+    else if (why === "retry") await logEvent(key, "Synced with Google", null, a.email);
     return { row: saved, skipped: false, notInvited: saved?.not_invited || [] };
   } catch (e) {
     await fail(key, e, a.email);
@@ -298,13 +331,13 @@ export async function resendInvitations(a: JarvisAuthContext, key: string, hint:
   if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only Academic Head, Class Coordinator or Operations Manager can send invitations.");
   const row = await getRow(key);
   if (!row?.google_calendar_event_id) return createClassMeeting(a, key, hint);
-  return updateClassMeeting(a, key, hint);
+  return updateClassMeeting(a, key, hint, "resend");
 }
 
 export async function retrySync(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
   if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only Academic Head, Class Coordinator or Operations Manager can retry a sync.");
   const row = await getRow(key);
-  return row?.google_calendar_event_id ? updateClassMeeting(a, key, hint) : createClassMeeting(a, key, hint);
+  return row?.google_calendar_event_id ? updateClassMeeting(a, key, hint, "retry") : createClassMeeting(a, key, hint);
 }
 
 export async function cancelClassMeeting(a: JarvisAuthContext, key: string, reason: string, hint: { start?: string } = {}) {
@@ -318,6 +351,7 @@ export async function cancelClassMeeting(a: JarvisAuthContext, key: string, reas
   }
   // ERP first: the class is cancelled even if Google is unreachable (shown as Sync Failed → Retry).
   const cancelled = { class_status: "cancelled", cancelled_by: a.email, cancelled_at: new Date().toISOString(), google_sync_error: reason ? `Reason: ${reason}`.slice(0, 500) : null, updated_by: a.email };
+  await logEvent(key, "Class cancelled", reason || null, a.email);
   if (!row.google_calendar_event_id) return { row: await save(key, { ...cancelled, google_sync_status: "pending" }), already: false };
   await save(key, cancelled);
   try {
@@ -340,6 +374,167 @@ export async function retryCancel(a: JarvisAuthContext, key: string) {
   } catch (e) { await fail(key, e, a.email); throw e; }
 }
 
+// ── Live: Join Live / End Class (ERP activity only — never the official duration) ─────────
+
+const canRun = (a: JarvisAuthContext, trainerId: string | null) =>
+  canManage(a) || (can(a, "academic.own") && !!a.trainerId && a.trainerId === trainerId);
+
+export async function joinLive(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
+  const info = await resolveClass(key, hint);
+  if (!canView(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "You can only join your own classes.");
+  const row = await getRow(key);
+  if (!row?.google_meet_url || row.class_status === "cancelled") throw new MeetError(409, "NO_MEET", "This class has no active Meet link.");
+  await logEvent(key, "Joined live", a.name, a.email);
+  if (row.live_status === "ended") return { row };
+  // Only the trainer / Academic team's join marks the class live.
+  if (!canRun(a, info.trainerId)) return { row };
+  return { row: await save(key, { live_status: "live", joined_at: row.joined_at || new Date().toISOString(), joined_by: row.joined_by || a.email }) };
+}
+
+export async function endClass(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
+  const info = await resolveClass(key, hint);
+  if (!canRun(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "Only the class trainer or the Academic team can end this class.");
+  const row = await getRow(key);
+  if (!row?.google_meet_url) throw new MeetError(409, "NO_MEET", "This class has no Meet.");
+  if (row.live_status !== "ended") {
+    await save(key, { live_status: "ended", ended_at: new Date().toISOString(), ended_by: a.email, meet_sync_status: "pending", meet_sync_error: null });
+    await logEvent(key, "Class ended in ERP", a.name, a.email);
+  }
+  // Start the Meet report sync now; if Google hasn't published it yet it stays "waiting".
+  return syncMeetReport(a, key, hint);
+}
+
+// ── Meet report from Google conference records ───────────────────────────────────────────
+
+const normName = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+function nameScore(display: string, name: string) {
+  const d = normName(display), n = normName(name);
+  if (!d || !n) return 0;
+  if (d === n) return 3;
+  if ((d.length >= 3 && n.includes(d)) || (n.length >= 3 && d.includes(n))) return 2;
+  return d.split(" ")[0] === n.split(" ")[0] ? 1 : 0;
+}
+/** Total minutes covered by possibly-overlapping [start, end] ms intervals. */
+function mergedMinutes(iv: [number, number][]) {
+  const s = iv.filter(([x, y]) => y > x).sort((p, q) => p[0] - q[0]);
+  let total = 0, cs = -1, ce = -1;
+  for (const [x, y] of s) {
+    if (x > ce) { if (ce > cs) total += ce - cs; cs = x; ce = y; } else ce = Math.max(ce, y);
+  }
+  if (ce > cs) total += ce - cs;
+  return Math.round(total / 60000);
+}
+
+export async function syncMeetReport(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
+  const info = await resolveClass(key, hint);
+  if (!canView(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "You can only see your own classes.");
+  let row = await getRow(key);
+  if (!row?.google_meet_url) throw new MeetError(409, "NO_MEET", "This class has no Meet.");
+  try {
+    let space = row.google_meet_space_name;
+    if (!space && row.google_meet_code) { space = (await getSpaceByMeetingCode(row.google_meet_code))?.name || null; if (space) await save(key, { google_meet_space_name: space }); }
+    if (!space) throw new MeetError(502, "NO_SPACE", "Google did not return the Meet space for this link.");
+
+    const schedStart = new Date(istTs(info.date, info.startMin)).getTime(), schedEnd = new Date(istTs(info.date, info.endMin)).getTime();
+    const records = (await listConferenceRecords(space)).filter((r: any) => {
+      const t = new Date(r.startTime).getTime();
+      return t >= schedStart - 3 * 3600e3 && t <= schedEnd + 6 * 3600e3;
+    });
+    if (!records.length || records.some((r: any) => !r.endTime)) {
+      const msg = !records.length
+        ? "Google hasn't published the Meet report yet — it appears a few minutes after everyone leaves the call."
+        : "The Meet is still in progress — the report is ready once everyone has left.";
+      row = await save(key, { meet_sync_status: "waiting", meet_sync_error: msg });
+      return { row, waiting: true, message: msg };
+    }
+
+    // Everyone who joined, with each of their sessions.
+    const people: { display: string; kind: string; iv: [number, number][] }[] = [];
+    for (const rec of records) {
+      for (const p of await listParticipants(rec.name)) {
+        const display = p.signedinUser?.displayName || p.anonymousUser?.displayName || p.phoneUser?.displayName || "Guest";
+        const kind = p.signedinUser ? "signed_in" : p.anonymousUser ? "guest" : p.phoneUser ? "phone" : "other";
+        let iv: [number, number][] = (await listParticipantSessions(p.name)).map((x: any) => [new Date(x.startTime).getTime(), new Date(x.endTime || rec.endTime).getTime()]);
+        if (!iv.length) iv = [[new Date(p.earliestStartTime).getTime(), new Date(p.latestEndTime || rec.endTime).getTime()]];
+        people.push({ display, kind, iv });
+      }
+    }
+
+    // Match Meet display names to the class trainer / students (Meet does not expose emails).
+    const roster: Person[] = [info.trainer, ...info.students].filter(Boolean) as Person[];
+    const byPerson = new Map<string, [number, number][]>(), unmatched: { name: string; kind: string; iv: [number, number][] }[] = [];
+    const matchOf = new Map<string, Person>();
+    for (const p of people) {
+      const scored = roster.map((r) => ({ r, s: nameScore(p.display, r.name) })).filter((x) => x.s > 0).sort((x, y) => y.s - x.s);
+      const best = scored[0] && (!scored[1] || scored[1].s < scored[0].s) ? scored[0].r : null;
+      if (best) { byPerson.set(best.id, [...(byPerson.get(best.id) || []), ...p.iv]); matchOf.set(best.id, best); }
+      else unmatched.push({ name: p.display, kind: p.kind, iv: p.iv });
+    }
+
+    const starts = records.map((r: any) => new Date(r.startTime).getTime()), ends = records.map((r: any) => new Date(r.endTime).getTime());
+    const actualStart = Math.min(...starts), actualEnd = Math.max(...ends);
+    const tIv = info.trainer ? byPerson.get(info.trainer.id) || [] : [];
+    const schedDur = info.endMin - info.startMin;
+    const presentAt = Math.max(5, Math.round(schedDur * 0.5));
+    const iso = (t: number) => new Date(t).toISOString();
+
+    const participants = [
+      ...[...byPerson.entries()].map(([id, iv]) => {
+        const r = matchOf.get(id)!;
+        return { name: r.name, role: r.role, id, minutes: mergedMinutes(iv), first: iso(Math.min(...iv.map((x) => x[0]))), last: iso(Math.max(...iv.map((x) => x[1]))), sessions: iv.length };
+      }),
+      ...unmatched.map((u) => ({ name: u.name, role: "unmatched", id: null, kind: u.kind, minutes: mergedMinutes(u.iv), first: iso(Math.min(...u.iv.map((x) => x[0]))), last: iso(Math.max(...u.iv.map((x) => x[1]))), sessions: u.iv.length })),
+    ].sort((x, y) => y.minutes - x.minutes);
+
+    const suggestion = info.students.map((s) => {
+      const iv = byPerson.get(s.id) || [];
+      const minutes = mergedMinutes(iv);
+      return { student_id: s.id, name: s.name, minutes, suggested: minutes >= presentAt ? "present" : minutes > 0 ? "review" : "absent" };
+    });
+
+    row = await save(key, {
+      google_conference_record: records.map((r: any) => r.name).join(","),
+      actual_start: iso(actualStart), actual_end: iso(actualEnd), actual_duration_minutes: Math.round((actualEnd - actualStart) / 60000),
+      trainer_join_at: tIv.length ? iso(Math.min(...tIv.map((x) => x[0]))) : null,
+      trainer_leave_at: tIv.length ? iso(Math.max(...tIv.map((x) => x[1]))) : null,
+      trainer_presence_minutes: tIv.length ? mergedMinutes(tIv) : 0,
+      meet_participants: participants, attendance_suggestion: suggestion,
+      meet_sync_status: "synced", meet_sync_error: null, meet_report_synced_at: new Date().toISOString(),
+      live_status: "ended", ended_at: row.ended_at || iso(actualEnd),
+      attendance_review_status: row.attendance_review_status === "confirmed" ? "confirmed" : "ready",
+    });
+    await logEvent(key, "Meeting started", null, "Google Meet", iso(actualStart));
+    if (tIv.length) await logEvent(key, "Trainer joined", info.trainer!.name, "Google Meet", iso(Math.min(...tIv.map((x) => x[0]))));
+    await logEvent(key, "Meeting ended", null, "Google Meet", iso(actualEnd));
+    await logEvent(key, "Meet report synced", `${row?.actual_duration_minutes} min · ${participants.length} joined`, a.email);
+    return { row, waiting: false };
+  } catch (e) {
+    if (e instanceof MeetError && e.code === "FORBIDDEN") throw e;
+    const msg = e instanceof GoogleApiError && e.status === 403
+      ? "Google refused the Meet report (" + e.message + "). Reconnect the Google account in Live Classes → Settings so the Meet permission is granted."
+      : explain(e);
+    await save(key, { meet_sync_status: "failed", meet_sync_error: msg.slice(0, 500) });
+    throw new MeetError(502, "REPORT", msg);
+  }
+}
+
+/** Attendance confirmed in Class & Attendance (the only place attendance is saved) → mark reviewed. */
+async function checkAttendanceConfirmed(info: ClassInfo, row: any, actor: string) {
+  if (!row || row.attendance_review_status !== "ready") return row;
+  const sb = adminClient();
+  let done = false;
+  if (info.kind === "oto") {
+    const { data } = await sb.from("oto_sessions").select("status").eq("id", info.otoId).maybeSingle();
+    done = ["completed", "absent", "trainer_leave"].includes(String(data?.status || ""));
+  } else {
+    const { data } = await sb.from("attendance").select("id").eq("batch_name", info.batchName).eq("session_date", info.date).limit(1);
+    done = !!(data && data.length);
+  }
+  if (!done) return row;
+  await logEvent(info.key, "Attendance confirmed", "Saved in Class & Attendance", actor);
+  return save(info.key, { attendance_review_status: "confirmed" });
+}
+
 export async function getMeetingDetails(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
   let info: ClassInfo | null = null;
   try { info = await resolveClass(key, hint); } catch (e) { if (!(e instanceof MeetError) || e.status !== 404) throw e; }
@@ -355,11 +550,13 @@ export async function getMeetingDetails(a: JarvisAuthContext, key: string, hint:
       if (e instanceof GoogleApiError && (e.status === 404 || e.status === 410)) row = await save(key, { google_sync_status: "failed", google_sync_error: "The event no longer exists in Google Calendar — use Retry Sync to restore it." });
     }
   }
+  if (info) row = await checkAttendanceConfirmed(info, row, a.email);
   const people = info ? attendeesOf(info) : { invited: row?.invited || [], notInvited: row?.not_invited || [] };
+  const { data: events } = await adminClient().from("academic_live_class_events").select("event,detail,actor,at").eq("occurrence_key", key).order("at", { ascending: true }).limit(100);
   return {
     row,
-    class: info && { title: info.title, course: info.course, batchName: info.batchName, typeLabel: info.typeLabel, date: info.date, start: hm(info.startMin), end: hm(info.endMin % 1440), trainer: info.trainer?.name || null },
-    invited: people.invited, notInvited: people.notInvited,
-    canManage: canManage(a),
+    class: info && { title: info.title, course: info.course, batchName: info.batchName, typeLabel: info.typeLabel, date: info.date, start: hm(info.startMin), end: hm(info.endMin % 1440), trainer: info.trainer?.name || null, students: info.students.length },
+    invited: people.invited, notInvited: people.notInvited, events: events || [],
+    canManage: canManage(a), canRun: info ? canRun(a, info.trainerId) : false,
   };
 }
