@@ -28,7 +28,7 @@
 
   var S = {
     root: null, view: 'day', anchor: null, status: null, statusErr: null, tableMissing: false,
-    occ: [], links: {}, online: {}, busy: {}, autoDone: {}, seq: 0, modalKey: null, modalDetails: null, loading: false
+    occ: [], links: {}, touched: {}, online: {}, busy: {}, autoDone: {}, seq: 0, modalKey: null, modalDetails: null, loading: false
   };
 
   // ── small helpers ─────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@
   /** Google connected + the link table exists → Meet links can be created. */
   function ready() { return !!(S.status && S.status.connected) && !S.tableMissing; }
   function isOrg() { var f = g('_acadIsRealHeadForSchedule'); return typeof f === 'function' ? !!f() : false; }
-  function remText(arr) { var a = (arr && arr.length ? arr : [30]).slice().sort(function (x, y) { return y - x; }); return a.map(function (m) { return m >= 60 && m % 60 === 0 ? (m / 60) + ' hour' + (m === 60 ? '' : 's') : m + ' minutes'; }).join(' and ') + ' before'; }
+  function remText(arr) { var a = (arr && arr.length ? arr : [30]).slice().sort(function (x, y) { return y - x; }); return a.map(function (m) { return m >= 60 && m % 60 === 0 ? (m / 60) + ' hr' : m + ' min'; }).join(' & ') + ' before'; }
 
   // ── backend ───────────────────────────────────────────────────────────────
   function api(action, payload) {
@@ -156,6 +156,15 @@
     return x;
   }
 
+  // A link just returned by an action wins over a list read that started before it.
+  function keepFresh(map) {
+    Object.keys(S.touched).forEach(function (k) {
+      if (Date.now() - S.touched[k] > 15000) { delete S.touched[k]; return; }
+      if (S.links[k]) map[k] = S.links[k];
+    });
+    return map;
+  }
+
   async function fetchLinks(keys) {
     var sbc = db(), map = {};
     for (var i = 0; i < keys.length; i += 120) {
@@ -164,7 +173,7 @@
       (r.data || []).forEach(function (row) { map[row.occurrence_key] = row; });
     }
     S.tableMissing = false;
-    return map;
+    return keepFresh(map);
   }
 
   async function fetchOnline() {
@@ -384,7 +393,7 @@
     try {
       var o = occByKey(key);
       var j = await api(action, Object.assign({ key: key, start: startHint(o) }, extra || {}));
-      if (j.row) S.links[key] = j.row;
+      if (j.row) { S.links[key] = j.row; S.touched[key] = Date.now(); }
       var miss = (j.notInvited || []).length;
       if (okMsg) {
         if (miss && action !== 'cancel') toast('warning', 'Meet created, but ' + miss + ' participant' + (miss === 1 ? '' : 's') + ' could not be invited because their email address is missing.', 7000);
@@ -458,7 +467,7 @@
 
   function openModal(key) {
     if (!occByKey(key)) return;
-    S.modalKey = key; S.modalDetails = null; S.cancelOpen = false;
+    S.modalKey = key; S.modalDetails = null; S.cancelOpen = false; S.fixOpen = false;
     var box = document.getElementById('am-m-body'); if (box) box.onclick = null;
     renderModal();
     var m = modalEl(); m.classList.add('on'); m.setAttribute('aria-hidden', 'false');
@@ -480,85 +489,100 @@
     renderModal();
   }
 
-  function field(label, val) { return '<div class="am-m-f"><small>' + label + '</small><div>' + val + '</div></div>'; }
+  function initials(n) { return String(n || '?').trim().split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0); }).join('').toUpperCase() || '?'; }
+  function fact(icon, label, val, sub) { return '<div class="am-fact"><span class="am-fact-i"><i data-lucide="' + icon + '"></i></span><div><small>' + label + '</small><b>' + val + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</div></div>'; }
 
   function renderModal() {
     var key = S.modalKey, o = key && occByKey(key), box = document.getElementById('am-m-body');
     if (!o || !box) return;
-    var l = linkOf(o), d = S.modalDetails, s = syncState(o), man = canManage(), isC = cancelled(o), isEnded = ended(o);
-    var status = isC ? 'Cancelled' : liveNow(o) ? 'Live now' : isEnded ? 'Ended' : 'Scheduled';
-    var html = '<div class="am-m-eyebrow">' + (o.kind === 'oto' ? 'Group 1:1 session' : 'Live class') + '</div><h3 class="am-m-title" id="am-m-title">' + esc(o.title) + '</h3>';
-    html += '<div class="am-m-grid">'
-      + field('Date', esc(fmtDate(o.date, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })))
-      + field('Time', esc(fmt(o.startMin) + ' – ' + fmt(o.endMin)) + (o.postponed ? '<div style="font-size:11px;color:#c4b5fd;font-weight:600">Moved from ' + esc(fmt(o.postponed.original_min)) + '</div>' : ''))
-      + field('Trainer', esc(o.trainerName))
-      + field(o.isOne ? 'Student / Batch' : 'Batch', esc(o.isOne ? o.who : o.batch.name) + (o.isOne ? '' : ' <span style="color:var(--text-muted);font-weight:500">· ' + o.students.length + ' students</span>'))
-      + field('Type', esc(o.typeLabel))
-      + field('Status', esc(status) + ' ' + chip(o))
+    var l = linkOf(o), d = S.modalDetails, s = syncState(o), man = canManage(), isC = cancelled(o), isEnded = ended(o), busy = !!S.busy[key];
+    var status = isC ? ['Cancelled', 'st-cancel'] : liveNow(o) ? ['Live now', 'st-live'] : isEnded ? ['Ended', 'st-ended'] : ['Scheduled', 'st-sched'];
+    var hasMeet = !!(l && l.google_meet_url && !isC);
+
+    // ── header
+    var html = '<div class="am-mh">'
+      + '<div class="am-mh-pills"><span class="am-pill">' + esc(o.typeLabel) + '</span><span class="am-pill ' + status[1] + '">' + status[0] + '</span>' + chip(o) + '</div>'
+      + '<h3 class="am-m-title" id="am-m-title">' + esc(o.title) + '</h3>'
+      + '<div class="am-mh-when"><span><i data-lucide="calendar"></i>' + esc(fmtDate(o.date, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })) + '</span>'
+      + '<span><i data-lucide="clock"></i>' + esc(fmt(o.startMin) + ' – ' + fmt(o.endMin)) + '</span>'
+      + (o.postponed ? '<span class="am-moved">Moved from ' + esc(fmt(o.postponed.original_min)) + '</span>' : '') + '</div></div>';
+
+    html += '<div class="am-m-scroll">';
+
+    // ── Google Meet hero
+    if (l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync failed.</b> ' + esc(l.google_sync_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>' : '') + '</div>';
+    if (hasMeet) {
+      html += '<section class="am-hero is-ready"><div class="am-hero-ic"><i data-lucide="video"></i></div><div class="am-hero-t"><b>Google Meet</b><span>' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</span></div>'
+        + '<button type="button" class="am-ic-btn" data-copy title="Copy Meet link" aria-label="Copy Meet link"><i data-lucide="copy"></i></button>'
+        + (isEnded ? '' : '<a class="am-btn am-btn-meet am-hero-join" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener"><i data-lucide="video"></i>Join with Google Meet</a>') + '</section>';
+    } else if (isC) {
+      html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="calendar-x"></i></div><div class="am-hero-t"><b>Class cancelled</b><span>' + (l && l.google_calendar_event_id ? (s === 'cancelled' ? 'Google Calendar sent the cancellation to every attendee.' : 'The Calendar event still needs to be cancelled — Retry Sync.') : 'Only this date is affected.') + '</span></div></section>';
+    } else if (man && ready() && !isEnded) {
+      html += '<section class="am-hero"><div class="am-hero-ic"><i data-lucide="video-off"></i></div><div class="am-hero-t"><b>No Google Meet yet</b><span>Creates a Calendar event with a Meet link and emails everyone with an address.</span></div>'
+        + '<button type="button" class="am-btn am-hero-join" data-create="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="' + (busy ? 'loader' : 'video') + '"></i>' + (busy ? 'Creating…' : 'Create Google Meet') + '</button></section>';
+    } else {
+      html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="video-off"></i></div><div class="am-hero-t"><b>' + (isEnded ? 'Class ended' : 'Meet link not created yet') + '</b><span>' + (isEnded ? 'No Meet was used for this class.' : man ? 'Connect the Google account (banner above) to create Meet links.' : 'The Academic team adds the link — it will appear here and in your Google Calendar.') + '</span></div></section>';
+    }
+
+    // ── facts
+    var rem = (l && l.reminder_minutes && l.reminder_minutes.length) ? l.reminder_minutes : (S.status && S.status.defaultReminders);
+    html += '<div class="am-facts">'
+      + fact('user-round', 'Trainer', esc(o.trainerName))
+      + fact(o.isOne ? 'graduation-cap' : 'users', o.isOne ? 'Student' : 'Batch', esc(o.isOne ? o.who : o.batch.name), o.isOne ? '' : o.students.length + ' student' + (o.students.length === 1 ? '' : 's'))
+      + fact('bell', 'Reminder', esc(remText(rem)))
       + '</div>';
 
-    // Google Meet
-    html += '<div class="am-m-sec"><h4><i data-lucide="video"></i>Google Meet</h4>';
-    if (l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync Failed.</b> ' + esc(l.google_sync_error) + '</div>';
-    if (l && l.google_meet_url && !isC) {
-      html += '<div class="am-meet-box">' + (isEnded ? '' : '<a class="am-btn am-btn-meet" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener"><i data-lucide="video"></i>Join with Google Meet</a>')
-        + '<div class="am-meet-link">Meet link: <a href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener">' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</a>'
-        + (l.last_google_sync_at ? ' · synced ' + esc(new Date(l.last_google_sync_at).toLocaleString('en-IN', { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : '') + '</div></div>';
-    } else if (isC) {
-      html += '<div class="am-meet-link">This class is cancelled' + (l && l.google_calendar_event_id ? (s === 'cancelled' ? ' — the Calendar invitation was cancelled for all attendees.' : '.') : '.') + '</div>';
-    } else if (man && ready() && !isEnded) {
-      html += '<div class="am-meet-link" style="margin-bottom:10px">No Google Meet yet. Creating one adds a Calendar event with a Meet link and emails the trainer and students.</div><button type="button" class="am-btn" data-create="' + esc(key) + '"' + (S.busy[key] ? ' disabled' : '') + '><i data-lucide="video"></i>' + (S.busy[key] ? 'Creating…' : 'Create Google Meet') + '</button>';
-    } else {
-      html += '<div class="am-meet-link">' + (isEnded ? 'This class has ended.' : man ? 'Connect the Google account above to create Meet links.' : 'The Academic team has not created a Meet link for this class yet.') + '</div>';
-    }
-    html += '</div>';
-
-    // Attendees
-    html += '<div class="am-m-sec"><h4><i data-lucide="users"></i>Attendees</h4>';
-    if (!d) html += '<div class="am-meet-link">Loading attendees…</div>';
-    else if (d.error) html += '<div class="am-err">' + esc(d.error) + '</div>';
+    // ── attendees
+    html += '<section class="am-att">';
+    if (!d) html += '<div class="am-att-h"><b>Attendees</b></div><div class="am-skel"></div><div class="am-skel"></div>';
+    else if (d.error) html += '<div class="am-att-h"><b>Attendees</b></div><div class="am-err">' + esc(d.error) + '</div>';
     else {
-      var miss = d.notInvited || [];
-      if (miss.length && l && l.google_calendar_event_id && !isC) html += '<div class="am-warn">Meet created, but ' + miss.length + ' participant' + (miss.length === 1 ? '' : 's') + ' could not be invited because ' + (miss.length === 1 ? 'their email address is' : 'their email addresses are') + ' missing.</div>';
-      else if (miss.length && !isC) html += '<div class="am-warn">' + miss.length + ' participant' + (miss.length === 1 ? ' has' : 's have') + ' no email address — they won’t receive the Calendar invitation.</div>';
-      html += '<div class="am-people">';
-      (d.invited || []).forEach(function (p) { html += '<div class="am-person"><span class="am-p-r">' + (p.role === 'trainer' ? 'Trainer' : 'Student') + '</span><span class="am-p-n">' + esc(p.name) + '<div class="am-p-e">' + esc(p.email) + '</div></span></div>'; });
-      miss.forEach(function (p) {
-        html += '<div class="am-person is-missing" style="flex-wrap:wrap"><span class="am-p-r">' + (p.role === 'trainer' ? 'Trainer' : 'Student') + '</span><span class="am-p-n">' + esc(p.name) + '<div class="am-p-e" style="color:#fca5a5">No email address</div></span>'
-          + (p.role === 'student' && man ? '<div class="am-fix"><input type="email" placeholder="Student email" data-fix-input="' + esc(p.id) + '" autocomplete="off"><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-fix="' + esc(p.id) + '">Save</button></div>'
-            : p.role === 'trainer' ? '<div class="am-p-e" style="width:100%;margin-top:4px">Trainer email comes from the HR employee record — ask HR to add it.</div>' : '')
-          + '</div>';
-      });
-      if (!(d.invited || []).length && !miss.length) html += '<div class="am-meet-link">No trainer or students on this class yet.</div>';
-      html += '</div>';
+      var inv = d.invited || [], miss = d.notInvited || [], total = inv.length + miss.length;
+      var pct = total ? Math.round(inv.length / total * 100) : 0;
+      html += '<div class="am-att-h"><b>Attendees</b><span>' + inv.length + ' of ' + total + ' can receive the invitation</span></div>'
+        + '<div class="am-bar-t"><i style="width:' + pct + '%"></i></div>';
+      if (inv.length) {
+        html += '<div class="am-people">';
+        inv.forEach(function (p) { html += '<div class="am-person"><span class="am-av' + (p.role === 'trainer' ? ' is-tr' : '') + '">' + esc(initials(p.name)) + '</span><div class="am-p-n"><b>' + esc(p.name) + '</b><span>' + esc(p.email) + '</span></div><span class="am-role">' + (p.role === 'trainer' ? 'Trainer' : 'Student') + '</span></div>'; });
+        html += '</div>';
+      }
+      if (miss.length) {
+        var trMiss = miss.filter(function (p) { return p.role === 'trainer'; }), stMiss = miss.filter(function (p) { return p.role === 'student'; });
+        html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="mail-x"></i><div><b>' + miss.length + ' without an email address</b><span>'
+          + (l && l.google_calendar_event_id && !isC ? 'Meet created, but ' + (miss.length === 1 ? 'this participant was' : 'these participants were') + ' not invited.' : 'They won’t get the Google Calendar invitation.')
+          + '</span></div>' + (man && stMiss.length ? '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-fix-toggle>' + (S.fixOpen ? 'Done' : 'Add emails') + '</button>' : '') + '</div>';
+        if (man && S.fixOpen) {
+          html += '<div class="am-fix-list">' + stMiss.map(function (p) { return '<div class="am-fix"><span class="am-av">' + esc(initials(p.name)) + '</span><span class="am-fix-n">' + esc(p.name) + '</span><input type="email" placeholder="name@email.com" data-fix-input="' + esc(p.id) + '" autocomplete="off"><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-fix="' + esc(p.id) + '">Save</button></div>'; }).join('') + '</div>';
+        } else {
+          html += '<div class="am-chips">' + miss.map(function (p) { return '<span class="am-nchip">' + esc(p.name) + (p.role === 'trainer' ? ' · Trainer' : '') + '</span>'; }).join('') + '</div>';
+        }
+        if (trMiss.length) html += '<div class="am-miss-note">Trainer email comes from the HR employee record — ask HR to add it.</div>';
+        html += '</div>';
+      }
+      if (!total) html += '<div class="am-meet-link">No trainer or students on this class yet.</div>';
+    }
+    html += '</section>';
+
+    // ── online batch
+    if (man && o.kind === 'class' && !S.tableMissing) {
+      html += '<label class="am-switch am-online"><input type="checkbox" data-online="' + esc(o.batch.id) + '"' + (S.online[o.batch.id] ? ' checked' : '') + '><span><b>Online batch</b>Create the Meet automatically for every upcoming class of ' + esc(o.batch.name) + '</span></label>';
+    }
+
+    // ── cancel confirm
+    if (S.cancelOpen && man && !isC) {
+      html += '<section class="am-cancel"><b>Cancel this class?</b><span>Marked cancelled in the ERP' + (l && l.google_calendar_event_id ? ' and Google Calendar sends a cancellation to every attendee' : '') + '. Only this date — the batch schedule stays the same.</span><textarea class="am-m-reason" id="am-cancel-reason" placeholder="Reason (optional)"></textarea>'
+        + '<div class="am-m-actions"><button type="button" class="am-btn am-btn-ghost" data-cancel-no>Keep class</button><button type="button" class="am-btn am-btn-danger" data-cancel-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Cancelling…' : 'Cancel class') + '</button></div></section>';
     }
     html += '</div>';
 
-    // Reminder
-    var rem = (l && l.reminder_minutes && l.reminder_minutes.length) ? l.reminder_minutes : (S.status && S.status.defaultReminders);
-    html += '<div class="am-m-sec"><h4><i data-lucide="bell"></i>Reminder</h4><div style="font-size:13.5px;font-weight:600">' + esc(remText(rem)) + '</div></div>';
-
-    // Online batch toggle
-    if (man && o.kind === 'class' && !S.tableMissing) {
-      html += '<div class="am-m-sec"><label class="am-switch"><input type="checkbox" data-online="' + esc(o.batch.id) + '"' + (S.online[o.batch.id] ? ' checked' : '') + '><span><b>Online batch</b> — create the Meet automatically for every upcoming class of ' + esc(o.batch.name) + '</span></label></div>';
-    }
-
-    // Cancel confirm
-    if (S.cancelOpen && man && !isC) {
-      html += '<div class="am-m-sec"><h4 style="color:#fca5a5">Cancel this class?</h4><div class="am-meet-link">The class is marked cancelled in the ERP' + (l && l.google_calendar_event_id ? ' and Google Calendar sends a cancellation to every attendee' : '') + '. Only this date is affected — the batch schedule stays as it is.</div><textarea class="am-m-reason" id="am-cancel-reason" placeholder="Reason (optional)"></textarea>'
-        + '<div class="am-m-actions"><button type="button" class="am-btn am-btn-danger" data-cancel-go' + (S.busy[key] ? ' disabled' : '') + '>' + (S.busy[key] ? 'Cancelling…' : 'Cancel class') + '</button><button type="button" class="am-btn am-btn-ghost" data-cancel-no>Keep class</button></div></div>';
-    }
-
-    // Actions (by permission)
+    // ── footer actions (by permission)
     var acts = '';
-    if (l && l.google_meet_url && !isC) acts += '<button type="button" class="am-btn am-btn-ghost" data-copy><i data-lucide="copy"></i>Copy Meet Link</button>';
-    if (man && d && d.invited && d.invited.length) acts += '<a class="am-btn am-btn-ghost" href="' + esc(mailto(o, d.invited, l)) + '"><i data-lucide="mail"></i>Email Participants</a>';
-    if (man && l && l.google_calendar_event_id && !isC && !isEnded) acts += '<button type="button" class="am-btn am-btn-ghost" data-resend="' + esc(key) + '"' + (S.busy[key] ? ' disabled' : '') + '><i data-lucide="send"></i>Resend Invitation</button>';
-    if (man && s === 'failed') acts += '<button type="button" class="am-btn am-btn-danger" data-retry="' + esc(key) + '"' + (S.busy[key] ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>';
+    if (typeof g('openBatchDetails') === 'function' && o.batch && o.batch.id) acts += '<button type="button" class="am-btn am-btn-ghost" data-attendance><i data-lucide="clipboard-check"></i>Attendance</button>';
+    if (man && d && d.invited && d.invited.length) acts += '<a class="am-btn am-btn-ghost" href="' + esc(mailto(o, d.invited, l)) + '"><i data-lucide="mail"></i>Email</a>';
+    if (man && l && l.google_calendar_event_id && !isC && !isEnded) acts += '<button type="button" class="am-btn am-btn-ghost" data-resend="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="send"></i>Resend Invitation</button>';
     if (man && !isC && !isEnded && canEditTime(o)) acts += '<button type="button" class="am-btn am-btn-ghost" data-edit-time><i data-lucide="clock"></i>Edit Time</button>';
     if (man && !isC && !isEnded && !S.cancelOpen) acts += '<button type="button" class="am-btn am-btn-danger" data-cancel-open><i data-lucide="x-circle"></i>Cancel</button>';
-    if (typeof g('openBatchDetails') === 'function' && o.batch && o.batch.id) acts += '<button type="button" class="am-btn am-btn-ghost" data-attendance><i data-lucide="clipboard-check"></i>View Attendance</button>';
-    if (acts) html += '<div class="am-m-actions">' + acts + '</div>';
+    if (acts) html += '<div class="am-mf">' + acts + '</div>';
 
     box.innerHTML = html;
     icons();
@@ -636,6 +660,7 @@
       if (t.hasAttribute('data-resend')) return run(key, 'resend', null, 'Invitations sent again.');
       if (t.hasAttribute('data-copy')) { var u = (linkOf(o) || {}).google_meet_url; if (navigator.clipboard) navigator.clipboard.writeText(u).then(function () { toast('success', 'Meet link copied.'); }, function () { toast('error', 'Copy failed — select the link instead.'); }); return; }
       if (t.hasAttribute('data-edit-time')) return editTime(o);
+      if (t.hasAttribute('data-fix-toggle')) { S.fixOpen = !S.fixOpen; renderModal(); var fi = m.querySelector('[data-fix-input]'); if (fi) fi.focus(); return; }
       if (t.hasAttribute('data-cancel-open')) { S.cancelOpen = true; renderModal(); var r = document.getElementById('am-cancel-reason'); if (r) r.focus(); return; }
       if (t.hasAttribute('data-cancel-no')) { S.cancelOpen = false; renderModal(); return; }
       if (t.hasAttribute('data-cancel-go')) { var reason = (document.getElementById('am-cancel-reason') || {}).value || ''; S.cancelOpen = false; return run(key, 'cancel', { reason: reason }, 'Class cancelled' + ((linkOf(o) || {}).google_calendar_event_id ? ' — attendees notified by Google Calendar.' : '.')); }
