@@ -31,15 +31,13 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 const SESSION_EXPIRED = "Your session has expired. Please sign in again to continue.";
 
-const page = (title: string, msg: string, ok: boolean) => new Response(
-  `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#030509;color:#f1f5f9;font:15px/1.5 Inter,system-ui,sans-serif">
-<div style="max-width:420px;padding:28px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(13,17,28,.8);text-align:center">
-<div style="font-size:28px;margin-bottom:8px;color:${ok ? "#10b981" : "#f87171"}">${ok ? "✓" : "!"}</div>
-<h1 style="font-size:18px;margin:0 0 8px">${title}</h1><p style="margin:0;color:#94a3b8">${msg}</p></div>
-<script>try{window.opener&&window.opener.postMessage({type:'be-academic-meet-oauth',ok:${ok}},'*')}catch(e){}</script>`,
-  { status: ok ? 200 : 400, headers: { "Content-Type": "text/html; charset=utf-8" } },
-);
+// Supabase serves function responses as plain text, so the OAuth result is shown on a small page
+// on the ERP site (meet-connected.html), which also notifies the Live Classes tab and closes.
+const SITE_URL = (Deno.env.get("ERP_SITE_URL") || "https://work.brokenenglish.in").replace(/\/+$/, "");
+const page = (title: string, msg: string, ok: boolean) => new Response(null, {
+  status: 302,
+  headers: { Location: `${SITE_URL}/meet-connected.html?` + new URLSearchParams({ ok: ok ? "1" : "0", t: title, m: msg }).toString() },
+});
 
 async function oauthCallback(url: URL): Promise<Response> {
   const err = url.searchParams.get("error");

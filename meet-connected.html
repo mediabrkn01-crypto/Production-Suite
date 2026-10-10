@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="be-version" content="2026.10.10.1602-6ffv">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google Connection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#030509;--card:rgba(13,17,28,.85);--line:rgba(255,255,255,.08);--tx:#f1f5f9;--mut:#94a3b8;--ok:#10b981;--bad:#f87171}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);background-image:radial-gradient(circle at 50% 0%,rgba(30,27,75,.45),transparent 65%);color:var(--tx);font:15px/1.5 Inter,system-ui,sans-serif}
+  .card{width:100%;max-width:420px;padding:30px 26px;border:1px solid var(--line);border-radius:18px;background:var(--card);text-align:center}
+  .ic{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;font-size:26px;font-weight:800}
+  .ok .ic{background:rgba(16,185,129,.15);color:var(--ok)}
+  .bad .ic{background:rgba(248,113,113,.15);color:var(--bad)}
+  h1{font-size:19px;margin:0 0 8px;text-wrap:balance}
+  p{margin:0;color:var(--mut);font-size:14px}
+  button{margin-top:20px;height:40px;padding:0 20px;border:0;border-radius:10px;font:inherit;font-weight:700;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 50%,#ff0552);cursor:pointer}
+  button:focus-visible{outline:2px solid #ff6b06;outline-offset:3px}
+</style>
+</head>
+<body>
+<!-- Landing page for the academic-meet edge function's Google OAuth redirect (Live Classes →
+     Connect Google account). Shows the result, tells the Live Classes tab, and closes itself. -->
+<div class="card" id="card">
+  <div class="ic" id="ic"></div>
+  <h1 id="t"></h1>
+  <p id="m"></p>
+  <button type="button" onclick="window.close()">Close this window</button>
+</div>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search), ok = q.get('ok') === '1';
+    document.getElementById('card').className = 'card ' + (ok ? 'ok' : 'bad');
+    document.getElementById('ic').textContent = ok ? '✓' : '!';
+    document.getElementById('t').textContent = q.get('t') || (ok ? 'Google account connected' : 'Google not connected');
+    document.getElementById('m').textContent = q.get('m') || '';
+    document.title = document.getElementById('t').textContent;
+    try { if (window.opener) window.opener.postMessage({ type: 'be-academic-meet-oauth', ok: ok }, location.origin); } catch (e) {}
+    if (ok && window.opener) setTimeout(function () { window.close(); }, 2500);
+  })();
+</script>
+</body>
+</html>
