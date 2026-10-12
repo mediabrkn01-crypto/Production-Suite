@@ -232,6 +232,9 @@
       '.jv-orb-cap{max-width:min(320px,70vw);padding:8px 12px;border-radius:12px;background:rgba(10,8,14,.92);border:1px solid rgba(255,255,255,.1);color:#f2f1ee;font:600 11px Inter,system-ui,sans-serif;letter-spacing:.04em;box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transform:translateX(6px);transition:opacity .2s,transform .2s;pointer-events:none}',
       '.jv-orb.show-cap .jv-orb-cap,.jv-orb:hover .jv-orb-cap{opacity:1;transform:none}',
       '@media (max-width:820px){.jv-orb{bottom:calc(92px + env(safe-area-inset-bottom,0px));right:14px}.jv-orb-btn{width:50px;height:50px}}',
+      // Phones: smaller globe, parked just above the floating bottom bar (bar top ≈ 74px + safe area).
+      // Pages reserve room for it at the end of their scroll area (be-mobile.js), so it never sits on the last row's buttons.
+      '@media (max-width:560px){.jv-orb{bottom:calc(84px + env(safe-area-inset-bottom,0px));right:12px}.jv-orb-btn{width:44px;height:44px}}',
       '@media (prefers-reduced-motion:reduce){.jv-orb-btn{animation:none}}',
       '.jv-sheet-bg{position:fixed;inset:0;z-index:2100;background:rgba(3,3,7,.55);backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center;padding:16px}',
       '.jv-sheet{width:min(560px,100%);max-height:80vh;overflow:auto;background:linear-gradient(165deg,rgba(30,24,32,.96),rgba(9,7,13,.98));border:1px solid rgba(255,255,255,.13);border-radius:20px;box-shadow:0 50px 130px rgba(0,0,0,.9);color:#f2f1ee;font:13px Inter,system-ui,sans-serif}',

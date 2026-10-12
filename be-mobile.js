@@ -17,7 +17,8 @@
     ':root{--bem-bg:#0a0e17;--bem-border:rgba(255,255,255,.09);--bem-text:#c7cbe0;--bem-muted:#6b7488;--bem-accent:#ff3b6b;}',
     '.be-mnav,.be-msheet-bg{display:none;}',
     '@media (max-width:' + BP + 'px){',
-    'body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))!important;}',
+    /* bottom clearance now lives on each page's own scroll container (below), not on <body> too */
+    'body{padding-bottom:env(safe-area-inset-bottom,0px)!important;}',
     /* FLOATING PILL bottom nav (OLINEX-style): detached from the screen edges, rounded,
        elevated, dark glass. Active item gets an accent pill instead of a flat underline. */
     '.be-mnav{display:flex;position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:150;',
@@ -41,13 +42,42 @@
     '.be-msheet-item svg{width:20px;height:20px;flex:0 0 20px;}',
     /* comfortable tap targets for the page's own interactive bits on mobile */
     '.act-btn,.btn-ghost,.btn-sm{min-height:34px;}',
+    /* ---- SHARED RESPONSIVE LAYER (every page that loads this file: index, hr, academics,
+       sales, manager). Root-cause rules, not overflow-x:hidden: everything is sized to fit. ---- */
+    '*,*::before,*::after{box-sizing:border-box;}',
+    'img,video,iframe,canvas{max-width:100%;}',
+    /* The page scroller must clear the floating bottom bar (64px bar + 10px gap + safe area) and the
+       Jarvis globe parked above it, so the last row's buttons can always scroll into the clear — the
+       scrolling element differs per page (academics .acad-main, hr/index <main>, sales/manager .main). */
+    'body .acad-main,body main,body .main{padding-bottom:calc(140px + env(safe-area-inset-bottom,0px))!important;}',
+    /* flex/grid children may shrink below their content width instead of pushing the row wider */
+    '.section,.card,.glass-card,.dsh-main,.dsh-list,.acad-tab,.tab{min-width:0;max-width:100%;}',
+    /* long names (batches, trainers, students) wrap instead of widening the page */
+    'h1,h2,h3,.dsh-title,.bes-sub,.section h2{overflow-wrap:anywhere;}',
+    /* every dialog fits the phone and scrolls inside itself */
+    '.modal,.hr-modal,.hfm,.prm,.otr,.jv-sheet,.mw-modal{max-width:calc(100vw - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow-y:auto!important;}',
+    '.modal-bg,.hr-modal-overlay{padding:12px!important;}',
+    /* form controls never exceed their column; modal footers get thumb-sized buttons */
+    'input:not([type=checkbox]):not([type=radio]),select,textarea{max-width:100%;}',
+    '.modal-actions button,.otr-foot button,.hfm-foot button,.hfm-btn,.btn-save,.btn-cancel{min-height:44px;}',
+    /* a wide table scrolls inside its own wrapper (added by fitTables below), never the page */
+    '.be-tscroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}',
+    /* status chips/badges wrap inside their parent */
+    /* status chips / action groups wrap inside their parent. Right-aligned (flex-end) groups that
+       can't wrap are what push badges/buttons off the LEFT edge of a narrow card. */
+    '.cls-badges,.pr-card-pills,.hr-actions,.bcard-actions,.bt-acts,.dg-acts,.dgx-acts,.bw-acts,.avx-acts,.lr-acts,.cb-actions,.modal-actions,.hr-emp-foot,.otr-foot,.hfm-foot,.mp-foot{flex-wrap:wrap!important;min-width:0;max-width:100%;}',
+    '}',
+    /* two-column modal/form grids collapse to one column on small phones */
+    '@media (max-width:480px){',
+    '.otr-g2,.hfm-g2,.hfm-grid,.prm-cols,.form-grid,.grid-2{grid-template-columns:minmax(0,1fr)!important;}',
+    '.modal,.hr-modal,.otr,.jv-sheet{width:100%!important;}',
     '}',
     /* ---- PHONE EDITION skin (<=560px): reshape the desktop content into a native
        mobile card feed — tighter gutters, elevated rounded cards, mobile type rhythm,
        full-width primary actions. Visual only; no page logic/markup touched. ---- */
     '@media (max-width:560px){',
     'body{background:#05070d!important;}',
-    '.main,main,.acadx-shell,#app>main{padding:12px 12px calc(76px + env(safe-area-inset-bottom,0px))!important}',
+    '.main,main,.acadx-shell,#app>main{padding:12px 12px calc(140px + env(safe-area-inset-bottom,0px))!important}',
     'h1{font-size:21px!important;line-height:1.12!important;margin:2px 0 2px!important}',
     'h2{font-size:14.5px!important}',
     /* card skin — covers the section/card primitives across all four pages */
@@ -69,6 +99,40 @@
   var st = document.createElement('style'); st.textContent = CSS; (document.head || document.documentElement).appendChild(st);
 
   var nav = null, sheetBg = null, sheet = null, primaries = [], navSig = '', mo = null, menuBtn = null;
+
+  // ── Wide tables on phones: wrap any table that is wider than its container in a horizontal
+  // scroller (.be-tscroll), so the TABLE scrolls and the page never does. Tables already inside a
+  // scrolling container, or reshaped into cards by a page's own CSS (display != table), are left
+  // alone. Re-checked after DOM changes because tables are re-rendered by each page's JS.
+  // A dedicated horizontal scroller — NOT the page's own vertical scroller (overflow-y:auto also
+  // computes overflow-x to auto, which would wrongly count main/.acad-main as a table container).
+  function scrollsX(el) {
+    if (el.matches('main,.main,.acad-main,#app,body')) return false;
+    var ox = getComputedStyle(el).overflowX; return ox === 'auto' || ox === 'scroll';
+  }
+  function fitTables() {
+    if (window.innerWidth > BP) return;
+    var tables = document.querySelectorAll('table');
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i], p = t.parentElement;
+      if (!p || p.classList.contains('be-tscroll') || !t.getClientRects().length) continue;
+      if (getComputedStyle(t).display !== 'table') continue;
+      var contained = false;
+      for (var a = p, k = 0; a && a !== document.body && k < 4; a = a.parentElement, k++) { if (scrollsX(a)) { contained = true; break; } }
+      if (contained) continue;
+      if (t.getBoundingClientRect().width <= p.getBoundingClientRect().width + 1) continue;
+      var w = document.createElement('div'); w.className = 'be-tscroll';
+      p.insertBefore(w, t); w.appendChild(t);
+    }
+  }
+  window.BEMobileFitTables = fitTables;
+  var _ftTimer = null;
+  function scheduleFit() { clearTimeout(_ftTimer); _ftTimer = setTimeout(fitTables, 250); }
+  try {
+    // childList = re-rendered tables; class/style = tabs and panels being shown
+    new MutationObserver(scheduleFit).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+    window.addEventListener('resize', scheduleFit);
+  } catch (e) {}
 
   function labelOf(el) {
     // Prefer the wrapped label span (sidebar-collapse.js's .be-nav-label). Fall back to the
