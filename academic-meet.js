@@ -497,7 +497,7 @@
 
   function openModal(key) {
     if (!occByKey(key)) return;
-    S.modalKey = key; S.modalDetails = null; S.cancelOpen = false; S.fixOpen = false; S.endOpen = false; S.revOpen = false; S.repOpen = false; S.histOpen = false; S.tfixOpen = false;
+    S.modalKey = key; S.modalDetails = null; S.cancelOpen = false; S.fixOpen = false; S.endOpen = false; S.revOpen = false; S.repOpen = false; S.histOpen = false; S.tfixOpen = false; S.setupOpen = false;
     var box = document.getElementById('am-m-body'); if (box) { box.onclick = null; box.oninput = null; }
     renderModal();
     var m = modalEl(); m.classList.add('on'); m.setAttribute('aria-hidden', 'false');
@@ -528,7 +528,7 @@
   function initials(n) { return String(n || '?').trim().split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0); }).join('').toUpperCase() || '?'; }
   function hostLabel(l) {
     if (!l || !l.google_meet_url || l.class_status === 'cancelled') return '';
-    return { assigned: 'Meet role: Co-Host', missing_email: 'No email — not co-host', failed: 'Co-host not set', pending: 'Co-host pending', unsupported: 'Meet role: Guest' }[l.cohost_status] || '';
+    return l.cohost_status === 'assigned' ? 'Meet role: Co-Host' : '';
   }
   function fact(icon, label, val, sub) { return '<div class="am-fact"><span class="am-fact-i"><i data-lucide="' + icon + '"></i></span><div><small>' + label + '</small><b>' + val + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</div></div>'; }
 
@@ -554,7 +554,7 @@
     if (l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync failed.</b> ' + esc(l.google_sync_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>' : '') + '</div>';
     var canRun = !!(d && d.canRun), isLive = !!(l && l.live_status === 'live'), erpEnded = !!(l && l.live_status === 'ended');
     if (hasMeet) {
-      html += '<section class="am-hero is-ready' + (isLive ? ' is-live' : '') + '"><div class="am-hero-ic"><i data-lucide="' + (isLive ? 'radio' : 'video') + '"></i></div><div class="am-hero-t"><b>' + (isLive ? 'Class is live' : erpEnded ? 'Class ended' : 'Google Meet') + '</b><span>' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</span>' + (l.organizer_email ? '<em class="am-org-line">Organizer: ' + esc(l.organizer_email) + (l.cohost_status === 'assigned' ? ' · Co-host: ' + esc(o.trainerName) : l.cohost_status === 'unsupported' ? ' · Trainer joins as guest (co-host needs Google Workspace)' : '') + '</em>' : '') + '</div>'
+      html += '<section class="am-hero is-ready' + (isLive ? ' is-live' : '') + '"><div class="am-hero-ic"><i data-lucide="' + (isLive ? 'radio' : 'video') + '"></i></div><div class="am-hero-t"><b>' + (isLive ? 'Class is live' : erpEnded ? 'Class ended' : 'Google Meet') + '</b><span>' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</span></div>'
         + '<button type="button" class="am-ic-btn" data-copy title="Copy Meet link" aria-label="Copy Meet link"><i data-lucide="link"></i></button>'
         + (isLive ? '<div class="am-live-row"><span class="am-live-dot"></span>Live in ERP since ' + esc(clock(l.joined_at)) + (l.joined_by ? ' · ' + esc(l.joined_by.split('@')[0]) : '') + '</div>' : '')
         + (!erpEnded && (!isEnded || isLive) ? '<button type="button" class="am-btn am-btn-meet am-hero-join" data-join><i data-lucide="video"></i>' + (isLive ? 'Rejoin Google Meet' : 'Join Live') + '</button>' : '')
@@ -572,19 +572,12 @@
       html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="video-off"></i></div><div class="am-hero-t"><b>' + (isEnded ? 'Class ended' : 'Meet link not created yet') + '</b><span>' + (isEnded ? 'No Meet was used for this class.' : man ? 'Connect the Google account (banner above) to create Meet links.' : 'The Academic team adds the link — it will appear here and in your Google Calendar.') + '</span></div></section>';
     }
 
-    // ── invite-only room (made before open rooms): uninvited students must knock, nobody admits them
-    if (hasMeet && man && l.google_meet_access !== 'open' && !isEnded && !erpEnded) {
-      html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="door-closed"></i><div><b>Invite-only Meet room</b><span>Students without an email must ask to join, and only the organizer (Classes BRK) can let them in. Switch to an open room so anyone with the link joins directly. The link changes — Google emails the new one; re-share it on WhatsApp.</span></div>'
-        + '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-open-room' + (busy ? ' disabled' : '') + '>Switch to open room</button></div></div>';
-    }
     // ── trainer co-host status
-    if (hasMeet && l.cohost_status === 'missing_email') {
+    if (hasMeet && man && l.cohost_status === 'missing_email') {
       html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="shield-alert"></i><div><b>Trainer host access not assigned</b><span>Meet created, but trainer host access could not be assigned because the trainer email is missing.</span></div>'
         + (man ? '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-tfix-toggle>' + (S.tfixOpen ? 'Close' : 'Add / Fix trainer email') + '</button>' : '') + '</div>'
         + (man && S.tfixOpen ? '<div class="am-fix"><span class="am-av is-tr">' + esc(initials(o.trainerName)) + '</span><span class="am-fix-n">' + esc(o.trainerName) + '</span><input type="email" placeholder="trainer@gmail.com" data-tfix-input autocomplete="off"><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-tfix' + (busy ? ' disabled' : '') + '>' + (busy ? 'Saving…' : 'Save') + '</button></div><div class="am-miss-note">Saved to the trainer’s HR record (personal email); the class invitation and co-host access are updated right away.</div>' : '')
         + '</div>';
-    } else if (hasMeet && l.cohost_status === 'failed' && l.cohost_error) {
-      html += '<div class="am-err"><b>Trainer co-host not set.</b> ' + esc(l.cohost_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry</button>' : '') + '</div>';
     }
 
     html += '</div><div class="am-col-side">';
@@ -626,6 +619,26 @@
       if (!total) html += '<div class="am-meet-link">No trainer or students on this class yet.</div>';
     }
     html += '</section>';
+
+    // ── Meet setup (Academic Head / Admin only — technical detail kept out of the trainer view)
+    if (man && hasMeet) {
+      var hs = l.cohost_status || 'pending';
+      var roleTxt = { assigned: 'Co-Host ✓', unsupported: 'Guest — co-host needs a Google Workspace organizer', missing_email: 'Not set — trainer email missing', failed: 'Not set', pending: 'Pending' }[hs] || 'Pending';
+      var open = l.google_meet_access === 'open';
+      html += '<section class="am-hist"><button type="button" class="am-hist-h" data-setup-toggle aria-expanded="' + !!S.setupOpen + '"><b>Meet setup</b><span>' + (hs === 'assigned' ? 'Trainer is co-host' : hs === 'failed' ? 'Needs attention' : open ? 'Open link' : 'Controlled') + '</span><i data-lucide="chevron-' + (S.setupOpen ? 'up' : 'down') + '"></i></button>';
+      if (S.setupOpen) {
+        html += '<div class="am-setup-grid">'
+          + '<div><small>Organizer</small><b>' + esc(l.organizer_email || (S.status && S.status.organizerEmail) || '—') + '</b></div>'
+          + '<div><small>Trainer</small><b>' + esc(o.trainerName) + '</b><span>' + esc(l.trainer_email || '') + '</span></div>'
+          + '<div><small>Trainer Meet role</small><b class="' + (hs === 'assigned' ? 'is-ok' : hs === 'failed' ? 'is-bad' : '') + '">' + esc(roleTxt) + '</b></div>'
+          + '<div><small>Access</small><b>' + (open ? 'Open link' : 'Controlled') + '</b><span>' + (open ? 'Anyone with the link joins' : 'Invited guests join; others ask to join') + '</span></div>'
+          + '<div><small>Google sync</small><b>' + esc(SYNC_LABEL[syncState(o)] || '—') + '</b></div>'
+          + '</div>';
+        if (hs === 'failed') html += '<div class="am-err"><b>Trainer host access could not be configured.</b> ' + esc(l.cohost_error || '') + '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry</button></div>';
+        if (!open && hs !== 'assigned' && !isEnded && !erpEnded) html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="door-closed"></i><div><b>Students without an invitation can’t be let in</b><span>Nobody in this call can admit them (the trainer isn’t co-host). Use an open link — the link changes and Google emails the new one.</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-open-room' + (busy ? ' disabled' : '') + '>Use open link</button></div></div>';
+      }
+      html += '</section>';
+    }
 
     // ── class history
     if (d && d.events && d.events.length) {
@@ -863,8 +876,8 @@
       if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'index.html'; return; }
       if (t.hasAttribute('data-open-room')) {
         var cf = g('beConfirm');
-        (typeof cf === 'function' ? cf({ title: 'Switch to an open Meet room?', message: 'Anyone with the new link joins directly — no waiting to be admitted.', detail: 'The Meet link changes. Google emails the new link to everyone invited; re-share it on WhatsApp.', confirmLabel: 'Switch room', confirmColor: '#10b981' }) : Promise.resolve(true))
-          .then(function (ok) { if (ok) run(key, 'open_room', null, 'Switched to an open Meet room — Google emailed the new link.'); });
+        (typeof cf === 'function' ? cf({ title: 'Use an open Meet link?', message: 'Anyone with the new link joins directly — no waiting to be admitted.', detail: 'The Meet link changes. Google emails the new link to everyone invited; re-share it on WhatsApp.', confirmLabel: 'Use open link', confirmColor: '#10b981' }) : Promise.resolve(true))
+          .then(function (ok) { if (ok) run(key, 'open_room', null, 'Open link ready — Google emailed the new link.'); });
         return;
       }
       if (t.hasAttribute('data-tfix-toggle')) { S.tfixOpen = !S.tfixOpen; renderModal(); var ti = m.querySelector('[data-tfix-input]'); if (ti) ti.focus(); return; }
@@ -883,6 +896,7 @@
       if (t.hasAttribute('data-sync')) { return run(key, 'sync_report', null, null).then(reportToast); }
       if (t.hasAttribute('data-rev-toggle')) { S.revOpen = !S.revOpen; S.repOpen = false; renderModal(); return; }
       if (t.hasAttribute('data-rep-toggle')) { S.repOpen = !S.repOpen; S.revOpen = false; renderModal(); return; }
+      if (t.hasAttribute('data-setup-toggle')) { S.setupOpen = !S.setupOpen; renderModal(); return; }
       if (t.hasAttribute('data-hist-toggle')) { S.histOpen = !S.histOpen; renderModal(); return; }
       if (t.hasAttribute('data-att-confirm')) { confirmAttendance(o, linkOf(o)); return; }
       if (t.hasAttribute('data-fix-toggle')) { S.fixOpen = !S.fixOpen; renderModal(); var fi = m.querySelector('[data-fix-input]'); if (fi) fi.focus(); return; }

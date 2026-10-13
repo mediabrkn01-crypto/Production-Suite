@@ -60,6 +60,8 @@ async function oauthCallback(url: URL): Promise<Response> {
     const { error } = await adminClient().from("academic_meet_config").upsert({
       id: 1, refresh_token: refreshToken, organizer_email: organizer, connected_by: a.email, connected_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     });
+    // A newly connected organizer (e.g. Google Workspace) gets co-host re-tested.
+    await adminClient().from("academic_meet_config").update({ cohost_supported: null }).eq("id", 1).then(() => {}, () => {});
     if (error) throw new Error(error.message);
     return page("Google account connected", `Live Classes will create Calendar events and Meet links as ${organizer || "the connected account"}. You can close this tab.`, true);
   } catch (e) {
