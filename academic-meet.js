@@ -444,7 +444,9 @@
     var todo = S.occ.filter(function (o) {
       var l = linkOf(o);
       return l && l.google_calendar_event_id && l.class_status !== 'cancelled' && l.live_status !== 'ended' && !ended(o)
-        && o.trainerId && l.trainer_id && String(l.trainer_id) !== String(o.trainerId) && !S.autoDone['tr:' + o.key];
+        && o.trainerId && !S.autoDone['tr:' + o.key]
+        // trainer changed in Academic, or the co-host hasn't been set yet (e.g. Meets made before co-host existed)
+        && ((l.trainer_id && String(l.trainer_id) !== String(o.trainerId)) || l.cohost_status === 'pending' || l.cohost_status === 'failed');
     });
     if (!todo.length) return;
     trainerSyncing = true;
@@ -453,7 +455,7 @@
         S.autoDone['tr:' + todo[i].key] = true;
         try { var j = await api('update', { key: todo[i].key, start: startHint(todo[i]) }); if (j.row) S.links[todo[i].key] = j.row; } catch (e) { if (e.code === 'SESSION_EXPIRED') break; }
       }
-      toast('success', 'Trainer change synced to Google Meet for ' + todo.length + ' class' + (todo.length === 1 ? '' : 'es') + '.');
+      toast('success', 'Trainer co-host synced to Google Meet for ' + todo.length + ' class' + (todo.length === 1 ? '' : 'es') + '.');
       render();
     } finally { trainerSyncing = false; }
   }
