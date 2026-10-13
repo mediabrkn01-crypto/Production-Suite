@@ -245,7 +245,8 @@
     var l = linkOf(o);
     if (l && l.class_status !== 'cancelled' && l.live_status === 'live') return '<span class="am-chip s-live">Live</span>';
     if (l && l.meet_sync_status === 'synced') return '<span class="am-chip s-synced">Completed · ' + (l.actual_duration_minutes != null ? l.actual_duration_minutes + ' min' : 'report') + '</span>';
-    var s = syncState(o); return '<span class="am-chip s-' + s + '"' + (s === 'failed' && linkOf(o) && linkOf(o).google_sync_error ? ' title="' + esc(linkOf(o).google_sync_error) + '"' : '') + '>' + SYNC_LABEL[s] + '</span>'; }
+    var s = syncState(o); if (s === 'failed' && !canManage()) s = 'none';   // trainers never see sync errors
+    return '<span class="am-chip s-' + s + '"' + (s === 'failed' && linkOf(o) && linkOf(o).google_sync_error ? ' title="' + esc(linkOf(o).google_sync_error) + '"' : '') + '>' + SYNC_LABEL[s] + '</span>'; }
 
   function render() {
     paintRange(); renderSetup(); renderStats();
@@ -560,7 +561,7 @@
     html += '<div class="am-m-scroll"><div class="am-col-main">';
 
     // ── Google Meet hero
-    if (l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync failed.</b> ' + esc(l.google_sync_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>' : '') + '</div>';
+    if (man && l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync failed.</b> ' + esc(l.google_sync_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>' : '') + '</div>';
     var canRun = !!(d && d.canRun), isLive = !!(l && l.live_status === 'live'), erpEnded = !!(l && l.live_status === 'ended');
     if (hasMeet) {
       html += '<section class="am-hero is-ready' + (isLive ? ' is-live' : '') + '"><div class="am-hero-ic"><i data-lucide="' + (isLive ? 'radio' : 'video') + '"></i></div><div class="am-hero-t"><b>' + (isLive ? 'Class is live' : erpEnded ? 'Class ended' : 'Google Meet') + '</b><span>' + esc(l.google_meet_url.replace(/^https?:\/\//, '')) + '</span></div>'
