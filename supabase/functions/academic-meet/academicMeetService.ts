@@ -19,7 +19,7 @@
 import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
 import { GoogleApiError, loadOrganizer, googleConfig } from "../_shared/google/googleAuthService.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
-import { getSpaceByMeetingCode, listConferenceRecords, listParticipants, listParticipantSessions } from "../_shared/google/googleMeetService.ts";
+import { addMember, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
 
 export class MeetError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -194,6 +194,42 @@ async function logEvent(key: string, event: string, detail: string | null, actor
     .upsert({ occurrence_key: key, event, detail, actor, at: at || new Date().toISOString() }, { onConflict: "occurrence_key,event,at", ignoreDuplicates: true })
     .then(() => {}, () => {});
 }
+// ── Trainer = Google Meet COHOST (organizer account stays the owner) ─────────────────────
+// Adds the class trainer as a COHOST member of the Meet space and removes any other co-host
+// (e.g. the previous trainer). Never fails the Meet itself: the outcome is stored on the row
+// (cohost_status) and shown in the class popup. The review email is never made co-host.
+async function assignCohost(info: ClassInfo, row: any, actor: string) {
+  const key = info.key, email = info.trainer?.email?.toLowerCase() || null;
+  const set = (patch: Record<string, unknown>) =>
+    adminClient().from(T).update({ ...patch, updated_at: new Date().toISOString() }).eq("occurrence_key", key).select().maybeSingle()
+      .then((r) => (r.error ? row : r.data || row), () => row);
+  const space = row?.google_meet_space_name;
+  if (!email) return set({ trainer_email: null, trainer_meet_role: null, cohost_status: "missing_email", cohost_error: null });
+  if (!space) return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: "The Meet space could not be resolved yet — use Retry Sync." });
+  try {
+    const members = await listMembers(space);
+    const lc = (m: any) => String(m.email || "").toLowerCase();
+    for (const m of members) {
+      if (m.role === "COHOST" && lc(m) && lc(m) !== email) {
+        await removeMember(m.name);
+        await logEvent(key, "Co-host removed", m.email, actor);
+      }
+    }
+    const mine = members.find((m: any) => lc(m) === email);
+    if (!mine || mine.role !== "COHOST") {
+      if (mine) await removeMember(mine.name);
+      await addMember(space, email, "COHOST");
+      await logEvent(key, "Trainer set as co-host", `${info.trainer!.name} · ${email}`, actor);
+    }
+    return set({ trainer_email: email, trainer_meet_role: "COHOST", cohost_status: "assigned", cohost_error: null });
+  } catch (e) {
+    const msg = e instanceof GoogleApiError && (e.status === 403 || e.status === 401)
+      ? `Google refused co-host access (${e.message}). Reconnect the Google account in Live Classes → Settings to grant the Meet permission.`
+      : explain(e);
+    return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: msg.slice(0, 500) });
+  }
+}
+
 function inviteEvents(key: string, row: any, actor: string, resent: boolean) {
   const inv = (row?.invited || []) as any[];
   const people = inv.filter((p) => p.role !== "review");
@@ -293,7 +329,8 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
     const row = await save(key, { ...(await linkFields(org, ev, info, reminders)), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
     await logEvent(key, "Meet created", row?.google_meet_url || null, a.email);
     await inviteEvents(key, row, a.email, false);
-    return { row, already: false, notInvited: row?.not_invited || [] };
+    const withHost = await assignCohost(info, row, a.email);
+    return { row: withHost, already: false, notInvited: withHost?.not_invited || [] };
   } catch (e) {
     await fail(key, e, a.email);
     throw e;
@@ -317,10 +354,12 @@ export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint
     if (!Cal.meetFromEvent(ev).url) ev = await Cal.patchEvent(cal, ev.id, { conferenceData: newConference() }, false);
     ev = await settle(cal, ev);
     const saved = await save(key, { ...(await linkFields({ ...org, calendarId: cal }, ev, info, reminders)), updated_by: a.email });
+    if (row.trainer_id && info.trainerId && row.trainer_id !== info.trainerId) await logEvent(key, "Trainer changed", info.trainer?.name || null, a.email);
     if (why === "resend") await inviteEvents(key, saved, a.email, true);
     else if (why === "time" && row.start_time !== saved?.start_time) await logEvent(key, "Time changed", `${fmt12(toMin(row.start_time) ?? 0)} → ${fmt12(info.startMin)}`, a.email);
     else if (why === "retry") await logEvent(key, "Synced with Google", null, a.email);
-    return { row: saved, skipped: false, notInvited: saved?.not_invited || [] };
+    const withHost = await assignCohost(info, saved, a.email);
+    return { row: withHost, skipped: false, notInvited: withHost?.not_invited || [] };
   } catch (e) {
     await fail(key, e, a.email);
     throw e;
@@ -372,6 +411,24 @@ export async function retryCancel(a: JarvisAuthContext, key: string) {
     await Cal.cancelEvent(row.google_calendar_id || (await loadOrganizer()).calendarId, row.google_calendar_event_id);
     return { row: await save(key, { google_sync_status: "cancelled", google_sync_error: null, last_google_sync_at: new Date().toISOString() }) };
   } catch (e) { await fail(key, e, a.email); throw e; }
+}
+
+/** Academic team fills a missing trainer email: HR record (personal_email) — never the login email. */
+export async function setTrainerEmail(a: JarvisAuthContext, key: string, email: string, hint: { start?: string } = {}) {
+  if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only the Academic team can update trainer emails.");
+  const em = String(email || "").trim().toLowerCase();
+  if (!isEmail(em)) throw new MeetError(400, "BAD_EMAIL", "Enter a valid email address.");
+  const info = await resolveClass(key, hint);
+  if (!info.trainerId) throw new MeetError(409, "NO_TRAINER", "This class has no trainer assigned.");
+  const sb = adminClient();
+  const { data: t } = await sb.from("trainers").select("id,hr_employee_id").eq("id", info.trainerId).maybeSingle();
+  const r = t?.hr_employee_id
+    ? await sb.from("hr_employees").update({ personal_email: em }).eq("id", t.hr_employee_id)
+    : await sb.from("trainers").update({ portal_email: em }).eq("id", info.trainerId);
+  if (r.error) throw new MeetError(500, "DB", "Could not save the email: " + r.error.message);
+  await logEvent(key, "Trainer email added", em, a.email);
+  const row = await getRow(key);
+  return row?.google_calendar_event_id ? updateClassMeeting(a, key, hint, "resend") : { row };
 }
 
 // ── Live: Join Live / End Class (ERP activity only — never the official duration) ─────────

@@ -25,6 +25,8 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/meetings.space.readonly",
+  // Manage members of the class Meet spaces (trainer = COHOST). Spaces are owned by the organizer.
+  "https://www.googleapis.com/auth/meetings.space.created",
 ];
 
 export const googleConfig = {

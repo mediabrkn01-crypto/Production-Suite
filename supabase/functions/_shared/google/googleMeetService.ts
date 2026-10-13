@@ -11,6 +11,20 @@ export async function getSpaceByMeetingCode(code: string): Promise<{ name: strin
   try { return await gfetch(`${BASE}/spaces/${encodeURIComponent(code)}`); } catch { return null; }
 }
 
+// ── Space members (trainer = COHOST; the organizer account stays the owner) ───────────────
+
+export async function listMembers(spaceName: string): Promise<any[]> {
+  return listAll(`${BASE}/${spaceName}/members`, "members");
+}
+
+export function addMember(spaceName: string, email: string, role: "COHOST" | "MEMBER" = "COHOST") {
+  return gfetch(`${BASE}/${spaceName}/members`, { method: "POST", body: JSON.stringify({ email, role }) });
+}
+
+export function removeMember(memberName: string) {
+  return gfetch(`${BASE}/${memberName}`, { method: "DELETE" });
+}
+
 // ── Meet report (after the class): conference records → participants → sessions ──────────
 // Used only to SUGGEST attendance; the trainer / Academic team confirms it in Class & Attendance.
 
