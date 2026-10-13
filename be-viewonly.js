@@ -87,5 +87,24 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', banner); else banner();
 
-  window.BEViewOnly = { active: true, lock: lock };
+  // Who may view: the HR-granted per-person permission (hr_employees.access_company_suite) or
+  // the existing HR-admin access — System Role 'hr_admin', or the HR admin login (user_roster
+  // role 'admin'). Exited / inactive people never qualify. Returns { ok, name, rec }.
+  async function verify(db, email) {
+    var e = String(email || '').trim().toLowerCase(); if (!e || !db) return { ok: false };
+    var hr = await db.from('hr_employees').select('*').eq('portal_email', e);
+    var rows = (hr && hr.data) || [];
+    var live = rows.filter(function (r) { var st = String(r.employment_status || 'active').toLowerCase(); return st !== 'inactive' && st !== 'exited'; });
+    if (rows.length && !live.length) return { ok: false };
+    var rec = live.find(function (r) { return r.access_company_suite === true || String(r.system_role || '').toLowerCase() === 'hr_admin'; });
+    if (rec) return { ok: true, name: rec.full_name || e, rec: rec };
+    try {
+      var ur = await db.from('user_roster').select('name,email,role');
+      var u = ((ur && ur.data) || []).find(function (x) { return String(x.email || '').trim().toLowerCase() === e && String(x.role || '').toLowerCase() === 'admin'; });
+      if (u) return { ok: true, name: u.name || e, rec: live[0] || null };
+    } catch (_) {}
+    return { ok: false };
+  }
+
+  window.BEViewOnly = { active: true, lock: lock, verify: verify };
 })();
