@@ -547,7 +547,8 @@
       + '<span><i data-lucide="clock"></i>' + esc(fmt(o.startMin) + ' – ' + fmt(o.endMin)) + '</span>'
       + (o.postponed ? '<span class="am-moved">Moved from ' + esc(fmt(o.postponed.original_min)) + '</span>' : '') + '</div></div>';
 
-    html += '<div class="am-m-scroll">';
+    // Wide screens: two columns — Meet / live / report on the left, people & details on the right.
+    html += '<div class="am-m-scroll"><div class="am-col-main">';
 
     // ── Google Meet hero
     if (l && l.google_sync_status === 'failed' && l.google_sync_error) html += '<div class="am-err"><b>Sync failed.</b> ' + esc(l.google_sync_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry Sync</button>' : '') + '</div>';
@@ -586,6 +587,7 @@
       html += '<div class="am-err"><b>Trainer co-host not set.</b> ' + esc(l.cohost_error) + (man ? '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry</button>' : '') + '</div>';
     }
 
+    html += '</div><div class="am-col-side">';
     // ── facts
     var rem = (l && l.reminder_minutes && l.reminder_minutes.length) ? l.reminder_minutes : (S.status && S.status.defaultReminders);
     html += '<div class="am-facts">'
@@ -644,7 +646,7 @@
       html += '<section class="am-cancel"><b>Cancel this class?</b><span>Marked cancelled in the ERP' + (l && l.google_calendar_event_id ? ' and Google Calendar sends a cancellation to every attendee' : '') + '. Only this date — the batch schedule stays the same.</span><textarea class="am-m-reason" id="am-cancel-reason" placeholder="Reason (optional)"></textarea>'
         + '<div class="am-m-actions"><button type="button" class="am-btn am-btn-ghost" data-cancel-no>Keep class</button><button type="button" class="am-btn am-btn-danger" data-cancel-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Cancelling…' : 'Cancel class') + '</button></div></section>';
     }
-    html += '</div>';
+    html += '</div></div>';
 
     // ── footer actions (by permission)
     var acts = '';

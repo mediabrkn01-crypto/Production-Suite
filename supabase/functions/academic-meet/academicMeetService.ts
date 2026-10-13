@@ -532,9 +532,16 @@ export async function syncMeetReport(a: JarvisAuthContext, key: string, hint: { 
     if (!space) throw new MeetError(502, "NO_SPACE", "Google did not return the Meet space for this link.");
 
     const schedStart = new Date(istTs(info.date, info.startMin)).getTime(), schedEnd = new Date(istTs(info.date, info.endMin)).getTime();
+    // Only the call for THIS class: started from 30 min before the scheduled start (a test or
+    // early click on the link must not count) and lasted at least a minute.
+    if (Date.now() < schedStart) {
+      row = await save(key, { meet_sync_status: "waiting", meet_sync_error: "The class hasn't started yet — the Meet report is available after the class." });
+      return { row, waiting: true, message: row?.meet_sync_error };
+    }
     const records = (await listConferenceRecords(space)).filter((r: any) => {
       const t = new Date(r.startTime).getTime();
-      return t >= schedStart - 3 * 3600e3 && t <= schedEnd + 6 * 3600e3;
+      const len = r.endTime ? new Date(r.endTime).getTime() - t : Infinity;
+      return t >= schedStart - 30 * 60e3 && t <= schedEnd + 6 * 3600e3 && len >= 60e3;
     });
     if (!records.length || records.some((r: any) => !r.endTime)) {
       const endedMinsAgo = row.ended_at ? (Date.now() - new Date(row.ended_at).getTime()) / 60000 : 0;
