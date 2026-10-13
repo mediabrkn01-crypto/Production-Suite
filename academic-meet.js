@@ -430,6 +430,8 @@
       if (btn) btn.querySelector('span').textContent = 'Creating ' + (i + 1) + ' of ' + list.length + '…';
       var j = await run(list[i].key, 'create', null, null);
       if (j) { made++; missing += (j.notInvited || []).length; } else failed++;
+      var lk = linkOf(list[i]); if (lk && /usage limit/i.test(lk.google_sync_error || '')) { toast('warning', 'Google’s daily limit for this account was reached — the rest will be created later.', 9000); break; }
+      await new Promise(function (r) { setTimeout(r, 3000); });
     }
     if (btn) btn.disabled = false;
     render();
@@ -467,16 +469,23 @@
     var ids = Object.keys(S.online); if (!ids.length) return;
     autoRunning = true;
     try {
-      var t = istToday(), to = addDays(t, 6);
+      // Google limits how many invitation events one account may create per day, so online
+      // batches get their Meets a little ahead (today + next 2 days), one every few seconds,
+      // and the run stops at the first "usage limits" answer. Classes that hit the limit are
+      // retried automatically 3 hours later.
+      var t = istToday(), to = addDays(t, 2);
       var occ = await fetchClasses(t, to);
       occ = occ.filter(function (o) { return S.online[o.batch.id] && !S.autoDone[o.key] && !ended(o); });
       if (!occ.length) return;
       var links = await fetchLinks(occ.map(function (o) { return o.key; }));
-      var todo = occ.filter(function (o) { var l = links[o.key]; return !l || (l.class_status !== 'cancelled' && l.google_sync_status !== 'failed' && !(l.google_meet_url && l.google_calendar_event_id)); });
+      var limited = function (l) { return l && l.google_sync_status === 'failed' && /usage limit/i.test(l.google_sync_error || '') && Date.now() - Date.parse(l.updated_at || 0) > 3 * 3600e3; };
+      var todo = occ.filter(function (o) { var l = links[o.key]; return !l || limited(l) || (l.class_status !== 'cancelled' && l.google_sync_status !== 'failed' && !(l.google_meet_url && l.google_calendar_event_id)); });
       var made = 0;
-      for (var i = 0; i < todo.length; i++) {
+      for (var i = 0; i < todo.length && i < 12; i++) {
         S.autoDone[todo[i].key] = true;
-        try { await api('create', { key: todo[i].key, start: startHint(todo[i]) }); made++; } catch (e) { if (e.code === 'SESSION_EXPIRED' || e.code === 'NOT_CONNECTED' || e.code === 'NOT_CONFIGURED') break; }
+        try { await api(links[todo[i].key] && links[todo[i].key].google_calendar_event_id ? 'retry' : 'create', { key: todo[i].key, start: startHint(todo[i]) }); made++; }
+        catch (e) { if (e.code === 'SESSION_EXPIRED' || e.code === 'NOT_CONNECTED' || e.code === 'NOT_CONFIGURED' || /usage limit/i.test(e.message || '')) break; }
+        await new Promise(function (r) { setTimeout(r, 4000); });
       }
       if (made) { toast('success', 'Created ' + made + ' Meet link' + (made === 1 ? '' : 's') + ' for online batches.'); reloadLinks(); }
     } catch (e) { /* next visit retries */ }
