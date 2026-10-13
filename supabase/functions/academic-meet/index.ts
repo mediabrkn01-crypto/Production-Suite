@@ -20,7 +20,7 @@ import { consentUrl, exchangeCode, googleConfig, GoogleApiError, loadOrganizer }
 import { calendarIdentity } from "../_shared/google/googleCalendarService.ts";
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
-  retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail,
+  retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom,
 } from "./academicMeetService.ts";
 import { can } from "../_shared/jarvis/auth.ts";
 
@@ -104,6 +104,7 @@ Deno.serve(async (req) => {
         return json({ ok: true, ...(r?.class_status === "cancelled" ? await retryCancel(a, key) : await retrySync(a, key, hint)) });
       }
       case "set_trainer_email": return json({ ok: true, ...(await setTrainerEmail(a, key, String(body.email || ""), hint)) });
+      case "open_room": return json({ ok: true, ...(await openRoom(a, key, hint)) });
       case "join": return json({ ok: true, ...(await joinLive(a, key, hint)) });
       case "end": return json({ ok: true, ...(await endClass(a, key, hint)) });
       case "sync_report": return json({ ok: true, ...(await syncMeetReport(a, key, hint)) });

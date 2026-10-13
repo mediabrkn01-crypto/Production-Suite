@@ -19,7 +19,7 @@
 import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
 import { GoogleApiError, loadOrganizer, googleConfig } from "../_shared/google/googleAuthService.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
-import { addMember, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
+import { addMember, conferenceFor, createSpace, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
 
 export class MeetError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -194,6 +194,36 @@ async function logEvent(key: string, event: string, detail: string | null, actor
     .upsert({ occurrence_key: key, event, detail, actor, at: at || new Date().toISOString() }, { onConflict: "occurrence_key,event,at", ignoreDuplicates: true })
     .then(() => {}, () => {});
 }
+/** Room access stored separately (tolerates the column not existing yet). */
+function setAccess(key: string, row: any, access: "open" | "trusted") {
+  return adminClient().from(T).update({ google_meet_access: access }).eq("occurrence_key", key).select().maybeSingle()
+    .then((r) => (r.error ? row : r.data || row), () => row);
+}
+
+/** Replace an invite-only Calendar-made Meet with an OPEN room (new link; Google emails the update). */
+export async function openRoom(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
+  if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only the Academic team can change the Meet room.");
+  const info = await resolveClass(key, hint);
+  const row = await getRow(key);
+  if (!row?.google_calendar_event_id || row.class_status === "cancelled") throw new MeetError(409, "NO_MEET", "This class has no active Meet.");
+  const org = await requireOrganizer();
+  await claim(info, a.email);
+  try {
+    const space = await createSpace("OPEN");
+    const cal = row.google_calendar_id || org.calendarId;
+    let ev = await Cal.patchEvent(cal, row.google_calendar_event_id, { conferenceData: conferenceFor(space) }, true);
+    ev = await settle(cal, ev);
+    const reminders = row.reminder_minutes?.length ? row.reminder_minutes : org.defaultReminders;
+    const saved = await save(key, { ...(await linkFields({ ...org, calendarId: cal }, ev, info, reminders)), updated_by: a.email });
+    await logEvent(key, "Switched to open Meet room", saved?.google_meet_url || null, a.email);
+    const withAccess = await setAccess(key, saved, "open");
+    return { row: await assignCohost(info, withAccess, a.email) };
+  } catch (e) {
+    await fail(key, e, a.email);
+    throw e;
+  }
+}
+
 // ── Trainer = Google Meet COHOST (organizer account stays the owner) ─────────────────────
 // Adds the class trainer as a COHOST member of the Meet space and removes any other co-host
 // (e.g. the previous trainer). Never fails the Meet itself: the outcome is stored on the row
@@ -223,10 +253,14 @@ async function assignCohost(info: ClassInfo, row: any, actor: string) {
     }
     return set({ trainer_email: email, trainer_meet_role: "COHOST", cohost_status: "assigned", cohost_error: null });
   } catch (e) {
-    const msg = e instanceof GoogleApiError && (e.status === 403 || e.status === 401)
-      ? `Google refused co-host access (${e.message}). Reconnect the Google account in Live Classes → Settings to grant the Meet permission.`
-      : explain(e);
-    return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: msg.slice(0, 500) });
+    // Google only lets a Google Workspace organizer add co-hosts; a personal Gmail organizer gets 403.
+    // Not an error for the class: the trainer joins as a guest. Switches on by itself with Workspace.
+    if (e instanceof GoogleApiError && e.status === 403) {
+      const r = await set({ trainer_email: email, trainer_meet_role: "GUEST", cohost_status: "unsupported", cohost_error: null });
+      if (r?.cohost_status === "unsupported") return r;
+      return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: "Co-host needs a Google Workspace organizer account — the trainer joins as a guest." });
+    }
+    return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: explain(e).slice(0, 500) });
   }
 }
 
@@ -316,17 +350,22 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
     const body = eventBody(info, reminders);
     const id = await eventIdFor(key);
     let ev: any;
+    // The Meet room is created by the app as an OPEN space (anyone with the link joins directly)
+    // and attached to the Calendar event; Calendar-made rooms are invite-only.
+    const space = await createSpace("OPEN").catch(() => null);
+    const conference = space ? conferenceFor(space) : newConference();
     try {
-      ev = await Cal.insertEvent(org.calendarId, { ...body, id, conferenceData: newConference() });
+      ev = await Cal.insertEvent(org.calendarId, { ...body, id, conferenceData: conference });
     } catch (e) {
       if (!(e instanceof GoogleApiError) || e.status !== 409) throw e;
       // The event already exists (an earlier attempt reached Google): adopt it — never a second one.
       ev = await Cal.getEvent(org.calendarId, id);
       const reopen = ev.status === "cancelled";
-      ev = await Cal.patchEvent(org.calendarId, id, { ...body, ...(reopen ? { status: "confirmed" } : {}), ...(Cal.meetFromEvent(ev).url ? {} : { conferenceData: newConference() }) }, reopen);
+      ev = await Cal.patchEvent(org.calendarId, id, { ...body, ...(reopen ? { status: "confirmed" } : {}), ...(Cal.meetFromEvent(ev).url ? {} : { conferenceData: conference }) }, reopen);
     }
     ev = await settle(org.calendarId, ev);
-    const row = await save(key, { ...(await linkFields(org, ev, info, reminders)), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
+    const row0 = await save(key, { ...(await linkFields(org, ev, info, reminders)), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
+    const row = await setAccess(key, row0, space && Cal.meetFromEvent(ev).code === space.meetingCode ? "open" : "trusted");
     await logEvent(key, "Meet created", row?.google_meet_url || null, a.email);
     await inviteEvents(key, row, a.email, false);
     const withHost = await assignCohost(info, row, a.email);

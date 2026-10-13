@@ -11,6 +11,21 @@ export async function getSpaceByMeetingCode(code: string): Promise<{ name: strin
   try { return await gfetch(`${BASE}/spaces/${encodeURIComponent(code)}`); } catch { return null; }
 }
 
+/** New Meet space owned by the organizer. OPEN = anyone with the link joins without knocking
+ *  (students without an email aren't invited, and the organizer is never in the call to admit them). */
+export function createSpace(accessType: "OPEN" | "TRUSTED" = "OPEN"): Promise<{ name: string; meetingUri: string; meetingCode: string }> {
+  return gfetch(`${BASE}/spaces`, { method: "POST", body: JSON.stringify({ config: { accessType } }) });
+}
+
+/** Calendar conferenceData that attaches an existing Meet space to an event. */
+export function conferenceFor(space: { meetingUri: string; meetingCode: string }) {
+  return {
+    conferenceId: space.meetingCode,
+    conferenceSolution: { key: { type: "hangoutsMeet" } },
+    entryPoints: [{ entryPointType: "video", uri: space.meetingUri, label: space.meetingUri.replace(/^https?:\/\//, "") }],
+  };
+}
+
 // ── Space members (trainer = COHOST; the organizer account stays the owner) ───────────────
 
 export async function listMembers(spaceName: string): Promise<any[]> {
