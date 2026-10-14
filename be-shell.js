@@ -399,7 +399,7 @@
   // horizontally every BANNER_AUTOPLAY_INTERVAL ms, in the order the renderer put them.
   // The renderers keep writing plain .be-celeb-banner-item children; this only adds a class,
   // per-item transforms and a dots bar — the banner DOM is never rebuilt on a tick.
-  var BANNER_AUTOPLAY_INTERVAL = 3000;
+  var BANNER_AUTOPLAY_INTERVAL = 2000;   // ms between slides — change here for every dashboard
   var CAR_CSS =
     '#celebration-banner-slot.be-car{display:flex!important;flex-wrap:nowrap;overflow:hidden;position:relative;touch-action:pan-y;border-radius:12px;user-select:none;-webkit-user-select:none}' +
     '#celebration-banner-slot.be-car>.be-celeb-banner-item{flex:0 0 100%;min-width:100%;margin:0!important;transition:transform .6s cubic-bezier(.22,.61,.36,1);will-change:transform}' +
