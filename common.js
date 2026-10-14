@@ -566,6 +566,7 @@ async function loadMyHRData() {
                 case 'rework': return { icon: 'refresh-cw', color: 'red', label: '🔄 Rework Required', onClick: null };
                 case 'payslip': return { icon: 'wallet', color: 'green', label: '💰 New Payslip Available', onClick: "switchTab('my-payslips');closeNotifPanel();" };
                 case 'leave_approved': return { icon: 'check-circle-2', color: 'green', label: '✅ Leave Approved', onClick: "switchTab('my-leave');closeNotifPanel();" };
+                case 'leave_cancelled': return { icon: 'calendar-x', color: 'orange', label: 'Leave Cancelled', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'leave_rejected': return { icon: 'x-circle', color: 'red', label: '❌ Leave Rejected', onClick: "switchTab('my-leave');closeNotifPanel();" };
                 case 'announcement': {
                     // n.id is always `announcement_<hr_announcements.id>` (see addNotif's taskId
@@ -1088,6 +1089,12 @@ async function loadMyHRData() {
             hrLeaveRequests.filter(r => r.employee_id === me.id).forEach(r => {
                 const prev = _lastKnownLeaveStatuses[r.id];
                 if (prev !== r.status) {
+                    if (hadLeaveBaseline && prev === 'approved' && r.status === 'cancelled' && r.cancelled_by_email !== (typeof activeEmail !== 'undefined' ? activeEmail : null)) {
+                        const dl = r.start_date === r.end_date ? new Date(r.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : `${r.start_date} to ${r.end_date}`;
+                        const msg = `Your approved ${r.leave_type || 'leave'} for ${dl} has been cancelled by HR. Your leave balance has been updated.` + (r.cancellation_reason ? ` Reason: ${r.cancellation_reason}` : '');
+                        addNotif('leave_cancelled', msg, null, r.id + '_cancelled');
+                        sendBrowserNotif('Leave Cancelled', msg);
+                    }
                     if (hadLeaveBaseline && prev === 'pending' && (r.status === 'approved' || r.status === 'rejected')) {
                         const dateLabel = r.start_date === r.end_date
                             ? new Date(r.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long' })
@@ -2718,84 +2725,110 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
 // ── cancelLeaveRequest — shared across all pages ──
+// Pending (not yet started) request: anyone allowed to see the button may withdraw it.
+// APPROVED request: HR/Admin may cancel it for ANY date (future, today or past) — opts.hr.
+// Never deletes the request: status → 'cancelled' + cancelled_by / cancelled_at /
+// cancellation_reason. Leave balance needs no "credit": it is derived live from APPROVED
+// requests (LeavePolicy.resolveLeaveBalance), so it restores exactly once — 1 day or 0.5 —
+// the moment the status changes. A second click finds the row already cancelled and stops.
+// Attendance: leave rows the approval created are reset from REAL clock data (clocked in →
+// present; otherwise the row is removed so the date is pending / absent by the normal rules).
+// Payroll: months with a saved payslip that is generated / sent / published / paid are never
+// changed silently — HR must tick "I'll review payroll" before cancelling.
         async function cancelLeaveRequest(id, opts) {
             opts = opts || {};
             const db = opts.db || dbInstance;
-            const req = (typeof hrLeaveRequests !== 'undefined') ? hrLeaveRequests.find(r => r.id === id) : null;
+            // Always decide on the database row, not a possibly stale local copy.
+            let req = null;
+            try { const r = await db.from('hr_leave_requests').select('*').eq('id', id).maybeSingle(); req = r.data; } catch (e) {}
+            if (!req && typeof hrLeaveRequests !== 'undefined') req = hrLeaveRequests.find(r => r.id === id) || null;
             if (!req) { if (typeof showToast === 'function') showToast('error', 'Could not find that leave request.'); return false; }
-            const today = new Date().toISOString().slice(0, 10);
-            if (req.start_date <= today && req.status === 'approved') {
-                if (typeof showToast === 'function') showToast('error', 'Cannot cancel leave that has already started.');
-                return false;
-            }
+            const today = (typeof hrTodayISO === 'function') ? hrTodayISO() : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
             if (req.status === 'cancelled' || req.status === 'rejected') {
-                if (typeof showToast === 'function') showToast('error', 'This request is already ' + req.status + '.');
+                if (typeof showToast === 'function') showToast('info', 'This request is already ' + req.status + ' — nothing to change.');
                 return false;
             }
+            const wasApproved = req.status === 'approved';
+            if (wasApproved && !opts.hr && req.start_date <= today) {
+                if (typeof showToast === 'function') showToast('error', 'This leave has already started — ask HR to cancel it.');
+                return false;
+            }
+            const emp = (typeof hrEmployees !== 'undefined' && hrEmployees.find(e => e.id === req.employee_id)) || null;
+            const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+            const dateLabel = req.start_date === req.end_date ? fmtD(req.start_date) : fmtD(req.start_date) + ' – ' + fmtD(req.end_date);
+            const days = Number(req.days) || (req.half_day_type ? 0.5 : null);
+            // Payroll months this leave touches that already have an issued payslip.
+            const months = [];
+            for (let d = new Date(req.start_date + 'T00:00:00'); d <= new Date(req.end_date + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
+                const m = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); if (!months.includes(m)) months.push(m);
+            }
+            let finalized = [];
+            if (wasApproved) {
+                try {
+                    const { data: pr } = await db.from('hr_payroll').select('month,published,payslip_status,payment_status').eq('employee_id', req.employee_id);
+                    finalized = (pr || []).filter(p => months.includes(String(p.month || '').slice(0, 7)) && (p.published || p.payment_status === 'paid' || (p.payslip_status && p.payslip_status !== 'not_generated')))
+                        .map(p => new Date(String(p.month).slice(0, 7) + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }));
+                } catch (e) {}
+            }
+            const detail = '<div style="text-align:left;font-size:13px;line-height:1.6">'
+                + (emp ? '<div><b>Employee:</b> ' + esc(emp.full_name) + '</div>' : '')
+                + '<div><b>Leave type:</b> ' + esc(req.leave_type || 'Leave') + (req.half_day_type ? ' (' + (req.half_day_type === 'morning' ? 'morning' : 'afternoon') + ' half)' : '') + '</div>'
+                + '<div><b>Date:</b> ' + esc(dateLabel) + '</div>'
+                + (days ? '<div><b>Duration:</b> ' + days + ' day' + (days === 1 ? '' : 's') + '</div>' : '')
+                + (wasApproved ? '<div style="margin-top:8px;color:#fbbf24">This leave was already approved. Cancelling it restores the leave balance and updates attendance' + (finalized.length ? '' : ' and payroll') + '.</div>' : '')
+                + (finalized.length ? '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:#fecaca">This leave affects a finalized payroll/payslip (' + esc(finalized.join(', ')) + '). Review payroll before making changes — the issued payslip is not changed automatically.<label style="display:flex;gap:8px;margin-top:6px;align-items:center;cursor:pointer"><input type="checkbox" id="lc-payroll-ack"> I will review payroll for this month</label></div>' : '')
+                + (opts.hr || wasApproved ? '<label style="display:block;margin-top:10px"><b>Reason for cancellation</b> <span style="color:#94a3b8">(shown to the employee)</span><textarea id="lc-reason" rows="2" style="width:100%;margin-top:4px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.25);color:inherit;padding:8px;font:inherit" placeholder="e.g. Employee requested cancellation"></textarea></label>' : '')
+                + '</div>';
             const confirmed = await beConfirm({
-                title: 'Cancel Leave Request',
-                message: 'Are you sure you want to cancel this leave request?',
-                detail: esc(req.leave_type || 'Leave') + ' &nbsp;·&nbsp; ' + esc(req.start_date) + ' → ' + esc(req.end_date) + (req.days ? ' &nbsp;(' + req.days + ' day' + (req.days === 1 ? '' : 's') + ')' : ''),
-                confirmLabel: 'Yes, Cancel Leave',
+                title: wasApproved ? 'Cancel Approved Leave?' : 'Cancel Leave Request',
+                message: wasApproved ? 'The request stays in history as Cancelled — it is not deleted.' : 'Are you sure you want to cancel this leave request?',
+                detail: detail,
+                confirmLabel: 'Cancel Leave',
                 cancelLabel: 'Keep Leave',
                 confirmColor: '#ef4444'
             });
             if (!confirmed) return false;
+            const reason = ((document.getElementById('lc-reason') || {}).value || '').trim() || null;
+            const ackEl = document.getElementById('lc-payroll-ack');
+            if (finalized.length && ackEl && !ackEl.checked) {
+                if (window._beConfirmDismiss) window._beConfirmDismiss();
+                if (typeof showToast === 'function') showToast('warning', 'Tick “I will review payroll” to cancel a leave in a month with an issued payslip.', 7000);
+                return false;
+            }
             const actorEmail = (typeof activeEmail !== 'undefined' && activeEmail) || null;
             const actorName = (typeof activeUser !== 'undefined' && activeUser) || 'System';
             const nowIso = new Date().toISOString();
             const prevLabel = (typeof hrLeaveStatusLabel === 'function') ? hrLeaveStatusLabel(req) : req.status;
-            const upd = { status: 'cancelled', cancelled_at: nowIso, cancelled_by: actorName };
-            const { error } = await db.from('hr_leave_requests').update(upd).eq('id', id);
-            if (error) {
-                if (window._beConfirmDismiss) window._beConfirmDismiss();
-                if (typeof showToast === 'function') showToast('error', 'Could not cancel: ' + error.message);
-                return false;
+            const upd = { status: 'cancelled', cancelled_at: nowIso, cancelled_by: actorName, cancelled_by_email: actorEmail, cancellation_reason: reason };
+            // Only the transition FROM the status we showed — a double click / second HR user can't
+            // cancel (or restore anything) twice.
+            let res = await db.from('hr_leave_requests').update(upd).eq('id', id).eq('status', req.status).select('id');
+            if (res.error && /cancellation_reason|cancelled_by_email/.test(res.error.message || '')) {
+                delete upd.cancellation_reason; delete upd.cancelled_by_email;   // migration 20261022 not run yet
+                res = await db.from('hr_leave_requests').update(upd).eq('id', id).eq('status', req.status).select('id');
             }
             if (window._beConfirmDismiss) window._beConfirmDismiss();
-            Object.assign(req, upd);
-            // Remove synced on_leave attendance rows for future dates of a previously-approved request.
-            if (req.hr_status === 'approved' || req.manager_status === 'approved') {
-                const start = new Date(req.start_date), end = new Date(req.end_date);
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    const ds = d.toISOString().slice(0, 10);
-                    if (ds >= today) {
-                        try { await db.from('hr_attendance').delete().eq('employee_id', req.employee_id).eq('att_date', ds).in('status', ['on_leave', 'half_day', 'wfh']); } catch (e) {}
-                    }
+            if (res.error) { if (typeof showToast === 'function') showToast('error', 'Could not cancel: ' + res.error.message); return false; }
+            if (!res.data || !res.data.length) { if (typeof showToast === 'function') showToast('info', 'This leave was already changed by someone else — refreshing.'); await hrReloadAfterLeave(); return false; }
+            const local = (typeof hrLeaveRequests !== 'undefined') ? hrLeaveRequests.find(r => r.id === id) : null;
+            if (local) Object.assign(local, upd);
+            // Attendance: reset the leave rows this approval created, from real clock data.
+            if (wasApproved) {
+                for (let d = new Date(req.start_date + 'T00:00:00'); d <= new Date(req.end_date + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
+                    const ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                    try {
+                        const { data: row } = await db.from('hr_attendance').select('id,status,clock_in_time').eq('employee_id', req.employee_id).eq('att_date', ds).maybeSingle();
+                        if (!row || !['on_leave', 'half_day', 'wfh'].includes(row.status)) continue;
+                        if (row.clock_in_time) await db.from('hr_attendance').update({ status: 'present', half_day_type: null }).eq('id', row.id);
+                        else await db.from('hr_attendance').delete().eq('id', row.id);
+                    } catch (e) { console.warn('cancel leave: attendance reset failed for', ds, e); }
                 }
             }
-            // Restore CL bucket balance if CL was consumed.
-            if (req.status === 'cancelled' && /casual/i.test(req.leave_type || '') && req.days) {
-                try {
-                    const { data: buckets } = await db.from('hr_cl_buckets').select('*').eq('employee_id', req.employee_id).order('credit_date', { ascending: true });
-                    if (buckets && buckets.length) {
-                        let restore = Number(req.days);
-                        for (let i = buckets.length - 1; i >= 0 && restore > 0; i--) {
-                            const b = buckets[i];
-                            const used = Number(b.original_amount) - Number(b.remaining_amount);
-                            if (used > 0) {
-                                const give = Math.min(used, restore);
-                                await db.from('hr_cl_buckets').update({ remaining_amount: Number(b.remaining_amount) + give }).eq('id', b.id);
-                                restore -= give;
-                            }
-                        }
-                    }
-                } catch (e) { console.warn('CL balance restore failed', e); }
-            }
-            // Restore SL balance if SL was consumed.
-            if (req.status === 'cancelled' && /sick/i.test(req.leave_type || '') && req.days) {
-                try {
-                    const period = req.start_date.slice(0, 7);
-                    const { data: sl } = await db.from('hr_sl_ledger').select('*').eq('employee_id', req.employee_id).eq('period', period).maybeSingle();
-                    if (sl && Number(sl.used) > 0) {
-                        const newUsed = Math.max(0, Number(sl.used) - Number(req.days));
-                        await db.from('hr_sl_ledger').update({ used: newUsed }).eq('id', sl.id);
-                    }
-                } catch (e) { console.warn('SL balance restore failed', e); }
-            }
-            await hrAuditLeave(req, actorEmail, actorName, 'leave_cancel', prevLabel, 'Cancelled', 'Employee/HR cancelled');
+            await hrAuditLeave(Object.assign({}, req, upd), actorEmail, actorName, 'leave_cancel', prevLabel, 'Cancelled', reason || (wasApproved ? 'Approved leave cancelled by HR' : 'Request withdrawn'));
             await hrReloadAfterLeave();
-            if (typeof showToast === 'function') showToast('success', 'Leave request cancelled. Balance restored.');
+            if (typeof showToast === 'function') showToast('success', wasApproved
+                ? 'Leave cancelled — balance restored' + (finalized.length ? '. Review payroll for ' + finalized.join(', ') + '.' : ' and attendance/payroll updated.')
+                : 'Leave request cancelled.', finalized.length ? 9000 : 4000);
             return true;
         }
 
