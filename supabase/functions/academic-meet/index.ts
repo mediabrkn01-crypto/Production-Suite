@@ -21,7 +21,16 @@ import { calendarIdentity } from "../_shared/google/googleCalendarService.ts";
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
   retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom,
+  enqueue, processQueue,
 } from "./academicMeetService.ts";
+import { calendarPause } from "./syncGuard.ts";
+
+/** Keep working after the response is sent (Supabase Edge Runtime background task). */
+function background(p: Promise<unknown>) {
+  const rt = (globalThis as any).EdgeRuntime;
+  const safe = p.catch((e) => console.error("academic-meet queue", e));
+  if (rt && typeof rt.waitUntil === "function") rt.waitUntil(safe);
+}
 import { can } from "../_shared/jarvis/auth.ts";
 
 const CORS = {
@@ -95,10 +104,24 @@ Deno.serve(async (req) => {
           ok: true, configured: !!(googleConfig.clientId && googleConfig.clientSecret), connected: !!org.refreshToken,
           organizerEmail: org.organizerEmail, calendarId: org.calendarId, defaultReminders: org.defaultReminders, reviewEmail: org.reviewEmail,
           canManage: canManage(a), canViewAll: can(a, "academic.all"), trainerId: a.trainerId,
+          // Google limiting the organizer — shown to the Academic team only.
+          ...(canManage(a) ? { calendarPausedUntil: (await calendarPause())?.until || null } : {}),
         });
       }
       case "details": return json({ ok: true, ...(await getMeetingDetails(a, key, hint)) });
       case "create": return json({ ok: true, ...(await createClassMeeting(a, key, hint)) });
+      // Bulk / automatic creation goes through the server queue: one class at a time, paced,
+      // paused while Google limits the organizer. Processing continues after this response.
+      case "enqueue": {
+        const r = await enqueue(a, Array.isArray(body.keys) ? body.keys.map(String) : [], body.starts && typeof body.starts === "object" ? body.starts : {}, body.force === true);
+        background(processQueue(a));
+        return json({ ok: true, ...r });
+      }
+      case "process_queue": {
+        if (!canManage(a)) return json({ ok: true, skipped: true });
+        background(processQueue(a));
+        return json({ ok: true, started: true });
+      }
       case "update": return json({ ok: true, ...(await updateClassMeeting(a, key, hint)) });
       case "resend": return json({ ok: true, ...(await resendInvitations(a, key, hint)) });
       case "retry": {
@@ -134,7 +157,7 @@ Deno.serve(async (req) => {
       default: return json({ ok: false, message: "Unknown action." }, 400);
     }
   } catch (e) {
-    if (e instanceof MeetError) return json({ ok: false, code: e.code, message: e.message }, e.status);
+    if (e instanceof MeetError) return json({ ok: false, code: e.code, message: e.message, nextRetryAt: (e as any).nextRetryAt || null }, e.status);
     if (e instanceof GoogleApiError) return json({ ok: false, code: e.reason || "GOOGLE", message: "Google: " + e.message }, e.status >= 400 && e.status < 600 ? (e.status === 401 ? 502 : e.status) : 502);
     console.error("academic-meet", body.action, e);
     return json({ ok: false, message: (e as Error).message || "Something went wrong." }, 500);

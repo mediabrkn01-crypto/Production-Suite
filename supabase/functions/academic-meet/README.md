@@ -86,3 +86,30 @@ never make a second event or a second Meet link.
   saving there is the only way attendance is recorded. The class then shows *Attendance confirmed*.
 - **History**: `academic_live_class_events` (Meet created, invitation sent, review email invited,
   joined live, meeting started/ended, trainer joined, report synced, attendance confirmed…).
+
+## Google limits, sync queue and verification (20261021)
+
+- **Errors are classified** (`syncGuard.ts`): `quotaExceeded` / "Calendar usage limits exceeded"
+  → organizer-wide pause (15 min, doubling, ≤ 12 h, ±20 % jitter; cleared by the next successful
+  write); `rateLimitExceeded` / `userRateLimitExceeded` / HTTP 429 → per-class backoff
+  (30 s doubling, ≤ 30 min); 5xx / network → backoff (1 min doubling, ≤ 1 h); auth errors and
+  other 4xx → Sync Failed (no automatic retry). HTTP status + `error.reason` are stored on the
+  class (`last_error_status`, `last_error_reason`) and shown in the admin diagnostics.
+- **Nothing is lost while Google limits the account**: the class stays `pending` with
+  `next_retry_at` ("Waiting for Google"); no Calendar call is made until the pause ends.
+- **Queue** (`enqueue` / `process_queue` actions): bulk create, online batches and trainer
+  changes are queued server-side and processed one class at a time, 2.5 s apart (concurrency 1
+  via `academic_meet_config.queue_lock_until`), continuing in the background after the response
+  (`EdgeRuntime.waitUntil`). An open Live Classes page (Academic team) nudges it every 3 min.
+  There is no server cron yet — with nobody on the page, queued classes wait for the next visit.
+- **Idempotent**: one deterministic event id per class (repeat insert → 409 → adopt), the Meet
+  room made before the Calendar insert is saved and reused on retry.
+- **Writes only when needed**: update/retry/verify read the event first; `sendUpdates=all`
+  only when the time or guest list changed or on Resend; unchanged → no write, no emails.
+- **Synced = verified**: the returned event must contain the trainer (and the review address
+  when configured). Per-component status: `calendar_event_status`, `meet_status`,
+  `trainer_invite_status`, `review_invite_status`, `trainer_calendar_invited`, `cohost_status`.
+- **Co-host**: Google only lets a Google Workspace organizer add Meet co-hosts; with a personal
+  Gmail organizer the Meet API answers 403 and the trainer joins as a guest (`unsupported`).
+- **Verify + repair**: the queue re-reads upcoming Synced classes (once, then when something is
+  missing) and patches the SAME event if the trainer/review attendee is missing.

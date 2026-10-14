@@ -20,6 +20,7 @@ import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth
 import { GoogleApiError, loadOrganizer, googleConfig } from "../_shared/google/googleAuthService.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
 import { addMember, conferenceFor, createSpace, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
+import { classify, calendarPause, pauseCalendar, clearPause, takeQueueLock, releaseQueueLock, RETRY, LIMIT_MSG, RATE_MSG, sleep } from "./syncGuard.ts";
 
 export class MeetError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -81,7 +82,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     trainerId = o.trainer_id || batch?.trainer_id || null;
     if (o.student_id) {
       const { data: s } = await sb.from("students").select("id,name,email").eq("id", o.student_id).maybeSingle();
-      if (s) students = [{ role: "student", id: s.id, name: s.name || "Student", email: isEmail(s.email) ? String(s.email).trim() : null }];
+      if (s) students = [{ role: "student", id: s.id, name: s.name || "Student", email: isEmail(s.email) ? String(s.email).trim().toLowerCase() : null }];
     }
   } else {
     ({ data: batch } = await sb.from("batches").select(BCOLS).eq("id", k.batchId).maybeSingle());
@@ -98,7 +99,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     trainerId = batch.trainer_id || null;
     const { data: ss } = await sb.from("students").select("id,name,email,status").eq("batch_id", batch.id);
     students = (ss || []).filter((s: any) => String(s.status || "").toLowerCase() !== "dropped")
-      .map((s: any) => ({ role: "student" as const, id: s.id, name: s.name || "Student", email: isEmail(s.email) ? String(s.email).trim() : null }));
+      .map((s: any) => ({ role: "student" as const, id: s.id, name: s.name || "Student", email: isEmail(s.email) ? String(s.email).trim().toLowerCase() : null }));
   }
 
   // Trainer email — the central HR employee record (portal login email, then personal email).
@@ -108,7 +109,8 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     let hr: any = null;
     if (t?.hr_employee_id) ({ data: hr } = await sb.from("hr_employees").select("full_name,portal_email,personal_email").eq("id", t.hr_employee_id).maybeSingle());
     const email = [hr?.portal_email, hr?.personal_email, t?.portal_email].find(isEmail);
-    trainer = { role: "trainer", id: trainerId, name: hr?.full_name || t?.name || batch?.trainer_name || "Trainer", email: email ? String(email).trim() : null };
+    // Always re-read (never a cached copy on the link row) and normalised.
+    trainer = { role: "trainer", id: trainerId, name: hr?.full_name || t?.name || batch?.trainer_name || "Trainer", email: email ? String(email).trim().toLowerCase() : null };
   }
 
   const isOne = k.kind === "oto" || Number(batch?.capacity) === 1;
@@ -129,7 +131,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
 
   const org = await loadOrganizer();
   return { key, kind: k.kind, batchId: batch?.id || null, otoId: k.kind === "oto" ? k.otoId : null, originalDate, date, startMin: startMin!, endMin: endMin!,
-    trainerId, trainer, students, batchName, course, typeLabel, isOne, title, description, reviewEmail: isEmail(org.reviewEmail) ? org.reviewEmail : null };
+    trainerId, trainer, students, batchName, course, typeLabel, isOne, title, description, reviewEmail: isEmail(org.reviewEmail) ? String(org.reviewEmail).trim().toLowerCase() : null };
 }
 
 function attendeesOf(info: ClassInfo) {
@@ -271,7 +273,10 @@ async function assignCohost(info: ClassInfo, row: any, actor: string) {
       if (r?.cohost_status === "unsupported") return r;
       return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: "Co-host needs a Google Workspace organizer account — the trainer joins as a guest." });
     }
-    return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: explain(e).slice(0, 500) });
+    const g = classify(e);
+    return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: explain(e).slice(0, 500),
+      ...(row?.google_sync_status === "synced" ? { google_sync_status: "pending", google_sync_error: "Trainer co-host could not be set yet. The system will retry automatically.",
+        next_retry_at: new Date(Date.now() + (g.kind === "rate_limit" ? RETRY.rate(1) : RETRY.transient(1))).toISOString() } : {}) });
   }
 }
 
@@ -298,8 +303,17 @@ async function claim(info: ClassInfo, by: string) {
   return data;
 }
 
+// Columns added by 20261021_live_class_sync_queue.sql — dropped from a write if that migration
+// hasn't been run yet, so the existing flow keeps working.
+const SYNC_COLS = ["calendar_event_status", "meet_status", "trainer_invite_status", "review_invite_status", "trainer_calendar_invited",
+  "sync_attempts", "next_retry_at", "last_sync_attempt_at", "last_error_status", "last_error_reason", "last_verified_at"];
 async function save(key: string, patch: Record<string, unknown>) {
-  const { data, error } = await adminClient().from(T).update({ ...patch, updated_at: new Date().toISOString() }).eq("occurrence_key", key).select().maybeSingle();
+  const run = (p: Record<string, unknown>) => adminClient().from(T).update({ ...p, updated_at: new Date().toISOString() }).eq("occurrence_key", key).select().maybeSingle();
+  let { data, error } = await run(patch);
+  if (error && /column|schema cache/i.test(error.message || "")) {
+    const p = { ...patch }; SYNC_COLS.forEach((c) => delete p[c]);
+    ({ data, error } = await run(p));
+  }
   if (error) throw new MeetError(500, "DB", "The Meet link was created in Google but could not be saved in the ERP: " + error.message);
   return data;
 }
@@ -307,6 +321,33 @@ async function save(key: string, patch: Record<string, unknown>) {
 function explain(e: unknown): string {
   if (e instanceof MeetError || e instanceof GoogleApiError) return e.message;
   return (e as Error)?.message || String(e);
+}
+
+/** Google error during a sync: limits / busy / unreachable → queued with backoff (never lost,
+ *  never hammered); other errors → Sync Failed. Always records Google's HTTP status + reason. */
+async function handleSyncError(key: string, e: unknown, by: string): Promise<never> {
+  const g = classify(e);
+  const row = await getRow(key).catch(() => null);
+  const n = (row?.sync_attempts || 0) + 1, now = new Date();
+  let status = "failed", msg = explain(e), next: string | null = null;
+  if (g.kind === "calendar_limit") { next = await pauseCalendar(g); status = "pending"; msg = LIMIT_MSG; }
+  else if (g.kind === "rate_limit") { next = new Date(now.getTime() + RETRY.rate(n)).toISOString(); status = "pending"; msg = RATE_MSG; }
+  else if (g.kind === "transient" || (e instanceof MeetError && e.code === "NO_MEET")) { next = new Date(now.getTime() + RETRY.transient(n)).toISOString(); status = "pending"; msg = "Google could not finish this sync yet. The system will retry automatically."; }
+  await save(key, {
+    google_sync_status: status, google_sync_error: msg.slice(0, 500), updated_by: by,
+    sync_attempts: n, next_retry_at: next, last_sync_attempt_at: now.toISOString(),
+    last_error_status: g.status, last_error_reason: g.reason || g.kind,
+    ...(row?.google_calendar_event_id ? {} : { calendar_event_status: "failed" }),
+  }).catch(() => {});
+  if (status === "pending") throw Object.assign(new MeetError(429, "GOOGLE_LIMITED", msg), { nextRetryAt: next, googleStatus: g.status, googleReason: g.reason });
+  throw e;
+}
+
+/** Calendar writes are paused for the organizer → keep the class queued (nothing is lost). */
+async function queueForLater(info: ClassInfo, until: string, by: string) {
+  await adminClient().from(T).upsert({ ...rowFields(info), google_sync_status: "pending", created_by: by }, { onConflict: "occurrence_key", ignoreDuplicates: true });
+  const row = await save(info.key, { google_sync_status: "pending", google_sync_error: LIMIT_MSG, next_retry_at: until, updated_by: by });
+  return { row, queued: true, message: LIMIT_MSG, nextRetryAt: until, notInvited: row?.not_invited || [] };
 }
 
 async function fail(key: string, e: unknown, by: string) {
@@ -336,11 +377,30 @@ async function linkFields(org: { calendarId: string; organizerEmail: string | nu
   if (!m.url) throw new MeetError(502, "NO_MEET", m.failed ? "Google could not create a Meet link for this event (Meet may be disabled for the organizer account)." : "Google created the event but has not attached a Meet link yet — use Retry Sync.");
   const space = m.code ? await getSpaceByMeetingCode(m.code) : null;
   const { invited, notInvited } = attendeesOf(info);
+  const v = verifyAttendees(info, ev), now = new Date().toISOString();
+  // "Synced" only when every required part is confirmed by Google's own answer.
+  let status = "synced", err: string | null = null, next: string | null = null;
+  if (v.trainer === "missing_email") { status = "failed"; err = "The trainer has no email address — add it (HR employee record) and the invitation is sent."; }
+  else if (v.trainer === "not_configured") { status = "failed"; err = "No trainer is assigned to this class."; }
+  else if (v.trainer === "failed" || v.review === "failed") { status = "pending"; err = "Google did not confirm every invitation yet. The system will retry automatically."; next = new Date(Date.now() + RETRY.transient(1)).toISOString(); }
   return {
     ...rowFields(info), google_calendar_id: org.calendarId, google_calendar_event_id: ev.id, google_meet_url: m.url, google_meet_code: m.code,
     google_meet_space_name: space?.name || null, organizer_email: ev.organizer?.email || org.organizerEmail,
-    google_sync_status: "synced", google_sync_error: null, last_google_sync_at: new Date().toISOString(),
+    google_sync_status: status, google_sync_error: err, last_google_sync_at: now,
     reminder_minutes: reminders, invited, not_invited: notInvited,
+    calendar_event_status: "ok", meet_status: "ok", trainer_invite_status: v.trainer, review_invite_status: v.review,
+    trainer_calendar_invited: v.trainer === "ok", last_verified_at: now, last_sync_attempt_at: now, next_retry_at: next,
+    ...(status === "synced" ? { sync_attempts: 0, last_error_status: null, last_error_reason: null } : {}),
+  };
+}
+
+/** Is the trainer / review address really an attendee of the event Google returned? */
+function verifyAttendees(info: ClassInfo, ev: any) {
+  const got = new Set((ev?.attendees || []).map((x: any) => String(x.email || "").trim().toLowerCase()));
+  const t = info.trainer?.email || null;
+  return {
+    trainer: !info.trainer ? "not_configured" : !t ? "missing_email" : got.has(t) ? "ok" : "failed",
+    review: !info.reviewEmail ? "not_configured" : got.has(info.reviewEmail) ? "ok" : "failed",
   };
 }
 
@@ -355,6 +415,9 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
     return { row: existing, already: true, notInvited: existing.not_invited || [] };
   }
   const org = await requireOrganizer();
+  // Google limited the organizer → queue the class, don't call Google.
+  const pause = await calendarPause();
+  if (pause) return queueForLater(info, pause.until, a.email);
   await claim(info, a.email);
   try {
     const reminders = existing?.reminder_minutes?.length ? existing.reminder_minutes : org.defaultReminders;
@@ -367,7 +430,15 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
     // organizer can grant co-host (Google Workspace); an OPEN link while it can't (personal
     // Gmail) — otherwise uninvited students would wait with nobody able to admit them.
     const access = (await cohostSupported()) ? "TRUSTED" : "OPEN";
-    const space = await createSpace(access).catch(() => null);
+    // One Meet room per class: a room made by an earlier attempt that never reached Calendar
+    // (e.g. Google limited the event) is reused — retries never create another room.
+    let space: { name: string; meetingUri: string; meetingCode: string } | null =
+      !existing?.google_calendar_event_id && existing?.google_meet_space_name && existing?.google_meet_code
+        ? { name: existing.google_meet_space_name, meetingCode: existing.google_meet_code, meetingUri: "https://meet.google.com/" + existing.google_meet_code } : null;
+    if (!space) {
+      space = await createSpace(access).catch(() => null);
+      if (space) await save(key, { google_meet_space_name: space.name, google_meet_code: space.meetingCode }).catch(() => {});
+    }
     const conference = space ? conferenceFor(space) : newConference();
     try {
       ev = await Cal.insertEvent(org.calendarId, { ...body, id, conferenceData: conference });
@@ -378,6 +449,7 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
       const reopen = ev.status === "cancelled";
       ev = await Cal.patchEvent(org.calendarId, id, { ...body, ...(reopen ? { status: "confirmed" } : {}), ...(Cal.meetFromEvent(ev).url ? {} : { conferenceData: conference }) }, reopen);
     }
+    await clearPause();
     ev = await settle(org.calendarId, ev);
     const row0 = await save(key, { ...(await linkFields(org, ev, info, reminders)), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
     const row = await setAccess(key, row0, space && Cal.meetFromEvent(ev).code === space.meetingCode && access === "OPEN" ? "open" : "trusted");
@@ -386,8 +458,7 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
     const withHost = await assignCohost(info, row, a.email);
     return { row: withHost, already: false, notInvited: withHost?.not_invited || [] };
   } catch (e) {
-    await fail(key, e, a.email);
-    throw e;
+    return handleSyncError(key, e, a.email);
   }
 }
 
@@ -399,13 +470,22 @@ export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint
   const row = await getRow(key);
   if (!row?.google_calendar_event_id || row.class_status === "cancelled") return { row, skipped: true };
   const org = await requireOrganizer();
+  const pause = await calendarPause();
+  if (pause) return { ...(await queueForLater(info, pause.until, a.email)), skipped: true };
   await claim(info, a.email);
   try {
     const reminders = row.reminder_minutes?.length ? row.reminder_minutes : org.defaultReminders;
     const cal = row.google_calendar_id || org.calendarId;
-    // status "confirmed" also restores an event someone cancelled directly in Google Calendar.
-    let ev = await Cal.patchEvent(cal, row.google_calendar_event_id, { ...eventBody(info, reminders), status: "confirmed" }, true);
+    // Read the event first and write ONLY what differs. Invitation emails (sendUpdates=all) go out
+    // only when the time or the guest list changes, or on an explicit Resend — a retry / check of
+    // an unchanged event costs one read and sends nobody another email.
+    const body: any = { ...eventBody(info, reminders), status: "confirmed" };
+    let ev: any = await Cal.getEvent(cal, row.google_calendar_event_id);
+    const d = eventDiff(ev, body);
+    if (d.restore || d.time || d.guests || why === "resend") ev = await Cal.patchEvent(cal, ev.id, body, true);
+    else if (d.text) ev = await Cal.patchEvent(cal, ev.id, body, false);
     if (!Cal.meetFromEvent(ev).url) ev = await Cal.patchEvent(cal, ev.id, { conferenceData: newConference() }, false);
+    if (d.restore || d.time || d.guests || d.text || why === "resend") await clearPause();
     ev = await settle(cal, ev);
     const saved = await save(key, { ...(await linkFields({ ...org, calendarId: cal }, ev, info, reminders)), updated_by: a.email });
     if (row.trainer_id && info.trainerId && row.trainer_id !== info.trainerId) await logEvent(key, "Trainer changed", info.trainer?.name || null, a.email);
@@ -415,9 +495,21 @@ export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint
     const withHost = await assignCohost(info, saved, a.email);
     return { row: withHost, skipped: false, notInvited: withHost?.not_invited || [] };
   } catch (e) {
-    await fail(key, e, a.email);
-    throw e;
+    return handleSyncError(key, e, a.email);
   }
+}
+
+/** What differs between Google's event and what the ERP says it should be. */
+export function eventDiff(ev: any, body: any) {
+  const restore = !ev || ev.status === "cancelled";
+  const t = (x: any) => Date.parse(String(x?.dateTime || "") + (/[zZ]|[+-]\d\d:\d\d$/.test(String(x?.dateTime || "")) ? "" : "+05:30"));
+  const time = !restore && (t(ev.start) !== t(body.start) || t(ev.end) !== t(body.end));
+  const have = new Set((ev?.attendees || []).filter((x: any) => !x.organizer && !x.self).map((x: any) => String(x.email || "").toLowerCase()));
+  const want = new Set((body.attendees || []).map((x: any) => String(x.email || "").toLowerCase()));
+  const guests = !restore && (have.size !== want.size || [...want].some((e) => !have.has(e)));
+  const rem = (r: any) => JSON.stringify(((r?.overrides) || []).map((o: any) => o.method + o.minutes).sort());
+  const text = !restore && (ev.summary !== body.summary || (ev.description || "") !== body.description || rem(ev.reminders) !== rem(body.reminders));
+  return { restore, time, guests, text };
 }
 
 export async function resendInvitations(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
@@ -447,10 +539,17 @@ export async function cancelClassMeeting(a: JarvisAuthContext, key: string, reas
   await logEvent(key, "Class cancelled", reason || null, a.email);
   if (!row.google_calendar_event_id) return { row: await save(key, { ...cancelled, google_sync_status: "pending" }), already: false };
   await save(key, cancelled);
+  const pause = await calendarPause();
+  if (pause) return { row: await save(key, { google_sync_status: "pending", next_retry_at: pause.until }), already: false, queued: true, message: "Class cancelled. " + LIMIT_MSG };
   try {
     await Cal.cancelEvent(row.google_calendar_id || (await loadOrganizer()).calendarId, row.google_calendar_event_id);
     return { row: await save(key, { google_sync_status: "cancelled", last_google_sync_at: new Date().toISOString() }), already: false };
   } catch (e) {
+    const g = classify(e);
+    if (g.kind === "calendar_limit" || g.kind === "rate_limit" || g.kind === "transient") {
+      const next = g.kind === "calendar_limit" ? await pauseCalendar(g) : new Date(Date.now() + RETRY.rate(1)).toISOString();
+      return { row: await save(key, { google_sync_status: "pending", next_retry_at: next, last_error_status: g.status, last_error_reason: g.reason || g.kind }), already: false, queued: true, message: "Class cancelled. " + LIMIT_MSG };
+    }
     await fail(key, e, a.email);
     throw new MeetError(502, "GOOGLE", "The class is cancelled in the ERP, but Google Calendar could not be updated: " + explain(e) + " — use Retry Sync.");
   }
@@ -461,10 +560,19 @@ export async function retryCancel(a: JarvisAuthContext, key: string) {
   if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only Academic Head, Class Coordinator or Operations Manager can retry a sync.");
   const row = await getRow(key);
   if (!row?.google_calendar_event_id) return { row };
+  const pause = await calendarPause();
+  if (pause) return { row: await save(key, { google_sync_status: "pending", next_retry_at: pause.until }), queued: true };
   try {
     await Cal.cancelEvent(row.google_calendar_id || (await loadOrganizer()).calendarId, row.google_calendar_event_id);
     return { row: await save(key, { google_sync_status: "cancelled", google_sync_error: null, last_google_sync_at: new Date().toISOString() }) };
-  } catch (e) { await fail(key, e, a.email); throw e; }
+  } catch (e) {
+    const g = classify(e);
+    if (g.kind === "calendar_limit" || g.kind === "rate_limit" || g.kind === "transient") {
+      const next = g.kind === "calendar_limit" ? await pauseCalendar(g) : new Date(Date.now() + RETRY.rate((row.sync_attempts || 0) + 1)).toISOString();
+      return { row: await save(key, { google_sync_status: "pending", next_retry_at: next, sync_attempts: (row.sync_attempts || 0) + 1, last_error_status: g.status, last_error_reason: g.reason || g.kind }), queued: true };
+    }
+    await fail(key, e, a.email); throw e;
+  }
 }
 
 /** Academic team fills a missing trainer email: HR record (personal_email) — never the login email. */
@@ -656,6 +764,80 @@ async function checkAttendanceConfirmed(info: ClassInfo, row: any, actor: string
   return save(info.key, { attendance_review_status: "confirmed" });
 }
 
+// ── Sync queue (concurrency 1, paced) ─────────────────────────────────────────────────────
+// Classes waiting for Google (google_sync_status 'pending' + next_retry_at) are synced one at a
+// time, a few seconds apart, only while Google isn't limiting the organizer. Existing synced
+// classes are verified (event read back: trainer + review invited, co-host) and repaired IN
+// PLACE — never a second event or Meet. Runs in the background after enqueue, and whenever an
+// Academic manager has Live Classes open.
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+const hintOf = (row: any) => ({ start: row?.start_time ? String(row.start_time).slice(0, 5) : undefined });
+
+/** force: also re-check classes already marked Synced (e.g. trainer changed) — the SAME event is updated. */
+export async function enqueue(a: JarvisAuthContext, keys: string[], starts: Record<string, string> = {}, force = false) {
+  if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only the Academic team can create Meet links.");
+  const pause = await calendarPause();
+  const when = pause?.until || new Date().toISOString();
+  let queued = 0, skipped = 0;
+  for (const key of (keys || []).slice(0, 80)) {
+    try {
+      const row = await getRow(key);
+      if (row?.class_status === "cancelled" || (!force && row?.google_sync_status === "synced" && row.google_meet_url)) { skipped++; continue; }
+      if (!row) {
+        const info = await resolveClass(key, { start: starts[key] });
+        await adminClient().from(T).upsert({ ...rowFields(info), google_sync_status: "pending", created_by: a.email }, { onConflict: "occurrence_key", ignoreDuplicates: true });
+      }
+      await save(key, { google_sync_status: "pending", google_sync_error: pause ? LIMIT_MSG : null, next_retry_at: when, updated_by: a.email });
+      queued++;
+    } catch { skipped++; }
+  }
+  return { queued, skipped, pausedUntil: pause?.until || null };
+}
+
+export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
+  if (!canManage(a)) return { processed: 0, verified: 0, skipped: "not_allowed" };
+  if (await calendarPause()) return { processed: 0, verified: 0, pausedUntil: (await calendarPause())?.until };
+  if (!(await takeQueueLock(budgetMs + 15_000))) return { processed: 0, verified: 0, skipped: "busy" };
+  const t0 = Date.now(), sb = adminClient(), now = new Date().toISOString();
+  let processed = 0, verified = 0;
+  try {
+    // 1) classes waiting for Google (and cancellations that haven't reached Google yet)
+    const { data: due } = await sb.from(T).select("*").eq("google_sync_status", "pending").gte("class_date", today())
+      .or(`next_retry_at.is.null,next_retry_at.lte.${now}`).order("class_date").order("start_time").limit(10);
+    for (const row of due || []) {
+      if (Date.now() - t0 > budgetMs || (await calendarPause())) break;
+      try {
+        if (row.class_status === "cancelled") await retryCancel(a, row.occurrence_key);
+        else if (row.google_calendar_event_id) await updateClassMeeting(a, row.occurrence_key, hintOf(row), "retry");
+        else await createClassMeeting(a, row.occurrence_key, hintOf(row));
+      } catch (e) {
+        if (e instanceof MeetError && e.code === "GOOGLE_LIMITED") { if (await calendarPause()) break; }
+        // The class itself can't be synced (batch removed / inactive / no time) → stop retrying it.
+        else if (e instanceof MeetError && ["NOT_FOUND", "NOT_ACTIVE", "NO_TIME", "BAD_KEY", "CANCELLED"].includes(e.code)) {
+          await save(row.occurrence_key, { google_sync_status: "failed", google_sync_error: e.message, next_retry_at: null }).catch(() => {});
+        }
+      }
+      processed++;
+      await sleep(2500);
+    }
+    // 2) verify + repair classes already marked Synced (read first; write only if something is missing)
+    const { data: chk } = await sb.from(T).select("*").eq("google_sync_status", "synced").eq("class_status", "scheduled").gte("class_date", today())
+      .or("last_verified_at.is.null,trainer_invite_status.neq.ok,cohost_status.in.(pending,failed)").order("class_date").order("start_time").limit(8);
+    for (const row of chk || []) {
+      if (Date.now() - t0 > budgetMs || (await calendarPause())) break;
+      try { await updateClassMeeting(a, row.occurrence_key, hintOf(row), "retry"); }
+      catch (e) {
+        if (e instanceof MeetError && e.code === "GOOGLE_LIMITED" && (await calendarPause())) break;
+        await save(row.occurrence_key, { last_verified_at: new Date().toISOString() }).catch(() => {});   // don't re-pick it every run
+      }
+      verified++;
+      await sleep(1200);
+    }
+  } finally { await releaseQueueLock(); }
+  const { count } = await sb.from(T).select("occurrence_key", { count: "exact", head: true }).eq("google_sync_status", "pending").gte("class_date", today());
+  return { processed, verified, remaining: count || 0, pausedUntil: (await calendarPause())?.until || null };
+}
+
 export async function getMeetingDetails(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
   let info: ClassInfo | null = null;
   try { info = await resolveClass(key, hint); } catch (e) { if (!(e instanceof MeetError) || e.status !== 404) throw e; }
@@ -663,10 +845,13 @@ export async function getMeetingDetails(a: JarvisAuthContext, key: string, hint:
   const trainerId = info?.trainerId ?? row?.trainer_id ?? null;
   if (!canView(a, trainerId)) throw new MeetError(403, "FORBIDDEN", "You can only see your own classes.");
   // Don't hide drift: an event deleted directly in Google Calendar shows as Sync Failed.
-  if (row?.google_calendar_event_id && row.class_status === "scheduled" && row.google_sync_status === "synced") {
+  // Read-back check at most every 15 minutes per class, and never while Google is limiting us.
+  const fresh = row?.last_verified_at && Date.now() - Date.parse(row.last_verified_at) < 15 * 60_000;
+  if (row?.google_calendar_event_id && row.class_status === "scheduled" && row.google_sync_status === "synced" && !fresh && !(await calendarPause())) {
     try {
       const ev = await Cal.getEvent(row.google_calendar_id || "primary", row.google_calendar_event_id);
       if (ev?.status === "cancelled") row = await save(key, { google_sync_status: "failed", google_sync_error: "The event was cancelled or deleted directly in Google Calendar — use Retry Sync to restore it." });
+      else if (info) { const v = verifyAttendees(info, ev); row = await save(key, { last_verified_at: new Date().toISOString(), trainer_invite_status: v.trainer, review_invite_status: v.review, trainer_calendar_invited: v.trainer === "ok" }); }
     } catch (e) {
       if (e instanceof GoogleApiError && (e.status === 404 || e.status === 410)) row = await save(key, { google_sync_status: "failed", google_sync_error: "The event no longer exists in Google Calendar — use Retry Sync to restore it." });
     }
