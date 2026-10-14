@@ -394,11 +394,143 @@
       it.appendChild(bg); it.appendChild(im); it.classList.add('has-m');
     });
   }
+  // ── Banner carousel (every dashboard: the ONE #celebration-banner-slot) ──────────────────
+  // 0 banners → slot hidden (its :empty rule) · 1 → static · 2+ → one at a time, sliding
+  // horizontally every BANNER_AUTOPLAY_INTERVAL ms, in the order the renderer put them.
+  // The renderers keep writing plain .be-celeb-banner-item children; this only adds a class,
+  // per-item transforms and a dots bar — the banner DOM is never rebuilt on a tick.
+  var BANNER_AUTOPLAY_INTERVAL = 3000;
+  var CAR_CSS =
+    '#celebration-banner-slot.be-car{display:flex!important;flex-wrap:nowrap;overflow:hidden;position:relative;touch-action:pan-y;border-radius:12px;user-select:none;-webkit-user-select:none}' +
+    '#celebration-banner-slot.be-car>.be-celeb-banner-item{flex:0 0 100%;min-width:100%;margin:0!important;transition:transform .6s cubic-bezier(.22,.61,.36,1);will-change:transform}' +
+    '#celebration-banner-slot.be-car.drag>.be-celeb-banner-item{transition:none}' +
+    '#celebration-banner-slot.be-car img,#celebration-banner-slot.be-car video{-webkit-user-drag:none;user-select:none}' +
+    // a wide phone strip keeps its slow auto-pan, but the finger swipes slides, not the strip
+    '#celebration-banner-slot.be-car>.be-celeb-banner-item.pan{overflow-x:hidden!important}' +
+    '.be-car-dots{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);z-index:6;display:flex;gap:4px;padding:3px 5px;border-radius:999px;background:rgba(8,10,18,.35)}' +
+    '.be-car-dot{width:16px;height:16px;padding:0;border:0;background:none;cursor:pointer;display:grid;place-items:center}' +
+    '.be-car-dot::before{content:"";width:6px;height:6px;border-radius:999px;background:rgba(255,255,255,.5);transition:width .3s,background .3s}' +
+    '.be-car-dot[aria-current="true"]::before{width:16px;background:#fff}' +
+    '.be-car-dot:focus-visible{outline:2px solid #ff6b06;outline-offset:1px;border-radius:999px}' +
+    '@media (prefers-reduced-motion:reduce){#celebration-banner-slot.be-car>.be-celeb-banner-item{transition:none}}';
+  function carCss() { if (!document.getElementById('be-car-css')) { var st = document.createElement('style'); st.id = 'be-car-css'; st.textContent = CAR_CSS; document.head.appendChild(st); } }
+
+  function bannerCarousel(slot) {
+    if (slot._car) return slot._car;
+    var st = { idx: 0, items: [], timer: 0, hover: false, drag: null, dots: null };
+    function items() { return [].slice.call(slot.children).filter(function (n) { return n.classList && n.classList.contains('be-celeb-banner-item'); }); }
+    function place(px) {
+      st.items.forEach(function (it, i) {
+        it.style.transform = 'translateX(calc(' + (-st.idx * 100) + '% + ' + (px || 0) + 'px))';
+        var on = i === st.idx;
+        if (on) it.removeAttribute('aria-hidden'); else it.setAttribute('aria-hidden', 'true');
+        it.setAttribute('aria-label', (i + 1) + ' of ' + st.items.length);
+      });
+      if (st.dots) [].forEach.call(st.dots.children, function (d, i) { d.setAttribute('aria-current', i === st.idx ? 'true' : 'false'); });
+    }
+    function schedule() {
+      clearTimeout(st.timer);
+      if (st.items.length < 2 || st.hover || st.drag || document.hidden) return;
+      st.timer = setTimeout(function () { go(st.idx + 1); }, BANNER_AUTOPLAY_INTERVAL);
+    }
+    function go(i) {
+      var n = st.items.length; if (n < 2) return;
+      st.idx = ((i % n) + n) % n;
+      place(0);
+      // the slide after this one is already in the DOM; make sure its image is decoded
+      var nx = st.items[(st.idx + 1) % n], im = nx && nx.querySelector('img');
+      if (im && im.decode) im.decode().catch(function () {});
+      schedule();
+    }
+    function teardown() {
+      clearTimeout(st.timer);
+      slot.classList.remove('be-car', 'drag');
+      ['role', 'aria-roledescription', 'aria-label'].forEach(function (a) { slot.removeAttribute(a); });
+      st.items.forEach(function (it) { it.style.transform = ''; ['role', 'aria-roledescription', 'aria-hidden', 'aria-label'].forEach(function (a) { it.removeAttribute(a); }); });
+      if (st.dots && st.dots.parentNode) st.dots.parentNode.removeChild(st.dots);
+      st.dots = null; st.items = []; st.idx = 0;
+    }
+    function sync() {
+      var now = items();
+      var same = now.length === st.items.length && now.every(function (n, i) { return n === st.items[i]; });
+      if (same && (now.length < 2 || (st.dots && st.dots.parentNode === slot))) return;
+      if (now.length < 2) { teardown(); return; }
+      carCss();
+      var keep = same ? st.idx : 0;
+      st.items = now;
+      slot.classList.add('be-car');
+      slot.setAttribute('role', 'region'); slot.setAttribute('aria-roledescription', 'carousel'); slot.setAttribute('aria-label', 'Announcements');
+      now.forEach(function (it) { it.setAttribute('role', 'group'); it.setAttribute('aria-roledescription', 'slide'); });
+      if (!st.dots || st.dots.parentNode !== slot) {
+        st.dots = document.createElement('div'); st.dots.className = 'be-car-dots';
+        st.dots.setAttribute('role', 'group'); st.dots.setAttribute('aria-label', 'Choose banner');
+      }
+      st.dots.innerHTML = now.map(function (_, i) { return '<button type="button" class="be-car-dot" data-i="' + i + '" aria-label="Show banner ' + (i + 1) + ' of ' + now.length + '"></button>'; }).join('');
+      if (st.dots.parentNode !== slot) slot.appendChild(st.dots);
+      st.idx = Math.min(keep, now.length - 1);
+      place(0); schedule();
+    }
+
+    slot.addEventListener('click', function (e) {
+      var d = e.target.closest && e.target.closest('.be-car-dot');
+      if (d && slot.classList.contains('be-car')) { e.preventDefault(); go(+d.getAttribute('data-i')); }
+    });
+    // pause while a mouse is over the banner (not on touch: there is no hover)
+    slot.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') { st.hover = true; clearTimeout(st.timer); } });
+    slot.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { st.hover = false; schedule(); } });
+    // swipe (finger) / drag (mouse): follows the pointer, then snaps to the next/previous slide
+    slot.addEventListener('pointerdown', function (e) {
+      if (!slot.classList.contains('be-car') || (e.target.closest && e.target.closest('.be-car-dots'))) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      st.drag = { x: e.clientX, y: e.clientY, dx: 0, id: e.pointerId, horiz: null };
+      clearTimeout(st.timer);
+    });
+    slot.addEventListener('pointermove', function (e) {
+      var d = st.drag; if (!d || e.pointerId !== d.id) return;
+      var dx = e.clientX - d.x, dy = e.clientY - d.y;
+      if (d.horiz === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        d.horiz = Math.abs(dx) > Math.abs(dy);
+        if (!d.horiz) { st.drag = null; schedule(); return; }      // vertical: let the page scroll
+        slot.classList.add('drag');
+        try { slot.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+      if (!d.horiz) return;
+      var n = st.items.length;
+      d.dx = (st.idx === 0 && dx > 0) || (st.idx === n - 1 && dx < 0) ? dx / 3 : dx;   // resist at the ends
+      place(d.dx);
+    });
+    function end(e) {
+      var d = st.drag; if (!d || (e && e.pointerId !== d.id)) return;
+      st.drag = null; slot.classList.remove('drag');
+      var w = slot.clientWidth || 1;
+      if (d.horiz && Math.abs(d.dx) > Math.min(60, w * 0.15)) {
+        var n = st.items.length, to = st.idx + (d.dx < 0 ? 1 : -1);
+        go(to < 0 ? n - 1 : to >= n ? 0 : to);
+      } else { place(0); schedule(); }
+      if (d.horiz) { var stop = function (ev) { ev.stopPropagation(); ev.preventDefault(); }; slot.addEventListener('click', stop, { capture: true, once: true }); setTimeout(function () { slot.removeEventListener('click', stop, true); }, 0); }
+    }
+    slot.addEventListener('pointerup', end);
+    slot.addEventListener('pointercancel', end);
+    slot.addEventListener('dragstart', function (e) { if (slot.classList.contains('be-car')) e.preventDefault(); });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) clearTimeout(st.timer); else schedule(); });
+    window.addEventListener('resize', function () { if (st.items.length > 1) place(0); });
+
+    try { new MutationObserver(sync).observe(slot, { childList: true }); } catch (_) {}
+    slot._car = { sync: sync, go: go };
+    sync();
+    return slot._car;
+  }
+  function carouselSlots() {
+    var s = document.getElementById('celebration-banner-slot');
+    if (s) bannerCarousel(s);
+  }
+
   try {
     new MutationObserver(function (muts) {
-      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.matches && n.matches('.be-celeb-banner-item img[loading="lazy"]')) n.loading = 'eager'; else eagerBanners(n); if (n.parentNode) artDirect(n.parentNode); } }); });
+      muts.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.matches && n.matches('.be-celeb-banner-item img[loading="lazy"]')) n.loading = 'eager'; else eagerBanners(n); if (n.parentNode) artDirect(n.parentNode); if (n.id === 'celebration-banner-slot' || (n.querySelector && n.querySelector('#celebration-banner-slot'))) carouselSlots(); } }); });
     }).observe(document.documentElement, { childList: true, subtree: true });
-    if (document.body) eagerBanners(document.body);
+    if (document.body) { eagerBanners(document.body); carouselSlots(); }
+    else document.addEventListener('DOMContentLoaded', carouselSlots);
   } catch (_) {}
 
   window.BEShell = { header: header, openPalette: openPalette, formatDate: formatDate };
