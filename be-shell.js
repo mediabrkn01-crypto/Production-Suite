@@ -118,10 +118,11 @@
       '.bes-sub{display:none!important}' +
       '.bes-actions{width:100%;justify-content:flex-start}' +
       '.be-celeb-banner-slot{max-width:100%;box-sizing:border-box;overflow:hidden;border-radius:12px}' +
-      '.be-celeb-banner-slot .be-celeb-banner-item{height:auto!important;max-width:100%;margin-bottom:8px;border-radius:12px;box-sizing:border-box}' +
+      '.be-celeb-banner-slot .be-celeb-banner-item:not(.bm){height:auto!important}' +
+      '.be-celeb-banner-slot .be-celeb-banner-item{max-width:100%;margin-bottom:8px;border-radius:12px;box-sizing:border-box}' +
       '.be-celeb-banner-slot .be-celeb-banner-item:last-child{margin-bottom:0}' +
       /* the artwork's own aspect ratio — whole image visible, never cropped or stretched */
-      '.be-celeb-banner-slot .be-celeb-banner-item img,.be-celeb-banner-slot .be-celeb-banner-item video{display:block;width:100%!important;height:auto!important;max-width:100%;object-fit:contain}' +
+      '.be-celeb-banner-slot .be-celeb-banner-item:not(.bm) img,.be-celeb-banner-slot .be-celeb-banner-item:not(.bm) video{display:block;width:100%!important;height:auto!important;max-width:100%;object-fit:contain}' +
       '.be-celeb-banner-close{width:26px;height:26px;top:6px;right:6px;font-size:13px}' +
       '.bes-att{padding:11px 12px;gap:10px;border-radius:14px}' +
       '.bes-att-l{gap:10px;flex:1 1 170px}' +
@@ -326,74 +327,80 @@
     (root.querySelectorAll ? root.querySelectorAll('.be-celeb-banner-item img[loading="lazy"]') : []).forEach(function (img) { img.loading = 'eager'; });
     artDirect(root);
   }
-  // Phones: the 1920×400 desktop banner shrinks to ~80px tall and becomes unreadable. When the
-  // event has a taller image (HR's "Mobile banner", else its popup artwork) the renderers pass it
-  // as data-m; on phones that image is shown whole (contain — nothing cropped or stretched) on a
-  // blurred backdrop of itself, at a proper 170–220px height. Desktop keeps the wide banner.
+  // PHONES (≤640px) — art-directed banners (mobile Option 3, approved 2026-10-14). Desktop is
+  // untouched: everything below only applies inside the phone media query.
+  //  • Event has a PHONE banner (HR "Phone banner" image → data-m, "Phone video" → data-mv):
+  //    shown in a 2:1 box, whole (contain — never cropped or stretched) on a blurred copy of itself.
+  //    Phones never download the wide desktop video when a phone version exists.
+  //  • No phone version (Option 1 fallback): the full wide banner, contain, centred on a blurred
+  //    copy of itself in a compact 84–104px box — no sideways pan, no empty space underneath.
+  //    A video gets one still frame (canvas) for its blur, so only one video ever plays.
+  // In the carousel every slide stretches to the same height, so mixed slides never leave gaps.
   var BANNER_CSS = '@media (max-width:640px){' +
-    '.be-celeb-banner-slot .be-celeb-banner-item.has-m{position:relative;height:clamp(170px,52vw,220px)!important;overflow:hidden;border-radius:16px;background:#0b0e1a;isolation:isolate}' +
-    '.be-celeb-banner-item.has-m .bcb-bg{position:absolute;inset:-24px;z-index:-1;background-size:cover;background-position:center;filter:blur(22px) brightness(.45) saturate(1.15)}' +
-    '.be-celeb-banner-slot .be-celeb-banner-item.has-m img.bcb-m{display:block;width:100%!important;height:100%!important;object-fit:contain!important}' +
-    '.be-celeb-banner-slot .be-celeb-banner-item.has-m .bcb-d{display:none!important}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.bm{position:relative;overflow:hidden;border-radius:14px;background:#0b0e1a;isolation:isolate}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.bm-art{height:auto!important;aspect-ratio:2/1}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.bm-fit{height:clamp(84px,25vw,104px)!important}' +
+    '#celebration-banner-slot.be-car>.be-celeb-banner-item.bm-fit{height:auto!important;min-height:clamp(84px,25vw,104px)}' +
+    '#celebration-banner-slot.be-car{align-items:stretch}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.bm .bcb-bg{position:absolute;left:-24px;top:-24px;z-index:-1;width:calc(100% + 48px)!important;height:calc(100% + 48px)!important;max-width:none!important;object-fit:cover;filter:blur(20px) brightness(.5) saturate(1.15);pointer-events:none}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.bm .bcb-fg{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-width:100%;object-fit:contain!important;pointer-events:none}' +
+    '.be-celeb-banner-slot .be-celeb-banner-item.bm .bcb-d{display:none!important}' +
     '}' +
-    '@media (min-width:641px){.be-celeb-banner-item .bcb-m,.be-celeb-banner-item .bcb-bg{display:none!important}}' +
-    // Wide-only banner on a phone (no taller artwork uploaded): show it at a readable height as a
-    // swipeable strip that pans slowly end to end — the whole artwork, never cropped or squeezed.
-    '@media (max-width:640px){' +
-    '.be-celeb-banner-slot .be-celeb-banner-item.pan{height:clamp(104px,30vw,132px)!important;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:16px;position:relative}' +
-    '.be-celeb-banner-item.pan::-webkit-scrollbar{display:none}' +
-    '.be-celeb-banner-slot .be-celeb-banner-item.pan img.bcb-d{display:block;height:100%!important;width:auto!important;max-width:none!important;object-fit:contain!important}' +
-    '}';
+    '@media (min-width:641px){.be-celeb-banner-item .bcb-m,.be-celeb-banner-item .bcb-bg{display:none!important}}';
   function bannerCss() { if (!document.getElementById('bcb-css')) { var st = document.createElement('style'); st.id = 'bcb-css'; st.textContent = BANNER_CSS; document.head.appendChild(st); } }
-  var PHONE = window.matchMedia ? window.matchMedia('(max-width:640px)') : { matches: false };
-  var REDUCED = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  // Slow ping-pong pan of a wide banner strip; stops for good once the employee touches it.
-  function panStrip(box) {
-    if (box._pan) return; box._pan = true;
-    var dir = 1, hold = 0, stopped = false, last = 0;
-    function stop() { stopped = true; }
-    box.addEventListener('pointerdown', stop, { passive: true }); box.addEventListener('touchstart', stop, { passive: true }); box.addEventListener('wheel', stop, { passive: true });
-    if (REDUCED.matches) return;
-    (function step(t) {
-      if (stopped || !box.isConnected) return;
-      var max = box.scrollWidth - box.clientWidth;
-      if (max > 4 && !document.hidden) {
-        if (hold > t) { requestAnimationFrame(step); return; }
-        var dt = last ? Math.min(64, t - last) : 16; last = t;
-        box.scrollLeft += dir * dt * 0.035;                 // ~35px per second
-        if (box.scrollLeft >= max - 1 && dir > 0) { dir = -1; hold = t + 1800; }
-        else if (box.scrollLeft <= 0 && dir < 0) { dir = 1; hold = t + 1800; }
-      } else last = 0;
-      requestAnimationFrame(step);
-    })(0);
+  var PHONE = window.matchMedia ? window.matchMedia('(max-width:640px)') : { matches: false, addEventListener: function () {} };
+
+  function bannerVideo(src) {
+    var v = document.createElement('video');
+    v.muted = true; v.defaultMuted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.preload = 'metadata';
+    ['muted', 'loop', 'autoplay', 'playsinline', 'disablepictureinpicture', 'disableremoteplayback'].forEach(function (a) { v.setAttribute(a, ''); });
+    v.src = src;
+    v.addEventListener('canplay', function () { var p = v.play && v.play(); if (p && p.catch) p.catch(function () {}); }, { once: true });
+    return v;
   }
-  function widePan(root) {
-    var list = root.matches && root.matches('.be-celeb-banner-item') ? [root] : [].slice.call(root.querySelectorAll ? root.querySelectorAll('.be-celeb-banner-item') : []);
-    list.forEach(function (it) {
-      if (it.classList.contains('has-m') || it.classList.contains('pan') || it.hasAttribute('data-m')) return;
-      var img = it.querySelector('img'); if (!img || it.querySelector('video')) return;
-      function check() {
-        if (!PHONE.matches || !img.naturalWidth || img.naturalWidth / img.naturalHeight < 2.6) return;
-        bannerCss(); img.classList.add('bcb-d'); it.classList.add('pan'); panStrip(it);
+  // One still frame of a video as the blurred backdrop (drawing a cross-origin frame is fine for display).
+  function videoStill(v, it) {
+    var c = document.createElement('canvas'); c.className = 'bcb-bg'; c.width = 160; c.height = 80;
+    function draw() { try { c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); } catch (_) {} }
+    if (v.readyState >= 2) draw(); else v.addEventListener('loadeddata', draw, { once: true });
+    it.insertBefore(c, it.firstChild);
+  }
+  function enhance(it) {
+    if (it._bm) return;
+    var m = it.getAttribute('data-m'), mv = it.getAttribute('data-mv');
+    var d = it.querySelector('img,video'); if (!d && !m && !mv) return;
+    if (!PHONE.matches) return;                     // desktop: nothing changes (re-checked on resize)
+    it._bm = true; bannerCss();
+    var alt = (d && d.alt) || 'Banner';
+    if (m || mv) {
+      it.classList.add('bm', 'bm-art');
+      if (d) { d.classList.add('bcb-d'); if (d.tagName === 'VIDEO') { try { d.pause(); d.removeAttribute('autoplay'); d.preload = 'none'; } catch (_) {} } }
+      var fg;
+      if (mv) {
+        fg = bannerVideo(mv); fg.className = 'bcb-fg bcb-m';
+        if (m) { fg.poster = m; var bgi = document.createElement('img'); bgi.className = 'bcb-bg'; bgi.alt = ''; bgi.src = m; it.appendChild(bgi); }
+        else videoStill(fg, it);
+      } else {
+        var bg = document.createElement('img'); bg.className = 'bcb-bg'; bg.alt = ''; bg.src = m; bg.decoding = 'async'; it.appendChild(bg);
+        fg = document.createElement('img'); fg.className = 'bcb-fg bcb-m'; fg.alt = alt; fg.src = m; fg.decoding = 'async';
       }
-      if (img.complete) check(); else img.addEventListener('load', check, { once: true });
-    });
+      it.appendChild(fg);
+    } else {
+      it.classList.add('bm', 'bm-fit');
+      d.classList.add('bcb-fg');
+      if (d.tagName === 'VIDEO') {
+        ['muted', 'playsinline', 'disablepictureinpicture'].forEach(function (a) { d.setAttribute(a, ''); }); d.muted = true;
+        videoStill(d, it);
+      } else { var b2 = document.createElement('img'); b2.className = 'bcb-bg'; b2.alt = ''; b2.src = d.currentSrc || d.src; it.insertBefore(b2, it.firstChild); }
+    }
   }
   function artDirect(root) {
     if (!root.querySelectorAll) return;
-    widePan(root);
-    var items = root.matches && root.matches('.be-celeb-banner-item[data-m]') ? [root] : [].slice.call(root.querySelectorAll('.be-celeb-banner-item[data-m]'));
-    if (!items.length) return;
-    bannerCss();
-    items.forEach(function (it) {
-      var m = it.getAttribute('data-m'); it.removeAttribute('data-m');
-      if (!m || it.classList.contains('has-m')) return;
-      var d = it.querySelector('img,video'); if (d) d.classList.add('bcb-d');
-      var bg = document.createElement('div'); bg.className = 'bcb-bg'; bg.style.backgroundImage = 'url("' + m.replace(/"/g, '%22') + '")';
-      var im = document.createElement('img'); im.className = 'bcb-m'; im.alt = (d && d.alt) || 'Celebration'; im.src = m; im.decoding = 'async';
-      it.appendChild(bg); it.appendChild(im); it.classList.add('has-m');
-    });
+    var list = root.matches && root.matches('.be-celeb-banner-item') ? [root] : [].slice.call(root.querySelectorAll('.be-celeb-banner-item'));
+    list.forEach(enhance);
   }
+  // Opened on a wide window, then narrowed to phone size → set the phone layout up then.
+  try { PHONE.addEventListener('change', function () { if (PHONE.matches) artDirect(document); }); } catch (_) {}
   // ── Banner carousel (every dashboard: the ONE #celebration-banner-slot) ──────────────────
   // 0 banners → slot hidden (its :empty rule) · 1 → static · 2+ → one at a time, sliding
   // horizontally every BANNER_AUTOPLAY_INTERVAL ms, in the order the renderer put them.
