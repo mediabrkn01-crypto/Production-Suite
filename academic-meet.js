@@ -96,16 +96,35 @@
     var otos = res[1].data || [];
     var trName = {}; (res[2].data || []).forEach(function (t) { trName[t.id] = t.name; });
 
+    // Schedule consistency (Academic team): an ACTIVE batch that can't produce classes is listed,
+    // never silently dropped.
+    var issues = [];
+    if (org) {
+      var dayPat = g('_acadEffectiveDayPattern'), startOf = g('_batchStartMinutes');
+      batches.forEach(function (b) {
+        var why = [];
+        if (!b.trainer_id) why.push('No trainer assigned');
+        if (dayPat && !String(dayPat(b) || '').trim()) why.push('No class days set');
+        if (startOf && startOf(b) == null) why.push(b.time_slot ? 'Class time not readable (“' + b.time_slot + '”)' : 'No class time set');
+        if (why.length) issues.push({ batch: b, why: why });
+      });
+    }
+    S.issues = issues;
     // SESSION COMPLETION RULE (same as Classes / My Calendar): a batch that has reached its session
     // total no longer generates classes.
-    var fetchAll = g('_acadFetchAllRows');
+    var fetchAll = g('_acadFetchAllRows'), done = {};
     if (batches.length && typeof fetchAll === 'function') {
-      var names = batches.map(function (b) { return b.name; }).filter(Boolean), done = {};
+      var names = batches.map(function (b) { return b.name; }).filter(Boolean);
       try {
         var att = await fetchAll('attendance', 'batch_name,session_date,session_num,status', function (q) { return q.in('batch_name', names); });
-        (att || []).forEach(function (a) { if (a.status !== 'present') return; (done[a.batch_name] = done[a.batch_name] || {})[a.session_date != null ? a.session_date : 'n' + a.session_num] = 1; });
+        // the SAME "sessions done" rule as every other Academic screen (academics.html)
+        done = (g('_acadDoneKeysByBatch') || function () { return {}; })((att || []).filter(function (a) { return a.status === 'present'; }));
       } catch (e) {}
-      batches = batches.filter(function (b) { var t = b.sessions_total || 0; return !(t && Object.keys(done[b.name] || {}).length >= t); });
+      batches = batches.filter(function (b) {
+        var t = b.sessions_total || 0, dn = (done[b.name] && done[b.name].size) || 0;
+        if (t && dn >= t) { if (org) issues.push({ batch: b, info: true, why: ['All ' + t + ' sessions done — the batch is still marked active'] }); return false; }
+        return true;
+      });
     }
 
     // Batches referenced by 1:1 sessions that aren't in the active list (rare) + students.
@@ -123,7 +142,13 @@
     var out = [];
     batches.forEach(function (b) {
       if (b.group_classes_completed_at || typeof gen !== 'function') return;
-      gen(b, from, to).forEach(function (o) { out.push(build({ kind: 'class', date: o.date, startMin: o.startTime, batch: b, postponed: o.postponed || null }, trName, studentsBy)); });
+      // only as many upcoming classes as the batch has sessions left (same rule as Classes) —
+      // counted from today, so a later day/week view can't show classes beyond the last one
+      var cap = g('_acadCapToRemaining'), t0 = istToday(), occ;
+      if (cap && to >= t0) {
+        occ = cap(gen(b, from < t0 ? from : t0, to), b, done[b.name], t0).filter(function (o) { return o.date >= from && o.date <= to; });
+      } else occ = gen(b, from, to);
+      occ.forEach(function (o) { out.push(build({ kind: 'class', date: o.date, startMin: o.startTime, batch: b, postponed: o.postponed || null }, trName, studentsBy)); });
     });
     otos.forEach(function (o) {
       var b = bMap[o.batch_id] || { id: o.batch_id, name: '1:1 session', programme: '' };
@@ -276,7 +301,24 @@
     body(monthGrid());
   }
 
+  function renderIssues() {
+    var el = $('#am-issues'); if (!el) return;
+    var list = (canManage() || isOrg()) ? (S.issues || []) : [];
+    var bad = list.filter(function (x) { return !x.info; }), info = list.filter(function (x) { return x.info; });
+    el.hidden = !list.length;
+    if (!list.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<button type="button" class="am-iss-h" data-iss-toggle aria-expanded="' + !!S.issOpen + '"><i data-lucide="' + (bad.length ? 'alert-triangle' : 'info') + '"></i><b>'
+      + (bad.length ? bad.length + ' active batch' + (bad.length === 1 ? '' : 'es') + ' can’t show classes — schedule issue' : '') + (bad.length && info.length ? ' · ' : '')
+      + (info.length ? info.length + ' active batch' + (info.length === 1 ? ' has' : 'es have') + ' finished all sessions' : '') + '</b><span>Review</span><i data-lucide="chevron-' + (S.issOpen ? 'up' : 'down') + '"></i></button>'
+      + (S.issOpen ? '<div class="am-iss-list">' + list.map(function (x) {
+          return '<div class="am-iss-row' + (x.info ? ' is-info' : '') + '"><div><b>' + esc(x.batch.name) + '</b><span>' + esc((x.batch.trainer_name || 'No trainer') + ' · ' + (x.batch.day_pattern || 'no days') + ' · ' + (x.batch.time_slot || 'no time')) + '</span><em>' + esc(x.why.join(' · ')) + '</em></div>'
+            + (typeof g('openBatchDetails') === 'function' ? '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-iss-open="' + esc(x.batch.id) + '">Review</button>' : '') + '</div>';
+        }).join('') + '</div>' : '');
+    icons();
+  }
+
   function renderStats() {
+    renderIssues();
     var el = $('#am-stats'); if (!el) return;
     var occ = S.occ.filter(function (o) { return S.view === 'day' ? o.date === S.anchor : S.view === 'month' ? o.date.slice(0, 7) === S.anchor.slice(0, 7) : true; });
     var withMeet = occ.filter(function (o) { return syncState(o) === 'synced'; }).length;
@@ -931,6 +973,8 @@
       if (t.hasAttribute('data-settings')) { settings(); return; }
       if (t.hasAttribute('data-recheck')) { loadStatus().then(render); return; }
       if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'app.html'; return; }
+      if (t.hasAttribute('data-iss-toggle')) { S.issOpen = !S.issOpen; renderIssues(); return; }
+      if (t.hasAttribute('data-iss-open')) { g('openBatchDetails')(t.getAttribute('data-iss-open')); return; }
       if (t.hasAttribute('data-day')) { S.view = 'day'; S.anchor = t.getAttribute('data-day'); load(); return; }
       if (t.hasAttribute('data-open')) { openModal(t.getAttribute('data-open')); }
     });
