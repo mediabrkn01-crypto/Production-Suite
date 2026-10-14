@@ -149,3 +149,15 @@ Setup (one time):
    "Testing", only listed test users (max 100) can connect — add each trainer's Google email,
    or publish the app (calendar.events is a sensitive scope → Google verification).
 3. Migration `20261022_trainer_google_organizer.sql`.
+
+### Moving existing classes to the trainer (automatic)
+Classes created earlier by Classes BRK (`google_organizer_kind = 'fallback'`) move to the trainer's
+own account automatically once that trainer has connected: the queue re-creates up to 5 per run
+(next 7 days, before the class starts) as the trainer, then cancels the old Classes BRK event.
+Students receive Google's cancellation of the old invite and the new invite. If Classes BRK is
+limited by Google at that moment, the old event is kept in `superseded_event` and cancelled later
+(migration `20261023_live_class_superseded_event.sql`); without that migration a class is only
+moved while Classes BRK is not limited. A failed move leaves the class exactly as it was.
+Classes with no Meet that failed on the old limit, or waited for their trainer to connect, are
+created in the trainer's account; trainers not connected show "Trainer not connected" instead of
+waiting behind the Classes BRK limit.

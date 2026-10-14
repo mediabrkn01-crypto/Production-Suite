@@ -18,7 +18,7 @@
 // same event (Google answers 409) — never a second event / second Meet link.
 import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
 import { GoogleApiError, loadOrganizer, googleConfig, runAs, currentActor } from "../_shared/google/googleAuthService.ts";
-import { ORG, actorForRow, actorForTrainer, employeeOfTrainer } from "./owners.ts";
+import { ORG, actorForEmployee, actorForRow, actorForTrainer, employeeOfTrainer } from "./owners.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
 import { addMember, conferenceFor, createSpace, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
 import { classify, calendarPause, pauseCalendar, clearPause, takeQueueLock, releaseQueueLock, RETRY, LIMIT_MSG, RATE_MSG, sleep } from "./syncGuard.ts";
@@ -315,7 +315,7 @@ async function claim(info: ClassInfo, by: string) {
 // Columns added by 20261021_live_class_sync_queue.sql — dropped from a write if that migration
 // hasn't been run yet, so the existing flow keeps working.
 const SYNC_COLS = ["calendar_event_status", "meet_status", "trainer_invite_status", "review_invite_status", "trainer_calendar_invited",
-  "sync_attempts", "next_retry_at", "last_sync_attempt_at", "last_error_status", "last_error_reason", "last_verified_at"];
+  "sync_attempts", "next_retry_at", "last_sync_attempt_at", "last_error_status", "last_error_reason", "last_verified_at", "superseded_event"];
 async function save(key: string, patch: Record<string, unknown>) {
   const run = (p: Record<string, unknown>) => adminClient().from(T).update({ ...p, updated_at: new Date().toISOString() }).eq("occurrence_key", key).select().maybeSingle();
   let { data, error } = await run(patch);
@@ -484,7 +484,10 @@ async function createAsOwner(a: JarvisAuthContext, key: string, info: ClassInfo,
     let space: { name: string; meetingUri: string; meetingCode: string } | null =
       sameOwner && !existing?.google_calendar_event_id && existing?.google_meet_space_name && existing?.google_meet_code
         ? { name: existing.google_meet_space_name, meetingUri: "https://meet.google.com/" + existing.google_meet_code, meetingCode: existing.google_meet_code } : null;
-    if (trainerOwns()) await save(key, { google_organizer_kind: "trainer", google_organizer_employee_id: currentActor().employeeId, google_organizer_email: currentActor().email }).catch(() => {});
+    // Mark the owner early (so a retry reuses this room) — only while the class has no event yet;
+    // a class being MOVED keeps its current owner until the new event exists.
+    if (trainerOwns()) await adminClient().from(T).update({ google_organizer_kind: "trainer", google_organizer_employee_id: currentActor().employeeId, google_organizer_email: currentActor().email })
+      .eq("occurrence_key", key).is("google_calendar_event_id", null).then(() => {}, () => {});
     if (!space) {
       space = await createSpace(access).catch(() => null);
       if (space) await save(key, { google_meet_space_name: space.name, google_meet_code: space.meetingCode }).catch(() => {});
@@ -585,13 +588,57 @@ export async function recreateWithTrainer(a: JarvisAuthContext, key: string, hin
   const trainer = await actorForTrainer(info.trainerId);
   if (!trainer) throw new MeetError(409, "TRAINER_NOT_CONNECTED", `${TRAINER_NOT_CONNECTED_MSG} Trainer: ${info.trainer?.name || "not assigned"}.`);
   if (row.google_organizer_kind === "trainer" && row.google_organizer_employee_id === trainer.employeeId) return { row, already: true };
-  const old = { cal: row.google_calendar_id || "primary", id: row.google_calendar_event_id, actor: await actorForRow(row), url: row.google_meet_url };
-  const made: any = await createClassMeeting(a, key, hint, { fresh: true });
-  if (!made?.row?.google_calendar_event_id || made.row.google_calendar_event_id === old.id && made.row.google_calendar_id === old.cal) return made;
-  try { await runAs(old.actor, () => Cal.cancelEvent(old.cal, old.id)); await logEvent(key, "Old Meet cancelled", old.url || null, a.email); }
-  catch (e) { await logEvent(key, "Old Meet could not be cancelled", explain(e).slice(0, 300), a.email); }
+  const tPause = await runAs(trainer, () => calendarPause());
+  if (tPause) throw new MeetError(429, "GOOGLE_LIMITED", `Google is limiting ${trainer.email} right now — the class will move to the trainer's account automatically later.`);
+  // Old account limited right now: only move if the old event can be remembered and cancelled
+  // later (migration 20261023) — otherwise students would keep two invitations.
+  const oldActor = await actorForRow(row);
+  if (await runAs(oldActor, () => calendarPause()) && !(await supersededReady()))
+    throw new MeetError(429, "GOOGLE_LIMITED", "Google is limiting the current organizer — the class will move to the trainer's account automatically later.");
+  const old = { calendar_id: row.google_calendar_id || "primary", event_id: row.google_calendar_event_id, kind: row.google_organizer_kind || "fallback", employee_id: row.google_organizer_employee_id || null, meet_url: row.google_meet_url || null };
+  // A failed move leaves the class exactly as it was (old Meet keeps working).
+  const restore = () => save(key, { google_sync_status: row.google_sync_status, google_sync_error: row.google_sync_error, next_retry_at: row.next_retry_at ?? null, last_error_reason: row.last_error_reason ?? null, last_error_status: row.last_error_status ?? null, google_meet_space_name: row.google_meet_space_name ?? null, google_meet_code: row.google_meet_code ?? null }).catch(() => null);
+  let made: any;
+  try { made = await createClassMeeting(a, key, hint, { fresh: true }); }
+  catch (e) { await restore(); await logEvent(key, "Move to the trainer's Google account failed", explain(e).slice(0, 300), a.email); throw e; }
+  if (!made?.row?.google_calendar_event_id || made.row.google_organizer_kind !== "trainer" || made.row.google_calendar_event_id === old.event_id) { await restore(); return made; }
+  const res = await cancelSuperseded(key, old, a.email);
   await logEvent(key, "Meet moved to the trainer's Google account", made.row.google_organizer_email || null, a.email);
-  return { ...made, moved: true };
+  return { ...made, row: res || made.row, moved: true };
+}
+
+let supReady: boolean | null = null;
+async function supersededReady() {
+  if (supReady === null) { const { error } = await adminClient().from(T).select("superseded_event").limit(1); supReady = !error; }
+  return supReady;
+}
+
+/** Cancel the old event of a moved class as ITS owner. If that account is limited by Google (or
+ *  the cancel fails for a temporary reason) it is remembered in superseded_event and the queue
+ *  cancels it later — students never keep two invitations. */
+async function cancelSuperseded(key: string, old: any, by: string) {
+  const actor = old.kind === "trainer" && old.employee_id ? (await actorForEmployee(old.employee_id)) : ORG;
+  if (!actor) { await logEvent(key, "Old Meet not cancelled — its Google account is disconnected", old.meet_url, by); return save(key, { superseded_event: null }).catch(() => null); }
+  return runAs(actor, async () => {
+    if (await calendarPause()) {
+      await logEvent(key, "Old Meet will be cancelled when Google allows", old.meet_url, by);
+      return save(key, { superseded_event: old }).catch(() => null);
+    }
+    try {
+      await Cal.cancelEvent(old.calendar_id, old.event_id);
+      await logEvent(key, "Old Meet cancelled", old.meet_url, by);
+      return save(key, { superseded_event: null }).catch(() => null);
+    } catch (e) {
+      const g = classify(e);
+      if (g.kind === "calendar_limit") await pauseCalendar(g);
+      if (g.kind === "calendar_limit" || g.kind === "rate_limit" || g.kind === "transient") {
+        await logEvent(key, "Old Meet will be cancelled when Google allows", old.meet_url, by);
+        return save(key, { superseded_event: old }).catch(() => null);
+      }
+      await logEvent(key, "Old Meet could not be cancelled", explain(e).slice(0, 300), by);
+      return save(key, { superseded_event: null }).catch(() => null);
+    }
+  });
 }
 
 export async function resendInvitations(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
@@ -884,8 +931,7 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
   const limitedOwners = new Set<string>();   // Google accounts that answered "limited" during this run
   // Each class is synced AS ITS OWNER (the trainer's own account, or the fallback organizer);
   // a Google limit pauses only that account.
-  const asOwner = async (row: any, fn: () => Promise<unknown>) => {
-    const owner = row.google_calendar_event_id ? await actorForRow(row) : (await actorForTrainer(row.trainer_id)) || ORG;
+  const runIfFree = async (owner: any, fn: () => Promise<unknown>) => {
     if (limitedOwners.has(owner.key)) return false;
     return runAs(owner, async () => {
       if (await calendarPause()) { limitedOwners.add(owner.key); return false; }
@@ -894,14 +940,42 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
         if (e instanceof MeetError && e.code === "GOOGLE_LIMITED") { if (await calendarPause()) limitedOwners.add(owner.key); }
         else if (e instanceof MeetError && ["NOT_FOUND", "NOT_ACTIVE", "NO_TIME", "BAD_KEY", "CANCELLED"].includes(e.code)) {
           // the class itself can't be synced (batch removed / inactive / no time) → stop retrying it
-          await save(row.occurrence_key, { google_sync_status: "failed", google_sync_error: e.message, next_retry_at: null }).catch(() => {});
+          await save(owner.rowKey, { google_sync_status: "failed", google_sync_error: e.message, next_retry_at: null }).catch(() => {});
         }
         else throw e;
       }
       return true;
     });
   };
+  const asOwner = async (row: any, fn: () => Promise<unknown>) => {
+    // A class without an event belongs to its trainer. Trainer not connected → no Google call at all:
+    // the class is marked "Trainer not connected" (never parked behind the Classes BRK limit).
+    if (!row.google_calendar_event_id) {
+      // cancelled before it ever reached Google → nothing to cancel there
+      if (row.class_status === "cancelled") { await save(row.occurrence_key, { google_sync_status: "cancelled", next_retry_at: null }).catch(() => {}); return true; }
+      const t = await actorForTrainer(row.trainer_id);
+      if (!t) { await createClassMeeting(a, row.occurrence_key, hintOf(row)).catch(() => {}); return true; }
+      return runIfFree({ ...t, rowKey: row.occurrence_key }, fn);
+    }
+    return runIfFree({ ...(await actorForRow(row)), rowKey: row.occurrence_key }, fn);
+  };
+  const horizon = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(Date.now() + 7 * 86400_000));
   try {
+    // 0) old Classes BRK events of classes already moved to the trainer, waiting to be cancelled
+    const { data: sup } = await sb.from(T).select("occurrence_key,superseded_event").not("superseded_event", "is", null).limit(10).then((r) => r, () => ({ data: [] as any[] }));
+    for (const row of sup || []) {
+      if (Date.now() - t0 > budgetMs) break;
+      const o = row.superseded_event || {};
+      const owner = o.kind === "trainer" && o.employee_id ? await actorForEmployee(o.employee_id) : ORG;
+      if (!owner) { await save(row.occurrence_key, { superseded_event: null }).catch(() => {}); continue; }
+      if (limitedOwners.has(owner.key)) continue;
+      await runAs(owner, async () => {
+        if (await calendarPause()) { limitedOwners.add(owner.key); return; }
+        await cancelSuperseded(row.occurrence_key, o, a.email).catch(() => {});
+        if (await calendarPause()) limitedOwners.add(owner.key);
+      });
+      await sleep(1200);
+    }
     // 1) classes waiting for Google (and cancellations that haven't reached Google yet)
     const { data: due } = await sb.from(T).select("*").eq("google_sync_status", "pending").gte("class_date", today())
       .or(`next_retry_at.is.null,next_retry_at.lte.${now}`).order("class_date").order("start_time").limit(10);
@@ -912,6 +986,21 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
         : createClassMeeting(a, row.occurrence_key, hintOf(row))).catch(() => true);
       if (ran) { processed++; await sleep(2500); }
     }
+    // 1b) classes with no Meet that failed on the old Classes BRK limit, or were waiting for their
+    //     trainer to connect → created in the trainer's account once the trainer is connected.
+    const { data: stuck } = await sb.from(T).select("*").eq("google_sync_status", "failed").eq("class_status", "scheduled").is("google_calendar_event_id", null)
+      .gte("class_date", today()).lte("class_date", horizon)
+      .or("google_sync_error.ilike.*limit*,last_error_reason.eq.TRAINER_NOT_CONNECTED,last_error_reason.eq.quotaExceeded").order("class_date").order("start_time").limit(15);
+    for (const row of stuck || []) {
+      if (Date.now() - t0 > budgetMs) break;
+      const t = await actorForTrainer(row.trainer_id);
+      if (!t) {
+        if (row.last_error_reason !== "TRAINER_NOT_CONNECTED") await createClassMeeting(a, row.occurrence_key, hintOf(row)).catch(() => {});
+        continue;
+      }
+      const ran = await runIfFree({ ...t, rowKey: row.occurrence_key }, () => createClassMeeting(a, row.occurrence_key, hintOf(row))).catch(() => true);
+      if (ran) { processed++; await sleep(2500); }
+    }
     // 2) verify + repair classes already marked Synced (read first; write only if something is missing)
     const { data: chk } = await sb.from(T).select("*").eq("google_sync_status", "synced").eq("class_status", "scheduled").gte("class_date", today())
       .or("last_verified_at.is.null,trainer_invite_status.neq.ok,cohost_status.in.(pending,failed)").order("class_date").order("start_time").limit(8);
@@ -920,6 +1009,18 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
       const ran = await asOwner(row, () => updateClassMeeting(a, row.occurrence_key, hintOf(row), "retry"))
         .catch(async () => { await save(row.occurrence_key, { last_verified_at: new Date().toISOString() }).catch(() => {}); return true; });   // don't re-pick it every run
       if (ran) { verified++; await sleep(1200); }
+    }
+    // 3) classes still organized by Classes BRK whose trainer has connected → moved to the trainer
+    //    (next 7 days, before the class starts; a few per run so neither account is flooded).
+    const { data: fb } = await sb.from(T).select("*").eq("google_organizer_kind", "fallback").eq("class_status", "scheduled").eq("google_sync_status", "synced").not("google_calendar_event_id", "is", null)
+      .neq("live_status", "live").neq("live_status", "ended").gte("class_date", today()).lte("class_date", horizon).order("class_date").order("start_time").limit(20);
+    let moves = 0;
+    for (const row of fb || []) {
+      if (Date.now() - t0 > budgetMs || moves >= 5) break;
+      const t = await actorForTrainer(row.trainer_id);
+      if (!t || limitedOwners.has(t.key)) continue;
+      try { await recreateWithTrainer(a, row.occurrence_key, hintOf(row)); moves++; processed++; await sleep(2500); }
+      catch (e) { if (e instanceof MeetError && e.code === "GOOGLE_LIMITED") limitedOwners.add(t.key); }
     }
   } finally { await releaseQueueLock(); }
   const { count } = await sb.from(T).select("occurrence_key", { count: "exact", head: true }).eq("google_sync_status", "pending").gte("class_date", today());
