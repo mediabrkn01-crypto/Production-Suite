@@ -262,6 +262,8 @@
     if (canManage() && needsMeet(o) && !(linkOf(o) && linkOf(o).google_meet_url) && trainerConnected(o) === false && syncState(o) !== 'waiting') return '<span class="am-chip s-failed" title="The trainer has not connected their Google Meet account">Trainer not connected</span>';
     var s = syncState(o); if ((s === 'failed' || s === 'waiting') && !canManage()) s = (linkOf(o) && linkOf(o).google_meet_url) ? 'synced' : 'none';   // trainers never see sync errors
     var tip = s === 'failed' ? (linkOf(o).google_sync_error || '') : s === 'waiting' ? 'Retries automatically' + (linkOf(o).next_retry_at ? ' · next try ' + whenTxt(linkOf(o).next_retry_at) : '') : '';
+    // The Meet already works; only a Google update (e.g. an invitation) is queued.
+    if (s === 'waiting' && linkOf(o) && linkOf(o).google_meet_url) return '<span class="am-chip s-synced" title="' + esc('Meet link works · a Google update is queued: ' + tip) + '">Meet ready · update queued</span>';
     return '<span class="am-chip s-' + (s === 'waiting' ? 'syncing' : s) + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + SYNC_LABEL[s] + '</span>'; }
 
   function render() {
@@ -288,7 +290,7 @@
 
   function cardActions(o) {
     var l = linkOf(o), s = syncState(o), a = '';
-    if (s === 'synced' && !cancelled(o) && !ended(o)) a += '<a class="am-btn am-btn-meet am-btn-sm" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener" data-stop><i data-lucide="video"></i>Join Meet</a>';
+    if ((s === 'synced' || (s === 'waiting' && l && l.google_meet_url)) && !cancelled(o) && !ended(o)) a += '<a class="am-btn am-btn-meet am-btn-sm" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener" data-stop><i data-lucide="video"></i>Join Meet</a>';
     else if (canManage() && (ready() || trainerConnected(o)) && trainerConnected(o) !== false && needsMeet(o) && s !== 'failed' && s !== 'waiting') a += '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-create="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '><i data-lucide="video"></i>Create Meet</button>';
     if (s === 'failed' && canManage()) a += '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '>Retry Sync</button>';
     return a;

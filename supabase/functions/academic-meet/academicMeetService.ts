@@ -727,6 +727,8 @@ export async function setTrainerEmail(a: JarvisAuthContext, key: string, email: 
 const canRun = (a: JarvisAuthContext, trainerId: string | null) =>
   canManage(a) || (can(a, "academic.own") && !!a.trainerId && a.trainerId === trainerId);
 
+const EARLY_MS = 30 * 60_000;
+
 export async function joinLive(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
   const info = await resolveClass(key, hint);
   if (!canView(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "You can only join your own classes.");
@@ -734,8 +736,10 @@ export async function joinLive(a: JarvisAuthContext, key: string, hint: { start?
   if (!row?.google_meet_url || row.class_status === "cancelled") throw new MeetError(409, "NO_MEET", "This class has no active Meet link.");
   await logEvent(key, "Joined live", a.name, a.email);
   if (row.live_status === "ended") return { row };
-  // Only the trainer / Academic team's join marks the class live.
+  // Only the trainer / Academic team's join marks the class live — and only from 30 min before
+  // the start (opening the Meet early, e.g. to test it, doesn't start or end the class).
   if (!canRun(a, info.trainerId)) return { row };
+  if (Date.now() < new Date(istTs(info.date, info.startMin)).getTime() - EARLY_MS) return { row, early: true };
   return { row: await save(key, { live_status: "live", joined_at: row.joined_at || new Date().toISOString(), joined_by: row.joined_by || a.email }) };
 }
 
@@ -744,6 +748,8 @@ export async function endClass(a: JarvisAuthContext, key: string, hint: { start?
   if (!canRun(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "Only the class trainer or the Academic team can end this class.");
   const row = await getRow(key);
   if (!row?.google_meet_url) throw new MeetError(409, "NO_MEET", "This class has no Meet.");
+  if (row.live_status !== "live" && Date.now() < new Date(istTs(info.date, info.startMin)).getTime())
+    throw new MeetError(409, "NOT_STARTED", "This class hasn't started yet.");
   if (row.live_status !== "ended") {
     await save(key, { live_status: "ended", ended_at: new Date().toISOString(), ended_by: a.email, meet_sync_status: "pending", meet_sync_error: null });
     await logEvent(key, "Class ended in ERP", a.name, a.email);
@@ -961,6 +967,15 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
   };
   const horizon = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(Date.now() + 7 * 86400_000));
   try {
+    // -1) a class marked live/ended more than 30 min before it starts (an early test click) is
+    //     reset to scheduled — otherwise it couldn't be joined, moved or reported properly.
+    const { data: early } = await sb.from(T).select("occurrence_key,class_date,start_time,live_status").in("live_status", ["live", "ended"]).gte("class_date", today()).limit(50).then((r) => r, () => ({ data: [] as any[] }));
+    for (const r of early || []) {
+      const [h, m] = String(r.start_time || "").split(":").map(Number);
+      if (!Number.isFinite(h) || Date.now() >= new Date(istTs(r.class_date, h * 60 + (m || 0))).getTime() - EARLY_MS) continue;
+      await save(r.occurrence_key, { live_status: "scheduled", joined_at: null, joined_by: null, ended_at: null, ended_by: null, meet_sync_status: "none", meet_sync_error: null }).catch(() => {});
+      await logEvent(r.occurrence_key, "Live status reset", "The class was joined/ended before it started (test) — reset to scheduled.", "system");
+    }
     // 0) old Classes BRK events of classes already moved to the trainer, waiting to be cancelled
     const { data: sup } = await sb.from(T).select("occurrence_key,superseded_event").not("superseded_event", "is", null).limit(10).then((r) => r, () => ({ data: [] as any[] }));
     for (const row of sup || []) {
