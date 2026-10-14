@@ -113,3 +113,39 @@ never make a second event or a second Meet link.
   Gmail organizer the Meet API answers 403 and the trainer joins as a guest (`unsupported`).
 - **Verify + repair**: the queue re-reads upcoming Synced classes (once, then when something is
   missing) and patches the SAME event if the trainer/review attendee is missing.
+
+## Trainer owns the Meet (20261022)
+
+The assigned trainer's OWN Google account creates the Calendar event + Meet room, so the trainer
+is the real organizer: enters directly and gets Admit / Deny for students who ask to join.
+
+- **Connect once** — Academic → Live Classes → "Google Meet account" → Connect Google account
+  (standard Google consent, `prompt=consent select_account`). Scopes: `openid`,
+  `userinfo.email`, `calendar.events`, `meetings.space.created`, `meetings.space.readonly`.
+  The callback (same redirect URI, state `oauth-trainer:<erp email>`) stores in
+  `employee_google_connections` (RLS on, no policies → server only): Google email + user id,
+  AES-256-GCM encrypted refresh token, scopes, timestamps, status. No password, nothing in the
+  browser. Disconnect revokes the token at Google and deletes the row.
+- **Every class action runs as the class owner** (`runAs()` in googleAuthService): the trainer's
+  account for trainer-owned classes, the central account (Classes BRK) for fallback classes.
+  Limits / backoff are per Google account.
+- **Create**: trainer connected → event in the trainer's `primary` calendar, Meet room created by
+  the trainer with TRUSTED access (invited guests join directly; others ask to join and the
+  trainer admits). Trainer is the organizer, not an attendee. Ownership is verified from
+  Google's own answer (`event.organizer.email` = the connected account).
+  Trainer not connected → no Meet, "Trainer Google Meet account not connected" (no silent
+  fallback). "Create with Classes BRK (fallback)" is an explicit Academic action and is marked
+  "Fallback organizer".
+- **Existing Classes BRK classes**: "Recreate using trainer account" (admin, before the class
+  starts) creates the new event + room as the trainer first, then cancels the old event.
+  A trainer-owned class reassigned to another trainer is moved the same way.
+- **Join Live** for the host trainer opens Meet with `authuser=<connected email>`.
+
+Setup (one time):
+1. Secret `GOOGLE_TOKEN_ENC_KEY` = base64 of 32 random bytes
+   (`openssl rand -base64 32`). Never change it once trainers have connected (they'd have to
+   reconnect).
+2. Google Cloud console → OAuth consent screen: add the scopes above. While the app is in
+   "Testing", only listed test users (max 100) can connect — add each trainer's Google email,
+   or publish the app (calendar.events is a sensitive scope → Google verification).
+3. Migration `20261022_trainer_google_organizer.sql`.

@@ -8,7 +8,7 @@
 //                      by the first successful write. Google gives no fixed reset time for this
 //                      limit, so the ERP never promises one.
 import { adminClient } from "../_shared/jarvis/auth.ts";
-import { GoogleApiError } from "../_shared/google/googleAuthService.ts";
+import { GoogleApiError, currentActor } from "../_shared/google/googleAuthService.ts";
 
 export type GKind = "calendar_limit" | "rate_limit" | "auth" | "not_found" | "transient" | "other";
 export interface GInfo { kind: GKind; status: number | null; reason: string; message: string }
@@ -43,15 +43,29 @@ export const LIMIT_MSG = "Google Calendar has temporarily limited event creation
 export const RATE_MSG = "Google is busy right now. The system will retry automatically.";
 
 const cfg = () => adminClient().from("academic_meet_config");
+const conn = () => adminClient().from("employee_google_connections");
 
-/** ISO time until which Calendar writes are paused, or null. */
+// The pause belongs to the Google account the current call runs as (each trainer's own account,
+// or the central organizer) — one trainer hitting a Google limit never blocks the others.
+
+/** ISO time until which Calendar writes are paused for the current Google account, or null. */
 export async function calendarPause(): Promise<{ until: string; reason: string | null } | null> {
-  const { data } = await cfg().select("calendar_paused_until,calendar_pause_reason").eq("id", 1).maybeSingle().then((r) => r, () => ({ data: null }));
+  const a = currentActor();
+  const { data } = a.kind === "trainer"
+    ? await conn().select("paused_until").eq("employee_id", a.employeeId).maybeSingle().then((r) => ({ data: r.data && { calendar_paused_until: r.data.paused_until, calendar_pause_reason: "quotaExceeded" } }), () => ({ data: null }))
+    : await cfg().select("calendar_paused_until,calendar_pause_reason").eq("id", 1).maybeSingle().then((r) => r, () => ({ data: null }));
   const until = data?.calendar_paused_until;
   return until && Date.parse(until) > Date.now() ? { until, reason: data?.calendar_pause_reason || null } : null;
 }
 
 export async function pauseCalendar(g: GInfo): Promise<string> {
+  const a = currentActor();
+  if (a.kind === "trainer") {
+    const { data } = await conn().select("pause_level").eq("employee_id", a.employeeId).maybeSingle().then((r) => r, () => ({ data: null }));
+    const level = (data?.pause_level || 0) + 1, until = new Date(Date.now() + RETRY.pause(level)).toISOString();
+    await conn().update({ paused_until: until, pause_level: level, last_error: `${g.status || ""} ${g.reason}: ${g.message}`.trim().slice(0, 300) }).eq("employee_id", a.employeeId).then(() => {}, () => {});
+    return until;
+  }
   const { data } = await cfg().select("calendar_pause_level").eq("id", 1).maybeSingle().then((r) => r, () => ({ data: null }));
   const level = (data?.calendar_pause_level || 0) + 1;
   const until = new Date(Date.now() + RETRY.pause(level)).toISOString();
@@ -63,6 +77,8 @@ export async function pauseCalendar(g: GInfo): Promise<string> {
 }
 
 export function clearPause() {
+  const a = currentActor();
+  if (a.kind === "trainer") return conn().update({ paused_until: null, pause_level: 0, last_refresh_at: new Date().toISOString() }).eq("employee_id", a.employeeId).then(() => {}, () => {});
   return cfg().update({ calendar_paused_until: null, calendar_pause_level: 0, calendar_pause_reason: null }).eq("id", 1).gt("calendar_pause_level", 0).then(() => {}, () => {});
 }
 

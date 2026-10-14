@@ -18,6 +18,7 @@
 //   GOOGLE_ORGANIZER_EMAIL  optional; display only
 //   ACADEMIC_MEET_REVIEW_EMAIL optional; overrides the review email set in Live Classes → Settings
 import { adminClient } from "../jarvis/auth.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const env = (k: string, d = ""): string => (Deno.env.get(k) ?? d).trim();
 
@@ -62,7 +63,43 @@ export async function loadOrganizer(): Promise<OrganizerConfig> {
 
 let cached: { token: string; exp: number; rt: string } | null = null;
 
+// ── Whose Google account? ───────────────────────────────────────────────────────────────
+// Every Google call runs as the account that owns the class meeting: the trainer's own
+// connected Google account, or the central organizer (fallback / settings). runAs() sets it for
+// everything inside (Calendar, Meet, reports) without threading a token through every function.
+export interface GoogleActor { kind: "trainer" | "org"; key: string; email: string | null; employeeId?: string; refreshToken?: string }
+const actorStore = new AsyncLocalStorage<GoogleActor>();
+export const currentActor = (): GoogleActor => actorStore.getStore() || { kind: "org", key: "org", email: null };
+export function runAs<T>(actor: GoogleActor, fn: () => Promise<T>): Promise<T> { return actorStore.run(actor, fn); }
+
+const tokenCache = new Map<string, { token: string; exp: number }>();
+/** Access token for a trainer's refresh token (cached until shortly before expiry). */
+async function tokenForRefresh(rt: string, onRevoked?: () => Promise<void>): Promise<string> {
+  const hit = tokenCache.get(rt);
+  if (hit && hit.exp > Date.now() + 60_000) return hit.token;
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: googleConfig.clientId, client_secret: googleConfig.clientSecret, refresh_token: rt, grant_type: "refresh_token" }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) {
+    if (j.error === "invalid_grant" && onRevoked) await onRevoked().catch(() => {});
+    throw new GoogleApiError(r.status || 500, j.error === "invalid_grant"
+      ? "The trainer's Google access was removed or expired — the trainer needs to connect Google again."
+      : `Google sign-in failed: ${j.error_description || j.error || r.status}`, j.error === "invalid_grant" ? "TRAINER_NOT_CONNECTED" : "AUTH_FAILED");
+  }
+  tokenCache.set(rt, { token: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 });
+  return j.access_token;
+}
+
 export async function getAccessToken(): Promise<string> {
+  const actor = actorStore.getStore();
+  if (actor && actor.kind === "trainer") {
+    if (!actor.refreshToken) throw new GoogleApiError(409, "The trainer's Google account is not connected.", "TRAINER_NOT_CONNECTED");
+    return tokenForRefresh(actor.refreshToken, async () => {
+      await adminClient().from("employee_google_connections").update({ connection_status: "revoked", last_error: "Google access removed or expired", updated_at: new Date().toISOString() }).eq("employee_id", actor.employeeId);
+    });
+  }
   if (!googleConfig.clientId || !googleConfig.clientSecret) throw new GoogleApiError(503, "Google is not set up yet — GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are missing.", "NOT_CONFIGURED");
   const org = await loadOrganizer();
   if (!org.refreshToken) throw new GoogleApiError(503, "The Broken English Google account is not connected yet.", "NOT_CONNECTED");
@@ -91,7 +128,33 @@ export function consentUrl(state: string): string {
   return "https://accounts.google.com/o/oauth2/v2/auth?" + q.toString();
 }
 
-export async function exchangeCode(code: string): Promise<{ refreshToken: string; accessToken: string }> {
+/** Trainer's own account: create events + Meet rooms in THEIR calendar, and read their identity. */
+export const TRAINER_SCOPES = [
+  "openid", "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/meetings.space.created",
+  "https://www.googleapis.com/auth/meetings.space.readonly",
+];
+export function trainerConsentUrl(state: string, loginHint?: string): string {
+  const q = new URLSearchParams({
+    client_id: googleConfig.clientId, redirect_uri: googleConfig.redirectUri, response_type: "code",
+    scope: TRAINER_SCOPES.join(" "), access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state,
+    ...(loginHint ? { login_hint: loginHint } : {}),
+  });
+  return "https://accounts.google.com/o/oauth2/v2/auth?" + q.toString();
+}
+/** Google account id + email of an access token's owner (OpenID userinfo). */
+export async function userInfo(accessToken: string): Promise<{ sub: string; email: string }> {
+  const r = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { Authorization: `Bearer ${accessToken}` } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.email) throw new GoogleApiError(r.status || 500, "Google did not share the account email — connect again and allow access.");
+  return { sub: String(j.sub || ""), email: String(j.email).trim().toLowerCase() };
+}
+export async function revokeToken(token: string) {
+  await fetch("https://oauth2.googleapis.com/revoke?token=" + encodeURIComponent(token), { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } }).catch(() => {});
+}
+
+export async function exchangeCode(code: string): Promise<{ refreshToken: string; accessToken: string; scope: string }> {
   const r = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -100,7 +163,7 @@ export async function exchangeCode(code: string): Promise<{ refreshToken: string
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.refresh_token) throw new GoogleApiError(r.status || 500, j.error_description || j.error || "Google did not return a refresh token — remove the app's access in the Google account and connect again.");
   cached = null;
-  return { refreshToken: j.refresh_token, accessToken: j.access_token };
+  return { refreshToken: j.refresh_token, accessToken: j.access_token, scope: String(j.scope || "") };
 }
 
 /** JSON request to a Google API with the organizer's token. Throws GoogleApiError with Google's own message. */

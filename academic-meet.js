@@ -28,6 +28,7 @@
 
   var S = {
     root: null, view: 'day', anchor: null, status: null, statusErr: null, tableMissing: false,
+    myGoogle: null, conns: {},
     occ: [], links: {}, touched: {}, autoSyncAt: {}, online: {}, busy: {}, autoDone: {}, seq: 0, modalKey: null, modalDetails: null, loading: false
   };
 
@@ -227,6 +228,15 @@
   }
 
   function linkOf(o) { return S.links[o.key] || null; }
+  /** Academic team view: is this class's trainer's Google Meet account connected? (null = unknown) */
+  function trainerConnected(o) { var c = S.conns[String(o.trainerId || '')]; return c ? !!c.connected : null; }
+  function trainerOwned(l) { return !!(l && l.google_organizer_kind === 'trainer'); }
+  async function loadGoogleSelf() {
+    try { S.myGoogle = await api('my_google'); } catch (e) { S.myGoogle = null; }
+    if (canManage() || isOrg()) {
+      try { var r = await api('trainer_connections'); S.conns = {}; (r.trainers || []).forEach(function (t) { S.conns[String(t.trainerId)] = t; }); } catch (e) {}
+    }
+  }
   function cancelled(o) { var l = linkOf(o); return !!(l && l.class_status === 'cancelled'); }
   function ended(o) { var t = istToday(); return o.date < t || (o.date === t && istNowMin() >= o.endMin); }
   function liveNow(o) { var t = istToday(), n = istNowMin(); return o.date === t && n >= o.startMin && n < o.endMin; }
@@ -249,6 +259,7 @@
     var l = linkOf(o);
     if (l && l.class_status !== 'cancelled' && l.live_status === 'live') return '<span class="am-chip s-live">Live</span>';
     if (l && l.meet_sync_status === 'synced') return '<span class="am-chip s-synced">Completed · ' + (l.actual_duration_minutes != null ? l.actual_duration_minutes + ' min' : 'report') + '</span>';
+    if (canManage() && needsMeet(o) && !(linkOf(o) && linkOf(o).google_meet_url) && trainerConnected(o) === false && syncState(o) !== 'waiting') return '<span class="am-chip s-failed" title="The trainer has not connected their Google Meet account">Trainer not connected</span>';
     var s = syncState(o); if ((s === 'failed' || s === 'waiting') && !canManage()) s = (linkOf(o) && linkOf(o).google_meet_url) ? 'synced' : 'none';   // trainers never see sync errors
     var tip = s === 'failed' ? (linkOf(o).google_sync_error || '') : s === 'waiting' ? 'Retries automatically' + (linkOf(o).next_retry_at ? ' · next try ' + whenTxt(linkOf(o).next_retry_at) : '') : '';
     return '<span class="am-chip s-' + (s === 'waiting' ? 'syncing' : s) + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + SYNC_LABEL[s] + '</span>'; }
@@ -256,7 +267,7 @@
   function render() {
     paintRange(); renderSetup(); renderStats();
     var bulk = $('#am-bulk');
-    if (bulk) { var n = S.occ.filter(needsMeet).length; bulk.hidden = !(canManage() && ready() && n > 1); bulk.querySelector('span').textContent = 'Create Meet for ' + n + ' classes'; }
+    if (bulk) { var n = S.occ.filter(needsMeet).filter(function (o) { return trainerConnected(o) !== false && syncState(o) !== 'waiting'; }).length; bulk.hidden = !(canManage() && !S.tableMissing && n > 1); bulk.querySelector('span').textContent = 'Create Meet for ' + n + ' classes'; }
     if (S.view === 'day') return body(agenda(S.occ.filter(function (o) { return o.date === S.anchor; }), true));
     // Narrow screens (or a narrow content area) get a clean agenda instead of a squeezed grid.
     if (S.view === 'week') return body(mobile() || S.root.clientWidth < 700 ? agenda(S.occ, false) : weekGrid());
@@ -278,7 +289,7 @@
   function cardActions(o) {
     var l = linkOf(o), s = syncState(o), a = '';
     if (s === 'synced' && !cancelled(o) && !ended(o)) a += '<a class="am-btn am-btn-meet am-btn-sm" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener" data-stop><i data-lucide="video"></i>Join Meet</a>';
-    else if (canManage() && ready() && needsMeet(o) && s !== 'failed' && s !== 'waiting') a += '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-create="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '><i data-lucide="video"></i>Create Meet</button>';
+    else if (canManage() && (ready() || trainerConnected(o)) && trainerConnected(o) !== false && needsMeet(o) && s !== 'failed' && s !== 'waiting') a += '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-create="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '><i data-lucide="video"></i>Create Meet</button>';
     if (s === 'failed' && canManage()) a += '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '>Retry Sync</button>';
     return a;
   }
@@ -372,6 +383,13 @@
   function renderSetup() {
     var el = $('#am-setup'); if (!el) return;
     var st = S.status, html = '', cls = 'am-setup';
+    var mg = S.myGoogle;
+    var gcard = '';
+    if (mg && mg.isTrainer) {
+      gcard = mg.connected
+        ? '<div class="am-gacc ok"><i data-lucide="video"></i><div><b>Google Meet account</b><span>' + esc(mg.email) + ' · Connected — your classes are created in your Google Calendar and you host them.</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-disconnect>Disconnect</button></div>'
+        : '<div class="am-gacc"><i data-lucide="video-off"></i><div><b>Google Meet account · Not connected</b><span>Connect once so your classes are created in your own Google Calendar — you enter directly and can admit students. No new password: Google asks you to allow access.</span></div><button type="button" class="am-btn am-btn-sm" data-g-connect><i data-lucide="link"></i>Connect Google account</button></div>';
+    }
     if (S.tableMissing) html = '<div class="am-setup-t"><b>One-time database update needed</b>Ask the admin to run <code>20261016_academic_live_classes.sql</code> in Supabase. Classes still show below; Meet links can be created after the update.</div>';
     else if (S.statusErr && S.statusErr.code === 'SESSION_EXPIRED') html = '<div class="am-setup-t"><b>Session expired</b>' + esc(SESSION_MSG) + '</div><button type="button" class="am-btn" data-relogin>Sign in again</button>';
     else if (S.statusErr) html = canManage() || isOrg() ? '<div class="am-setup-t"><b>Google Meet service not reachable</b>' + esc(S.statusErr.message) + '</div><button type="button" class="am-btn am-btn-ghost" data-recheck>Try again</button>' : '';
@@ -379,6 +397,7 @@
     else if (st && canManage() && !st.connected) html = '<div class="am-setup-t"><b>Connect the Broken English Google account</b>Classes are created by one organisation account (for example academics@…). Trainers and students are invited as attendees.</div><button type="button" class="am-btn" data-connect><i data-lucide="link"></i>Connect Google account</button>';
     else if (st && st.connected && canManage() && st.calendarPausedUntil && Date.parse(st.calendarPausedUntil) > Date.now()) html = '<div class="am-setup-t"><b>Waiting for Google</b>Google Calendar has temporarily limited event creation for ' + esc(st.organizerEmail || 'the organizer account') + '. Classes are queued and the system will retry automatically — no need to press Retry. Classes, attendance and schedules keep working as normal.</div>';
     else if (st && st.connected && canManage()) { cls += ' ok'; html = '<div class="am-setup-t">Google connected' + (st.organizerEmail ? ' as <b style="display:inline">' + esc(st.organizerEmail) + '</b>' : '') + ' · Reminder: ' + esc(remText(st.defaultReminders)) + '</div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-settings><i data-lucide="settings-2"></i>Settings</button>'; }
+    if (gcard) { html = gcard + (html ? '<div class="am-setup-row">' + html + '</div>' : ''); cls = 'am-setup am-setup-stack'; }
     el.className = cls;
     el.hidden = !html;
     el.innerHTML = html;
@@ -430,7 +449,8 @@
   // automatically while Google limits the organizer account. The list updates live as each
   // class is synced — no browser loop, no burst of Calendar writes.
   async function bulkCreate() {
-    var list = S.occ.filter(needsMeet).filter(function (o) { var st = syncState(o); return st !== 'failed' && st !== 'waiting'; });
+    // Only classes whose trainer has connected Google — the rest need the trainer (or an explicit fallback).
+    var list = S.occ.filter(needsMeet).filter(function (o) { var st = syncState(o); return st !== 'failed' && st !== 'waiting' && trainerConnected(o) !== false; });
     if (!list.length) return;
     var conf = g('beConfirm');
     var ok = typeof conf === 'function' ? await conf({ title: 'Create Google Meet links', message: 'Create a Calendar event and Meet link for ' + list.length + ' classes?', detail: 'They are created one by one in the background — trainers and students with an email address receive Google Calendar invitations.', confirmLabel: 'Create ' + list.length + ' Meets', confirmColor: '#10b981' }) : true;
@@ -469,7 +489,7 @@
   // creates the Meets one at a time and pauses by itself whenever Google limits the account.
   var autoRunning = false;
   async function autoCreate() {
-    if (autoRunning || !canManage() || !ready()) return;
+    if (autoRunning || !canManage() || S.tableMissing) return;
     var ids = Object.keys(S.online); if (!ids.length) return;
     autoRunning = true;
     try {
@@ -477,7 +497,7 @@
       occ = occ.filter(function (o) { return S.online[o.batch.id] && !S.autoDone[o.key] && !ended(o); });
       if (!occ.length) return;
       var links = await fetchLinks(occ.map(function (o) { return o.key; }));
-      var todo = occ.filter(function (o) { var l = links[o.key]; return !l || (l.class_status !== 'cancelled' && l.google_sync_status !== 'failed' && !(l.google_meet_url && l.google_calendar_event_id)); });
+      var todo = occ.filter(function (o) { var l = links[o.key]; return trainerConnected(o) !== false && (!l || (l.class_status !== 'cancelled' && l.google_sync_status !== 'failed' && !(l.google_meet_url && l.google_calendar_event_id))); });
       todo.forEach(function (o) { S.autoDone[o.key] = true; });
       if (todo.length) await enqueueKeys(todo, false, false);
     } catch (e) { /* next visit retries */ }
@@ -488,7 +508,7 @@
   // (it does nothing while Google is limiting the organizer, and runs one class at a time).
   var kickAt = 0;
   function kickQueue() {
-    if (!canManage() || !ready() || Date.now() - kickAt < 180000) return;
+    if (!canManage() || S.tableMissing || Date.now() - kickAt < 180000) return;
     kickAt = Date.now();
     api('process_queue').catch(function () {});
   }
@@ -569,14 +589,21 @@
         + (isLive ? '<div class="am-live-row"><span class="am-live-dot"></span>Live in ERP since ' + esc(clock(l.joined_at)) + (l.joined_by ? ' · ' + esc(l.joined_by.split('@')[0]) : '') + '</div>' : '')
         + (!erpEnded && (!isEnded || isLive) ? '<button type="button" class="am-btn am-btn-meet am-hero-join" data-join><i data-lucide="video"></i>' + (isLive ? 'Rejoin Google Meet' : 'Join Live') + '</button>' : '')
         + (isLive && canRun && !S.endOpen ? '<button type="button" class="am-btn am-btn-danger am-hero-join" data-end-open><i data-lucide="square"></i>End Class</button>' : '')
+        + (trainerOwned(l) && S.myGoogle && S.myGoogle.connected && S.myGoogle.email === l.google_organizer_email && !erpEnded
+            ? '<div class="am-join-as">Join using <b>' + esc(l.google_organizer_email) + '</b> — you are the host. If Meet opens with another Google account, switch to this one.</div>' : '')
         + '</section>';
       if (S.endOpen && canRun) html += '<section class="am-cancel"><b>End this live class?</b><span>The ERP marks the class ended and starts syncing the Google Meet report. The official duration comes from Google Meet, not from this button.</span>'
         + '<div class="am-m-actions"><button type="button" class="am-btn am-btn-ghost" data-end-no>Cancel</button><button type="button" class="am-btn am-btn-danger" data-end-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Ending…' : 'End Class') + '</button></div></section>';
       html += reportHTML(o, l, d, canRun, busy);
     } else if (isC) {
       html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="calendar-x"></i></div><div class="am-hero-t"><b>Class cancelled</b><span>' + (l && l.google_calendar_event_id ? (s === 'cancelled' ? 'Google Calendar sent the cancellation to every attendee.' : 'The Calendar event still needs to be cancelled — Retry Sync.') : 'Only this date is affected.') + '</span></div></section>';
-    } else if (man && ready() && !isEnded) {
-      html += '<section class="am-hero"><div class="am-hero-ic"><i data-lucide="video-off"></i></div><div class="am-hero-t"><b>No Google Meet yet</b><span>Creates a Calendar event with a Meet link and emails everyone with an address.</span></div>'
+    } else if (man && !isEnded && trainerConnected(o) === false) {
+      // The trainer must own the Meet. No silent fallback — the central account only on explicit choice.
+      html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="user-x"></i></div><div class="am-hero-t"><b>Trainer Google Meet account not connected</b><span>Trainer: ' + esc(o.trainerName) + '. The Meet is created in the trainer’s own Google account so they can admit students — ask them to connect it in Live Classes.</span></div>'
+        + '<div class="am-m-actions" style="width:100%"><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-request>Request Google connection</button>'
+        + (ready() ? '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-create-fallback' + (busy ? ' disabled' : '') + ' title="Emergency only — Classes BRK owns the Meet and the trainer joins as a guest">Create with Classes BRK (fallback)</button>' : '') + '</div></section>';
+    } else if (man && (ready() || trainerConnected(o)) && !isEnded) {
+      html += '<section class="am-hero"><div class="am-hero-ic"><i data-lucide="video-off"></i></div><div class="am-hero-t"><b>No Google Meet yet</b><span>Created in ' + esc(o.trainerName) + '’s own Google Calendar — the trainer hosts it. Everyone with an email gets the invitation.</span></div>'
         + '<button type="button" class="am-btn am-hero-join" data-create="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="' + (busy ? 'loader' : 'video') + '"></i>' + (busy ? 'Creating…' : 'Create Google Meet') + '</button></section>';
     } else {
       html += '<section class="am-hero is-muted"><div class="am-hero-ic"><i data-lucide="video-off"></i></div><div class="am-hero-t"><b>' + (isEnded ? 'Class ended' : 'Meet link not created yet') + '</b><span>' + (isEnded ? 'No Meet was used for this class.' : man ? 'Connect the Google account (banner above) to create Meet links.' : 'The Academic team adds the link — it will appear here and in your Google Calendar.') + '</span></div></section>';
@@ -660,19 +687,24 @@
     // ── Meet setup (Academic Head / Admin only — technical detail kept out of the trainer view)
     if (man && hasMeet) {
       var hs = l.cohost_status || 'pending';
-      var roleTxt = { assigned: 'Co-Host ✓', unsupported: 'Guest — co-host needs a Google Workspace organizer', missing_email: 'Not set — trainer email missing', failed: 'Not set', pending: 'Pending' }[hs] || 'Pending';
+      var roleTxt = l.trainer_meet_role === 'OWNER' ? { assigned: 'Organizer / host ✓' } : { assigned: 'Co-Host ✓', unsupported: 'Guest — co-host needs a Google Workspace organizer', missing_email: 'Not set — trainer email missing', failed: 'Not set', pending: 'Pending' }[hs] || 'Pending';
       var open = l.google_meet_access === 'open';
       html += '<section class="am-hist"><button type="button" class="am-hist-h" data-setup-toggle aria-expanded="' + !!S.setupOpen + '"><b>Meet setup</b><span>' + (hs === 'assigned' ? 'Trainer is co-host' : hs === 'failed' ? 'Needs attention' : open ? 'Open link' : 'Controlled') + '</span><i data-lucide="chevron-' + (S.setupOpen ? 'up' : 'down') + '"></i></button>';
       if (S.setupOpen) {
         html += '<div class="am-setup-grid">'
-          + '<div><small>Organizer</small><b>' + esc(l.organizer_email || (S.status && S.status.organizerEmail) || '—') + '</b></div>'
+          + '<div><small>Organizer</small><b class="' + (trainerOwned(l) ? 'is-ok' : '') + '">' + esc(trainerOwned(l) ? o.trainerName + ' (trainer)' : 'Fallback organizer') + '</b><span>' + esc(l.google_organizer_email || l.organizer_email || (S.status && S.status.organizerEmail) || '') + '</span></div>'
           + '<div><small>Trainer</small><b>' + esc(o.trainerName) + '</b><span>' + esc(l.trainer_email || '') + '</span></div>'
           + '<div><small>Trainer Meet role</small><b class="' + (hs === 'assigned' ? 'is-ok' : hs === 'failed' ? 'is-bad' : '') + '">' + esc(roleTxt) + '</b></div>'
           + '<div><small>Access</small><b>' + (open ? 'Open link' : 'Controlled') + '</b><span>' + (open ? 'Anyone with the link joins' : 'Invited guests join; others ask to join') + '</span></div>'
           + '<div><small>Google sync</small><b>' + esc(SYNC_LABEL[syncState(o)] || '—') + '</b></div>'
           + '</div>';
+        if (!trainerOwned(l) && !isEnded && !erpEnded && !isLive) {
+          var tc = trainerConnected(o);
+          html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="user-cog"></i><div><b>Classes BRK owns this Meet</b><span>' + (tc ? 'Move it to ' + esc(o.trainerName) + '’s own Google account so the trainer hosts and can admit students. A new Meet link is created; the old event is cancelled and Google emails the update.' : esc(o.trainerName) + ' has not connected a Google Meet account yet.') + '</span></div>'
+            + (tc ? '<button type="button" class="am-btn am-btn-sm" data-recreate' + (busy ? ' disabled' : '') + '>Recreate using trainer account</button>' : '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-request>Request Google connection</button>') + '</div></div>';
+        }
         if (hs === 'failed') html += '<div class="am-err"><b>Trainer host access could not be configured.</b> ' + esc(l.cohost_error || '') + '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry</button></div>';
-        if (!open && hs !== 'assigned' && !isEnded && !erpEnded) html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="door-closed"></i><div><b>Students without an invitation can’t be let in</b><span>Nobody in this call can admit them (the trainer isn’t co-host). Use an open link — the link changes and Google emails the new one.</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-open-room' + (busy ? ' disabled' : '') + '>Use open link</button></div></div>';
+        if (!open && hs !== 'assigned' && !trainerOwned(l) && !isEnded && !erpEnded) html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="door-closed"></i><div><b>Students without an invitation can’t be let in</b><span>Nobody in this call can admit them (the trainer isn’t co-host). Use an open link — the link changes and Google emails the new one.</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-open-room' + (busy ? ' disabled' : '') + '>Use open link</button></div></div>';
       }
       html += '</section>';
     }
@@ -754,7 +786,10 @@
   /** Join Live: Meet opens in its own tab; the ERP stays here and records the join. */
   function joinLive(o) {
     var l = linkOf(o); if (!l || !l.google_meet_url) return;
-    var w = window.open(l.google_meet_url, '_blank');
+    // The host trainer: ask Meet to open with THEIR Google account (avoids joining as a guest from another signed-in account).
+    var url = l.google_meet_url;
+    if (trainerOwned(l) && S.myGoogle && S.myGoogle.email && S.myGoogle.email === l.google_organizer_email) url += (url.indexOf('?') < 0 ? '?' : '&') + 'authuser=' + encodeURIComponent(S.myGoogle.email);
+    var w = window.open(url, '_blank');
     if (w) { try { w.opener = null; } catch (e) {} } else toast('warning', 'Your browser blocked the new tab — allow pop-ups for this site, or use the Meet link.', 7000);
     api('join', { key: o.key, start: startHint(o) }).then(function (j) {
       if (j.row) { S.links[o.key] = j.row; S.touched[o.key] = Date.now(); }
@@ -889,6 +924,8 @@
       if (t.hasAttribute('data-retry')) { e.stopPropagation(); retry(t.getAttribute('data-retry')); return; }
       if (t.id === 'am-bulk') { bulkCreate(); return; }
       if (t.hasAttribute('data-connect')) { connect(t); return; }
+      if (t.hasAttribute('data-g-connect')) { connectMine(t); return; }
+      if (t.hasAttribute('data-g-disconnect')) { disconnectMine(); return; }
       if (t.hasAttribute('data-settings')) { settings(); return; }
       if (t.hasAttribute('data-recheck')) { loadStatus().then(render); return; }
       if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'index.html'; return; }
@@ -934,6 +971,9 @@
       if (t.hasAttribute('data-rev-toggle')) { S.revOpen = !S.revOpen; S.repOpen = false; renderModal(); return; }
       if (t.hasAttribute('data-rep-toggle')) { S.repOpen = !S.repOpen; S.revOpen = false; renderModal(); return; }
       if (t.hasAttribute('data-setup-toggle')) { S.setupOpen = !S.setupOpen; renderModal(); return; }
+      if (t.hasAttribute('data-create-fallback')) return run(key, 'create_fallback', null, 'Meet created with Classes BRK (fallback organizer) — the trainer joins as a guest.');
+      if (t.hasAttribute('data-recreate')) return recreateForTrainer(key);
+      if (t.hasAttribute('data-g-request')) { copyText('Hi ' + (o.trainerName || '') + ', please connect your Google account for Live Classes: Broken English ERP → Academic → Live Classes → Google Meet account → Connect Google account. It takes one minute and lets you host your classes and admit students.', 'Request copied — send it to the trainer.'); return; }
       if (t.hasAttribute('data-diag-toggle')) { S.diagOpen = !S.diagOpen; renderModal(); return; }
       if (t.hasAttribute('data-hist-toggle')) { S.histOpen = !S.histOpen; renderModal(); return; }
       if (t.hasAttribute('data-att-confirm')) { confirmAttendance(o, linkOf(o)); return; }
@@ -946,11 +986,35 @@
     });
     m.addEventListener('change', function (e) { var t = e.target.closest('[data-online]'); if (t) setOnline(t.getAttribute('data-online'), t.checked); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.modalKey) closeModal(); });
-    window.addEventListener('message', function (e) { if (e.data && e.data.type === 'be-academic-meet-oauth') { loadStatus().then(function () { render(); if (e.data.ok) toast('success', 'Google account connected.'); }); } });
+    window.addEventListener('message', function (e) { if (e.data && e.data.type === 'be-academic-meet-oauth') { Promise.all([loadStatus(), loadGoogleSelf()]).then(function () { render(); if (e.data.ok) toast('success', 'Google account connected.'); }); } });
     var mq = window.matchMedia && window.matchMedia('(max-width:760px)');
     if (mq && mq.addEventListener) mq.addEventListener('change', function () { if (S.view === 'week') render(); });
     // Keep "Live now" / ended states current.
     setInterval(function () { if (S.root && S.root.offsetParent !== null && !S.loading) render(); }, 60000);
+  }
+
+  // Trainer: connect THEIR Google account once (standard Google consent; no password in the ERP).
+  async function connectMine(btn) {
+    btn.disabled = true;
+    var w = window.open('', 'be_google_connect', 'width=520,height=680');
+    try {
+      var j = await api('trainer_oauth_url', { hint: (S.myGoogle && S.myGoogle.email) || undefined });
+      if (w) w.location.href = j.url; else location.href = j.url;
+    } catch (e) { if (w) w.close(); if (!sessionGuard(e)) toast('error', e.message, 7000); }
+    finally { btn.disabled = false; }
+  }
+  async function disconnectMine() {
+    var conf = g('beConfirm');
+    var ok = typeof conf === 'function' ? await conf({ title: 'Disconnect Google Meet account?', message: 'New classes can’t be created in your Google Calendar until you connect again.', detail: 'Meetings already created stay as they are.', confirmLabel: 'Disconnect', confirmColor: '#ef4444' }) : true;
+    if (!ok) return;
+    try { await api('trainer_disconnect'); toast('success', 'Google Meet account disconnected.'); } catch (e) { toast('error', e.message, 7000); }
+    await loadGoogleSelf(); render();
+  }
+  async function recreateForTrainer(key) {
+    var o = occByKey(key), conf = g('beConfirm');
+    var ok = typeof conf === 'function' ? await conf({ title: 'Recreate using the trainer’s account?', message: 'A new Meet is created in ' + ((o && o.trainerName) || 'the trainer') + '’s own Google Calendar and the old Classes BRK event is cancelled.', detail: 'The Meet link changes — Google emails everyone the new invitation. Share the new details in WhatsApp groups if needed.', confirmLabel: 'Recreate', confirmColor: '#10b981' }) : true;
+    if (!ok) return;
+    return run(key, 'recreate_trainer', null, 'Meet moved to the trainer’s Google account — new link sent.');
   }
 
   async function connect(btn) {
@@ -1040,6 +1104,7 @@
       var head = S.root.querySelector('#am-heading'); if (head) head.textContent = isOrg() ? 'Live Classes' : 'My Live Classes';
       wire(); subscribe(); paintRange(); icons();
       await loadStatus();
+      await loadGoogleSelf();
       await load();
     },
     /** Tab re-opened. */
