@@ -397,12 +397,17 @@
   // ── Banner carousel (every dashboard: the ONE #celebration-banner-slot) ──────────────────
   // 0 banners → slot hidden (its :empty rule) · 1 → static · 2+ → one at a time, sliding
   // horizontally every BANNER_AUTOPLAY_INTERVAL ms, in the order the renderer put them.
+  // Circular and one-directional: autoplay always slides forward (the last banner slides on to
+  // the first the same way); only the current slide and the incoming one ever move, the rest
+  // wait off-screen — no clones, no backwards rewind.
   // The renderers keep writing plain .be-celeb-banner-item children; this only adds a class,
   // per-item transforms and a dots bar — the banner DOM is never rebuilt on a tick.
-  var BANNER_AUTOPLAY_INTERVAL = 2000;   // ms between slides — change here for every dashboard
+  var BANNER_AUTOPLAY_INTERVAL = 8000;   // ms each banner stays on screen — change here for every dashboard
+  var BANNER_SLIDE_MS = 700;             // slide transition length
   var CAR_CSS =
     '#celebration-banner-slot.be-car{display:flex!important;flex-wrap:nowrap;overflow:hidden;position:relative;touch-action:pan-y;border-radius:12px;user-select:none;-webkit-user-select:none}' +
-    '#celebration-banner-slot.be-car>.be-celeb-banner-item{flex:0 0 100%;min-width:100%;margin:0!important;transition:transform .6s cubic-bezier(.22,.61,.36,1);will-change:transform}' +
+    '#celebration-banner-slot.be-car>.be-celeb-banner-item{flex:0 0 100%;min-width:100%;margin:0!important;transition:transform ' + BANNER_SLIDE_MS + 'ms cubic-bezier(.22,.61,.36,1);will-change:transform}' +
+    '#celebration-banner-slot.be-car>.be-celeb-banner-item.be-car-park{visibility:hidden;transition:none}' +
     '#celebration-banner-slot.be-car.drag>.be-celeb-banner-item{transition:none}' +
     '#celebration-banner-slot.be-car img,#celebration-banner-slot.be-car video{-webkit-user-drag:none;user-select:none}' +
     // a wide phone strip keeps its slow auto-pan, but the finger swipes slides, not the strip
@@ -419,34 +424,62 @@
     if (slot._car) return slot._car;
     var st = { idx: 0, items: [], timer: 0, hover: false, drag: null, dots: null };
     function items() { return [].slice.call(slot.children).filter(function (n) { return n.classList && n.classList.contains('be-celeb-banner-item'); }); }
-    function place(px) {
+    // Each slide sits at a visual position: 0 = on screen, +1 = waiting on the right,
+    // -1 = just left on the left; everything else is parked off-screen. Flex places slide i at
+    // i·100%, so its transform is (pos − i)·100% (+ the finger's drag offset).
+    function setPos(it, i, pos, px, animate) {
+      if (pos === null) { it.style.transition = 'none'; it.classList.add('be-car-park'); it.style.transform = 'translateX(' + ((2 - i) * 100) + '%)'; return; }
+      it.classList.remove('be-car-park');
+      it.style.transition = animate ? '' : 'none';
+      it.style.transform = 'translateX(calc(' + ((pos - i) * 100) + '% + ' + (px || 0) + 'px))';
+    }
+    function marks() {
       st.items.forEach(function (it, i) {
-        it.style.transform = 'translateX(calc(' + (-st.idx * 100) + '% + ' + (px || 0) + 'px))';
-        var on = i === st.idx;
-        if (on) it.removeAttribute('aria-hidden'); else it.setAttribute('aria-hidden', 'true');
+        if (i === st.idx) it.removeAttribute('aria-hidden'); else it.setAttribute('aria-hidden', 'true');
         it.setAttribute('aria-label', (i + 1) + ' of ' + st.items.length);
       });
       if (st.dots) [].forEach.call(st.dots.children, function (d, i) { d.setAttribute('aria-current', i === st.idx ? 'true' : 'false'); });
     }
+    // Static layout (and drag preview): current on screen, its neighbours waiting either side.
+    // With exactly 2 banners the other one sits on the side the finger is pulling from.
+    function place(px) {
+      var n = st.items.length, nx = (st.idx + 1) % n, pv = (st.idx - 1 + n) % n;
+      st.items.forEach(function (it, i) {
+        var pos = i === st.idx ? 0 : (n === 2 ? (i === nx ? ((px || 0) > 0 ? -1 : 1) : null) : i === nx ? 1 : i === pv ? -1 : null);
+        setPos(it, i, pos, px, false);
+      });
+      marks();
+    }
     function schedule() {
       clearTimeout(st.timer);
-      if (st.items.length < 2 || st.hover || st.drag || document.hidden) return;
-      st.timer = setTimeout(function () { go(st.idx + 1); }, BANNER_AUTOPLAY_INTERVAL);
+      if (st.items.length < 2 || st.hover || st.drag || st.moving || document.hidden) return;
+      st.timer = setTimeout(function () { go(st.idx + 1, 1); }, BANNER_AUTOPLAY_INTERVAL);
     }
-    function go(i) {
+    // Slide to banner i. dir +1 = forward (incoming from the right) — autoplay always uses it;
+    // -1 only when a person swipes back. px = where a drag left the slides.
+    function go(i, dir, px) {
       var n = st.items.length; if (n < 2) return;
-      st.idx = ((i % n) + n) % n;
-      place(0);
+      var to = ((i % n) + n) % n, from = st.idx; dir = dir < 0 ? -1 : 1;
+      if (to === from) { place(0); schedule(); return; }
+      clearTimeout(st.timer); clearTimeout(st.settle);
+      // 1) without animation: incoming slide waits just off-screen on the side it comes from
+      st.items.forEach(function (it, k) { setPos(it, k, k === from ? 0 : k === to ? dir : null, k === from || k === to ? px : 0, false); });
+      void slot.offsetWidth;
+      // 2) animate: current leaves the opposite way, incoming takes its place
+      setPos(st.items[from], from, -dir, 0, true);
+      setPos(st.items[to], to, 0, 0, true);
+      st.idx = to; st.moving = true; marks();
       // the slide after this one is already in the DOM; make sure its image is decoded
-      var nx = st.items[(st.idx + 1) % n], im = nx && nx.querySelector('img');
+      var nxt = st.items[(to + 1) % n], im = nxt && nxt.querySelector('img');
       if (im && im.decode) im.decode().catch(function () {});
-      schedule();
+      st.settle = setTimeout(function () { st.moving = false; place(0); schedule(); }, BANNER_SLIDE_MS + 60);
     }
     function teardown() {
       clearTimeout(st.timer);
       slot.classList.remove('be-car', 'drag');
       ['role', 'aria-roledescription', 'aria-label'].forEach(function (a) { slot.removeAttribute(a); });
-      st.items.forEach(function (it) { it.style.transform = ''; ['role', 'aria-roledescription', 'aria-hidden', 'aria-label'].forEach(function (a) { it.removeAttribute(a); }); });
+      clearTimeout(st.settle); st.moving = false;
+      st.items.forEach(function (it) { it.style.transform = ''; it.style.transition = ''; it.classList.remove('be-car-park'); ['role', 'aria-roledescription', 'aria-hidden', 'aria-label'].forEach(function (a) { it.removeAttribute(a); }); });
       if (st.dots && st.dots.parentNode) st.dots.parentNode.removeChild(st.dots);
       st.dots = null; st.items = []; st.idx = 0;
     }
@@ -473,7 +506,7 @@
 
     slot.addEventListener('click', function (e) {
       var d = e.target.closest && e.target.closest('.be-car-dot');
-      if (d && slot.classList.contains('be-car')) { e.preventDefault(); go(+d.getAttribute('data-i')); }
+      if (d && slot.classList.contains('be-car')) { e.preventDefault(); if (!st.moving) go(+d.getAttribute('data-i'), 1); }
     });
     // pause while a mouse is over the banner (not on touch: there is no hover)
     slot.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') { st.hover = true; clearTimeout(st.timer); } });
@@ -482,6 +515,7 @@
     slot.addEventListener('pointerdown', function (e) {
       if (!slot.classList.contains('be-car') || (e.target.closest && e.target.closest('.be-car-dots'))) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (st.moving) return;
       st.drag = { x: e.clientX, y: e.clientY, dx: 0, id: e.pointerId, horiz: null };
       clearTimeout(st.timer);
     });
@@ -496,7 +530,7 @@
       }
       if (!d.horiz) return;
       var n = st.items.length;
-      d.dx = (st.idx === 0 && dx > 0) || (st.idx === n - 1 && dx < 0) ? dx / 3 : dx;   // resist at the ends
+      d.dx = dx; void n;   // circular — no ends to resist at
       place(d.dx);
     });
     function end(e) {
@@ -504,8 +538,9 @@
       st.drag = null; slot.classList.remove('drag');
       var w = slot.clientWidth || 1;
       if (d.horiz && Math.abs(d.dx) > Math.min(60, w * 0.15)) {
-        var n = st.items.length, to = st.idx + (d.dx < 0 ? 1 : -1);
-        go(to < 0 ? n - 1 : to >= n ? 0 : to);
+        // finger left → next banner (forward); finger right → previous (backward); autoplay
+        // then carries on forward from wherever the person left it
+        go(st.idx + (d.dx < 0 ? 1 : -1), d.dx < 0 ? 1 : -1, d.dx);
       } else { place(0); schedule(); }
       if (d.horiz) { var stop = function (ev) { ev.stopPropagation(); ev.preventDefault(); }; slot.addEventListener('click', stop, { capture: true, once: true }); setTimeout(function () { slot.removeEventListener('click', stop, true); }, 0); }
     }
