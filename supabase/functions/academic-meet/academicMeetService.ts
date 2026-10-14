@@ -180,8 +180,13 @@ function eventBody(info: ClassInfo, reminders: number[]) {
 }
 
 /** Deterministic Calendar event id (base32hex: 0-9 a-v) — the same class can only ever map to one event. */
+/** Deterministic per class AND per owning account: a trainer's calendar already holds an
+ *  attendee copy of the Classes BRK event under that event's id, so the trainer-owned event must
+ *  use a different id (otherwise Google answers "already exists" with the Classes BRK copy). */
 async function eventIdFor(key: string) {
-  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("be-live-class|" + key)));
+  const act = currentActor();
+  const seed = "be-live-class|" + key + (act.kind === "trainer" ? "|emp:" + act.employeeId : "");
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed)));
   return "be" + [...h].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
 }
 
@@ -498,12 +503,18 @@ async function createAsOwner(a: JarvisAuthContext, key: string, info: ClassInfo,
     } catch (e) {
       if (!(e instanceof GoogleApiError) || e.status !== 409) throw e;
       // The event already exists (an earlier attempt reached Google): adopt it — never a second one.
+      // Only an event this account ORGANIZES is adopted; an invitation copy of someone else's
+      // event (same id in this calendar) is never taken over.
       ev = await Cal.getEvent(org.calendarId, id);
+      if (!ev?.organizer?.self) throw new MeetError(409, "ID_CONFLICT", `This calendar already has an invitation with the class's event id, organized by ${ev?.organizer?.email || "another account"} — not taken over.`);
       const reopen = ev.status === "cancelled";
       ev = await Cal.patchEvent(org.calendarId, id, { ...body, ...(reopen ? { status: "confirmed" } : {}), ...(Cal.meetFromEvent(ev).url ? {} : { conferenceData: conference }) }, reopen);
     }
     await clearPause();
     ev = await settle(org.calendarId, ev);
+    // Ownership verified from Google: a trainer-owned class must be organized by the trainer's account.
+    if (trainerOwns() && !ev?.organizer?.self && String(ev?.organizer?.email || "").toLowerCase() !== String(currentActor().email || "").toLowerCase())
+      throw new MeetError(502, "NOT_ORGANIZER", `Google reports ${ev?.organizer?.email || "another account"} as organizer, not ${currentActor().email} — not marked as the trainer's meeting.`);
     const row0 = await save(key, { ...(await linkFields(org, ev, info, reminders)), ...ownerFields(ev), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
     const row = await setAccess(key, row0, space && Cal.meetFromEvent(ev).code === space.meetingCode && access === "OPEN" ? "open" : "trusted");
     await logEvent(key, "Meet created", (row?.google_meet_url || "") + " · organizer " + (row?.google_organizer_email || "?") + (trainerOwns() ? " (trainer)" : " (fallback organizer)"), a.email);
@@ -975,6 +986,16 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
       if (!Number.isFinite(h) || Date.now() >= new Date(istTs(r.class_date, h * 60 + (m || 0))).getTime() - EARLY_MS) continue;
       await save(r.occurrence_key, { live_status: "scheduled", joined_at: null, joined_by: null, ended_at: null, ended_by: null, meet_sync_status: "none", meet_sync_error: null }).catch(() => {});
       await logEvent(r.occurrence_key, "Live status reset", "The class was joined/ended before it started (test) — reset to scheduled.", "system");
+    }
+    // -1b) rows marked trainer-owned whose Google organizer is NOT that trainer's account (an
+    //      invitation copy was adopted by the earlier event-id bug) → back to the organizer that
+    //      really owns the event (Classes BRK); step 3 then moves them properly.
+    const { data: mis } = await sb.from(T).select("occurrence_key,google_organizer_employee_id,google_organizer_email").eq("google_organizer_kind", "trainer").gte("class_date", today()).limit(50).then((r) => r, () => ({ data: [] as any[] }));
+    for (const r of mis || []) {
+      const c = await adminClient().from("employee_google_connections").select("google_email").eq("employee_id", r.google_organizer_employee_id).maybeSingle().then((x) => x.data, () => null);
+      if (!c?.google_email || String(r.google_organizer_email || "").toLowerCase() === String(c.google_email).toLowerCase()) continue;
+      await save(r.occurrence_key, { google_organizer_kind: "fallback", google_organizer_employee_id: null, trainer_meet_role: null, cohost_status: "pending", last_verified_at: null }).catch(() => {});
+      await logEvent(r.occurrence_key, "Organizer corrected", `Google organizer is ${r.google_organizer_email} (Classes BRK), not the trainer — will move to the trainer's account.`, "system");
     }
     // 0) old Classes BRK events of classes already moved to the trainer, waiting to be cancelled
     const { data: sup } = await sb.from(T).select("occurrence_key,superseded_event").not("superseded_event", "is", null).limit(10).then((r) => r, () => ({ data: [] as any[] }));
