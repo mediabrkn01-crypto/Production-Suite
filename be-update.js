@@ -270,15 +270,15 @@
   // ───────────────────────────── route save / restore
   function q(s) { try { return document.querySelector(s); } catch (_) { return null; } }
   function g(name) { try { return Function('return typeof ' + name + ' !== "undefined" ? ' + name + ' : undefined')(); } catch (_) { return undefined; } }
-  var page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+  var page = (location.pathname.split('/').pop() || 'app.html').toLowerCase();
   var ROUTES = {
     'hr.html': { get: function () { return g('hrCurrentSubtab'); }, set: function (t) { g('switchHRSubtab')(t); }, ready: function () { return g('hrDataState') === 'ready'; } },
     'academics.html': { get: function () { var e = q('.acad-tab.on'); return e ? e.id.replace(/^tab-acad-/, '') : null; }, set: function (t) { g('acadSwitchTab')(t); }, ready: function () { return !!g('currentUser') && !!q('.acad-tab.on'); } },
     'sales.html': { get: function () { var e = q('.tab.on[id^="tab-"]'); return e ? e.id.replace(/^tab-/, '') : null; }, set: function (t) { g('switchTab')(t); }, ready: function () { return !!g('ME') && !!q('.tab.on'); } },
     'manager.html': { get: function () { var e = q('.navlink.on[data-sec]'); return e ? e.dataset.sec : null; }, set: function (t) { window.mgrSection(t); }, ready: function () { return typeof window.mgrSection === 'function' && !!q('.navlink.on'); } },
-    'index.html': { get: function () { var e = q('[id^="tab-content-"]:not(.hidden)'); return e ? e.id.replace(/^tab-content-/, '') : null; }, set: function (t) { g('switchTab')(t); }, ready: function () { return !!g('activeUser') && !!window._hrLandingDone; } }
+    'app.html': { get: function () { var e = q('[id^="tab-content-"]:not(.hidden)'); return e ? e.id.replace(/^tab-content-/, '') : null; }, set: function (t) { g('switchTab')(t); }, ready: function () { return !!g('activeUser') && !!window._hrLandingDone; } }
   };
-  ROUTES[''] = ROUTES['index.html'];
+  ROUTES[''] = ROUTES['app.html'];
   var route = ROUTES[page];
 
   function saveResume() {

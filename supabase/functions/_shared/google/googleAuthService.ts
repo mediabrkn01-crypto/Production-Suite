@@ -19,12 +19,16 @@
 //   ACADEMIC_MEET_REVIEW_EMAIL optional; overrides the review email set in Live Classes → Settings
 import { adminClient } from "../jarvis/auth.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { decryptToken, encryptToken, encryptionReady } from "./tokenCrypto.ts";
 
 const env = (k: string, d = ""): string => (Deno.env.get(k) ?? d).trim();
 
+// Central (fallback) organizer account. Least privilege: the same set a trainer grants —
+// identity (to record which account is connected), class events, and the Meet spaces this app
+// creates. No read access to the rest of the calendar.
 export const GOOGLE_SCOPES = [
+  "openid", "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/calendar.events",
-  "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/meetings.space.readonly",
   // Manage members of the class Meet spaces (trainer = COHOST). Spaces are owned by the organizer.
   "https://www.googleapis.com/auth/meetings.space.created",
@@ -49,12 +53,24 @@ export interface OrganizerConfig {
   reviewEmail: string | null;
 }
 
+/** The central account's refresh token is stored encrypted ("v1:…"). A value saved earlier in
+ *  plain text is used once and re-saved encrypted, so no plain token stays in the database. */
+async function storedToken(v: unknown): Promise<string | null> {
+  const t = typeof v === "string" ? v : "";
+  if (!t) return null;
+  if (t.startsWith("v1:")) return decryptToken(t);
+  if (encryptionReady()) {
+    await adminClient().from("academic_meet_config").update({ refresh_token: await encryptToken(t) }).eq("id", 1).eq("refresh_token", t).then(() => {}, () => {});
+  }
+  return t;
+}
+
 export async function loadOrganizer(): Promise<OrganizerConfig> {
   const { data } = await adminClient().from("academic_meet_config").select("*").eq("id", 1).maybeSingle();
   return {
     organizerEmail: env("GOOGLE_ORGANIZER_EMAIL") || data?.organizer_email || null,
     calendarId: env("GOOGLE_CALENDAR_ID") || data?.calendar_id || "primary",
-    refreshToken: env("GOOGLE_REFRESH_TOKEN") || data?.refresh_token || null,
+    refreshToken: env("GOOGLE_REFRESH_TOKEN") || await storedToken(data?.refresh_token),
     defaultReminders: Array.isArray(data?.default_reminders) && data.default_reminders.length ? data.default_reminders : [30],
     // ACADEMIC_MEET_REVIEW_EMAIL (secret) overrides the Live Classes → Settings value.
     reviewEmail: (env("ACADEMIC_MEET_REVIEW_EMAIL") || data?.review_email || "").trim().toLowerCase() || null,

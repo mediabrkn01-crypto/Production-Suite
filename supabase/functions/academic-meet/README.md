@@ -24,7 +24,7 @@ never make a second event or a second Meet link.
    - APIs & Services → enable **Google Calendar API** and **Google Meet API**.
    - OAuth consent screen: *Internal* if Broken English uses Google Workspace, otherwise *External*
      and add the organizer account as a test user (or publish the app).
-     Scopes: `calendar.events`, `calendar.readonly`, `meetings.space.readonly`.
+     Scopes: `openid`, `userinfo.email`, `calendar.events`, `meetings.space.created`, `meetings.space.readonly` (same set for the central account and trainers).
    - Credentials → **OAuth client ID** → *Web application*. Authorised redirect URI:
      `https://fevqnpllmarhoqdzpatq.supabase.co/functions/v1/academic-meet?action=oauth_callback`
 3. **Secrets** (Supabase → Edge Functions → Secrets):

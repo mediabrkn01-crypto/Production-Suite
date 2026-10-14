@@ -928,7 +928,7 @@
       if (t.hasAttribute('data-g-disconnect')) { disconnectMine(); return; }
       if (t.hasAttribute('data-settings')) { settings(); return; }
       if (t.hasAttribute('data-recheck')) { loadStatus().then(render); return; }
-      if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'index.html'; return; }
+      if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'app.html'; return; }
       if (t.hasAttribute('data-day')) { S.view = 'day'; S.anchor = t.getAttribute('data-day'); load(); return; }
       if (t.hasAttribute('data-open')) { openModal(t.getAttribute('data-open')); }
     });
@@ -947,7 +947,7 @@
       if (t.hasAttribute('data-resend')) return run(key, 'resend', null, 'Invitations sent again.');
       if (t.hasAttribute('data-copy')) { copyText((linkOf(o) || {}).google_meet_url || '', 'Meet link copied.'); return; }
       if (t.hasAttribute('data-edit-time')) return editTime(o);
-      if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'index.html'; return; }
+      if (t.hasAttribute('data-relogin')) { try { window.BESession && BESession.clear(me().username); } catch (x) {} location.href = 'app.html'; return; }
       if (t.hasAttribute('data-open-room')) {
         var cf = g('beConfirm');
         (typeof cf === 'function' ? cf({ title: 'Use an open Meet link?', message: 'Anyone with the new link joins directly — no waiting to be admitted.', detail: 'The Meet link changes. Google emails the new link to everyone invited; re-share it on WhatsApp.', confirmLabel: 'Use open link', confirmColor: '#10b981' }) : Promise.resolve(true))

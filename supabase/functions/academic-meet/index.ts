@@ -19,7 +19,6 @@ import { signSession, verifySession } from "../_shared/jarvis/session.ts";
 import { consentUrl, exchangeCode, googleConfig, GoogleApiError, loadOrganizer, runAs, trainerConsentUrl, userInfo, revokeToken, TRAINER_SCOPES } from "../_shared/google/googleAuthService.ts";
 import { encryptToken, decryptToken, encryptionReady } from "../_shared/google/tokenCrypto.ts";
 import { actorForKey, connectionOf, employeeOfTrainer } from "./owners.ts";
-import { calendarIdentity } from "../_shared/google/googleCalendarService.ts";
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
   retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom,
@@ -68,9 +67,11 @@ async function oauthCallback(url: URL): Promise<Response> {
   try {
     const { refreshToken, accessToken } = await exchangeCode(url.searchParams.get("code") || "");
     const org = await loadOrganizer();
-    const organizer = await calendarIdentity(org.calendarId, accessToken).catch(() => null);
+    // "primary" = the connected account itself (identity from OpenID userinfo); otherwise the
+    // configured calendar id is the organizer address.
+    const organizer = org.calendarId === "primary" ? (await userInfo(accessToken).catch(() => null))?.email || null : org.calendarId;
     const { error } = await adminClient().from("academic_meet_config").upsert({
-      id: 1, refresh_token: refreshToken, organizer_email: organizer, connected_by: a.email, connected_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      id: 1, refresh_token: await encryptToken(refreshToken), organizer_email: organizer, connected_by: a.email, connected_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     });
     // A newly connected organizer (e.g. Google Workspace) gets co-host re-tested.
     await adminClient().from("academic_meet_config").update({ cohost_supported: null }).eq("id", 1).then(() => {}, () => {});

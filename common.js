@@ -3208,7 +3208,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     hrLoaded = false;
                     initHRPanel();
                 } else {
-                    window.location.href = 'index.html';
+                    window.location.href = 'app.html';
                 }
             }
         }

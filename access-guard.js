@@ -72,7 +72,7 @@
       if (raw) { var list = JSON.parse(raw) || []; localStorage.setItem('be_saved_accounts', JSON.stringify(list.filter(function (a) { return String(a.email || '').toLowerCase() !== email; }))); }
     } catch (_) {}
     try { sessionStorage.setItem('be_access_msg', (info && info.message) || 'Your portal access has been disabled. Contact HR.'); } catch (_) {}
-    location.replace('index.html?access=' + encodeURIComponent((info && info.reason) || 'disabled'));
+    location.replace('app.html?access=' + encodeURIComponent((info && info.reason) || 'disabled'));
   }
 
   var busy = false;

@@ -52,7 +52,7 @@
   function signInAgain() {
     try { if (window.BESession) BESession.clear(BESession.currentEmail()); } catch (_) {}
     try { ['be_active_email', 'be_active_user', 'be_active_role', 'be_media_academic_session'].forEach(function (k) { localStorage.removeItem(k); }); } catch (_) {}
-    location.href = 'index.html';
+    location.href = 'app.html';
   }
   function sessionExpired() {
     setState('IDLE'); say(EXPIRED, 12000);

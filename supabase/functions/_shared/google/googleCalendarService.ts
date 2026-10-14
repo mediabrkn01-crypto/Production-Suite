@@ -29,12 +29,6 @@ export async function cancelEvent(calendarId: string, eventId: string) {
   }
 }
 
-/** The organizer calendar's own id (= the account email for "primary"). */
-export async function calendarIdentity(calendarId: string, token?: string): Promise<string | null> {
-  const j = await gfetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}`, {}, token);
-  return j?.id || null;
-}
-
 /** Meet link + meeting code from an event's conference data. */
 export function meetFromEvent(ev: any): { url: string | null; code: string | null; pending: boolean; failed: boolean } {
   const cd = ev?.conferenceData;
