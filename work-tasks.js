@@ -340,6 +340,19 @@
     };
   }
 
+  // Small line icons (stroke = currentColor) for KPI tiles and file rows.
+  var _svg = function (d) { return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>'; };
+  var KPI_IC = {
+    active: _svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>'),
+    pending: _svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+    progress: _svg('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>'),
+    overdue: _svg('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'),
+    completed: _svg('<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>')
+  };
+  var IC_FILE = _svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>');
+  var IC_LINK = _svg('<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>');
+  var IC_UP = _svg('<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/>');
+
   // ── styles (injected once) ─────────────────────────────────────────────────────────────
   function css() {
     if (document.getElementById('bework-css')) return;
@@ -512,6 +525,63 @@
       '.bw-pk.off{opacity:.4;cursor:not-allowed}',
       '.bw-pick-none{padding:16px;text-align:center;font-size:12px;color:var(--bw-d)}',
       '@media(max-width:640px){.bw-mem{align-items:flex-start}.bw-pick{max-height:46vh}.bw-types{grid-template-columns:1fr}.bw-pk{min-height:52px}}',
+      // ── design refresh (2026-10-15): one visual language for board, cards and popups ──
+      '.bw-kpi{position:relative;overflow:hidden;flex-direction:row;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;background:linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.012));transition:border-color .15s,transform .15s,background .15s}',
+      '.bw-kpi:hover{border-color:rgba(255,255,255,.16);transform:translateY(-1px)}',
+      '.bw-kpi::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:#ff6b06;opacity:.85}',
+      '.bw-kpi.amber::before{background:#fbbf24}.bw-kpi.info::before{background:#60a5fa}.bw-kpi.warn::before{background:#fb7185}.bw-kpi.good::before{background:#34d399}',
+      '.bw-kpi-ic{width:38px;height:38px;flex-shrink:0;border-radius:11px;display:grid;place-items:center;color:#ff8a3c;background:rgba(255,107,6,.12)}',
+      '.bw-kpi.amber .bw-kpi-ic{color:#fbbf24;background:rgba(251,191,36,.12)}.bw-kpi.info .bw-kpi-ic{color:#60a5fa;background:rgba(96,165,250,.12)}.bw-kpi.warn .bw-kpi-ic{color:#fb7185;background:rgba(251,113,133,.12)}.bw-kpi.good .bw-kpi-ic{color:#34d399;background:rgba(52,211,153,.12)}',
+      '.bw-kpi-t{display:flex;flex-direction:column;min-width:0}.bw-kpi b{font-size:24px;line-height:1.1}.bw-kpi span{color:var(--bw-m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.bw-kpi.on{background:linear-gradient(160deg,rgba(255,107,6,.14),rgba(249,24,47,.05));border-color:rgba(255,107,6,.55);box-shadow:0 0 0 3px rgba(255,107,6,.08)}',
+      '.bw-tabs{background:rgba(0,0,0,.3)}.bw-tabs button{transition:color .15s,background .15s}.bw-tabs button:hover{color:#fff}',
+      '.bw-tabs button.on{background:linear-gradient(135deg,rgba(255,107,6,.2),rgba(249,24,47,.1));border-color:rgba(255,107,6,.4)}.bw-tabs button.on i{color:#ffb27a}',
+      '.bw-sel,.bw-in{min-height:38px!important;border-radius:11px!important;transition:border-color .15s}.bw-sel:hover,.bw-in:hover{border-color:rgba(255,255,255,.2)!important}',
+      '.bw-sel:focus,.bw-in:focus,.bw-modal input:focus,.bw-modal textarea:focus,.bw-modal select:focus{outline:none;border-color:rgba(255,107,6,.6)!important;box-shadow:0 0 0 3px rgba(255,107,6,.14)}',
+      '.bw-range{padding:0 4px 0 10px;border-radius:12px;border:1px solid var(--bw-b);background:rgba(255,255,255,.02)}.bw-range .bw-in{border-color:transparent!important;background:transparent!important}',
+      '.bw-list{border-radius:16px;background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01))}',
+      '.bw-row{position:relative;padding:13px 16px;transition:background .12s}.bw-row:hover{background:rgba(255,107,6,.04)}',
+      '.bw-row.od::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:#fb7185}',
+      '.bw-row.hd{padding-top:10px;padding-bottom:10px}',
+      '.bw-tt b{font-size:14px}.bw-ava{width:32px;height:32px;font-size:11px}',
+      '.bw-btn{border-radius:10px;transition:border-color .15s,background .15s,color .15s}.bw-btn:hover{background:rgba(255,255,255,.08)}',
+      '.bw-btn.pri{box-shadow:0 8px 22px -10px rgba(249,24,47,.7)}.bw-btn.pri:hover{filter:brightness(1.08)}',
+      '.bw-btn.green{color:#a7f3d0;border-color:rgba(16,185,129,.5);background:linear-gradient(135deg,rgba(16,185,129,.22),rgba(16,185,129,.1))}.bw-btn.green:hover{background:rgba(16,185,129,.28)}',
+      '.bw-new{box-shadow:0 10px 26px -10px rgba(249,24,47,.75)}.bw-new:hover{filter:brightness(1.08)}',
+      // my tasks cards
+      '.bw-card{padding:16px;gap:12px;border-radius:16px;background:linear-gradient(165deg,rgba(255,255,255,.045),rgba(255,255,255,.01));transition:border-color .15s,transform .15s}',
+      '.bw-card:hover{transform:translateY(-2px);border-color:rgba(255,107,6,.35)}',
+      '.bw-card::before{content:"";position:absolute;left:16px;right:16px;top:0;height:2px;border-radius:0 0 2px 2px;background:rgba(255,255,255,.12)}',
+      '.bw-card.st-progress::before{background:#60a5fa}.bw-card.st-rework::before{background:#fbbf24}.bw-card.st-completed::before{background:#34d399}.bw-card.od::before{background:#fb7185}',
+      '.bw-card.od{background:linear-gradient(165deg,rgba(244,63,94,.08),rgba(255,255,255,.01))}',
+      '.bw-card-f{padding-top:10px;border-top:1px solid rgba(255,255,255,.06)}',
+      // popups
+      '.bw-ov{background:rgba(3,5,10,.74);backdrop-filter:blur(6px)}',
+      '.bw-modal{border-radius:20px;background:linear-gradient(170deg,#141a2c 0%,#0d1120 55%);border-color:rgba(255,255,255,.09);box-shadow:0 40px 100px -24px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.04)}',
+      '.bw-mh{padding:20px 22px 16px;background:radial-gradient(120% 140% at 0% 0%,rgba(255,107,6,.1),transparent 55%)}',
+      '.bw-mh h3{font-size:18px;letter-spacing:-.01em}',
+      '.bw-x{display:grid;place-items:center;transition:background .15s,color .15s}.bw-x:hover{background:rgba(255,255,255,.1);color:#fff}',
+      '.bw-mb{padding:18px 22px;gap:16px}.bw-mf{padding:14px 22px;background:rgba(5,7,14,.55)}',
+      '.bw-l{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#8b93b8}.bw-l em{text-transform:none;letter-spacing:0}',
+      '.bw-sec{display:flex;align-items:center;gap:10px;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ff8a3c;margin:4px 0 -4px}.bw-sec::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.07)}',
+      '.bw-modal input:not([type=file]):not([type=range]),.bw-modal select,.bw-modal textarea{border-radius:12px!important;background:rgba(255,255,255,.035)!important;transition:border-color .15s,box-shadow .15s}',
+      '.bw-seg{border-radius:13px}.bw-seg button{transition:color .15s,background .15s}',
+      '.bw-seg button[data-p="low"].on{color:#93c5fd;background:rgba(59,130,246,.16);border-color:rgba(96,165,250,.4)}',
+      '.bw-seg button[data-p="medium"].on{color:#e2e8f0;background:rgba(148,163,184,.16);border-color:rgba(148,163,184,.4)}',
+      '.bw-seg button[data-p="high"].on{color:#fdba74;background:rgba(251,146,60,.16);border-color:rgba(251,146,60,.45)}',
+      '.bw-seg button[data-p="urgent"].on,.bw-seg button[data-p="very_high"].on{color:#fda4af;background:rgba(244,63,94,.18);border-color:rgba(244,63,94,.5)}',
+      '.bw-sugg button{background:rgba(255,255,255,.03)}',
+      '.bw-file{gap:10px;padding:9px 12px;border-radius:11px;transition:border-color .15s}.bw-file:hover{border-color:rgba(255,255,255,.16)}',
+      '.bw-file .bw-fic{flex:0 0 28px;max-width:28px;overflow:visible}.bw-fic{width:28px;height:28px;flex-shrink:0;border-radius:8px;display:grid;place-items:center;color:#93c5fd;background:rgba(96,165,250,.12)}.bw-fic.ln{color:#c4b5fd;background:rgba(167,139,250,.12)}',
+      '.bw-file a{padding:4px 10px;border-radius:8px;background:rgba(96,165,250,.1);text-decoration:none}.bw-file a:hover{background:rgba(96,165,250,.2)}',
+      '.bw-drop{min-height:50px;border-radius:12px;background:rgba(255,255,255,.015);transition:border-color .15s,background .15s}.bw-drop:hover{background:rgba(255,107,6,.05)}',
+      '.bw-info{gap:8px}.bw-info div{padding:11px 13px;border-radius:13px;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.012))}',
+      '.bw-info small{margin-bottom:4px}.bw-info div.od{border-color:rgba(244,63,94,.4);background:linear-gradient(160deg,rgba(244,63,94,.12),rgba(244,63,94,.03))}',
+      '.bw-desc{border-radius:14px;padding:14px 16px;font-size:13.5px;line-height:1.6;background:rgba(255,255,255,.03);border-left:3px solid rgba(255,107,6,.5)}',
+      '.bw-hist{border-left-color:rgba(255,107,6,.25)}.bw-h{padding:8px 0}.bw-h::before{background:#0d1120}.bw-h:first-child::before{background:#ff6b06;box-shadow:0 0 0 4px rgba(255,107,6,.18)}',
+      '@media(max-width:1100px){.bw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}',
+      '@media(max-width:640px){.bw-kpi{padding:12px}.bw-kpi-ic{width:32px;height:32px}.bw-kpi b{font-size:20px}.bw-mh,.bw-mb{padding-left:16px;padding-right:16px}.bw-mf{padding:12px 16px}}',
+      '@media (prefers-reduced-motion:reduce){.bw-kpi,.bw-card,.bw-row{transition:none}.bw-kpi:hover,.bw-card:hover{transform:none}}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -543,14 +613,14 @@
     var deps = team ? teamDeps(mem) : [t.department];
     return '<div class="bw-mh"><div><h3>' + esc(t.topic || 'Task') + (team ? ' ' + teamBadge() : '') + '</h3><p>' + esc(t.type || 'Task') + ' · ' + deps.map(depChip).join(' ') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
       '<div class="bw-mb">' +
-        '<div class="bw-info"><div><small>Status</small>' + stPill(t) + '</div><div><small>Priority</small>' + priPill(t.priority) + '</div><div><small>Due</small><b class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</b></div>' +
+        '<div class="bw-info"><div><small>Status</small>' + stPill(t) + '</div><div><small>Priority</small>' + priPill(t.priority) + '</div><div' + (isOverdue(t) ? ' class="od"' : '') + '><small>Due</small><b class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</b></div>' +
           (team ? '<div><small>Team</small><b>' + activeMembers(mem).length + ' members' + (deps.length > 1 ? ' · ' + deps.length + ' departments' : '') + '</b></div>' : '<div><small>Assigned to</small><b>' + esc(t.assigned_to || '—') + '</b></div>') + '<div><small>Assigned by</small><b>' + esc(t.assigned_by || '—') + '</b></div><div><small>Assigned on</small><b>' + esc(fmtD(t.assigned_date)) + '</b></div></div>' +
         (typeof t.progress === 'number' && t.progress > 0 && t.status !== 'Completed' ? '<div class="bw-f"><span class="bw-l">Progress · ' + t.progress + '%</span><div class="bw-prog"><i style="width:' + t.progress + '%"></i></div></div>' : '') +
         '<div class="bw-f"><span class="bw-l">Instructions</span><div class="bw-desc">' + (t.description ? esc(t.description) : '<span style="color:#5b638a">No instructions added.</span>') + '</div></div>' +
         (t.rework_reason && t.status === 'Rework Required' ? '<div class="bw-warn"><b>Rework needed:</b> ' + esc(t.rework_reason) + '</div>' : '') +
         ((refs.length || t.reference_link) ? '<div class="bw-f"><span class="bw-l">Reference files &amp; links</span><div class="bw-files">' +
-          refs.map(function (r) { return '<div class="bw-file">📎<span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') +
-          (t.reference_link ? '<div class="bw-file">🔗<span>' + esc(t.reference_link) + '</span><a href="' + esc(t.reference_link) + '" target="_blank" rel="noopener">Open</a></div>' : '') + '</div></div>' : '') +
+          refs.map(function (r) { return '<div class="bw-file"><span class="bw-fic">' + IC_FILE + '</span><span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') +
+          (t.reference_link ? '<div class="bw-file"><span class="bw-fic ln">' + IC_LINK + '</span><span>' + esc(t.reference_link) + '</span><a href="' + esc(t.reference_link) + '" target="_blank" rel="noopener">Open</a></div>' : '') + '</div></div>' : '') +
         (team && opts && opts.teamBlock ? opts.teamBlock : '') +
         outputHTML(t) +
         (hist.length ? '<div class="bw-f"><span class="bw-l">History</span><div class="bw-hist">' + hist.map(function (h) {
@@ -665,7 +735,7 @@
         '<div class="bw-bar"><div class="bw-tabs" role="tablist">' + tabs.map(function (x) { return '<button type="button" data-f="' + x[0] + '" class="' + (S.f === x[0] ? 'on' : '') + '">' + x[1] + '<i>' + (c[x[0]] || 0) + '</i></button>'; }).join('') + '</div></div>' +
         (list.length ? '<div class="bw-cards">' + list.map(function (t) {
           var isNew = isOpen(t) && !S.known.has(String(t.id));
-          return '<button type="button" class="bw-card' + (isOverdue(t) ? ' od' : '') + (isNew ? ' new' : '') + '" data-id="' + esc(t.id) + '">' +
+          return '<button type="button" class="bw-card st-' + state(t) + (isOverdue(t) ? ' od' : '') + (isNew ? ' new' : '') + '" data-id="' + esc(t.id) + '">' +
             '<h4>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</h4>' + (t.description ? '<p>' + esc(t.description) + '</p>' : '') +
             (isTeam(t) ? '<div class="bw-tm">With ' + esc(joinNames(teamNames(S.mem[String(t.id)], me)) || 'your team') + '</div>' : '') +
             '<div class="bw-card-m">' + stPill(t) + priPill(t.priority) + (t.type ? '<span class="bw-pri">' + esc(t.type) + '</span>' : '') + '</div>' +
@@ -817,7 +887,7 @@
         stuckList.map(function (x) { return '<div class="bw-warn">⚠️ <span><b>' + esc(x.e.full_name) + '</b> is ' + esc(x.e.employment_status) + ' and has ' + x.n + ' active task' + (x.n === 1 ? '' : 's') + '.</span><button class="bw-btn" data-bulk="' + esc(x.e.id) + '">Reassign tasks</button></div>'; }).join('') +
         '<div class="bw-kpis">' +
           [['active', c.active, 'Total active tasks', ''], ['pending', c.pending, 'Pending', 'amber'], ['progress', c.progress, 'In progress', 'info'], ['overdue', c.overdue, 'Overdue', 'warn'], ['completed', c.monthDone, 'Completed this month', 'good']]
-            .map(function (k) { return '<button type="button" class="bw-kpi ' + k[3] + (S.tab === k[0] ? ' on' : '') + '" data-tab="' + k[0] + '"><b>' + k[1] + '</b><span>' + k[2] + '</span></button>'; }).join('') + '</div>' +
+            .map(function (k) { return '<button type="button" class="bw-kpi ' + k[3] + (S.tab === k[0] ? ' on' : '') + '" data-tab="' + k[0] + '"><span class="bw-kpi-ic">' + KPI_IC[k[0]] + '</span><span class="bw-kpi-t"><b>' + k[1] + '</b><span>' + k[2] + '</span></span></button>'; }).join('') + '</div>' +
         '<div class="bw-bar"><div class="bw-tabs">' + tabs.map(function (x) { return '<button type="button" data-tab="' + x[0] + '" class="' + (S.tab === x[0] ? 'on' : '') + '">' + x[1] + '<i>' + (x[0] === 'completed' ? c.completed : c[x[0]] || 0) + '</i></button>'; }).join('') + '</div></div>' +
         '<div class="bw-bar">' +
           '<input class="bw-in bw-search" type="search" placeholder="Search task, employee or department…" value="' + esc(S.q) + '" data-q>' +
@@ -845,7 +915,7 @@
         : list.length ? '<div class="bw-list"><div class="bw-row hd"><span>Task</span><span>Assigned to</span><span class="bw-c-pri">Priority</span><span>Due</span><span>Status</span><span class="bw-c-prog">Progress</span><span></span></div>' +
           list.slice(0, 300).map(function (t) {
             var pg = t.status === 'Completed' ? 100 : (t.progress || (t.status === 'In Progress' ? 10 : 0));
-            return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
+            return '<div class="bw-row' + (isOverdue(t) ? ' od' : '') + '" data-id="' + esc(t.id) + '">' +
               '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</b><span>' + esc(t.type || 'Task') + ' · assigned ' + esc(fmtD(t.assigned_date)) + '</span></div>' +
               whoCell(t) +
               '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
@@ -959,6 +1029,7 @@
       var pr = (t && t.priority) || 'medium';
       modal('<div class="bw-mh"><div><h3>' + (t ? 'Edit task' : 'Assign work') + '</h3><p>' + (t ? 'Changes are saved to the same task and recorded in its history.' : 'The employee is notified instantly in their own portal.') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
         '<div class="bw-mb">' +
+          '<div class="bw-sec">Task</div>' +
           '<div class="bw-f"><label class="bw-l" for="bw-title">Task / work title <b>*</b></label><input id="bw-title" maxlength="140" placeholder="e.g. Prepare October Academic Report" value="' + esc(t ? t.topic : '') + '"></div>' +
           (t ? (isTeam(t) ? '<div class="bw-f"><span class="bw-l">Team ' + teamBadge() + '</span><div class="bw-file"><span>' + esc(teamNames(S.mem[String(t.id)]).join(', ')) + '</span><a href="#" data-team-in>Manage team</a></div></div>'
               : '<div class="bw-f"><span class="bw-l">Assigned to</span><div class="bw-file"><span>' + esc(t.assigned_to || '—') + ' · ' + esc(DIV[t.department] || '') + '</span><a href="#" data-re-in>Reassign</a></div></div>')
@@ -976,11 +1047,13 @@
               '<div class="bw-f"><label class="bw-l" for="bw-emp">Employee <b>*</b></label><select id="bw-emp">' + empOptions(dep0, '') + '</select></div></div>') +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-cat">Category <em>optional</em></label><input id="bw-cat" autocomplete="off" placeholder="e.g. Report, Poster Design" value="' + esc(t ? (t.type || '') : '') + '"><div class="bw-sugg" id="bw-catsug">' + Object.keys(cats).slice(0, 8).map(function (c) { return '<button type="button" data-cat="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div></div>' +
             '<div class="bw-f"><span class="bw-l">Priority</span><div class="bw-seg" role="radiogroup">' + PRIO.map(function (p) { return '<button type="button" data-p="' + p[0] + '" class="' + (pr === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div></div></div>' +
+          '<div class="bw-sec">Schedule</div>' +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-ad">Assigned date</label><input id="bw-ad" type="date" value="' + esc(t ? String(t.assigned_date || '').slice(0, 10) : today()) + '"></div>' +
             '<div class="bw-f"><label class="bw-l" for="bw-due">Due date <b>*</b></label><input id="bw-due" type="date" min="' + (t ? '' : today()) + '" value="' + esc(t ? String(t.date || '').slice(0, 10) : '') + '"></div></div>' +
+          '<div class="bw-sec">Details</div>' +
           '<div class="bw-f"><label class="bw-l" for="bw-desc">Description / instructions</label><textarea id="bw-desc" placeholder="What should be done, what “done” looks like, anything they need to know">' + esc(t ? (t.description || '') : '') + '</textarea></div>' +
-          '<div class="bw-f"><span class="bw-l">Reference files <em>optional</em></span><div class="bw-files" id="bw-flist">' + (t ? parseRefs(t.reference_file).map(function (r) { return '<div class="bw-file">📎<span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') : '') + '</div>' +
-            '<label class="bw-drop"><input type="file" multiple hidden id="bw-file">📎 Add files</label></div>' +
+          '<div class="bw-f"><span class="bw-l">Reference files <em>optional</em></span><div class="bw-files" id="bw-flist">' + (t ? parseRefs(t.reference_file).map(function (r) { return '<div class="bw-file"><span class="bw-fic">' + IC_FILE + '</span><span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') : '') + '</div>' +
+            '<label class="bw-drop"><input type="file" multiple hidden id="bw-file">' + IC_UP + ' Add files</label></div>' +
           '<div class="bw-f"><label class="bw-l" for="bw-link">Link <em>optional</em></label><input id="bw-link" type="url" placeholder="https://…" value="' + esc(t ? (t.reference_link || '') : '') + '"></div>' +
         '</div>' +
         '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Cancel</button><button class="bw-btn pri" data-save>' + (t ? 'Save changes' : 'Assign work') + '</button></div>', function (ov, close) {
