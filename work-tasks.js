@@ -581,7 +581,11 @@
       '.bw-hist{border-left-color:rgba(255,107,6,.25)}.bw-h{padding:8px 0}.bw-h::before{background:#0d1120}.bw-h:first-child::before{background:#ff6b06;box-shadow:0 0 0 4px rgba(255,107,6,.18)}',
       '@media(max-width:1100px){.bw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}',
       '@media(max-width:640px){.bw-kpi{padding:12px}.bw-kpi-ic{width:32px;height:32px}.bw-kpi b{font-size:20px}.bw-mh,.bw-mb{padding-left:16px;padding-right:16px}.bw-mf{padding:12px 16px}}',
-      '@media (prefers-reduced-motion:reduce){.bw-kpi,.bw-card,.bw-row{transition:none}.bw-kpi:hover,.bw-card:hover{transform:none}}'
+      '@media (prefers-reduced-motion:reduce){.bw-kpi,.bw-card,.bw-row{transition:none}.bw-kpi:hover,.bw-card:hover{transform:none}}',
+      // wide screens: popups use the free space — two columns instead of one long scroll
+      '.bw-col-a,.bw-col-b{display:flex;flex-direction:column;gap:16px;min-width:0}',
+      '.bw-cols{display:flex;flex-direction:column;gap:16px}',
+      '@media(min-width:1100px){.bw-modal:has(.bw-cols){max-width:1040px}.bw-cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px 22px;align-items:start}.bw-mb.bw-cols{display:grid}.bw-col-b:empty{display:none}.bw-cols:has(.bw-col-b:empty){grid-template-columns:1fr}.bw-col-b .bw-hist{max-height:none}.bw-cols .bw-info{grid-template-columns:repeat(3,minmax(0,1fr))}}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -612,7 +616,8 @@
     var team = isTeam(t), mem = (opts && opts.members) || [];
     var deps = team ? teamDeps(mem) : [t.department];
     return '<div class="bw-mh"><div><h3>' + esc(t.topic || 'Task') + (team ? ' ' + teamBadge() : '') + '</h3><p>' + esc(t.type || 'Task') + ' · ' + deps.map(depChip).join(' ') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
-      '<div class="bw-mb">' +
+      // Wide screens: two columns — the task itself on the left, team + history on the right.
+      '<div class="bw-mb bw-cols"><div class="bw-col-a">' +
         '<div class="bw-info"><div><small>Status</small>' + stPill(t) + '</div><div><small>Priority</small>' + priPill(t.priority) + '</div><div' + (isOverdue(t) ? ' class="od"' : '') + '><small>Due</small><b class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</b></div>' +
           (team ? '<div><small>Team</small><b>' + activeMembers(mem).length + ' members' + (deps.length > 1 ? ' · ' + deps.length + ' departments' : '') + '</b></div>' : '<div><small>Assigned to</small><b>' + esc(t.assigned_to || '—') + '</b></div>') + '<div><small>Assigned by</small><b>' + esc(t.assigned_by || '—') + '</b></div><div><small>Assigned on</small><b>' + esc(fmtD(t.assigned_date)) + '</b></div></div>' +
         (typeof t.progress === 'number' && t.progress > 0 && t.status !== 'Completed' ? '<div class="bw-f"><span class="bw-l">Progress · ' + t.progress + '%</span><div class="bw-prog"><i style="width:' + t.progress + '%"></i></div></div>' : '') +
@@ -621,15 +626,16 @@
         ((refs.length || t.reference_link) ? '<div class="bw-f"><span class="bw-l">Reference files &amp; links</span><div class="bw-files">' +
           refs.map(function (r) { return '<div class="bw-file"><span class="bw-fic">' + IC_FILE + '</span><span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') +
           (t.reference_link ? '<div class="bw-file"><span class="bw-fic ln">' + IC_LINK + '</span><span>' + esc(t.reference_link) + '</span><a href="' + esc(t.reference_link) + '" target="_blank" rel="noopener">Open</a></div>' : '') + '</div></div>' : '') +
-        (team && opts && opts.teamBlock ? opts.teamBlock : '') +
         outputHTML(t) +
+        (opts && opts.extra ? opts.extra : '') +
+      '</div><div class="bw-col-b">' +
+        (team && opts && opts.teamBlock ? opts.teamBlock : '') +
         (hist.length ? '<div class="bw-f"><span class="bw-l">History</span><div class="bw-hist">' + hist.map(function (h) {
           var o = h.output && parseOutput(h.output.asset_link);
           return '<div class="bw-h">' + esc(histLabel(h)) + '<small>' + esc(h.by || '') + ' · ' + esc(fmtTs(h.at)) + '</small>' + (h.note ? '<q>' + esc(h.note) + '</q>' : '') +
             (o && o.length ? '<div class="bw-ver"><span>' + esc(h.version ? 'Submission version ' + h.version : 'Submission kept') + (h.output.submitted_at ? ' · submitted ' + esc(fmtFull(h.output.submitted_at)) : '') + '</span>' +
               o.map(function (f) { return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + (KIND_ICON[f.kind] || '📎') + ' ' + esc(f.name) + '</a>'; }).join('') + (h.output.note ? '<em>“' + esc(h.output.note) + '”</em>' : '') + '</div>' : '') + '</div>'; }).join('') + '</div></div>' : '') +
-        (opts && opts.extra ? opts.extra : '') +
-      '</div>';
+      '</div></div>';
   }
   function outputHTML(t) {
     var files = parseOutput(t.asset_link), done = t.status === 'Completed', note = outputNote(t);
@@ -1029,6 +1035,7 @@
       var pr = (t && t.priority) || 'medium';
       modal('<div class="bw-mh"><div><h3>' + (t ? 'Edit task' : 'Assign work') + '</h3><p>' + (t ? 'Changes are saved to the same task and recorded in its history.' : 'The employee is notified instantly in their own portal.') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
         '<div class="bw-mb">' +
+          '<div class="bw-cols"><div class="bw-col-a">' +
           '<div class="bw-sec">Task</div>' +
           '<div class="bw-f"><label class="bw-l" for="bw-title">Task / work title <b>*</b></label><input id="bw-title" maxlength="140" placeholder="e.g. Prepare October Academic Report" value="' + esc(t ? t.topic : '') + '"></div>' +
           (t ? (isTeam(t) ? '<div class="bw-f"><span class="bw-l">Team ' + teamBadge() + '</span><div class="bw-file"><span>' + esc(teamNames(S.mem[String(t.id)]).join(', ')) + '</span><a href="#" data-team-in>Manage team</a></div></div>'
@@ -1047,14 +1054,17 @@
               '<div class="bw-f"><label class="bw-l" for="bw-emp">Employee <b>*</b></label><select id="bw-emp">' + empOptions(dep0, '') + '</select></div></div>') +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-cat">Category <em>optional</em></label><input id="bw-cat" autocomplete="off" placeholder="e.g. Report, Poster Design" value="' + esc(t ? (t.type || '') : '') + '"><div class="bw-sugg" id="bw-catsug">' + Object.keys(cats).slice(0, 8).map(function (c) { return '<button type="button" data-cat="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div></div>' +
             '<div class="bw-f"><span class="bw-l">Priority</span><div class="bw-seg" role="radiogroup">' + PRIO.map(function (p) { return '<button type="button" data-p="' + p[0] + '" class="' + (pr === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div></div></div>' +
+          '<div class="bw-sec">Details</div>' +
+          '<div class="bw-f"><label class="bw-l" for="bw-desc">Description / instructions</label><textarea id="bw-desc" placeholder="What should be done, what “done” looks like, anything they need to know">' + esc(t ? (t.description || '') : '') + '</textarea></div>' +
+          '</div><div class="bw-col-b">' +
           '<div class="bw-sec">Schedule</div>' +
           '<div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-ad">Assigned date</label><input id="bw-ad" type="date" value="' + esc(t ? String(t.assigned_date || '').slice(0, 10) : today()) + '"></div>' +
             '<div class="bw-f"><label class="bw-l" for="bw-due">Due date <b>*</b></label><input id="bw-due" type="date" min="' + (t ? '' : today()) + '" value="' + esc(t ? String(t.date || '').slice(0, 10) : '') + '"></div></div>' +
-          '<div class="bw-sec">Details</div>' +
-          '<div class="bw-f"><label class="bw-l" for="bw-desc">Description / instructions</label><textarea id="bw-desc" placeholder="What should be done, what “done” looks like, anything they need to know">' + esc(t ? (t.description || '') : '') + '</textarea></div>' +
+          '<div class="bw-sec">Files &amp; link</div>' +
           '<div class="bw-f"><span class="bw-l">Reference files <em>optional</em></span><div class="bw-files" id="bw-flist">' + (t ? parseRefs(t.reference_file).map(function (r) { return '<div class="bw-file"><span class="bw-fic">' + IC_FILE + '</span><span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') : '') + '</div>' +
             '<label class="bw-drop"><input type="file" multiple hidden id="bw-file">' + IC_UP + ' Add files</label></div>' +
           '<div class="bw-f"><label class="bw-l" for="bw-link">Link <em>optional</em></label><input id="bw-link" type="url" placeholder="https://…" value="' + esc(t ? (t.reference_link || '') : '') + '"></div>' +
+          '</div></div>' +
         '</div>' +
         '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Cancel</button><button class="bw-btn pri" data-save>' + (t ? 'Save changes' : 'Assign work') + '</button></div>', function (ov, close) {
         var pri = pr;
