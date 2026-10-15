@@ -1194,7 +1194,9 @@
     if (window.BELive) BELive.on('bework-mgr' + (deps ? '-' + deps.join('_') : ''), ['assignments', 'hr_employees', 'assignment_members'], function (evs, info) {
       if (info.resync || (evs || []).some(function (e) { return e.table === 'hr_employees'; })) loadEmps().then(load); else load();
     }, { debounce: 400 });
-    return { reload: load, assign: function () { openForm(null); } };
+    return { reload: load, assign: function () { openForm(null); },
+      // Deep link (Notification Center → "Review Work"): open the exact record in this board.
+      open: async function (id) { if (!rowById(id)) await load(); if (rowById(id)) view(id); return !!rowById(id); } };
   }
 
   window.BEWork = { mountMyTasks: mountMyTasks, mountManager: mountManager, DIV: DIV, isOpen: isOpen, isOverdue: isOverdue };

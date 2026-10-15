@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.15.1607-1m3m">
-<script src="be-update.js?v=2026.10.15.1607-1m3m"></script>
+<meta name="be-version" content="2026.10.15.1704-ctfo">
+<script src="be-update.js?v=2026.10.15.1704-ctfo"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050408">
 <title>Broken English | Manager Command Deck</title>
@@ -14,15 +14,16 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-live.js?v=2026.10.15.1607-1m3m"></script>
-<link rel="stylesheet" href="account-menu.css?v=2026.10.15.1607-1m3m">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.15.1607-1m3m">
-<script src="be-mobile.js?v=2026.10.15.1607-1m3m"></script>
-<script src="be-nav-history.js?v=2026.10.15.1607-1m3m"></script>
-<script src="account-menu.js?v=2026.10.15.1607-1m3m"></script>
-<script src="photo-preview.js?v=2026.10.15.1607-1m3m"></script>
-<script src="shared-greeting.js?v=2026.10.15.1607-1m3m"></script>
-<script src="be-shell.js?v=2026.10.15.1607-1m3m"></script>
+<script src="be-live.js?v=2026.10.15.1704-ctfo"></script>
+<script src="be-notify.js?v=2026.10.15.1704-ctfo"></script>
+<link rel="stylesheet" href="account-menu.css?v=2026.10.15.1704-ctfo">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.15.1704-ctfo">
+<script src="be-mobile.js?v=2026.10.15.1704-ctfo"></script>
+<script src="be-nav-history.js?v=2026.10.15.1704-ctfo"></script>
+<script src="account-menu.js?v=2026.10.15.1704-ctfo"></script>
+<script src="photo-preview.js?v=2026.10.15.1704-ctfo"></script>
+<script src="shared-greeting.js?v=2026.10.15.1704-ctfo"></script>
+<script src="be-shell.js?v=2026.10.15.1704-ctfo"></script>
 <style>
   /* ── Manager Command Deck (2026-10-08) — Founder-deck layout, live Manager data. ──
      Tokens: deck void/panel + Broken English gradient; per-department accent via --thr. */
@@ -297,7 +298,9 @@
           ids: { bell: 'mgr-bell', badge: 'mgr-bell-dot', account: 'mgr-account-trigger', avatar: 'mgr-account-btn', date: 'mgr-datetime' },
           searchPlaceholder: 'Search sections — Media, HR, Academics, Sales…',
           navSelector: '.navlink[data-sec]',
-          onBell: () => { mgrSection('dashboard'); document.getElementById('mgr-attn')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
+          // Bell = the shared Notification Center (be-notify.js, erp_notifications). Before this it
+          // only scrolled the deck, and its badge showed the approval-queue size, not notifications.
+          onBell: () => { if (window.BENotify && BENotify.available) BENotify.toggle(); else { mgrSection('dashboard'); document.getElementById('mgr-attn')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } },
           mobileCompact: true,
           getUser: () => window._mgrEmp ? { name: window._mgrEmp.full_name || '', role: window._mgrEmp.designation || 'Manager' } : null,
         });
@@ -446,15 +449,15 @@
     </main>
   </div>
 
-<script src="common.js?v=2026.10.15.1607-1m3m"></script>
-<script src="be-select.js?v=2026.10.15.1607-1m3m"></script>
-<script src="work-tasks.js?v=2026.10.15.1607-1m3m"></script>
-<script src="access-guard.js?v=2026.10.15.1607-1m3m"></script>
-<script src="announcements.js?v=2026.10.15.1607-1m3m"></script>
-<script src="be-session.js?v=2026.10.15.1607-1m3m"></script>
-<script src="jarvis-voice.js?v=2026.10.15.1607-1m3m"></script>
-<script src="jarvis-wake.js?v=2026.10.15.1607-1m3m"></script>
-<script src="leave-policy.js?v=2026.10.15.1607-1m3m"></script>
+<script src="common.js?v=2026.10.15.1704-ctfo"></script>
+<script src="be-select.js?v=2026.10.15.1704-ctfo"></script>
+<script src="work-tasks.js?v=2026.10.15.1704-ctfo"></script>
+<script src="access-guard.js?v=2026.10.15.1704-ctfo"></script>
+<script src="announcements.js?v=2026.10.15.1704-ctfo"></script>
+<script src="be-session.js?v=2026.10.15.1704-ctfo"></script>
+<script src="jarvis-voice.js?v=2026.10.15.1704-ctfo"></script>
+<script src="jarvis-wake.js?v=2026.10.15.1704-ctfo"></script>
+<script src="leave-policy.js?v=2026.10.15.1704-ctfo"></script>
 <script>
 (async function(){
   'use strict';
@@ -492,13 +495,22 @@
     if (!window.BEWork) return;
     var host = document.getElementById('mgr-work'); if (!host) return;
     var meName = (meRec && meRec.full_name) || 'Manager';
-    BEWork.mountManager(host.querySelector('#mw-board'), { db: db, actor: { name: meName, email: email } });
+    window._mgrWork = BEWork.mountManager(host.querySelector('#mw-board'), { db: db, actor: { name: meName, email: email } });
     BEWork.mountMyTasks(host.querySelector('#mw-mine'), { db: db, email: email, name: meName, title: 'Assigned to me',
       onCount: function(n){ var b=document.getElementById('mw-mine-n'); if(b) b.textContent = n ? n : ''; var d=document.getElementById('mgr-work-dot'); if(d) d.hidden = !n; },
       onNotify: function(){ var d=document.getElementById('mgr-work-dot'); if(d) d.hidden=false; } });
     host.querySelectorAll('[data-mw]').forEach(function(b){ b.onclick=function(){ host.querySelectorAll('[data-mw]').forEach(function(x){ x.classList.toggle('on', x===b); });
       host.querySelector('#mw-board').hidden = b.dataset.mw!=='board'; host.querySelector('#mw-mine').hidden = b.dataset.mw!=='mine'; }; });
   })();
+  // ── Notification Center (shared be-notify.js) — work completions etc. arrive live via
+  //    Supabase Realtime; "Review Work" opens the exact record on the Work Assignment board.
+  if (window.BENotify) BENotify.init({ db: db, email: email, bell: 'mgr-bell', badge: 'mgr-bell-dot', panel: true,
+    toastTypes: ['work_completed', 'work_output_uploaded'],
+    onOpen: function(n){
+      var m = String(n.link || '').match(/^work:(.+)$/);
+      if (m) { mgrSection('work'); var bb=document.querySelector('#mgr-work [data-mw="board"]'); if(bb) bb.click();
+        if (window._mgrWork && _mgrWork.open) _mgrWork.open(m[1]).then(function(ok){ if(!ok && window.showToast) showToast('error','That work item is no longer available.'); }); }
+    } });
   var frames = {};
   window.mgrSection = function(sec, opts){
     var content=document.getElementById('mgr-content'), dash=document.getElementById('mgr-dash');
@@ -656,7 +668,9 @@
       renderAttention();
       var notif=((MD['ac-media']&&MD['ac-media'].list)||[]).length+((MD['hr-pend']&&MD['hr-pend'].list)||[]).length;
       var nb=document.getElementById('mgr-nav-notif'), bd=document.getElementById('mgr-bell-dot');
-      if(nb){ nb.textContent=notif||''; nb.style.display=notif?'inline-flex':'none'; } if(bd){ bd.textContent=notif||''; bd.style.display=notif?'inline-flex':'none'; }
+      if(nb){ nb.textContent=notif||''; nb.style.display=notif?'inline-flex':'none'; }
+      // The bell badge belongs to BENotify (unread notifications); only fall back to the queue size without it.
+      if(bd && !(window.BENotify && BENotify.available)){ bd.textContent=notif||''; bd.style.display=notif?'inline-flex':'none'; }
       var up=document.getElementById('mgr-updated'); if(up) up.textContent='Updated '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'});
       if(_mAgain){ _mAgain=false; setTimeout(loadMetrics, 300); }
     }
