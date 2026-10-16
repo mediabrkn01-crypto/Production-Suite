@@ -64,42 +64,89 @@
   function css() {
     if (document.getElementById('wp-css')) return;
     var s = document.createElement('style'); s.id = 'wp-css';
+    // Minimal surface: typography + whitespace + hairlines. Accent (#ff6b06 → #f9182f) only on
+    // the primary action, focus and active states.
     s.textContent = [
-      '.wp{display:flex;flex-direction:column;gap:16px}',
-      '.wp-sec{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ff8a3d;margin:0 0 2px;display:flex;align-items:center;gap:8px}.wp-sec em{font-style:normal;color:#6b74a0;letter-spacing:.04em;text-transform:none;font-weight:600}',
-      '.wp-box{border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02);padding:14px;display:flex;flex-direction:column;gap:12px}',
-      '.wp-g{display:grid;gap:10px}.wp-g2{grid-template-columns:repeat(2,minmax(0,1fr))}.wp-g4{grid-template-columns:repeat(4,minmax(0,1fr))}',
-      '.wp-f{display:flex;flex-direction:column;gap:5px;min-width:0}.wp-f label{color:#6b74a0;font-size:11px}.wp-f label b{color:#f87171}',
-      '.wp-in{width:100%;box-sizing:border-box;background:transparent;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:9px 12px;color:#fff;font:inherit;font-size:12.5px;outline:none;transition:border-color .15s}',
-      '.wp-in:focus{border-color:#ff6b06}select.wp-in{background:#0f1220}textarea.wp-in{resize:vertical;min-height:62px;line-height:1.5}',
-      '.wp-in.bad{border-color:#f87171}',
-      '.wp-drop{display:flex;align-items:center;gap:10px;cursor:pointer;border:1px dashed rgba(255,255,255,.12);border-radius:12px;padding:11px 12px;color:#8b93b8;font-size:12px;transition:border-color .15s,color .15s,background .15s}',
-      '.wp-drop:hover,.wp-drop.over{border-color:#ff6b06;color:#fff;background:rgba(255,107,6,.05)}.wp-drop input{display:none}',
-      '.wp-files{display:flex;flex-direction:column;gap:6px}',
-      '.wp-file{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;padding:8px 10px;border-radius:11px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);font-size:12px}',
-      '.wp-file .ic{color:#60a5fa;grid-row:span 2}.wp-file .nm{color:#e6e9f5;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.wp-file .st{grid-column:2;display:flex;align-items:center;gap:8px;color:#8b93b8;font-size:11px;min-width:0}',
-      '.wp-file .bar{flex:1;height:5px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;min-width:60px}.wp-file .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff6b06,#f9182f);transition:width .25s}',
-      '.wp-file .acts{grid-row:span 2;display:flex;gap:4px}.wp-file .acts button{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#c7cbe0;border-radius:8px;height:28px;padding:0 8px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}',
-      '.wp-file.done .st{color:#34d399}.wp-file.done .ic{color:#34d399}.wp-file.failed{border-color:rgba(248,113,113,.45)}.wp-file.failed .st{color:#f87171}',
-      '.wp-card{border:1px solid rgba(255,255,255,.08);border-left:3px solid rgba(255,107,6,.5);border-radius:16px;background:rgba(255,255,255,.02);overflow:hidden}',
-      '.wp-card-h{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none}',
-      '.wp-card-h .n{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:rgba(255,107,6,.14);color:#ff8a3d;font-weight:800;font-size:12px;flex-shrink:0}',
-      '.wp-card-h .t{flex:1;min-width:0}.wp-card-h .t b{display:block;color:#fff;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wp-card-h .t span{display:block;color:#8b93b8;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.wp-card-h .chev{color:#8b93b8;transition:transform .2s}.wp-card.closed .chev{transform:rotate(-90deg)}',
-      '.wp-card-h .rm{border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.08);color:#f87171;border-radius:8px;height:28px;padding:0 9px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}',
-      '.wp-card-b{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}.wp-card.closed .wp-card-b{display:none}',
-      '.wp-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;border:1px dashed rgba(255,107,6,.45);border-radius:14px;background:rgba(255,107,6,.05);color:#ff8a3d;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}',
-      '.wp-add:hover{background:rgba(255,107,6,.1)}',
-      '.wp-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
-      '.wp-foot .sum{font-size:11.5px;color:#8b93b8}.wp-foot .sum b{color:#fff}.wp-foot .warn{color:#fbbf24}',
-      '.wp-go{border:0;border-radius:12px;padding:11px 22px;color:#fff;font:inherit;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552);box-shadow:0 4px 16px rgba(255,45,120,.3)}',
+      '#admin-assignment-panel.wp-on{border-left:1px solid rgba(255,255,255,.06)!important;padding:22px 24px!important}',
+      '#admin-assignment-panel.wp-on>h3{font-size:10.5px!important;letter-spacing:.16em;color:#6b74a0!important;margin-bottom:-6px}',
+      '#admin-assignment-panel.wp-on>h3 i,#admin-assignment-panel.wp-on>h3 svg{display:none}',
+      '.wp{display:flex;flex-direction:column;gap:22px;color:#e6e9f5}',
+      '.wp-lbl{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b74a0}',
+      '.wp-hint{font-size:11px;color:#4f5785;font-weight:500;letter-spacing:0;text-transform:none}',
+      /* project header */
+      '.wp-proj{display:flex;flex-direction:column;gap:10px}',
+      '.wp-title{width:100%;background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,.08);padding:4px 0 10px;color:#fff;font:inherit;font-size:22px;font-weight:700;letter-spacing:-.01em;outline:none;transition:border-color .15s}',
+      '.wp-title::placeholder{color:#3d4470}.wp-title:focus{border-bottom-color:#ff6b06}',
+      '.wp-auto{width:100%;box-sizing:border-box;background:rgba(255,255,255,.025);border:1px solid transparent;border-radius:10px;padding:9px 12px;color:#dfe3f3;font:inherit;font-size:13px;line-height:1.5;resize:none;outline:none;overflow:hidden;min-height:38px;transition:border-color .15s,background .15s}',
+      '.wp-auto::placeholder{color:#4f5785}.wp-auto:focus{background:rgba(255,255,255,.04);border-color:rgba(255,107,6,.45)}',
+      /* compact inputs */
+      '.wp-in{width:100%;box-sizing:border-box;height:36px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:9px;padding:0 11px;color:#fff;font:inherit;font-size:12.5px;outline:none;transition:border-color .15s}',
+      '.wp-in::placeholder{color:#4f5785}.wp-in:focus{border-color:rgba(255,107,6,.55)}select.wp-in{background:#10131f;padding-right:6px}',
+      '.wp-in[type=date]{color-scheme:dark}.bad{border-color:#f87171!important;box-shadow:0 0 0 1px rgba(248,113,113,.25)}',
+      '.wp-del-in{font-size:13.5px;font-weight:600;height:38px}',
+      /* files */
+      '.wp-files-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.wp-addf{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:transparent;color:#a5adcf;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}',
+      '.wp-addf:hover{color:#fff;border-color:rgba(255,255,255,.18)}.wp-addf input{display:none}',
+      '.wp-files{display:flex;flex-direction:column;gap:2px;width:100%}.wp-files:empty{display:none}',
+      '.wp-file{display:flex;align-items:center;gap:10px;min-height:30px;padding:2px 4px 2px 2px;border-radius:7px;font-size:12px}',
+      '.wp-file:hover{background:rgba(255,255,255,.025)}',
+      '.wp-file .ic{color:#6b74a0;display:flex;flex-shrink:0}.wp-file .nm{flex:1;min-width:0;color:#dfe3f3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wp-file .st{display:flex;align-items:center;gap:8px;color:#6b74a0;font-size:11px;flex-shrink:0;font-variant-numeric:tabular-nums}',
+      '.wp-file .bar{width:74px;height:3px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden}.wp-file .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff6b06,#f9182f);transition:width .25s}',
+      '.wp-file .acts{display:flex;gap:2px;flex-shrink:0}.wp-file .acts button{border:0;background:transparent;color:#6b74a0;border-radius:6px;height:24px;min-width:24px;padding:0 6px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}',
+      '.wp-file .acts button:hover{color:#fff;background:rgba(255,255,255,.06)}',
+      '.wp-file.done .st .ok{color:#34d399;display:flex}.wp-file.failed .nm,.wp-file.failed .st{color:#f87171}.wp-file.failed .acts button[data-wp-retry]{color:#ff8a3d}',
+      '[data-wp-drop]{position:relative}[data-wp-drop].over::after{content:"Drop to attach";position:absolute;inset:-6px;border:1.5px dashed #ff6b06;border-radius:12px;background:rgba(10,12,22,.82);display:grid;place-items:center;color:#ff8a3d;font-size:12px;font-weight:700;z-index:3}',
+      /* assignees */
+      '.wp-ahead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:4px;border-top:1px solid rgba(255,255,255,.06)}',
+      '.wp-ahead .wp-lbl b{color:#c7cbe0;font-weight:700;margin-left:6px}',
+      '#wp-cards{display:flex;flex-direction:column}',
+      '.wp-card{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.05)}.wp-card:first-child{padding-top:6px}',
+      '.wp-row1{display:grid;grid-template-columns:minmax(190px,230px) minmax(0,1fr) minmax(130px,160px) auto;gap:10px;align-items:center}',
+      '.wp-row2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:start;margin-top:10px;padding-left:2px}',
+      '.wp-meta{display:flex;align-items:center;gap:8px}',
+      '.wp-more{display:flex;gap:2px}.wp-more button{border:0;background:transparent;color:#6b74a0;height:30px;padding:0 8px;border-radius:8px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}',
+      '.wp-more button:hover{color:#fff;background:rgba(255,255,255,.05)}.wp-more button.rm:hover{color:#f87171}',
+      '.wp-card .wp-files{margin-top:6px;padding-left:2px}',
+      /* employee picker */
+      '.wp-pick{position:relative}',
+      '.wp-pick-btn{display:flex;align-items:center;gap:9px;width:100%;height:38px;padding:0 10px 0 4px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:#fff;font:inherit;font-size:12.5px;cursor:pointer;text-align:left}',
+      '.wp-pick-btn:hover,.wp-pick.open .wp-pick-btn{border-color:rgba(255,107,6,.45)}',
+      '.wp-av{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,#2a3150,#1a1f35);overflow:hidden}.wp-av img{width:100%;height:100%;object-fit:cover}',
+      '.wp-av.empty{background:rgba(255,255,255,.05);color:#4f5785;border:1px dashed rgba(255,255,255,.12)}',
+      '.wp-pick-t{min-width:0;flex:1;line-height:1.15}.wp-pick-t b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wp-pick-t small{display:block;font-size:10.5px;color:#6b74a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wp-pick-pop{position:absolute;left:0;top:calc(100% + 6px);z-index:40;width:max(100%,280px);max-height:300px;overflow:auto;padding:6px;border-radius:14px;background:#12162a;border:1px solid rgba(255,255,255,.1);box-shadow:0 24px 60px -16px rgba(0,0,0,.85)}',
+      '.wp-pick-pop input{width:100%;box-sizing:border-box;height:34px;margin-bottom:4px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#fff;padding:0 10px;font:inherit;font-size:12.5px;outline:none}',
+      '.wp-opt{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border-radius:10px;border:0;background:transparent;color:#e6e9f5;font:inherit;font-size:12.5px;cursor:pointer;text-align:left}',
+      '.wp-opt:hover,.wp-opt.on{background:rgba(255,107,6,.1)}.wp-opt small{display:block;color:#6b74a0;font-size:10.5px}',
+      /* priority segmented */
+      '.wp-seg{display:inline-flex;height:36px;padding:3px;border-radius:9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}',
+      '.wp-seg button{border:0;background:transparent;color:#6b74a0;font:inherit;font-size:11.5px;font-weight:600;padding:0 9px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}',
+      '.wp-seg button i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}',
+      '.wp-seg button.on{background:rgba(255,255,255,.07);color:#fff}.wp-seg button[data-p=very_high].on{color:#fca5a5}.wp-seg button[data-p=low].on{color:#93c5fd}',
+      '.wp-due{width:150px}',
+      /* collapsed summary */
+      '.wp-sumrow{display:none;align-items:center;gap:12px;cursor:pointer;padding:2px 0}',
+      '.wp-card.closed .wp-edit{display:none}.wp-card.closed .wp-sumrow{display:flex}',
+      '.wp-sumrow .t{flex:1;min-width:0}.wp-sumrow .t b{display:block;color:#fff;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wp-sumrow .t span{display:block;color:#8b93b8;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wp-sumrow .due{font-size:11.5px;color:#a5adcf;white-space:nowrap;font-variant-numeric:tabular-nums}',
+      '.wp-pdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#fbbf24}.wp-pdot.low{background:#60a5fa}.wp-pdot.very_high{background:#f87171}',
+      '.wp-addas{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;margin-top:10px;border-radius:9px;border:0;background:transparent;color:#ff8a3d;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}',
+      '.wp-addas:hover{background:rgba(255,107,6,.08)}',
+      /* footer */
+      '.wp-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)}',
+      '.wp-foot .sum{font-size:11.5px;color:#6b74a0;font-variant-numeric:tabular-nums}.wp-foot .sum b{color:#c7cbe0;font-weight:600}.wp-foot .warn{color:#fbbf24}',
+      '.wp-go{border:0;border-radius:10px;height:40px;padding:0 24px;color:#fff;font:inherit;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552);box-shadow:0 6px 18px -6px rgba(249,24,47,.6)}',
       '.wp-go:disabled{opacity:.75;cursor:progress}',
+      '.wp button:focus-visible,.wp-pick-btn:focus-visible{outline:2px solid #ff8a3c;outline-offset:2px}',
+      /* shared with the pipeline / project views */
       '.wp-chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;color:#c4b5fd;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.35);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}',
       '.wp-refs{display:flex;flex-direction:column;gap:6px}.wp-refs .lbl{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6b74a0}',
       '.wp-shared a{display:flex;align-items:center;gap:6px;color:#93c5fd;font-size:11.5px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wp-shared a:hover{color:#fff}',
       '.wpp{display:flex;flex-direction:column;gap:12px}',
-      '.wpp-card{border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(255,255,255,.02);padding:14px 16px}',
+      '.wpp-card{border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02);padding:14px 16px}',
       '.wpp-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}',
       '.wpp-top h4{margin:0;color:#fff;font-size:15px}.wpp-top p{margin:3px 0 0;color:#8b93b8;font-size:11.5px}',
       '.wpp-prog{display:flex;align-items:center;gap:8px;font-size:11px;color:#8b93b8;min-width:160px}.wpp-prog .bar{flex:1;height:6px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden}.wpp-prog .bar i{display:block;height:100%;background:linear-gradient(90deg,#34d399,#10b981)}',
@@ -109,8 +156,24 @@
       '.wpp-a .acts{display:flex;gap:5px;flex-wrap:wrap}.wpp-a .acts button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#c7cbe0;font:inherit;font-size:11px;font-weight:700;padding:5px 10px;border-radius:8px;cursor:pointer}',
       '.wpp-a .acts button.pri{border-color:rgba(255,107,6,.4);background:rgba(255,107,6,.12);color:#ff8a3d}.wpp-a .acts button.bad{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.1);color:#f87171}',
       '.wpp-st{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}',
-      '@media(max-width:900px){.wp-g4{grid-template-columns:repeat(2,minmax(0,1fr))}}',
-      '@media(max-width:600px){.wp-g2,.wp-g4{grid-template-columns:1fr}.wp-go{width:100%}.wp-foot{flex-direction:column;align-items:stretch}.wp-file{padding:8px}.wp-file .bar{min-width:40px}}'
+      /* The Media Suite styles every input/select/textarea globally with !important (dark box,
+         5px radius, 11px text) — re-assert this form's own field styles with higher priority. */
+      '.wp input.wp-title{background:transparent!important;border:0!important;border-bottom:1px solid rgba(255,255,255,.08)!important;border-radius:0!important;font-size:22px!important;font-weight:700!important;padding:4px 0 10px!important;height:auto!important;box-shadow:none!important}',
+      '.wp input.wp-title:focus{border-bottom-color:#ff6b06!important}',
+      '.wp textarea.wp-auto{background:rgba(255,255,255,.025)!important;border:1px solid transparent!important;border-radius:10px!important;font-size:13px!important;padding:9px 12px!important}',
+      '.wp textarea.wp-auto:focus{background:rgba(255,255,255,.04)!important;border-color:rgba(255,107,6,.45)!important}',
+      '.wp input.wp-in,.wp select.wp-in{background:rgba(255,255,255,.03)!important;border:1px solid rgba(255,255,255,.06)!important;border-radius:9px!important;font-size:12.5px!important;height:36px!important}',
+      '.wp select.wp-in{background:#10131f!important}.wp input.wp-del-in{font-size:13.5px!important;height:38px!important}',
+      '.wp input.wp-in:focus,.wp select.wp-in:focus{border-color:rgba(255,107,6,.55)!important}',
+      '.wp .bad{border-color:#f87171!important}',
+      '.wp .wp-pick-pop input{background:rgba(255,255,255,.03)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:9px!important;font-size:12.5px!important;height:34px!important}',
+      /* tablet / phone */
+      '@media(max-width:1024px){.wp-row1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wp-row1 .wp-cls{grid-column:1}.wp-row1 .wp-more{grid-column:2;justify-self:end}.wp-row1 .wp-delw{grid-column:1/-1;order:-1}}',
+      '@media(max-width:1024px){.wp-row1 .wp-pick{order:-2;grid-column:1/-1}}',
+      '@media(max-width:640px){#admin-assignment-panel.wp-on{padding:18px 16px!important}.wp input.wp-title{font-size:19px!important}',
+      '.wp-row1{grid-template-columns:1fr}.wp-row1 .wp-cls,.wp-row1 .wp-more{grid-column:auto;justify-self:stretch}.wp-more{justify-content:flex-end}',
+      '.wp-row2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wp-row2>*{min-width:0}.wp-row2 .wp-auto{grid-column:1/-1}.wp-seg{width:100%;min-width:0}.wp-seg button{flex:1;justify-content:center;padding:0 2px;min-width:0}.wp-meta{min-width:0}.wp-due{width:100%;min-width:0}.wp input.wp-due{padding:0 6px!important}',
+      '.wp-foot{flex-direction:column;align-items:stretch}.wp-go{width:100%}.wp-file .bar{width:44px}.wp-sumrow .due{display:none}.wp-sumrow .wp-more button:not([data-wp-open]){display:none}}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -174,91 +237,122 @@
     return Math.round(live.reduce(function (a, j) { return a + j.file.size * (j.status === 'done' ? 1 : (j.pct || 0) / 100); }, 0) / tot * 100);
   }
   function changed() { U.listeners.forEach(function (f) { try { f(); } catch (_) {} }); }
-  // DOM: one row per file, created once and patched in place (no list re-render, no global icon scan)
+  // DOM: one compact line per file, created once and patched in place (no list re-render)
   function drawJob(j) {
     var list = document.querySelector('[data-wp-files="' + j.owner + '"]'); if (!list) return;
     var el = list.querySelector('[data-job="' + j.id + '"]');
     if (j.status === 'cancelled') { if (el) el.remove(); changed(); return; }
     if (!el) {
       el = document.createElement('div'); el.className = 'wp-file'; el.setAttribute('data-job', j.id);
-      el.innerHTML = '<span class="ic">' + IC.file + '</span><span class="nm"></span><span class="acts"></span><span class="st"></span>';
+      el.innerHTML = '<span class="ic">' + IC.file + '</span><span class="nm"></span><span class="st"></span><span class="acts"></span>';
       list.appendChild(el);
       el.querySelector('.nm').textContent = j.file.name;
     }
     el.className = 'wp-file ' + j.status;
-    var st = el.querySelector('.st'), acts = el.querySelector('.acts');
-    if (j.status === 'done') { st.innerHTML = '<span>' + esc(mb(j.file.size)) + '</span> ' + IC.ok + ' <span>Uploaded</span>'; acts.innerHTML = '<button type="button" data-wp-rm="' + j.id + '" title="Remove">' + IC.x + '</button>'; }
-    else if (j.status === 'failed') { st.innerHTML = '<span>Upload failed — ' + esc(j.err).slice(0, 120) + '</span>'; acts.innerHTML = '<button type="button" data-wp-retry="' + j.id + '">Retry</button><button type="button" data-wp-rm="' + j.id + '" title="Remove">' + IC.x + '</button>'; }
-    else {
-      st.innerHTML = '<span>' + esc(mb(j.file.size)) + '</span><span class="lbl">' + (j.status === 'queued' ? 'Waiting…' : 'Uploading… ' + (j.pct || 0) + '%') + '</span><span class="bar"><i style="width:' + (j.pct || 0) + '%"></i></span>';
-      acts.innerHTML = '<button type="button" data-wp-cancel="' + j.id + '">Cancel</button>';
-    }
+    el.title = j.status === 'failed' ? j.err : '';
+    var st = el.querySelector('.st'), acts = el.querySelector('.acts'), size = '<span>' + esc(mb(j.file.size)) + '</span>';
+    if (j.status === 'done') { st.innerHTML = size + '<span class="ok" aria-label="Uploaded">' + IC.ok + '</span>'; acts.innerHTML = '<button type="button" data-wp-rm="' + j.id + '" aria-label="Remove ' + esc(j.file.name) + '">' + IC.x + '</button>'; }
+    else if (j.status === 'failed') { st.innerHTML = '<span>Upload failed</span>'; acts.innerHTML = '<button type="button" data-wp-retry="' + j.id + '">Retry</button><button type="button" data-wp-rm="' + j.id + '" aria-label="Remove">' + IC.x + '</button>'; }
+    else { st.innerHTML = size + '<span class="bar"><i style="width:' + (j.pct || 0) + '%"></i></span><span class="lbl">' + (j.status === 'queued' ? 'Waiting' : (j.pct || 0) + '%') + '</span>'; acts.innerHTML = '<button type="button" data-wp-cancel="' + j.id + '" aria-label="Cancel upload">' + IC.x + '</button>'; }
     changed();
   }
   function tick(j) {
     var el = document.querySelector('[data-job="' + j.id + '"]'); if (!el) return;
     var b = el.querySelector('.bar i'), l = el.querySelector('.lbl');
-    if (b) b.style.width = j.pct + '%'; if (l) l.textContent = 'Uploading… ' + j.pct + '%';
+    if (b) b.style.width = j.pct + '%'; if (l) l.textContent = j.pct + '%';
     changed();
   }
   function refsOf(owner) { return U.jobs.filter(function (j) { return j.owner === owner && j.status === 'done'; }).map(function (j) { return { name: j.result.name, url: j.result.url, size: j.file.size, type: j.file.type }; }); }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Create & Assign Work Project form
+  // Create & Assign Work Project form — minimal layout
+  //   Project (title · brief · shared files)  →  Assignees (one compact block each)  →  Assign
   // ════════════════════════════════════════════════════════════════════════
   var F = { cards: [], seq: 0, waiting: false, saving: false, mounted: false };
+  function empList() {
+    var src = document.getElementById('task-assigned-employee'), out = [];
+    if (src) Array.prototype.forEach.call(src.options, function (o) { if (o.value) out.push({ name: o.value, label: o.textContent }); });
+    var roster = G('userRoster') || [];
+    out.forEach(function (e) {
+      var r = roster.filter(function (u) { return u.name === e.name; })[0];
+      e.email = r ? String(r.email || '').toLowerCase() : '';
+      var des = null; try { if (typeof hrDesignationForEmail === 'function' && e.email) des = hrDesignationForEmail(e.email); } catch (_) {}
+      e.role = des || (r && r.role ? String(r.role).replace(/_/g, ' ').replace(/^\w/, function (c) { return c.toUpperCase(); }) : '');
+    });
+    return out;
+  }
   function empOptions(sel) {
-    var src = document.getElementById('task-assigned-employee');
-    var html = src ? src.innerHTML : '<option value="">-- Select Employee --</option>';
-    return sel ? html.replace('value="' + esc(sel) + '"', 'value="' + esc(sel) + '" selected') : html;
+    return '<option value="">Select employee</option>' + empList().map(function (e) { return '<option value="' + esc(e.name) + '"' + (e.name === sel ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('');
+  }
+  function avatar(name, email) {
+    if (!name) return '<span class="wp-av empty">+</span>';
+    try {
+      if (typeof hrAvatarHTML === 'function') {
+        var emp = (typeof hrEmployees !== 'undefined' && Array.isArray(hrEmployees)) ? hrEmployees.filter(function (e) { return (e.portal_email || '').toLowerCase() === email; })[0] : null;
+        var h = hrAvatarHTML(emp || name, 30); if (h) return '<span class="wp-av">' + h + '</span>';
+      }
+    } catch (_) {}
+    var ini = String(name).trim().split(/\s+/).map(function (w) { return w[0] || ''; }).slice(0, 2).join('').toUpperCase();
+    return '<span class="wp-av">' + esc(ini) + '</span>';
   }
   function classOptions(sel) {
     var src = document.getElementById('task-type'), list = CLASSES.slice();
     if (src) Array.prototype.forEach.call(src.options, function (o) { if (list.indexOf(o.value) < 0) list.push(o.value); });
-    return '<option value="">Select classification…</option>' + list.map(function (c) { return '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '<option value="__other">Other…</option>';
+    return '<option value="">Work type</option>' + list.map(function (c) { return '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '<option value="__other">Other…</option>';
   }
-  function dropzone(owner, label) {
-    return '<label class="wp-drop" data-wp-drop="' + owner + '">' + IC.up + '<span>' + label + '</span><input type="file" multiple accept="' + ACCEPT + '" data-wp-input="' + owner + '"></label><div class="wp-files" data-wp-files="' + owner + '"></div>';
-  }
-  function cardHTML(c, n) {
-    return '<div class="wp-card" data-card="' + c.key + '">'
-      + '<div class="wp-card-h" data-wp-toggle="' + c.key + '"><span class="n">' + n + '</span><span class="t"><b data-wp-ct>' + 'Assignment ' + n + '</b><span data-wp-cs>Pick the employee and the deliverable</span></span>'
-      + (n > 1 ? '<button type="button" class="rm" data-wp-del="' + c.key + '">Remove</button>' : '') + '<span class="chev">' + IC.chev + '</span></div>'
-      + '<div class="wp-card-b">'
-      + '<div class="wp-g wp-g2">'
-      + '<div class="wp-f"><label>Employee <b>*</b></label><select class="wp-in" data-k="emp">' + empOptions() + '</select></div>'
-      + '<div class="wp-f"><label>Classification <b>*</b></label><select class="wp-in" data-k="cls">' + classOptions() + '</select><input class="wp-in" data-k="clsOther" placeholder="Type the classification" style="display:none"></div>'
+  function fileBtn(owner, label) { return '<label class="wp-addf">' + IC.plus + label + '<input type="file" multiple accept="' + ACCEPT + '" data-wp-input="' + owner + '"></label>'; }
+  function cardHTML(c) {
+    var k = c.key;
+    return '<div class="wp-card" data-card="' + k + '" data-wp-drop="' + k + '">'
+      // collapsed summary (shown once the block is complete and another assignee is added)
+      + '<div class="wp-sumrow" data-wp-open="' + k + '"><span data-wp-sav></span><span class="t"><b data-wp-sname></b><span data-wp-sdel></span></span><span class="wp-pdot" data-wp-sdot></span><span class="due" data-wp-sdue></span>'
+      + '<span class="wp-more"><button type="button" data-wp-open="' + k + '">Edit</button><button type="button" data-wp-dup="' + k + '">Duplicate</button><button type="button" class="rm" data-wp-del="' + k + '">Remove</button></span></div>'
+      + '<div class="wp-edit">'
+      + '<div class="wp-row1">'
+      + '<div class="wp-pick" data-pick="' + k + '"><select data-k="emp" hidden>' + empOptions() + '</select><button type="button" class="wp-pick-btn" data-wp-pick="' + k + '" aria-haspopup="listbox">' + avatar('') + '<span class="wp-pick-t"><b>Choose employee</b><small>Who is doing this?</small></span>' + IC.chev + '</button></div>'
+      + '<div class="wp-delw"><input class="wp-in wp-del-in" data-k="del" placeholder="Deliverable — e.g. Edit the final Reel video" aria-label="Deliverable"></div>'
+      + '<div class="wp-cls"><select class="wp-in" data-k="cls" aria-label="Work type">' + classOptions() + '</select><input class="wp-in" data-k="clsOther" placeholder="Type the work type" style="display:none;margin-top:6px"></div>'
+      + '<div class="wp-more"><button type="button" data-wp-fold="' + k + '" title="Collapse">Done</button><button type="button" data-wp-dup="' + k + '">Duplicate</button><button type="button" class="rm" data-wp-del="' + k + '">Remove</button></div>'
       + '</div>'
-      + '<div class="wp-f"><label>Specific deliverable <b>*</b></label><input class="wp-in" data-k="del" placeholder="e.g. Edit the final Reel video · Create poster + thumbnail"></div>'
-      + '<div class="wp-f"><label>Instructions for this person</label><textarea class="wp-in" data-k="ins" rows="2" placeholder="Specific notes for this deliverable — aspect ratio, length, fonts, music…"></textarea></div>'
-      + '<div class="wp-g wp-g2">'
-      + '<div class="wp-f"><label>Priority</label><select class="wp-in" data-k="pri">' + PRIORITY.map(function (p) { return '<option value="' + p[0] + '"' + (p[0] === 'medium' ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select></div>'
-      + '<div class="wp-f"><label>Deadline <b>*</b></label><input type="date" class="wp-in" data-k="due" min="' + today() + '"></div>'
+      + '<div class="wp-row2">'
+      + '<textarea class="wp-auto" data-k="ins" rows="1" placeholder="Instructions (optional)" aria-label="Instructions"></textarea>'
+      + '<div class="wp-seg" role="radiogroup" aria-label="Priority"><select data-k="pri" hidden>' + PRIORITY.map(function (p) { return '<option value="' + p[0] + '"' + (p[0] === 'medium' ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select>'
+      + PRIORITY.map(function (p) { return '<button type="button" data-p="' + p[0] + '" role="radio" aria-checked="' + (p[0] === 'medium') + '" class="' + (p[0] === 'medium' ? 'on' : '') + '"><i></i>' + (p[0] === 'very_high' ? 'High' : p[1]) + '</button>'; }).join('') + '</div>'
+      + '<label class="wp-meta"><span class="wp-hint">Due</span><input type="date" class="wp-in wp-due" data-k="due" min="' + today() + '" aria-label="Deadline"></label>'
       + '</div>'
-      + '<div class="wp-f"><label>Reference files for this person <span style="color:#4a5182">— only they see these</span></label>' + dropzone(c.key, 'Attach files for this assignment (uploads start right away)') + '</div>'
+      + '<div class="wp-files-line" style="margin-top:10px">' + fileBtn(k, 'Files') + '<span class="wp-hint" data-wp-fhint>Only this person sees these</span></div>'
+      + '<div class="wp-files" data-wp-files="' + k + '"></div>'
       + '</div></div>';
   }
   function formHTML() {
     return '<div class="wp" id="wp-form">'
-      + '<div class="wp-box"><p class="wp-sec">Shared project <em>— everyone on this project sees this</em></p>'
-      + '<div class="wp-f"><label>Project / campaign title <b>*</b></label><input id="wp-title" class="wp-in" placeholder="Vocabulary Reels Day 5"></div>'
-      + '<div class="wp-f"><label>Shared brief</label><textarea id="wp-brief" class="wp-in" rows="3" placeholder="Campaign-level instructions shared with every assignee…"></textarea></div>'
-      + '<div class="wp-f"><label>Shared reference files <span style="color:#4a5182">— script, brand guide, source images</span></label>' + dropzone('shared', 'Attach shared files (uploads start right away)') + '</div>'
+      + '<div class="wp-proj" data-wp-drop="shared">'
+      + '<input id="wp-title" class="wp-title" placeholder="Project name — e.g. Vocabulary Reels Day 5" aria-label="Project name" autocomplete="off">'
+      + '<textarea id="wp-brief" class="wp-auto" rows="1" placeholder="Shared brief for everyone on this project" aria-label="Shared brief"></textarea>'
+      + '<div class="wp-files-line">' + fileBtn('shared', 'Shared files') + '<span class="wp-hint">Visible to every assignee</span></div>'
+      + '<div class="wp-files" data-wp-files="shared"></div>'
       + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:10px"><p class="wp-sec">Assignments <em>— one per person, each with its own deliverable</em></p><div id="wp-cards" style="display:flex;flex-direction:column;gap:10px"></div>'
-      + '<button type="button" class="wp-add" id="wp-add">' + IC.plus + ' Add another assignee</button></div>'
-      + '<div class="wp-foot"><span class="sum" id="wp-sum"></span><button type="button" class="wp-go" id="wp-go">Assign Work Project</button></div>'
+      + '<div><div class="wp-ahead"><span class="wp-lbl">Assignees<b id="wp-count">1</b></span></div>'
+      + '<div id="wp-cards"></div>'
+      + '<button type="button" class="wp-addas" id="wp-add">' + IC.plus + 'Add assignee</button></div>'
+      + '<div class="wp-foot"><span class="sum" id="wp-sum"></span><button type="button" class="wp-go" id="wp-go">Assign Project</button></div>'
       + '</div>';
   }
-  function addCard() {
+  function addCard(from) {
     var c = { key: 'a' + (++F.seq) };
     F.cards.push(c);
-    var box = document.getElementById('wp-cards');
-    box.insertAdjacentHTML('beforeend', cardHTML(c, F.cards.length));
-    // collapse earlier filled cards on desktop to keep the form short
-    F.cards.slice(0, -1).forEach(function (o) { var el = cardEl(o.key); if (el && readCard(o).emp) el.classList.add('closed'); });
+    document.getElementById('wp-cards').insertAdjacentHTML('beforeend', cardHTML(c));
+    var el = cardEl(c.key);
+    if (from) {   // Duplicate: same work type / deliverable / instructions / priority / deadline, new person, no files
+      ['cls', 'clsOther', 'del', 'ins', 'due'].forEach(function (k) { var a = el.querySelector('[data-k="' + k + '"]'), b = from.querySelector('[data-k="' + k + '"]'); if (a && b) a.value = b.value; });
+      setPri(el, from.querySelector('[data-k="pri"]').value);
+      var o = el.querySelector('[data-k="clsOther"]'); if (o) o.style.display = el.querySelector('[data-k="cls"]').value === '__other' ? '' : 'none';
+      autosize(el.querySelector('[data-k="ins"]'));
+    }
+    // fold earlier complete blocks into one-line summaries
+    F.cards.slice(0, -1).forEach(function (x) { if (complete(x)) fold(x.key, true); });
     renumber(); summary();
-    var s = cardEl(c.key).querySelector('[data-k="emp"]'); if (s) s.focus();
+    openPicker(c.key);
   }
   function cardEl(key) { return document.querySelector('.wp-card[data-card="' + key + '"]'); }
   function readCard(c) {
@@ -267,31 +361,86 @@
     var cls = v('cls'); if (cls === '__other') cls = v('clsOther');
     return { emp: v('emp'), cls: cls, del: v('del'), ins: v('ins'), pri: v('pri') || 'medium', due: v('due') };
   }
+  function complete(c) { var d = readCard(c); return !!(d.emp && d.cls && d.del && d.due); }
+  function fold(key, on) { var el = cardEl(key); if (!el) return; if (on && !complete({ key: key })) { toastMsg('info', 'Add the employee, work type, deliverable and due date first.'); return; } el.classList.toggle('closed', !!on); }
+  function fmtDue(iso) { if (!iso) return ''; var d = new Date(iso + 'T00:00:00'); return isNaN(d) ? iso : 'Due ' + d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); }
   function renumber() {
-    F.cards.forEach(function (c, i) {
+    var emps = empList();
+    F.cards.forEach(function (c) {
       var el = cardEl(c.key); if (!el) return;
-      el.querySelector('.n').textContent = i + 1;
-      var d = readCard(c);
-      el.querySelector('[data-wp-ct]').textContent = d.emp ? d.emp.replace(/\s*\(.*\)$/, '') + (d.cls ? ' · ' + d.cls : '') : 'Assignment ' + (i + 1);
-      el.querySelector('[data-wp-cs]').textContent = d.del || 'Pick the employee and the deliverable';
+      var d = readCard(c), e = emps.filter(function (x) { return x.name === d.emp; })[0];
+      // picker face
+      var btn = el.querySelector('.wp-pick-btn');
+      btn.innerHTML = avatar(d.emp, e && e.email) + '<span class="wp-pick-t"><b>' + esc(d.emp || 'Choose employee') + '</b><small>' + esc(d.emp ? ((e && e.role) || d.cls || '') : 'Who is doing this?') + '</small></span>' + IC.chev;
+      // summary line
+      el.querySelector('[data-wp-sav]').innerHTML = avatar(d.emp, e && e.email);
+      el.querySelector('[data-wp-sname]').textContent = (d.emp || 'Assignee') + (d.cls ? ' · ' + d.cls : '');
+      el.querySelector('[data-wp-sdel]').textContent = d.del || '';
+      el.querySelector('[data-wp-sdue]').textContent = fmtDue(d.due);
+      el.querySelector('[data-wp-sdot]').className = 'wp-pdot ' + d.pri;
+      var hint = el.querySelector('[data-wp-fhint]'); if (hint) hint.textContent = 'Only ' + (d.emp ? d.emp.split(' ')[0] : 'this person') + ' sees these';
+      // a single assignee can't be removed; collapsing only makes sense once it's complete
+      el.querySelectorAll('[data-wp-del]').forEach(function (b) { b.style.display = F.cards.length > 1 ? '' : 'none'; });
+      var fb = el.querySelector('[data-wp-fold]'); if (fb) fb.style.display = F.cards.length > 1 ? '' : 'none';
     });
+    var n = document.getElementById('wp-count'); if (n) n.textContent = F.cards.length;
   }
   function summary() {
     var s = document.getElementById('wp-sum'); if (!s) return;
     var busy = busyJobs().length, failed = failedJobs().length, files = U.jobs.filter(function (j) { return j.status === 'done'; }).length;
-    var txt = '<b>' + F.cards.length + '</b> assignment' + (F.cards.length === 1 ? '' : 's') + ' · <b>' + files + '</b> file' + (files === 1 ? '' : 's') + ' uploaded';
-    if (busy) txt += ' · <span class="warn">' + busy + ' uploading (' + overallPct() + '%)</span>';
-    if (failed) txt += ' · <span style="color:#f87171">' + failed + ' failed — retry or remove</span>';
+    var txt = '<b>' + F.cards.length + '</b> assignee' + (F.cards.length === 1 ? '' : 's') + (files ? ' · <b>' + files + '</b> file' + (files === 1 ? '' : 's') : '');
+    if (busy) txt += ' · <span class="warn">uploading ' + overallPct() + '%</span>';
+    if (failed) txt += ' · <span style="color:#f87171">' + failed + ' upload' + (failed === 1 ? '' : 's') + ' failed</span>';
     s.innerHTML = txt;
     var go = document.getElementById('wp-go');
-    if (go && F.waiting) go.textContent = busy ? 'Reference files are still uploading… ' + overallPct() + '%' : 'Assigning…';
+    if (go && F.waiting) go.textContent = busy ? 'Files uploading… ' + overallPct() + '%' : 'Assigning…';
   }
+  function setPri(el, v) {
+    var sel = el.querySelector('[data-k="pri"]'); if (sel) sel.value = v;
+    el.querySelectorAll('.wp-seg button').forEach(function (b) { var on = b.getAttribute('data-p') === v; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  }
+  function autosize(t) { if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 240) + 'px'; }
+
+  // ── employee picker (avatar · name · designation, searchable) ──────────────
+  var openPick = null;
+  function closePicker() { if (openPick) { var p = document.querySelector('.wp-pick.open'); if (p) { p.classList.remove('open'); var pop = p.querySelector('.wp-pick-pop'); if (pop) pop.remove(); } openPick = null; } }
+  function openPicker(key) {
+    closePicker();
+    var el = cardEl(key); if (!el) return;
+    var wrap = el.querySelector('.wp-pick'), sel = wrap.querySelector('[data-k="emp"]');
+    var emps = empList();
+    var pop = document.createElement('div'); pop.className = 'wp-pick-pop'; pop.setAttribute('role', 'listbox');
+    var draw = function (q) {
+      q = String(q || '').toLowerCase();
+      var list = emps.filter(function (e) { return !q || e.name.toLowerCase().indexOf(q) > -1 || String(e.role).toLowerCase().indexOf(q) > -1; });
+      pop.querySelector('.wp-opts').innerHTML = list.length ? list.map(function (e) { return '<button type="button" class="wp-opt' + (e.name === sel.value ? ' on' : '') + '" data-emp="' + esc(e.name) + '" role="option">' + avatar(e.name, e.email) + '<span><b style="font-weight:600">' + esc(e.name) + '</b><small>' + esc(e.role || '') + '</small></span></button>'; }).join('') : '<div style="padding:10px;color:#6b74a0;font-size:12px">No match</div>';
+    };
+    pop.innerHTML = '<input type="search" placeholder="Search people" aria-label="Search employees"><div class="wp-opts"></div>';
+    wrap.appendChild(pop); wrap.classList.add('open'); openPick = key;
+    draw('');
+    var s = pop.querySelector('input');
+    s.addEventListener('input', function () { draw(s.value); });
+    s.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); var f = pop.querySelector('[data-emp]'); if (f) f.click(); }
+      if (e.key === 'Escape') { closePicker(); wrap.querySelector('.wp-pick-btn').focus(); }
+    });
+    setTimeout(function () { s.focus(); }, 0);
+  }
+  function pickEmployee(key, name) {
+    var el = cardEl(key); if (!el) return;
+    var sel = el.querySelector('[data-k="emp"]'); sel.value = name;
+    el.querySelector('.wp-pick-btn').classList.remove('bad');
+    closePicker(); renumber();
+    var del = el.querySelector('[data-k="del"]'); if (del && !del.value) del.focus();
+  }
+
   function resetForm() {
     F.cards = []; F.seq = 0; F.waiting = false; F.saving = false;
     U.jobs.filter(function (j) { return j.status === 'uploading'; }).forEach(function (j) { j.status = 'cancelled'; try { j.ctl.abort(); } catch (_) {} });
     U.jobs = []; newBatch();
     var host = document.getElementById('wp-host'); if (!host) return;
-    host.innerHTML = formHTML(); wire(host); addCard();
+    host.innerHTML = formHTML(); if (!host._wired) { wire(host); host._wired = true; }
+    addCard(); closePicker();
   }
   function wire(host) {
     host.addEventListener('change', function (e) {
@@ -299,37 +448,61 @@
       if (inp) { addFiles(inp.files, inp.getAttribute('data-wp-input')); inp.value = ''; return; }
       var cls = e.target.closest('[data-k="cls"]');
       if (cls) { var o = cls.parentNode.querySelector('[data-k="clsOther"]'); if (o) { o.style.display = cls.value === '__other' ? '' : 'none'; if (cls.value === '__other') o.focus(); } }
-      e.target.classList && e.target.classList.remove('bad');
+      if (e.target.classList) e.target.classList.remove('bad');
       renumber();
     });
-    host.addEventListener('input', function (e) { if (e.target.classList) e.target.classList.remove('bad'); if (e.target.closest('.wp-card')) renumber(); });
+    host.addEventListener('input', function (e) {
+      if (e.target.classList) e.target.classList.remove('bad');
+      if (e.target.classList && e.target.classList.contains('wp-auto')) autosize(e.target);
+      if (e.target.closest('.wp-card')) renumber();
+    });
     host.addEventListener('click', function (e) {
       var b;
+      if ((b = e.target.closest('[data-emp]'))) { var pk = b.closest('.wp-card').getAttribute('data-card'); return pickEmployee(pk, b.getAttribute('data-emp')); }
+      if ((b = e.target.closest('[data-wp-pick]'))) { var key = b.getAttribute('data-wp-pick'); return openPick === key ? closePicker() : openPicker(key); }
+      if ((b = e.target.closest('.wp-seg button'))) { setPri(b.closest('.wp-card'), b.getAttribute('data-p')); return renumber(); }
       if ((b = e.target.closest('[data-wp-cancel]'))) return cancelJob(+b.getAttribute('data-wp-cancel'));
       if ((b = e.target.closest('[data-wp-retry]'))) return retryJob(+b.getAttribute('data-wp-retry'));
       if ((b = e.target.closest('[data-wp-rm]'))) return cancelJob(+b.getAttribute('data-wp-rm'));
+      if ((b = e.target.closest('[data-wp-dup]'))) { e.stopPropagation(); return addCard(cardEl(b.getAttribute('data-wp-dup'))); }
+      if ((b = e.target.closest('[data-wp-fold]'))) return fold(b.getAttribute('data-wp-fold'), true);
       if ((b = e.target.closest('[data-wp-del]'))) {
         e.stopPropagation();
-        var key = b.getAttribute('data-wp-del');
-        jobsFor(key).forEach(function (j) { cancelJob(j.id); });
-        F.cards = F.cards.filter(function (c) { return c.key !== key; });
-        var el = cardEl(key); if (el) el.remove();
+        var dk = b.getAttribute('data-wp-del');
+        jobsFor(dk).forEach(function (j) { cancelJob(j.id); });
+        F.cards = F.cards.filter(function (c) { return c.key !== dk; });
+        var del = cardEl(dk); if (del) del.remove();
         renumber(); summary(); return;
       }
-      if ((b = e.target.closest('[data-wp-toggle]')) && !e.target.closest('button')) { var c = cardEl(b.getAttribute('data-wp-toggle')); if (c) c.classList.toggle('closed'); return; }
+      if ((b = e.target.closest('[data-wp-open]'))) return fold(b.getAttribute('data-wp-open'), false);
       if (e.target.closest('#wp-add')) return addCard();
       if (e.target.closest('#wp-go')) return submit();
     });
-    // drag & drop onto any dropzone
-    host.addEventListener('dragover', function (e) { var d = e.target.closest('[data-wp-drop]'); if (d) { e.preventDefault(); d.classList.add('over'); } });
-    host.addEventListener('dragleave', function (e) { var d = e.target.closest('[data-wp-drop]'); if (d) d.classList.remove('over'); });
-    host.addEventListener('drop', function (e) { var d = e.target.closest('[data-wp-drop]'); if (!d) return; e.preventDefault(); d.classList.remove('over'); if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files, d.getAttribute('data-wp-drop')); });
+    document.addEventListener('mousedown', function (e) { if (openPick && !e.target.closest('.wp-pick')) closePicker(); });
+    // drag & drop: the project header or an assignee block highlights only while dragging
+    var dragOwner = null;
+    host.addEventListener('dragover', function (e) {
+      if (!e.dataTransfer || Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') < 0) return;
+      var d = e.target.closest('[data-wp-drop]'); if (!d) return;
+      e.preventDefault();
+      if (dragOwner !== d) { host.querySelectorAll('[data-wp-drop].over').forEach(function (x) { x.classList.remove('over'); }); d.classList.add('over'); dragOwner = d; }
+    });
+    host.addEventListener('dragleave', function (e) { var d = e.target.closest('[data-wp-drop]'); if (d && !d.contains(e.relatedTarget)) { d.classList.remove('over'); dragOwner = null; } });
+    host.addEventListener('drop', function (e) {
+      var d = e.target.closest('[data-wp-drop]'); if (!d) return;
+      e.preventDefault(); d.classList.remove('over'); dragOwner = null;
+      if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files, d.getAttribute('data-wp-drop'));
+    });
   }
   U.listeners.push(function () { summary(); if (F.waiting && !busyJobs().length) { F.waiting = false; submit(); } });
 
   function validateForm() {
     var title = document.getElementById('wp-title'), bad = [], first = null;
-    var mark = function (el) { if (el) { el.classList.add('bad'); first = first || el; } };
+    var mark = function (el) {
+      if (!el) return;
+      if (el.hidden && el.closest('.wp-pick')) el = el.closest('.wp-pick').querySelector('.wp-pick-btn');   // custom picker face
+      el.classList.add('bad'); first = first || el;
+    };
     if (!String(title.value || '').trim()) { mark(title); bad.push('project title'); }
     if (!F.cards.length) bad.push('at least one assignment');
     F.cards.forEach(function (c, i) {
@@ -359,7 +532,7 @@
     F.saving = true; go.disabled = true; go.textContent = 'Assigning…';
     try { await save(); }
     catch (e) { toastMsg('error', 'Could not assign the work project. ' + ((e && e.message) || '')); }
-    finally { F.saving = false; var g = document.getElementById('wp-go'); if (g) { g.disabled = false; g.textContent = 'Assign Work Project'; } }
+    finally { F.saving = false; var g = document.getElementById('wp-go'); if (g) { g.disabled = false; g.textContent = 'Assign Project'; } }
   }
 
   function refString(refs, folderUrl) {
@@ -570,7 +743,8 @@
     panel.appendChild(single);
     var host = document.createElement('div'); host.id = 'wp-host';
     panel.appendChild(host);
-    var t = document.getElementById('wa-form-title'); if (t) t.textContent = 'Create & Assign Work Project';
+    var t = document.getElementById('wa-form-title'); if (t) t.textContent = 'New work project';
+    panel.classList.add('wp-on');
     newBatch(); resetForm();
     // Grouped project list above "Assigned Work" in the Work Assignment tab.
     var mountPt = document.getElementById('wa-panel-mount');
@@ -591,11 +765,13 @@
   function editMode(on) {
     var s = document.getElementById('wa-single-form'), h = document.getElementById('wp-host');
     if (s) s.classList.toggle('hidden', !on); if (h) h.classList.toggle('hidden', !!on);
-    var t = document.getElementById('wa-form-title'); if (t && !on) t.textContent = 'Create & Assign Work Project';
+    var t = document.getElementById('wa-form-title'); if (t && !on) t.textContent = 'New work project';
+    var p = document.getElementById('admin-assignment-panel'); if (p) p.classList.toggle('wp-on', !on);
   }
   /** Refresh employee options after the roster loads. */
   function refreshEmployees() {
     F.cards.forEach(function (c) { var el = cardEl(c.key); if (!el) return; var s = el.querySelector('[data-k="emp"]'); if (!s) return; var v = s.value; s.innerHTML = empOptions(); s.value = v; });
+    renumber();
   }
 
   window.WorkProjects = { mount: mount, ensure: ensure, project: project, chip: chip, refCell: refCell, descExtra: descExtra, renderPanel: renderPanel,
