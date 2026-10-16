@@ -199,8 +199,26 @@
   // =========================================================================
   // calendar helpers over ctx
   // =========================================================================
+  // ── Department-scoped holidays (migration 20261024): ONE rule for every portal ──
+  //   holiday_scope 'all' (or missing — pre-migration rows) → every department.
+  //   holiday_scope 'departments' → only divisions listed in h.departments (cache of the
+  //   hr_holiday_departments join, keyed by the stable division code, e.g. 'education').
+  // division = the employee's hr_employees.division (or 'education' for class schedules).
+  function holidayAppliesTo(h, division) {
+    if (!h) return false;
+    if ((h.holiday_scope || 'all') !== 'departments') return true;
+    var d = String(division || '').toLowerCase();
+    return !!d && (h.departments || []).map(function (x) { return String(x).toLowerCase(); }).indexOf(d) >= 0;
+  }
+  function holidaysFor(rows, division) { return (rows || []).filter(function (h) { return holidayAppliesTo(h, division); }); }
+  function holidayOn(rows, dateStr, division) {
+    var ds = String(dateStr || '').slice(0, 10);
+    return (rows || []).find(function (h) { return String(h.holiday_date || '').slice(0, 10) === ds && holidayAppliesTo(h, division); }) || null;
+  }
+  // ctx.employee present → only that employee's department holidays count (others work normally).
   function isHoliday(ctx, dateStr) {
-    return (ctx.holidays || []).some(function (h) { return (h.holiday_date || '').slice(0, 10) === dateStr; });
+    var rows = ctx.holidays || [];
+    return ctx.employee ? !!holidayOn(rows, dateStr, ctx.employee.division) : rows.some(function (h) { return (h.holiday_date || '').slice(0, 10) === dateStr && (h.holiday_scope || 'all') !== 'departments'; });
   }
   function officialEventFor(ctx, dateStr) {
     return (ctx.officialEvents || []).find(function (e) {
@@ -771,6 +789,9 @@
     isPrePolicy: isPrePolicy,
     clAccruedToDate: clAccruedToDate,
     makeDb: makeDb,
+    holidayAppliesTo: holidayAppliesTo,
+    holidaysFor: holidaysFor,
+    holidayOn: holidayOn,
     // convenience: attach a live sb client
     withClient: function (sb) { this.db = makeDb(sb); return this; }
   };

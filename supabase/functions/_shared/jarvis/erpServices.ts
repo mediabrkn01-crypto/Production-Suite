@@ -90,7 +90,7 @@ async function loadSchedule(from: string, to: string, trainerId?: string | null)
   if (trainerId) oq = oq.eq("trainer_id", trainerId);
   const [bR, cR, tR, hR, oR] = await Promise.all([
     bq, db().from("courses").select("id,name,default_days"), db().from("trainers").select("id,name"),
-    db().from("hr_holidays").select("holiday_date,name"), oq,
+    db().from("hr_holidays").select("*"), oq,
   ]);
   for (const r of [bR, cR, tR, hR, oR]) if (r.error) throw new Error(r.error.message);
   const courseDays: Record<string, string> = {};
@@ -115,7 +115,9 @@ async function loadSchedule(from: string, to: string, trainerId?: string | null)
   const trainerName: Record<string, string> = {};
   (tR.data || []).forEach((t: Row) => { trainerName[t.id] = t.name; });
   const holidays: Record<string, string> = {};
-  (hR.data || []).forEach((h: Row) => { if (h.holiday_date) holidays[String(h.holiday_date).slice(0, 10)] = h.name || "Holiday"; });
+  // Class schedule = Academics: only all-department holidays or ones scoped to education.
+  (hR.data || []).filter((h: Row) => (h.holiday_scope || "all") !== "departments" || (h.departments || []).includes("education"))
+    .forEach((h: Row) => { if (h.holiday_date) holidays[String(h.holiday_date).slice(0, 10)] = h.name || "Holiday"; });
   const oto = oR.data || [];
   const batchById: Record<string, Row> = {};
   batches.forEach((b) => { batchById[b.id] = b; });

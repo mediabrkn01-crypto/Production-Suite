@@ -7,6 +7,8 @@
 
    Sources of truth (nothing inferred from the UI):
      schedule      batches (status 'active' — frozen / completed batches never qualify)
+                   HR holidays for Academics (all-department or scoped to 'education') remove
+                   the occurrence entirely (generateBatchOccurrences / _acadHolidayFor)
                    → generateBatchOccurrences() (day_pattern, time_slot, HR holidays and
                    class_postponements: a postponed class uses its NEW date / start time)
                    → _acadCapToRemaining() (no reminders past the batch's real session total)
@@ -108,7 +110,9 @@
         var st = toMin(o.start_time); if (st == null) return;
         var en = toMin(o.end_time); if (en == null || en <= st) en = st + (Number(o.duration_minutes) || 30);
         var date = String(o.session_date).slice(0, 10);
-        if (!due(date, en) || onLeave(date, st)) return;
+        // Academics holiday (all-department or Academics-scoped — same _acadHolidayFor the class
+        // generator uses) → no 1:1 reminder either.
+        if (!due(date, en) || onLeave(date, st) || (typeof _acadHolidayFor === 'function' && _acadHolidayFor(date))) return;
         out.push({ key: 'att:oto:' + o.id, liveKey: 'oto:' + o.id, kind: 'oto', otoId: o.id, batchId: o.batch_id, studentId: o.student_id, sessionNum: o.session_number,
           batchName: b.name, title: b.name + ' · 1:1 with ' + (sm[o.student_id] || 'student'), date: date, start: st, end: en });
       });

@@ -1626,7 +1626,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 return r.code; // P L WFH SL CL WO H OE
             }
             // ---- Fallback (engine unavailable) — previous behavior, unchanged ----
-            if (hrIsHoliday(dateStr)) return 'H';
+            if (hrIsHoliday(dateStr, employee)) return 'H';
             const rec = hrAttendance.find(a => a.employee_id === employee.id && a.att_date === dateStr);
             if (!rec) {
                 // No hr_attendance row for this date — before assuming unmarked, check the raw
@@ -1889,8 +1889,31 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
 // ── hrIsHoliday (orig line 10325) ──
-        function hrIsHoliday(dateStr) {
-            return hrHolidays.some(h => h.holiday_date === dateStr);
+        // ── Departments master (hr_divisions, 20261024) — the stable division codes stored on
+        // hr_employees.division. HR pickers read it; the fallback list is used only until the
+        // migration has run.
+        let hrDivisionsMaster = [];
+        const HR_DIVISION_FALLBACK = [
+            { code: 'education', name: 'Academics' }, { code: 'sales', name: 'Sales' }, { code: 'production', name: 'Media / Production' },
+            { code: 'hr', name: 'HR' }, { code: 'accounts', name: 'Accounts' }, { code: 'management', name: 'Management' }, { code: 'other', name: 'Administration / Other' }
+        ];
+        async function hrLoadDivisions(db) {
+            try { const r = await (db || dbInstance).from('hr_divisions').select('*').order('sort_order'); if (!r.error) hrDivisionsMaster = r.data || []; } catch (_) {}
+            return hrDivisionList();
+        }
+        function hrDivisionList() { return hrDivisionsMaster.length ? hrDivisionsMaster.filter(d => d.active !== false) : HR_DIVISION_FALLBACK; }
+        function hrDivisionName(code) { const d = (hrDivisionsMaster.length ? hrDivisionsMaster : HR_DIVISION_FALLBACK).find(x => x.code === code); return d ? d.name : (code || ''); }
+        function hrHolidayScopeLabel(h) {
+            return (h && h.holiday_scope === 'departments') ? ((h.departments || []).map(hrDivisionName).join(', ') || 'No department') : 'All departments';
+        }
+
+        // employee (optional) → only holidays that apply to that employee's department
+        // (LeavePolicy.holidayAppliesTo — department-scoped holidays, 20261024). Without an
+        // employee only company-wide holidays count.
+        function hrIsHoliday(dateStr, employee) {
+            return hrHolidays.some(h => h.holiday_date === dateStr && (typeof LeavePolicy !== 'undefined' && LeavePolicy.holidayAppliesTo
+                ? (employee ? LeavePolicy.holidayAppliesTo(h, employee.division) : (h.holiday_scope || 'all') !== 'departments')
+                : (h.holiday_scope || 'all') !== 'departments' || (employee && (h.departments || []).includes(employee.division))));
         }
 
         // ── SINGLE source of truth for "attendance %" on any one date — used by the HR
@@ -1913,7 +1936,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 e.employment_status === 'active' &&
                 (!e.joining_date || dateStr >= e.joining_date) &&
                 !hrIsWeeklyOff(dow) &&
-                !hrIsHoliday(dateStr)
+                !hrIsHoliday(dateStr, e)
             );
             const presentIds = new Set();
             applicable.forEach(e => {
@@ -2095,7 +2118,7 @@ function hrOfficialEventFor(employee, dateStr) {
                 if (dateStr > todayStr) continue; // hasn't happened yet — excluded entirely
                 if (joiningDate && dateStr < joiningDate) { preJoiningDays++; continue; } // not yet hired
                 const dow = new Date(y, m - 1, d).getDay();
-                if (hrIsHoliday(dateStr)) { holidayDays++; continue; }
+                if (hrIsHoliday(dateStr, employee)) { holidayDays++; continue; }
                 const rec = hrAttendance.find(a => a.employee_id === employeeId && a.att_date === dateStr);
                 // Same fallback as hrAttDayCode: a day with no hr_attendance row but a real
                 // clock-in log counts as Present, not Absent/LOP — a failed/lagging sync must
