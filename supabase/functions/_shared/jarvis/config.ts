@@ -4,7 +4,8 @@
 //   SARVAM_API_KEY            Sarvam STT / TTS (and LLM when LLM_PROVIDER=sarvam)
 //   ANTHROPIC_API_KEY         Claude (LLM_PROVIDER=anthropic)
 //   LLM_PROVIDER              anthropic | sarvam            (default anthropic)
-//   CLAUDE_MODEL              default claude-sonnet-4-6
+//   CLAUDE_MODEL              default claude-opus-5-5
+//   JARVIS_LLM_EFFORT         Claude effort for voice answers (default low — fastest first token)
 //   SARVAM_LLM_MODEL          default sarvam-105b
 //   ERP_INTERNAL_API_BASE     ERP data API base — defaults to this project's SUPABASE_URL
 //   ERP_INTERNAL_API_TOKEN    ERP data API token — defaults to SUPABASE_SERVICE_ROLE_KEY
@@ -26,16 +27,19 @@ export const config = {
   sarvamApiKey: env("SARVAM_API_KEY"),
   anthropicApiKey: env("ANTHROPIC_API_KEY"),
   llmProvider: (env("LLM_PROVIDER", "anthropic").toLowerCase() === "sarvam" ? "sarvam" : "anthropic") as LlmProviderName,
-  claudeModel: env("CLAUDE_MODEL", "claude-sonnet-4-6"),
+  claudeModel: env("CLAUDE_MODEL", "claude-opus-5-5"),
+  llmEffort: env("JARVIS_LLM_EFFORT", "low"),
+  /** Dev telemetry: per-stage timings are always sent; this adds verbose server logs. */
+  debug: env("JARVIS_DEBUG") === "1",
   sarvamLlmModel: env("SARVAM_LLM_MODEL", "sarvam-105b"),
   erpApiBase: env("ERP_INTERNAL_API_BASE") || env("SUPABASE_URL"),
   erpApiToken: env("ERP_INTERNAL_API_TOKEN") || env("SUPABASE_SERVICE_ROLE_KEY"),
   supabaseUrl: env("SUPABASE_URL"),
   serviceRoleKey: env("SUPABASE_SERVICE_ROLE_KEY"),
-  maxToolCalls: int("JARVIS_MAX_TOOL_CALLS", 6),
+  maxToolCalls: int("JARVIS_MAX_TOOL_CALLS", 8),
   timezone: env("JARVIS_TIMEZONE", "Asia/Kolkata"),
   ttsSpeaker: env("JARVIS_TTS_SPEAKER", "shubh"),
-  historyTurns: int("JARVIS_HISTORY_TURNS", 6),
+  historyTurns: int("JARVIS_HISTORY_TURNS", 8),
   allowedOrigins: env("JARVIS_ALLOWED_ORIGINS", "*").split(",").map((s) => s.trim()).filter(Boolean),
   erpTimeoutMs: int("JARVIS_ERP_TIMEOUT_MS", 12000),
   /** Override only for local testing against a mock; production uses Sarvam's hosts. */

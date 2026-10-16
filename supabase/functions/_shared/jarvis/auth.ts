@@ -20,6 +20,8 @@ export type Permission =
   | "sales.all"       // whole Sales team + CRM
   | "sales.own"       // own leads / enrolments only (counselors)
   | "media.all"       // Media pipeline + work overview
+  | "hr.payroll"      // any employee's payroll + company assets register (HR admin / HR division / leadership)
+  | "work.all"        // organisation-wide Work Assignment (leadership)
   | "org";            // organisation-wide metrics
 
 export interface JarvisAuthContext {
@@ -104,10 +106,10 @@ export async function resolveAuthContext(req: Request): Promise<JarvisAuthContex
 
   // Permissions from effective access (never from the browser).
   const p = new Set<Permission>(["self"]);
-  if (isLeader) ["org", "academic.all", "hr.attendance", "sales.all", "media.all"].forEach((x) => p.add(x as Permission));
+  if (isLeader) ["org", "academic.all", "hr.attendance", "sales.all", "media.all", "hr.payroll", "work.all"].forEach((x) => p.add(x as Permission));
   if (role === "academic_head") p.add("academic.all");
   if (role === "trainer" || (rec.division === "education" && !p.has("academic.all"))) p.add("academic.own");
-  if (role === "hr_admin" || rosterRole === "admin" || rec.division === "hr") p.add("hr.attendance");
+  if (role === "hr_admin" || rosterRole === "admin" || rec.division === "hr") { p.add("hr.attendance"); p.add("hr.payroll"); }
   if (rec.division === "sales" || role === "sales") {
     // sales.html: head = global manager or a head/manager title.
     p.add(/head|manager/i.test(`${rec.department || ""} ${rec.designation || ""}`) ? "sales.all" : "sales.own");

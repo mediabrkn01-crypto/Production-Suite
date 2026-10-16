@@ -23,11 +23,16 @@ export interface AuditEntry {
   provider: string;
   model: string;
   input: "voice" | "text";
+  /** Per-stage latency (mic/VAD/STT/LLM first token/ERP tools/TTS first audio), ms. */
+  stages?: Record<string, number>;
 }
+
+let _stagesCol = true;   // false once we know 20261025_jarvis_realtime.sql has not been run
 
 export async function writeAudit(auth: JarvisAuthContext | null, e: AuditEntry): Promise<void> {
   try {
-    const { error } = await adminClient().from("jarvis_audit_log").insert({
+    // deno-lint-ignore no-explicit-any
+    const row: any = {
       auth_user_id: auth?.authUserId ?? null,
       employee_id: auth?.employeeId ?? null,
       email: auth?.email ?? null,
@@ -47,7 +52,13 @@ export async function writeAudit(auth: JarvisAuthContext | null, e: AuditEntry):
       total_ms: e.timings.total_ms,
       llm_provider: e.provider,
       llm_model: e.model,
-    });
+    };
+    if (_stagesCol && e.stages) row.stage_timings = e.stages;
+    let { error } = await adminClient().from("jarvis_audit_log").insert(row);
+    if (error && row.stage_timings && /stage_timings/.test(error.message)) {
+      _stagesCol = false; delete row.stage_timings;
+      ({ error } = await adminClient().from("jarvis_audit_log").insert(row));
+    }
     if (error) console.error("[jarvis] audit insert failed:", error.message);
   } catch (err) {
     console.error("[jarvis] audit insert failed:", err instanceof Error ? err.message : err);

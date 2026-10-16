@@ -1,4 +1,6 @@
-// POST /functions/v1/jarvis — one Jarvis voice turn, streamed back as Server-Sent Events.
+// /functions/v1/jarvis
+//   WebSocket  realtime full-duplex conversation (live STT, streamed answer + speech, barge-in) — realtime.ts
+//   POST       one Jarvis turn (uploaded audio or typed text), streamed back as Server-Sent Events (fallback).
 //
 // Transport (works in the Supabase edge runtime — no long-lived socket to the browser):
 //   request  x-erp-session: <token from the normal ERP login>      (no separate Jarvis login)
@@ -15,6 +17,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { adminClient, JarvisAuthError, resolveAuthContext } from "../_shared/jarvis/auth.ts";
 import { config } from "../_shared/jarvis/config.ts";
 import { type JarvisEvent, runTurn } from "../_shared/jarvis/voiceEngine.ts";
+import { handleRealtime } from "../_shared/jarvis/realtime.ts";
 
 const MAX_AUDIO_BYTES = 2_000_000;      // ≈ 60 s of 16 kHz mono PCM
 const MAX_TURNS_PER_MINUTE = 12;
@@ -34,6 +37,15 @@ const json = (req: Request, status: number, body: unknown) =>
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
+  // ── Realtime full-duplex voice (WebSocket). Browsers can't send headers on a WebSocket, so
+  //    the ERP session token arrives in the first {type:"hello"} message and is verified there
+  //    (deploy with --no-verify-jwt; the anon-key gateway check adds nothing for this path). ──
+  if ((req.headers.get("upgrade") || "").toLowerCase() === "websocket") {
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    socket.binaryType = "arraybuffer";
+    handleRealtime(socket);
+    return response;
+  }
   if (req.method !== "POST" && req.method !== "GET") return json(req, 405, { error: "Use POST." });
 
   // ── who is calling (verified server-side) ──

@@ -1,28 +1,35 @@
-# Jarvis — voice assistant backend (Founder Deck)
+# Jarvis — realtime voice assistant backend
 
 Read-only voice layer on top of the existing ERP. It does not have its own copy of company data.
 Speech (Malayalam / English / Manglish) → live ERP tools → spoken answer.
 
+## Realtime architecture (2026-10-16)
+
 ```
-Manager deck globe / floating orb on every portal (jarvis-voice.js)
-   │  POST raw 16 kHz PCM  +  x-erp-session (token from the normal ERP login)
-   ▼
-supabase/functions/jarvis/index.ts           — auth, rate limit, SSE stream
-   └─ _shared/jarvis/voiceEngine.ts          — turn orchestrator + globe states
-        ├─ sttProvider.ts   Sarvam Saaras v4 streaming WebSocket (codemix, ml-IN, keyterms, VAD)
-        ├─ llmProvider.ts   Claude (default) | Sarvam 105B — tool-use loop behind one interface
-        ├─ erpTools.ts      9 read-only tools, Zod-validated, per-role access, executeErpTool()
-        ├─ erpServices.ts   fixed reads of the real ERP tables (same rules as the portals)
-        ├─ ttsProvider.ts   Sarvam Bulbul v3 streaming WebSocket (ml-IN / en-IN)
-        ├─ jarvisAudit.ts   jarvis_audit_log + short session memory (jarvis_turns)
-        ├─ auth.ts          token → verified email → hr_employees → access scope
-        └─ time.ts          Asia/Kolkata date resolution
+browser (jarvis-voice.js)                                   edge function `jarvis` (Deno)
+ mic, kept open for the conversation                         realtime.ts — one WebSocket per conversation
+  └ AudioWorklet → 16 kHz PCM16, 20 ms frames                 ├ hello → ERP session verified (auth.ts), memory warmed
+  └ client VAD (adaptive floor): speech start / end ──WS──▶   ├ speech_start → new turn id, aborts the old turn
+  └ frames stream WHILE the user talks ──────────────WS──▶   │   └ sttLive.ts: Sarvam Saaras v4 socket, frames forwarded live
+                                                              ├ speech_end → flush → final transcript (~0.3–0.6 s)
+                                                              └ voiceEngine.runTurn (cancellable)
+                                                                  ├ llmProvider: Claude | Sarvam, TOKEN STREAM + parallel tools
+                                                                  ├ erpTools: 24 read-only tools (authorised per call)
+                                                                  ├ knowledge.ts: ERP product rules (get_erp_knowledge)
+                                                                  └ TtsPipeline: phrase-by-phrase Bulbul v3, in order
+  ◀── assistant.delta / status / audio.chunk (tagged by turn) ──┘
+ MSE player starts on the first phrase
+ barge-in: user voice while Jarvis talks → audio stops, speech_start → server aborts LLM/TTS
 ```
 
-Spec file names map to these files: `src/services/<name>.ts` is `supabase/functions/_shared/jarvis/<name>.ts`, and
-`src/app/api/voice-assistant/route.ts` is `supabase/functions/jarvis/index.ts`. The ERP runs on GitHub Pages and
-Supabase, with no Next.js server. Supabase Edge Functions run the voice turn, so a separate
-WebSocket server is not needed. The server holds the Sarvam sockets and streams back to the browser over SSE.
+- **Deploy with `--no-verify-jwt`** — a browser WebSocket can't send the gateway header; the ERP session token is
+  verified inside the function (hello message for the socket, `x-erp-session` for POST).
+- The POST + SSE path (record → upload) still exists as the fallback when the socket can't open.
+- **Latency telemetry**: every turn writes per-stage timings to `jarvis_audit_log.stage_timings`
+  (`20261025_jarvis_realtime.sql`); in the browser set `localStorage.jarvis_debug = '1'` for a console table.
+- **Knowledge base**: `_shared/jarvis/knowledge.ts` — one entry per ERP workflow. Edit it when a rule changes and
+  redeploy; the model fetches entries on demand, nothing is pasted into every prompt.
+- Tests: mocked Sarvam (SSE LLM, STT socket), TTS pipeline ordering/abort, realtime barge-in — see the commit message.
 
 ## Setup (once)
 
@@ -31,15 +38,15 @@ WebSocket server is not needed. The server holds the Sarvam sockets and streams 
 2. **Set the secrets.** They never reach the browser.
    ```bash
    supabase secrets set --project-ref fevqnpllmarhoqdzpatq \
-     SARVAM_API_KEY=... ANTHROPIC_API_KEY=... LLM_PROVIDER=anthropic CLAUDE_MODEL=claude-sonnet-4-6 \
-     JARVIS_MAX_TOOL_CALLS=6 JARVIS_TIMEZONE=Asia/Kolkata \
+     SARVAM_API_KEY=... ANTHROPIC_API_KEY=... LLM_PROVIDER=anthropic CLAUDE_MODEL=claude-opus-5-5 JARVIS_LLM_EFFORT=low \
+     JARVIS_MAX_TOOL_CALLS=8 JARVIS_TIMEZONE=Asia/Kolkata \
      JARVIS_ALLOWED_ORIGINS=https://work.brokenenglish.in
    ```
    - Optional settings: `ERP_INTERNAL_API_BASE` and `ERP_INTERNAL_API_TOKEN` (default to this project's URL and
      service role), `JARVIS_TTS_SPEAKER` (default `shubh`), `SARVAM_LLM_MODEL` (default `sarvam-105b`).
 3. **Deploy:**
    ```bash
-   supabase functions deploy jarvis --project-ref fevqnpllmarhoqdzpatq
+   supabase functions deploy jarvis --no-verify-jwt --project-ref fevqnpllmarhoqdzpatq
    ```
 4. **No Jarvis login.** The normal ERP login (index.html) also calls the `erp-session` function, which repeats the
    password + HR access check on the server and returns a signed session token. Jarvis trusts only that token,

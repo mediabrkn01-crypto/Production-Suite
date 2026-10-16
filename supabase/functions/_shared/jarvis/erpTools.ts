@@ -7,6 +7,8 @@ import { z } from "npm:zod@4.6.5";
 import { can, type JarvisAuthContext } from "./auth.ts";
 import { config } from "./config.ts";
 import { academicService, attendanceService, crmService, leaveService, metricsService, salesService, selfService } from "./erpServices.ts";
+import { academicExtra, commonExtra, companyStatus, employeeDirectory, hrExtra, workExtra } from "./erpServicesExtra.ts";
+import { searchKnowledge } from "./knowledge.ts";
 import { addDays, resolveDateRange, tzDate } from "./time.ts";
 
 /** Vendor-neutral tool definition (converted per LLM provider). */
@@ -65,6 +67,54 @@ const SCHEMAS = {
   get_my_attendance_and_leave: z.object({
     month: z.string().regex(/^\d{4}-\d{2}$/).optional().describe("YYYY-MM for the monthly summary (default this month)."),
   }),
+  get_company_status: z.object({
+    date: datePhrase.optional().describe("Day (default today)."),
+  }),
+  get_leave_status: z.object({
+    date: datePhrase.optional().describe("Day (default today)."),
+    department: z.enum(["production", "education", "sales", "hr", "accounts", "management", "other"]).optional(),
+    person: z.string().max(80).optional().describe("One employee's name, to check only them."),
+  }),
+  get_holidays: z.object({
+    date_range: datePhrase.optional().describe("Period (default this_month). Use next_30_days for upcoming."),
+  }),
+  get_work_tasks: z.object({
+    status: z.enum(["open", "in_progress", "overdue", "completed", "rework", "awaiting_review", "all"]).describe("completed = finished in date_range; awaiting_review = completed but not yet approved."),
+    department: z.enum(["production", "education", "sales", "hr", "accounts", "management", "other"]).optional().describe("production = Media / Production work."),
+    date_range: datePhrase.optional().describe("For completed work (default today)."),
+    employee_name: z.string().max(80).optional(),
+  }),
+  get_batch_details: z.object({
+    batch_name: z.string().min(2).max(80).describe("Batch name as spoken, e.g. Talk Titans 01."),
+  }),
+  get_student_info: z.object({
+    student_name: z.string().min(2).max(80),
+  }),
+  get_live_class_status: z.object({
+    date: datePhrase.optional().describe("Day (default today)."),
+  }),
+  get_payroll_summary: z.object({
+    employee_name: z.string().max(80).optional().describe("Omit for the speaker's OWN payroll."),
+    month: z.string().regex(/^\d{4}-\d{2}$/).optional().describe("YYYY-MM (default last month if this month is not generated yet)."),
+  }),
+  get_company_assets: z.object({
+    employee_name: z.string().max(80).optional().describe("Whose assets; omit with mine=true for the speaker's own."),
+    mine: z.boolean().optional(),
+    status: z.enum(["available", "assigned", "returned", "repair", "retired"]).optional(),
+    query: z.string().max(60).optional().describe("Asset name / ID / type text, e.g. MacBook or BE-LAP-012."),
+  }),
+  get_my_notifications: z.object({}),
+  get_announcements: z.object({
+    limit: z.number().int().min(1).max(10).optional(),
+  }),
+  search_erp: z.object({
+    query: z.string().min(2).max(80).describe("Name or words to look for (person, batch, student, course, lead, task, asset)."),
+    module: z.enum(["people", "academic", "sales", "work", "assets", "any"]).optional().describe("Narrow the search (default any)."),
+  }),
+  get_erp_knowledge: z.object({
+    question: z.string().min(3).max(300).describe("The how-does-it-work question, e.g. how is LOP calculated."),
+    module: z.enum(["academics", "hr", "sales", "media", "management", "common"]).optional(),
+  }),
 } as const;
 
 export type ToolName = keyof typeof SCHEMAS;
@@ -81,6 +131,19 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   get_erp_metrics: "Headline KPIs for a department (academic, sales, hr, media) or all, for a period — only the departments this person may see.",
   get_my_tasks: "The speaker's OWN assigned work tasks (Work Assignment): open, overdue, rework, completed, with due dates and who assigned them.",
   get_my_attendance_and_leave: "The speaker's OWN attendance today, this month's summary (present, late, leave, LOP), leave balances and recent leave requests.",
+  get_company_status: "One-call organisation snapshot for a day, fetched in parallel: employee attendance, who is on leave, Academic classes and pending class attendance, Sales leads and enrollments, Work completed / open / overdue / awaiting review. Use for 'how is the company doing', 'today's status', 'give me a summary'. Only sections the speaker may see are included.",
+  get_leave_status: "Every employee (all departments) on APPROVED leave or work-from-home on a day, with department, leave type, half day and dates, plus a per-department count and how many leave requests await approval. Use for 'who is on leave', 'is X on leave', 'which department are they from'.",
+  get_holidays: "Company holidays in a period, with type and which departments they apply to (department-specific holidays only apply to the listed departments) and whether they apply to the speaker.",
+  get_work_tasks: "Work Assignment tasks across departments (Media / Production videos, posters, thumbnails and all other assigned work): counts of open, in progress, overdue, rework, awaiting review, completed in a period, per-person counts and the task list with employee, status, due date and whether output was uploaded.",
+  get_batch_details: "One Academic batch: course, trainer, status (frozen and why), schedule, start / planned end, sessions done / total / left, last class marked, students and capacity. Use to explain why a batch's class is or isn't happening.",
+  get_student_info: "One student: batch, trainer, course, status, enrollment date, counsellor and attendance (sessions marked, present, absent, percentage, last attended). Contact details are never returned.",
+  get_live_class_status: "Google Meet / Live Classes for a day: how many classes have a Meet link, live now, ended, cancelled, sync errors, per class.",
+  get_payroll_summary: "Saved payroll for one employee and month: monthly salary, basic, allowances, incentive, deductions, leave deduction, LOP days, paid / unpaid leave days, absent days, net salary, payment and payslip status. Use to explain why someone's salary is lower. Without employee_name it returns the speaker's own payroll.",
+  get_company_assets: "Company assets register: by employee (current assets and previously held), by status, or by name / asset ID, with type, condition and who holds it.",
+  get_my_notifications: "The speaker's own Notification Center: unread notifications (work completed, attendance pending, …).",
+  get_announcements: "Current company announcements that apply to the speaker (title, message, priority).",
+  search_erp: "Universal ERP search: finds people (name, department, designation), batches, students, courses, leads, work tasks and assets matching a name or words — only in modules the speaker may see. Use when you don't know which module something belongs to.",
+  get_erp_knowledge: "How the ERP works (rules and workflows, not live data): leave policy, leave cancellation, payroll / LOP, attendance engine, class schedule and why a class is missing, attendance reminders, Live Classes, holidays, assets, sales pipeline, work assignment, media approvals, notifications. Call before explaining any process.",
 };
 
 /** Who may call each tool — from the server-resolved permissions only. */
@@ -96,6 +159,19 @@ const ACCESS: Record<ToolName, (a: JarvisAuthContext) => boolean> = {
   get_erp_metrics: (a) => metricDepartments(a).length > 0,
   get_my_tasks: (a) => can(a, "self"),
   get_my_attendance_and_leave: (a) => can(a, "self"),
+  get_company_status: (a) => can(a, "org") || can(a, "hr.attendance") || can(a, "academic.all") || can(a, "sales.all") || can(a, "media.all"),
+  get_leave_status: (a) => can(a, "hr.attendance"),
+  get_holidays: (a) => can(a, "self"),
+  get_work_tasks: (a) => can(a, "work.all") || can(a, "media.all"),
+  get_batch_details: (a) => can(a, "academic.all") || can(a, "academic.own"),
+  get_student_info: (a) => can(a, "academic.all") || can(a, "academic.own") || can(a, "sales.all"),
+  get_live_class_status: (a) => can(a, "academic.all") || can(a, "academic.own"),
+  get_payroll_summary: (a) => can(a, "self"),
+  get_company_assets: (a) => can(a, "self"),
+  get_my_notifications: (a) => can(a, "self"),
+  get_announcements: (a) => can(a, "self"),
+  search_erp: (a) => can(a, "self"),
+  get_erp_knowledge: () => true,
 };
 function metricDepartments(a: JarvisAuthContext): string[] {
   if (can(a, "org")) return ["academic", "sales", "hr", "media"];
@@ -165,6 +241,17 @@ export async function executeErpTool(toolName: string, args: unknown, auth: Jarv
     console.error(`[jarvis] tool ${name} failed:`, e instanceof Error ? e.message : e);
     return { ok: false, error: msg };
   }
+}
+
+/** Resolve a spoken employee name to one active record (or an explanation string). */
+async function findEmployee(name: string): Promise<{ id: string; name: string } | string> {
+  const all = (await employeeDirectory()).filter((e) => String(e.employment_status || "active").toLowerCase() !== "exited");
+  const q = name.trim().toLowerCase();
+  const exact = all.filter((e) => String(e.full_name).toLowerCase() === q);
+  const part = exact.length ? exact : all.filter((e) => String(e.full_name).toLowerCase().split(/\s+/).includes(q) || String(e.full_name).toLowerCase().includes(q));
+  if (!part.length) return `No employee named "${name}" was found.`;
+  if (part.length > 1) return `More than one employee matches "${name}": ${part.slice(0, 5).map((e) => e.full_name).join(", ")}. Ask which one.`;
+  return { id: part[0].id, name: part[0].full_name };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -252,6 +339,70 @@ async function run(name: ToolName, a: any, auth: JarvisAuthContext): Promise<unk
       return selfService.getMyTasks(auth.email, a.status);
     case "get_my_attendance_and_leave":
       return selfService.getMyAttendanceAndLeave(auth.employeeId, a.month);
+    case "get_company_status": {
+      const r = dayRange(a.date);
+      return companyStatus(r.from, { hr: can(auth, "hr.attendance"), academic: can(auth, "academic.all"), sales: can(auth, "sales.all"), work: can(auth, "work.all") || can(auth, "media.all") });
+    }
+    case "get_leave_status": {
+      const r = dayRange(a.date);
+      return hrExtra.leaveOn(r.from, a.department || null, a.person || null);
+    }
+    case "get_holidays":
+      return hrExtra.holidays(resolveDateRange(a.date_range || "this_month"), auth.department);
+    case "get_work_tasks": {
+      // Media Head (media.all without work.all) only sees Media / Production work.
+      const only = can(auth, "work.all") ? null : "production";
+      return workExtra.tasks({ status: a.status, department: a.department || null, onlyDepartment: only, employee: a.employee_name || null,
+        range: a.status === "completed" ? resolveDateRange(a.date_range || "today") : (a.date_range ? resolveDateRange(a.date_range) : null) });
+    }
+    case "get_batch_details":
+      return academicExtra.batchDetails(a.batch_name, can(auth, "academic.all") ? null : (auth.trainerId || "00000000-0000-0000-0000-000000000000"));
+    case "get_student_info":
+      return academicExtra.studentInfo(a.student_name, can(auth, "academic.all") || can(auth, "sales.all") ? null : auth.name);
+    case "get_live_class_status": {
+      const r = dayRange(a.date);
+      return academicExtra.liveClasses(r.from, can(auth, "academic.all") ? null : auth.trainerId);
+    }
+    case "get_payroll_summary": {
+      let empId = auth.employeeId;
+      if (a.employee_name) {
+        const hit = await findEmployee(a.employee_name);
+        if (typeof hit === "string") return { note: hit };
+        if (hit.id !== auth.employeeId && !can(auth, "hr.payroll")) return { note: "The speaker can only see their own payroll." };
+        empId = hit.id;
+      }
+      const today = tzDate();
+      const month = a.month || today.slice(0, 7);
+      const res = await hrExtra.payroll(empId, month) as Record<string, unknown>;
+      if (!a.month && res.note) { const prev = addDays(today.slice(0, 8) + "01", -1).slice(0, 7); return hrExtra.payroll(empId, prev); }
+      return res;
+    }
+    case "get_company_assets": {
+      if (a.mine || (!a.employee_name && !can(auth, "hr.payroll"))) return hrExtra.assets({ employeeId: auth.employeeId });
+      if (a.employee_name) {
+        const hit = await findEmployee(a.employee_name);
+        if (typeof hit === "string") return { note: hit };
+        if (hit.id !== auth.employeeId && !can(auth, "hr.payroll")) return { note: "The speaker can only see their own assets." };
+        return hrExtra.assets({ employeeId: hit.id });
+      }
+      return hrExtra.assets({ status: a.status || null, query: a.query || null });
+    }
+    case "get_my_notifications":
+      return commonExtra.myNotifications(auth.email);
+    case "get_announcements":
+      return commonExtra.announcements(auth.employeeId, auth.department, a.limit || 5);
+    case "search_erp": {
+      const allowed: string[] = ["people"];
+      if (can(auth, "academic.all") || can(auth, "academic.own")) allowed.push("academic");
+      if (can(auth, "sales.all") || can(auth, "sales.own")) allowed.push("sales");
+      if (can(auth, "work.all") || can(auth, "media.all")) allowed.push("work");
+      if (can(auth, "hr.payroll")) allowed.push("assets");
+      const mods = !a.module || a.module === "any" ? allowed : allowed.filter((m) => m === a.module);
+      if (!mods.length) return { note: `The speaker does not have access to ${a.module} data.` };
+      return commonExtra.search(a.query, mods, { trainerName: can(auth, "academic.all") ? null : auth.name, salesOwnId: can(auth, "sales.all") ? null : auth.employeeId });
+    }
+    case "get_erp_knowledge":
+      return searchKnowledge(a.question, a.module || null);
     case "get_erp_metrics": {
       const r = resolveDateRange(a.date_range);
       const allowed = metricDepartments(auth);
