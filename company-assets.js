@@ -70,6 +70,18 @@
       '.ca-tl div{position:relative;padding:0 0 12px 16px;font-size:12.5px;color:#a5adcf}.ca-tl div::before{content:"";position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;background:#ff6b06;box-shadow:0 0 0 3px #0d1120}',
       '.ca-tl b{color:#fff}.ca-tl em{display:block;font-style:normal;color:#5b638a;font-size:11px;margin-top:1px}',
       '.ca-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}.ca-facts div span{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b74a0}.ca-facts div b{color:#fff;font-size:13px;font-weight:600;overflow-wrap:anywhere}',
+      '.ca-cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:22px;align-items:start}',
+      '.ca-col{display:flex;flex-direction:column;gap:14px;min-width:0}',
+      '.ca-side{padding:16px;border-radius:16px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07)}',
+      '.ca-sec{margin:4px 0 -4px;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ff8a3d}.ca-sec em{font-style:normal;color:#5b638a;letter-spacing:.04em;text-transform:none;font-weight:600;margin-left:6px}',
+      '.ca-box{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;background:rgba(96,165,250,.05);border:1px solid rgba(96,165,250,.18)}',
+      '.ca-hint{margin:-4px 0 0;font-size:11.5px;color:#6b74a0}',
+      '.ca-prev{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,rgba(255,107,6,.1),rgba(255,255,255,.02));border:1px solid rgba(255,107,6,.22)}',
+      '.ca-prev>div{flex:1;min-width:0}.ca-prev b{display:block;color:#fff;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-prev span:not(.ca-pill):not(.ca-ic){display:block;color:#8b93b8;font-size:12px}',
+      '.ca-prev-who{flex-basis:100%;font-style:normal;font-size:12px;color:#93c5fd}',
+      '.ca-seg{display:flex;flex-wrap:wrap;gap:6px}.ca-seg button{min-height:34px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#a5adcf;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}',
+      '.ca-seg button.on{color:#fff;background:rgba(255,107,6,.16);border-color:rgba(255,107,6,.5)}.ca-seg button:focus-visible{outline:2px solid #ff8a3c;outline-offset:2px}',
+      '@media(max-width:760px){.ca-cols{grid-template-columns:1fr;gap:16px}.ca-side{padding:12px}}',
       '.ca-newtype{display:flex;gap:6px;margin-top:6px}.ca-newtype[hidden]{display:none}.ca-newtype input{flex:1;min-width:0}',
       '@media(max-width:767px){.ca-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ca-filters{grid-template-columns:1fr 1fr}.ca-filters .ca-q{grid-column:1/-1}.ca-acts{justify-content:flex-start}}',
       '@media(max-width:440px){.ca-facts{grid-template-columns:1fr}}'
@@ -98,7 +110,7 @@
   // ── modal helper (HR's own .hfm modal look) ────────────────────────────
   function modal(title, sub, body, foot, onMount, wide) {
     var ov = document.createElement('div'); ov.className = 'hr-modal-overlay';
-    ov.innerHTML = '<div class="hr-modal hfm" style="max-width:' + (wide ? 640 : 520) + 'px" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
+    ov.innerHTML = '<div class="hr-modal hfm" style="max-width:' + (wide === 'xl' ? 920 : wide ? 640 : 520) + 'px" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
       + '<div class="hfm-head"><div class="hfm-ic" style="--ic:#60a5fa"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg></div>'
       + '<div class="hfm-ttl"><h3>' + esc(title) + '</h3>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div>'
       + '<button type="button" class="hfm-x" data-x aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'
@@ -142,18 +154,48 @@
   // ── forms ─────────────────────────────────────────────────────────────
   function openForm(asset) {
     var a = asset || {};
-    var body = '<div class="hfm-g2">' + fld('Asset name', '<input id="ca-name" class="hr-input" placeholder="e.g. MacBook Pro 14" value="' + esc(a.name) + '">', true)
-      + fld('Asset type', '<select id="ca-type" class="hr-select w-full"><option value="">Select type…</option>' + S.types.map(function (t) { return '<option value="' + t.id + '"' + (String(t.id) === String(a.type_id) ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '<option value="__new">+ Add a new type…</option></select><div class="ca-newtype" id="ca-newtype" hidden><input id="ca-newtype-name" class="hr-input" placeholder="New type name"></div>', true) + '</div>'
-      + '<div class="hfm-g2">' + fld('Asset ID / internal code', '<input id="ca-code" class="hr-input" placeholder="e.g. BE-LAP-012" value="' + esc(a.asset_code) + '">')
-      + fld('Serial number', '<input id="ca-serial" class="hr-input" value="' + esc(a.serial_number) + '">') + '</div>'
-      + '<div class="hfm-g2">' + fld('Brand', '<input id="ca-brand" class="hr-input" value="' + esc(a.brand) + '">') + fld('Model', '<input id="ca-model" class="hr-input" value="' + esc(a.model) + '">') + '</div>'
-      + '<div class="hfm-g2">' + fld('Condition', '<select id="ca-cond" class="hr-select w-full">' + condOptions(a.condition) + '</select>') + fld('Purchase date', '<input id="ca-pdate" type="date" class="hr-input" value="' + esc(a.purchase_date || '') + '">') + '</div>'
-      + (asset ? '' : '<div class="hfm-g2">' + fld('Assign to employee', '<select id="ca-emp" class="hr-select w-full">' + empOptions('') + '</select>') + fld('Assigned date', '<input id="ca-adate" type="date" class="hr-input" value="' + today() + '">') + '</div>')
-      + fld('Image / invoice / document link', '<input id="ca-doc" class="hr-input" placeholder="Drive or file link (optional)" value="' + esc(a.document_url) + '">')
-      + fld('Notes', '<textarea id="ca-notes" class="hr-input" rows="2">' + esc(a.notes) + '</textarea>');
+    // Two-column form: item details on the left; live summary card, condition, assignment,
+    // document and notes on the right (the right column was empty space before).
+    var typeSel = '<select id="ca-type" class="hr-select w-full"><option value="">Select type…</option>' + S.types.map(function (t) { return '<option value="' + t.id + '"' + (String(t.id) === String(a.type_id) ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '<option value="__new">+ Add a new type…</option></select><div class="ca-newtype" id="ca-newtype" hidden><input id="ca-newtype-name" class="hr-input" placeholder="New type name"></div>';
+    var condChips = '<input type="hidden" id="ca-cond" value="' + esc(a.condition || '') + '"><div class="ca-seg" role="radiogroup" aria-label="Condition">' + CONDITIONS.map(function (c) { return '<button type="button" role="radio" data-cond="' + c + '" class="' + (c === a.condition ? 'on' : '') + '" aria-checked="' + (c === a.condition) + '">' + c + '</button>'; }).join('') + '</div>';
+    var left = '<div class="ca-col">'
+      + '<p class="ca-sec">Item</p>'
+      + fld('Asset name', '<input id="ca-name" class="hr-input" placeholder="e.g. MacBook Pro 14" value="' + esc(a.name) + '">', true)
+      + '<div class="hfm-g2">' + fld('Asset type', typeSel, true) + fld('Asset ID / internal code', '<input id="ca-code" class="hr-input" placeholder="e.g. BE-LAP-012" value="' + esc(a.asset_code) + '">') + '</div>'
+      + '<p class="ca-sec">Specification</p>'
+      + '<div class="hfm-g2">' + fld('Brand', '<input id="ca-brand" class="hr-input" placeholder="e.g. Apple" value="' + esc(a.brand) + '">') + fld('Model', '<input id="ca-model" class="hr-input" placeholder="e.g. M3 Pro, 18 GB" value="' + esc(a.model) + '">') + '</div>'
+      + '<div class="hfm-g2">' + fld('Serial number', '<input id="ca-serial" class="hr-input" value="' + esc(a.serial_number) + '">') + fld('Purchase date', '<input id="ca-pdate" type="date" class="hr-input" value="' + esc(a.purchase_date || '') + '">') + '</div>'
+      + fld('Condition', condChips)
+      + '</div>';
+    var right = '<div class="ca-col ca-side">'
+      + '<div class="ca-prev" id="ca-prev"></div>'
+      + (asset ? '' : '<div class="ca-box"><p class="ca-sec" style="margin-top:0">Assign now <em>optional</em></p>'
+        + fld('Employee', '<select id="ca-emp" class="hr-select w-full">' + empOptions('') + '</select>')
+        + fld('Assigned date', '<input id="ca-adate" type="date" class="hr-input" value="' + today() + '">')
+        + '<p class="ca-hint">Leave empty to add it as Available.</p></div>')
+      + fld('Image / invoice / document link', '<input id="ca-doc" class="hr-input" placeholder="Drive or file link" value="' + esc(a.document_url) + '">')
+      + fld('Notes', '<textarea id="ca-notes" class="hr-input" rows="3" placeholder="Accessories, charger, warranty…">' + esc(a.notes) + '</textarea>')
+      + '</div>';
+    var body = '<div class="ca-cols">' + left + right + '</div>';
     modal(asset ? 'Edit asset' : 'Add asset', asset ? (a.asset_code || a.name) : 'Company-owned item. Assign it now or later.', body,
       foot('<button type="button" class="hfm-btn hfm-pri brand-gradient" data-save>' + (asset ? 'Save changes' : 'Add asset') + '</button>'), function (ov, close) {
         ov.querySelector('#ca-type').onchange = function () { ov.querySelector('#ca-newtype').hidden = this.value !== '__new'; if (this.value === '__new') ov.querySelector('#ca-newtype-name').focus(); };
+        var prev = function () {
+          var nm = v(ov, 'ca-name'), tSel = ov.querySelector('#ca-type'), tn = tSel.value === '__new' ? v(ov, 'ca-newtype-name') : (tSel.value ? tSel.options[tSel.selectedIndex].text : '');
+          var emp = ov.querySelector('#ca-emp'), who = emp && emp.value ? emp.options[emp.selectedIndex].text.split(' — ')[0] : '';
+          var spec = [v(ov, 'ca-brand'), v(ov, 'ca-model')].filter(Boolean).join(' ');
+          ov.querySelector('#ca-prev').innerHTML = '<span class="ca-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg></span>'
+            + '<div><b>' + esc(nm || 'New asset') + '</b><span>' + esc([v(ov, 'ca-code'), tn].filter(Boolean).join(' · ') || 'Asset ID · type') + '</span>' + (spec ? '<span>' + esc(spec) + '</span>' : '') + '</div>'
+            + pill(asset ? asset.status : (who ? 'assigned' : 'available')) + (who ? '<i class="ca-prev-who">→ ' + esc(who) + '</i>' : '');
+        };
+        ov.addEventListener('input', prev); ov.addEventListener('change', prev);
+        ov.querySelectorAll('[data-cond]').forEach(function (b) { b.onclick = function () {
+          var on = !b.classList.contains('on');
+          ov.querySelectorAll('[data-cond]').forEach(function (x) { x.classList.remove('on'); x.setAttribute('aria-checked', 'false'); });
+          if (on) { b.classList.add('on'); b.setAttribute('aria-checked', 'true'); }
+          ov.querySelector('#ca-cond').value = on ? b.dataset.cond : '';
+        }; });
+        prev();
         ov.querySelector('[data-save]').onclick = async function () {
           var btn = this, name = v(ov, 'ca-name'), typeId = v(ov, 'ca-type'), code = v(ov, 'ca-code');
           if (!name) return toast('warning', 'Enter the asset name.');
@@ -183,7 +225,7 @@
             close(); toast('success', asset ? 'Asset updated.' : 'Asset added.'); await refresh();
           } catch (e) { btn.disabled = false; toast('error', 'Could not save the asset: ' + (e.message || e)); }
         };
-      });
+      }, 'xl');
   }
   function openAssign(asset, transfer) {
     var cur = asset.current_employee_id;
