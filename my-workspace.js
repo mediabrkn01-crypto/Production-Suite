@@ -131,6 +131,7 @@
       + '<div class="mw-row">' + divPill(e.division) + (e.employee_id ? pill(e.employee_id, 'mute') : '') + (onProb ? pill('Probation until ' + fDate(pe, true), 'warn') : pill(e.employment_status || 'active', e.employment_status === 'active' || !e.employment_status ? 'ok' : 'mute')) + '</div></div></div>'
       // Aura Points (aura.js) — one of the first things on the profile: total, this month, history.
       + (window.BEAura ? '<div class="mw-card" id="mw-aura"></div>' : '')
+      + (window.BECal ? '<div class="mw-card" id="mw-cal"></div>' : '')
       + '<div class="mw-card"><div class="mw-card-t">Details</div><div class="mw-fields">'
       + f('Employee ID', e.employee_id) + f('Department', DIV[e.division] || e.division)
       + f('Role', ri.primary ? ((ri.level ? ri.level + ' ' : '') + ri.primary) : '') + f('Level', ri.level)
@@ -143,6 +144,7 @@
       + '</div></div>'
       + (quick.length && cfg.navigate ? '<div class="mw-card"><div class="mw-card-t">Quick access</div><div class="mw-quick">' + quick.map(function (q) { return '<button class="mw-quick-b" data-go="' + q[0] + '">' + ic(q[1], 18) + '<span>' + esc(q[2]) + '</span></button>'; }).join('') + '</div></div>' : '');
     root.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { cfg.navigate(b.getAttribute('data-go')); }; });
+    var cal = root.querySelector('#mw-cal'); if (cal && window.BECal) BECal.mountUpcoming(cal);
     var au = root.querySelector('#mw-aura');
     if (au && window.BEAura) {
       BEAura.mountProfile(au, e, { self: true });
