@@ -103,6 +103,16 @@
       '.au-opt > span:nth-child(2){min-width:0;flex:1}.au-opt > span:nth-child(2) > span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.au-dchips{display:flex;gap:6px;flex-wrap:wrap}.au-dchips button{height:28px;padding:0 11px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:none;color:#8b93b8;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}.au-dchips button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.1)}',
       '.au-chip{flex:1 1 0;min-width:0}.au-confirm .tot{color:#34d399}',
+      '.au-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:52px}.au-chip small{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b74a0}.au-chip.on small{color:#ffb37a}',
+      '.au-sugg button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.1)}',
+      '.au-gh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.au-dlg .au-gh .sub{margin:4px 0 0}.au-recent{display:flex;flex-direction:column;min-height:0}.au-recent .au-rh{margin-top:4px}.au-recent .au-hist{margin-top:2px;border-top:0;padding-top:0}.au-recent .au-tx{grid-template-columns:44px minmax(0,1fr) auto;padding:8px 0}.au-gh .au-x{position:static;flex-shrink:0}',
+      '.au-gv{display:flex;flex-direction:column;gap:14px}.au-gv-r{display:flex;flex-direction:column;gap:14px;min-width:0}.au-gv-l{min-width:0}',
+      '.au-sel{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;background:radial-gradient(120% 120% at 0% 0%,rgba(255,138,61,.1),rgba(255,255,255,.02) 60%);border:1px solid rgba(255,138,61,.22)}',
+      '.au-sel-hd{display:flex;align-items:center;gap:12px;min-width:0}.au-sel-who{min-width:0}.au-av.lg{width:44px;height:44px;font-size:14px}.au-sel-who b{display:block;color:#fff;font-size:15px}.au-sel-who small{color:#8b93b8;font-size:12px}',
+      '.au-sel-st{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.au-sel-st div{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border-radius:10px;background:rgba(0,0,0,.18)}.au-sel-st span{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#6b74a0}.au-sel-st b{color:#fff;font-size:17px;font-variant-numeric:tabular-nums}.au-after b{color:#34d399!important}',
+      '.au-sel .au-more{padding:0;align-self:flex-start}',
+      '@media(max-width:860px){.au-recent{display:none}}',
+      '@media(min-width:861px){.au-dlg.au-wide{width:min(900px,calc(100vw - 48px));padding:24px 26px 22px}.au-gv{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:26px;align-items:stretch}.au-gv-l{padding-right:26px;border-right:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column}.au-gv-l .au-pick{flex:1;max-height:420px;min-height:260px}.au-sel{flex:0 0 auto}.au-sel .au-av.lg{width:56px;height:56px;font-size:17px}.au-sel-st{grid-template-columns:1fr 1fr}.au-after{grid-column:1/-1}.au-after b{font-size:22px!important}}',
       '.au-ok{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:26px 8px 18px}',
       '.au-ok .halo{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;color:#ff8a3d;position:relative;margin-bottom:6px}',
       '.au-ok .halo::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(255,138,61,.95),rgba(249,24,47,.5),rgba(255,180,120,.6),rgba(255,138,61,.95));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 1.6px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 1.6px));animation:auOkRing .9s cubic-bezier(.2,.8,.2,1) both}',
@@ -306,24 +316,46 @@
       var l = sc.eligible.filter(function (x) { return (!st.dept || x.division === st.dept) && (!q || (x.name + ' ' + x.department + ' ' + x.designation).toLowerCase().indexOf(q) > -1); });
       return l.length ? l.slice(0, 80).map(function (x) { return optHTML(x, st.emp && st.emp.id === x.id); }).join('') : '<div class="au-empty">No one matches.</div>';
     }
+    function selCard() {
+      var x = st.emp, t = tot[x.id] || { life: 0, month: 0 };
+      return '<div class="au-sel"><div class="au-sel-hd">' + av(x.id, x.name).replace('class="au-av"', 'class="au-av lg"')
+        + '<div class="au-sel-who"><b>' + esc(x.name) + '</b><small>' + esc([x.designation, x.department].filter(Boolean).join(' · ')) + '</small></div></div>'
+        + '<div class="au-sel-st"><div><span>Current Aura</span><b>' + t.life.toLocaleString('en-IN') + '</b></div><div><span>This month</span><b>' + (t.month ? '+' + t.month : '0') + '</b></div>'
+        + '<div class="au-after"><span>After award</span><b data-after>' + (st.pts ? (t.life + st.pts).toLocaleString('en-IN') : '—') + '</b></div></div>'
+        + (pre ? '' : '<button type="button" class="au-more" data-change>Change employee</button>') + '</div>'
+        + '<div class="au-recent" data-recent></div>';
+    }
+    function loadRecent() {
+      var box = dlg.querySelector('[data-recent]'); if (!box || !st.emp) return;
+      var id = st.emp.id;
+      txFor(id).then(function (rows) {
+        if (!box.isConnected || !st.emp || st.emp.id !== id) return;
+        box.innerHTML = '<div class="au-rh"><span>Recent Aura</span></div><div class="au-hist">' + history(rows.slice(0, 4), { limit: 4 }) + '</div>';
+      }).catch(function () {});
+    }
     function form() {
       var who = sc.scope === 'organisation' ? 'All departments' : sc.scope;
-      dlg.innerHTML = '<h3>Give Aura Points</h3><p class="sub">' + esc(who) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award</p>'
-        + '<div class="au-f"><span>Employee <b>*</b></span>' + (st.emp ? optHTML(st.emp, true, true)
+      dlg.classList.add('au-wide');
+      dlg.innerHTML = '<div class="au-gh"><div><h3>Give Aura Points</h3><p class="sub">' + esc(who) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award</p></div><button type="button" class="au-x" data-cancel aria-label="Close">×</button></div>'
+        + '<div class="au-gv"><div class="au-gv-l au-f"><span>Employee <b>*</b></span>' + (st.emp ? selCard()
           : '<input class="au-in" data-q placeholder="' + (sc.scope === 'organisation' ? 'Search by name, department, designation…' : 'Search employee…') + '" autocomplete="off" value="' + esc(st.q) + '">'
-            + (depts.length > 1 ? '<div class="au-dchips" style="margin-top:4px"><button type="button" data-dept="" class="' + (!st.dept ? 'on' : '') + '">All departments</button>' + depts.map(function (d) { return '<button type="button" data-dept="' + esc(d) + '" class="' + (st.dept === d ? 'on' : '') + '">' + esc(deptName(d)) + '</button>'; }).join('') + '</div>' : '')
+            + (depts.length > 1 ? '<div class="au-dchips"><button type="button" data-dept="" class="' + (!st.dept ? 'on' : '') + '">All departments</button>' + depts.map(function (d) { return '<button type="button" data-dept="' + esc(d) + '" class="' + (st.dept === d ? 'on' : '') + '">' + esc(deptName(d)) + '</button>'; }).join('') + '</div>' : '')
             + '<div class="au-pick" data-list>' + list() + '</div>') + '</div>'
-        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + sc.points.map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '" aria-pressed="' + (st.pts === p) + '">' + p + '</button>'; }).join('') + '</div></div>'
-        + '<div class="au-f"><span>Reason <b>*</b></span><input class="au-in" data-reason maxlength="300" placeholder="What is this recognition for?" value="' + esc(st.reason) + '"><div class="au-sugg">' + REASONS.map(function (r) { return '<button type="button" data-sugg="' + esc(r) + '">' + esc(r) + '</button>'; }).join('') + '</div></div>'
-        + '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="2" style="height:auto;padding:9px 12px" placeholder="Extra context for the employee">' + esc(st.note) + '</textarea></div>'
+        + '<div class="au-gv-r">'
+        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + sc.points.map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '" aria-pressed="' + (st.pts === p) + '">' + p + '<small>points</small></button>'; }).join('') + '</div></div>'
+        + '<div class="au-f"><span>Reason <b>*</b></span><input class="au-in" data-reason maxlength="300" placeholder="What is this recognition for?" value="' + esc(st.reason) + '"><div class="au-sugg">' + REASONS.map(function (r) { return '<button type="button" data-sugg="' + esc(r) + '" class="' + (st.reason === r ? 'on' : '') + '">' + esc(r) + '</button>'; }).join('') + '</div></div>'
+        + '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="3" style="height:auto;padding:9px 12px" placeholder="Extra context for the employee">' + esc(st.note) + '</textarea></div>'
         + '<div class="au-err" data-err></div>'
-        + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Cancel</button><button type="button" class="au-btn pri" data-next>Give Aura Points</button></div>';
+        + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Cancel</button><button type="button" class="au-btn pri" data-next>Give Aura Points</button></div>'
+        + '</div></div>';
       var q = dlg.querySelector('[data-q]');
       if (q) { q.addEventListener('input', function () { st.q = q.value; dlg.querySelector('[data-list]').innerHTML = list(); }); if (!('ontouchstart' in window)) setTimeout(function () { q.focus(); }, 30); }
-      dlg.querySelector('[data-reason]').addEventListener('input', function () { st.reason = this.value; });
+      dlg.querySelector('[data-reason]').addEventListener('input', function () { st.reason = this.value; dlg.querySelectorAll('[data-sugg]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-sugg') === st.reason); }); });
       dlg.querySelector('[data-note]').addEventListener('input', function () { st.note = this.value; });
+      loadRecent();
     }
     function confirmView() {
+      dlg.classList.remove('au-wide');
       var cur = life(st.emp.id);
       dlg.innerHTML = '<h3>Give ' + st.pts + ' Aura Points?</h3>'
         + '<div class="au-confirm"><span>Employee</span><b>' + esc(st.emp.name) + '</b><span>Department</span><b>' + esc(st.emp.department || '—') + '</b>'
@@ -334,6 +366,7 @@
         + '<div class="au-acts"><button type="button" class="au-btn" data-back>Cancel</button><button type="button" class="au-btn pri" data-confirm>Confirm Award</button></div>';
     }
     function done() {
+      dlg.classList.remove('au-wide');
       dlg.innerHTML = '<div class="au-ok" role="status"><span class="halo">' + MARK + '</span><b>+' + st.pts + ' Aura Points</b><span>Successfully awarded to ' + esc(st.emp.name) + '</span></div>'
         + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Done</button></div>';
       setTimeout(function () { if (document.body.contains(ov)) close(); }, 2400);
@@ -344,8 +377,11 @@
       if (b.hasAttribute('data-emp')) { st.emp = sc.eligible.filter(function (x) { return x.id === b.getAttribute('data-emp'); })[0]; return form(); }
       if (b.hasAttribute('data-change')) { st.emp = null; return form(); }
       if (b.hasAttribute('data-dept')) { st.dept = b.getAttribute('data-dept'); return form(); }
-      if (b.hasAttribute('data-pts')) { st.pts = +b.getAttribute('data-pts'); dlg.querySelectorAll('[data-pts]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); }); return; }
-      if (b.hasAttribute('data-sugg')) { st.reason = b.getAttribute('data-sugg'); dlg.querySelector('[data-reason]').value = st.reason; return; }
+      if (b.hasAttribute('data-pts')) {
+        st.pts = +b.getAttribute('data-pts'); dlg.querySelectorAll('[data-pts]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+        var af = dlg.querySelector('[data-after]'); if (af && st.emp) af.textContent = (life(st.emp.id) + st.pts).toLocaleString('en-IN'); return;
+      }
+      if (b.hasAttribute('data-sugg')) { st.reason = b.getAttribute('data-sugg'); dlg.querySelector('[data-reason]').value = st.reason; dlg.querySelectorAll('[data-sugg]').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
       if (b.hasAttribute('data-back')) return form();
       if (b.hasAttribute('data-next')) {
         st.reason = dlg.querySelector('[data-reason]').value.trim(); st.note = dlg.querySelector('[data-note]').value.trim();
