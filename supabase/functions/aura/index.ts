@@ -55,6 +55,13 @@ async function context(req: Request): Promise<Ctx> {
   return { auth, me, tier, emps, desig, canSelectBest, hrAdmin };
 }
 
+const TIER_LABEL: Record<string, string> = { manager: "Manager", operational_manager: "Operations Manager", head: "Department Head", employee: "Employee" };
+function roleLabel(c: Ctx): string {
+  const d = clean(c.me.designation);
+  if (c.tier === "head" && !d) return "Head of " + (DIV[c.me.division] || c.me.division || "department");
+  return d || TIER_LABEL[c.tier] || c.tier;
+}
+
 const ymdIst = (d = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
 const isDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
@@ -84,6 +91,9 @@ Deno.serve(async (req) => {
           tier: c.tier, points: POINTS[c.tier] || [], can_award: c.tier !== "employee" && eligible.length > 0,
           scope: (() => { const a = authorizedDivisions(c.me, c.tier); return a === "*" ? "organisation" : a.length ? a.map((d) => DIV[d] || d).join(" + ") : "none"; })(),
           departments: authorizedDivisions(c.me, c.tier),
+          // What this person may SEE on the Aura dashboard / history (HR + Best Employee pickers: all).
+          view_departments: c.tier === "manager" || c.hrAdmin || c.canSelectBest ? "*" : authorizedDivisions(c.me, c.tier),
+          role_label: roleLabel(c),
           can_select_best: c.canSelectBest, can_reverse: c.tier === "manager" || c.hrAdmin, eligible,
         });
       }
@@ -101,11 +111,18 @@ Deno.serve(async (req) => {
         const prev = await db.from("aura_point_transactions").select("*").eq("awarded_by_employee_id", c.me.id).eq("idempotency_key", key).maybeSingle();
         if (prev.data) return out(req, 200, { ok: true, duplicate: true, transaction: prev.data });
         const role = c.tier + (c.me.designation ? ` · ${clean(c.me.designation)}` : "");
-        const ins = await db.from("aura_point_transactions").insert({
+        const allowed = authorizedDivisions(c.me, c.tier);
+        const scopeSnap = allowed === "*" ? ["*"] : allowed;
+        const row: Row = {
           recipient_employee_id: t!.id, recipient_name: t!.full_name, recipient_department: t!.division || null,
-          awarded_by_employee_id: c.me.id, awarded_by_name: actorName, awarder_role_snapshot: role,
+          awarded_by_employee_id: c.me.id, awarded_by_name: actorName, awarder_role_snapshot: role, awarder_scope: scopeSnap,
           kind: "award", points: pts, reason, note, idempotency_key: key,
-        }).select("*").single();
+        };
+        let ins = await db.from("aura_point_transactions").insert(row).select("*").single();
+        if (ins.error && /awarder_scope/i.test(ins.error.message)) {   // 20261028 not run yet
+          delete row.awarder_scope;
+          ins = await db.from("aura_point_transactions").insert(row).select("*").single();
+        }
         if (ins.error) {
           if (/uq_aura_idem|duplicate key/i.test(ins.error.message)) {
             const again = await db.from("aura_point_transactions").select("*").eq("awarded_by_employee_id", c.me.id).eq("idempotency_key", key).maybeSingle();
@@ -118,13 +135,13 @@ Deno.serve(async (req) => {
         if (t!.portal_email) {
           await db.from("erp_notifications").upsert({
             recipient_email: lc(t!.portal_email), recipient_employee_id: t!.id, type: "aura_award",
-            title: `You received +${pts} Aura Points`, message: `${reason} — awarded by ${actorName}.`,
+            title: `You received +${pts} Aura Points`, message: `Reason: ${reason} · Awarded by ${actorName} (${roleLabel(c)})`,
             entity_type: "aura_point_transaction", entity_id: tx.id, dedupe_key: "aura:" + tx.id, link: "aura:" + tx.id,
-            metadata: { points: pts, reason, awarded_by: actorName },
+            metadata: { points: pts, reason, awarded_by: actorName, awarded_by_role: roleLabel(c) },
           }, { onConflict: "recipient_email,dedupe_key", ignoreDuplicates: true }).then(() => {}, () => {});
         }
         await db.from("hr_audit_log").insert({ actor_email: c.auth.email, actor_name: actorName, action: "aura_awarded", entity: "aura", entity_id: tx.id,
-          reason, meta: { recipient: t!.full_name, recipient_id: t!.id, points: pts, tier: c.tier } }).then(() => {}, () => {});
+          reason, meta: { recipient: t!.full_name, recipient_id: t!.id, department: t!.division || null, points: pts, note, tier: c.tier, role: roleLabel(c), scope: scopeSnap } }).then(() => {}, () => {});
         return out(req, 200, { ok: true, transaction: tx });
       }
 

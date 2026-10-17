@@ -17,8 +17,8 @@
   'use strict';
   if (window.BEAura) return;
   var DIV = { education: 'Academics', production: 'Media / Production', sales: 'Sales', hr: 'HR', accounts: 'Accounts', management: 'Management', other: 'Administration' };
-  var REASONS = ['Excellent class performance', 'Completed urgent work ahead of deadline', 'Excellent student feedback', 'Strong teamwork', 'Outstanding creative work', 'Consistent attendance', 'Went beyond assigned responsibility'];
-  var S = { client: null, emps: null, empAt: 0, scope: null, scopeAt: 0, me: null, mine: null };
+  var REASONS = ['Excellent Performance', 'Strong Teamwork', 'Outstanding Student Feedback', 'Completed Urgent Work', 'Consistent Performance', 'Outstanding Creative Work', 'Went Beyond Responsibility'];
+  var S = { client: null, emps: null, empAt: 0, scope: null, scopeAt: 0, me: null, mine: null, tx: null, txAt: 0 };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function B() { return window.BESession || {}; }
@@ -58,7 +58,7 @@
       '.au-more{border:0;background:none;color:#8b93b8;font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:8px 0;text-align:left}.au-more:hover{color:#fff}',
       /* modal */
       '.au-ov{position:fixed;inset:0;z-index:9300;display:grid;place-items:center;padding:16px;background:rgba(3,5,9,.66);backdrop-filter:blur(4px)}',
-      '.au-dlg{width:min(480px,100%);max-height:calc(100vh - 32px);overflow:auto;border-radius:18px;background:#0e1222;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 80px -20px rgba(0,0,0,.85);padding:20px 20px 18px;display:flex;flex-direction:column;gap:14px}',
+      '.au-dlg{box-sizing:border-box;width:min(480px,100%);max-height:calc(100vh - 32px);overflow:auto;border-radius:18px;background:#0e1222;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 80px -20px rgba(0,0,0,.85);padding:20px 20px 18px;display:flex;flex-direction:column;gap:14px}',
       '.au-dlg h3{margin:0;font-size:17px;color:#fff;font-weight:800}.au-dlg .sub{margin:-8px 0 0;font-size:12px;color:#8b93b8}',
       '.au-f{display:flex;flex-direction:column;gap:6px}.au-f>span{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#6b74a0}.au-f>span b{color:#f87171}',
       '.au-in,.au .au-in{width:100%;box-sizing:border-box;height:38px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.08)!important;background:rgba(255,255,255,.03)!important;color:#fff;font:inherit;font-size:13px!important;outline:none}',
@@ -97,6 +97,31 @@
       '.aud-best .k{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ffb37a}.aud-best b{display:block;color:#fff;font-size:16px}.aud-best span{color:#8b93b8;font-size:12px}',
       '.aud-wrap{overflow-x:auto;border:1px solid rgba(255,255,255,.06);border-radius:14px}',
       '@media(max-width:700px){.aud-tbl thead{display:none}.aud-tbl,.aud-tbl tbody,.aud-tbl tr,.aud-tbl td{display:block;width:100%}.aud-tbl tr{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.05)}.aud-tbl td{padding:3px 0;border:0}.aud-tbl td[data-l]::before{content:attr(data-l) "  ";color:#6b74a0;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.aud-tbl td{text-align:left!important}.aud-tbl td.n{display:inline-block;width:auto;margin-right:16px}.aud-wrap{border:0}}',
+      /* give flow */
+      '.au-av{position:relative;overflow:hidden}.au-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}',
+      '.au-opt .au-oa{margin-left:auto;font-size:11.5px;font-weight:700;color:#ffb37a;font-variant-numeric:tabular-nums;white-space:nowrap}',
+      '.au-opt > span:nth-child(2){min-width:0;flex:1}.au-opt > span:nth-child(2) > span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.au-dchips{display:flex;gap:6px;flex-wrap:wrap}.au-dchips button{height:28px;padding:0 11px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:none;color:#8b93b8;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}.au-dchips button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.1)}',
+      '.au-chip{flex:1 1 0;min-width:0}.au-confirm .tot{color:#34d399}',
+      '.au-ok{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:26px 8px 18px}',
+      '.au-ok .halo{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;color:#ff8a3d;position:relative;margin-bottom:6px}',
+      '.au-ok .halo::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(255,138,61,.95),rgba(249,24,47,.5),rgba(255,180,120,.6),rgba(255,138,61,.95));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 1.6px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 1.6px));animation:auOkRing .9s cubic-bezier(.2,.8,.2,1) both}',
+      '.au-ok .halo svg{width:26px;height:26px;animation:auOkIn .5s .25s both}.au-ok b{font-size:26px;color:#fff;font-weight:800;font-variant-numeric:tabular-nums;animation:auOkIn .5s .3s both}.au-ok span{color:#a5adcf;font-size:13px;animation:auOkIn .5s .4s both}',
+      '@keyframes auOkRing{from{transform:scale(.6) rotate(-90deg);opacity:0}to{transform:none;opacity:1}}@keyframes auOkIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}',
+      '@media (prefers-reduced-motion:reduce){.au-ok *,.au-ok .halo::before{animation:none!important}}',
+      /* quick action + row actions */
+      '[data-au-quick]{display:none}',
+      '.au-qbtn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,138,61,.35);background:rgba(255,107,6,.06);color:#ffb37a;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}.au-qbtn:hover{color:#fff;background:rgba(255,107,6,.14)}',
+      '.au-hbtn{height:28px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:none;color:#8b93b8;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}.au-hbtn:hover{color:#fff}',
+      '.aud-act{display:flex;gap:6px;justify-content:flex-end}',
+      '.aud-r.wide{grid-template-columns:44px minmax(0,1fr) auto auto auto}',
+      /* dashboard as its own page-level panel (heads / operations managers) */
+      '.au-sheet{position:fixed;inset:0;z-index:9200;background:rgba(3,5,9,.66);backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:28px 16px;overflow:auto}',
+      '.au-sheet > .au-pane{box-sizing:border-box;width:min(1080px,100%);background:#0b0f1c;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;position:relative;box-shadow:0 30px 80px -20px rgba(0,0,0,.85)}',
+      '.au-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#a5adcf;font-size:18px;line-height:1;cursor:pointer}.au-x:hover{color:#fff}',
+      '.au-nav-aura svg{color:#ff8a3d}',
+      '@media(max-width:560px){.au-ov{place-items:end stretch;grid-template-columns:minmax(0,1fr);padding:0}.au-ov > .au-dlg{width:100%;box-sizing:border-box;max-height:92vh;border-radius:20px 20px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom));animation:auUp .22s ease-out}.au-sheet{padding:0}.au-sheet > .au-pane{border-radius:0;min-height:100%;padding:16px}.aud-r.wide{grid-template-columns:32px minmax(0,1fr) auto}.aud-r.wide .aud-act{grid-column:2/-1;justify-content:flex-start}}',
+      '@keyframes auUp{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}',
       /* profile: stats row + recent */
       '.au-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:1 1 360px;min-width:0}',
       '.au-st{display:flex;flex-direction:column;gap:3px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);min-width:0}',
@@ -150,7 +175,7 @@
   // ── reads ──────────────────────────────────────────────────────────────
   async function employees() {
     if (S.emps && Date.now() - S.empAt < 120000) return S.emps;
-    var r = await db().from('hr_employees').select('id,full_name,division,designation,employment_status,account_type,portal_email');
+    var r = await db().from('hr_employees').select('id,full_name,division,designation,employment_status,account_type,portal_email,photo_url');
     S.emps = (r.data || []).filter(function (e) { return e.account_type !== 'system' && e.full_name; }); S.empAt = Date.now();
     return S.emps;
   }
@@ -168,6 +193,22 @@
     }
     return out;
   }
+  async function totals(force) {   // lifetime Aura per employee (active rows), cached briefly
+    if (!force && S.tx && Date.now() - S.txAt < 20000) return S.tx;
+    var rows = await allTx(), m = monthRange(0), out = {};
+    rows.forEach(function (t) { var x = out[t.recipient_employee_id] || (out[t.recipient_employee_id] = { life: 0, month: 0 }); x.life += Number(t.points || 0); var d = istDay(t.created_at); if (d >= m.from && d <= m.to) x.month += Number(t.points || 0); });
+    S.tx = out; S.txAt = Date.now(); return out;
+  }
+  function photoOf(id) {
+    var e = (S.emps || []).filter(function (x) { return x.id === id; })[0]; if (!e || !e.photo_url) return '';
+    var u = e.photo_url; try { if (typeof hrConvertDriveUrl === 'function') u = hrConvertDriveUrl(u); } catch (_) {}
+    return /^(https?:|data:image)/.test(u) ? u : '';
+  }
+  function av(id, name) {
+    var u = photoOf(id);
+    return '<span class="au-av">' + (u ? '<img src="' + esc(u) + '" alt="" loading="lazy" onerror="this.remove()">' : '') + esc(initials(name)) + '</span>';
+  }
+  function deptName(d) { return DIV[d] || d || ''; }
   function sum(rows, from, to) {
     return rows.filter(function (t) { if (t.status !== 'active') return false; var d = istDay(t.created_at); return (!from || d >= from) && (!to || d <= to); })
       .reduce(function (s, t) { return s + Number(t.points || 0); }, 0);
@@ -204,8 +245,12 @@
     try { rows = await txFor(emp.id); }
     catch (e) { el.innerHTML = /aura_point|relation|schema cache/i.test(e.message || '') ? '' : '<div class="au-empty">Aura Points could not load.</div>'; return; }
     var life = sum(rows), m = monthRange(0), month = sum(rows, m.from, m.to), active = rows.filter(function (t) { return t.status === 'active'; });
-    var canGive = false;
-    if (opts.self) { try { var sc = await scope(); canGive = !!sc.can_award; } catch (_) {} }
+    var canGive = false, giveFor = null;
+    try {
+      var sc = await scope();
+      if (opts.self) canGive = !!sc.can_award;
+      else if ((sc.eligible || []).some(function (x) { return x.id === emp.id; })) { canGive = true; giveFor = emp.id; }
+    } catch (_) {}
     var rest = rows.length > 3;
     el.innerHTML = '<div class="au-stat">' + statsHTML(life, month, active.length, 0)
       + (canGive ? '<button type="button" class="au-give" data-au-give>' + MARK + 'Give Aura Points</button>' : '') + '</div>'
@@ -214,8 +259,9 @@
       + (rest ? '<div class="au-hist" style="margin-top:0;border-top:0;padding-top:0" data-au-hist hidden>' + history(rows.slice(3), { self: opts.self, limit: 60 }) + '</div>' : '');
     var tg = el.querySelector('[data-au-toggle]');
     if (tg) tg.onclick = function () { var h = el.querySelector('[data-au-hist]'); h.hidden = !h.hidden; this.setAttribute('aria-expanded', String(!h.hidden)); this.textContent = h.hidden ? 'View all ' + rows.length : 'Show less'; };
-    var g = el.querySelector('[data-au-give]'); if (g) g.onclick = function () { give({ onDone: function () { mountProfile(el, emp, opts); } }); };
+    var g = el.querySelector('[data-au-give]'); if (g) g.onclick = function () { give({ employeeId: giveFor, onDone: function () { mountProfile(el, emp, opts); } }); };
     if (opts.openHistory && tg) tg.click();
+    if (!el._auHook) { el._auHook = true; document.addEventListener('be-aura-changed', function (ev) { var id = ev.detail && ev.detail.employeeId; if (el.isConnected && (!id || id === emp.id)) mountProfile(el, emp, opts); }); }
   }
   function history(rows, opts) {
     if (!rows.length) return '<div class="au-empty">' + (opts.self ? 'No Aura Points yet — recognitions from your Head or Manager will appear here.' : 'No Aura Points yet.') + '</div>';
@@ -233,10 +279,14 @@
   // ════════════════════════════════════════════════════════════════════════
   async function give(opts) {
     css(); opts = opts || {};
-    var sc;
+    var sc, tot = {};
     try { sc = await scope(true); } catch (e) { return toast('error', e.message); }
     if (!sc.can_award) return toast('error', sc.tier === 'employee' ? 'Your role can\'t give Aura Points.' : 'There is no one in your team you can give Aura Points to.');
-    var st = { emp: opts.employeeId ? sc.eligible.filter(function (x) { return x.id === opts.employeeId; })[0] || null : null, pts: null, reason: '', note: '', key: uuid(), busy: false };
+    try { await employees(); tot = await totals(); } catch (_) {}
+    var pre = opts.employeeId ? sc.eligible.filter(function (x) { return x.id === opts.employeeId; })[0] || null : null;
+    if (opts.employeeId && !pre) return toast('error', 'You can\'t give Aura Points to this employee.');
+    var st = { emp: pre, pts: null, reason: '', note: '', key: uuid(), busy: false, q: '', dept: '' };
+    var depts = []; sc.eligible.forEach(function (x) { if (x.division && depts.indexOf(x.division) < 0) depts.push(x.division); });
     var ov = document.createElement('div'); ov.className = 'au-ov au';
     ov.innerHTML = '<div class="au-dlg" role="dialog" aria-modal="true" aria-label="Give Aura Points"></div>';
     document.body.appendChild(ov);
@@ -245,38 +295,56 @@
     var key = function (e) { if (e.key === 'Escape' && !st.busy) close(); };
     document.addEventListener('keydown', key);
     ov.addEventListener('click', function (e) { if (e.target === ov && !st.busy) close(); });
-    function list(q) {
-      q = String(q || '').toLowerCase();
-      var l = sc.eligible.filter(function (x) { return !q || x.name.toLowerCase().indexOf(q) > -1 || String(x.department).toLowerCase().indexOf(q) > -1 || String(x.designation).toLowerCase().indexOf(q) > -1; });
-      return l.length ? l.slice(0, 60).map(function (x) { return '<button type="button" class="au-opt' + (st.emp && st.emp.id === x.id ? ' on' : '') + '" data-emp="' + x.id + '"><span class="au-av">' + esc(initials(x.name)) + '</span><span><span>' + esc(x.name) + '</span><small>' + esc([x.designation, x.department].filter(Boolean).join(' · ')) + '</small></span></button>'; }).join('') : '<div class="au-empty">No one matches.</div>';
+    var life = function (id) { return (tot[id] && tot[id].life) || 0; };
+    function optHTML(x, on, change) {
+      return '<button type="button" class="au-opt' + (on ? ' on' : '') + '" ' + (change ? 'data-change' : 'data-emp="' + x.id + '"') + '>' + av(x.id, x.name)
+        + '<span><span>' + esc(x.name) + '</span><small>' + esc([x.designation, x.department].filter(Boolean).join(' · ')) + (change ? ' · change' : '') + '</small></span>'
+        + '<span class="au-oa">Aura ' + life(x.id).toLocaleString('en-IN') + '</span></button>';
+    }
+    function list() {
+      var q = st.q.toLowerCase();
+      var l = sc.eligible.filter(function (x) { return (!st.dept || x.division === st.dept) && (!q || (x.name + ' ' + x.department + ' ' + x.designation).toLowerCase().indexOf(q) > -1); });
+      return l.length ? l.slice(0, 80).map(function (x) { return optHTML(x, st.emp && st.emp.id === x.id); }).join('') : '<div class="au-empty">No one matches.</div>';
     }
     function form() {
-      dlg.innerHTML = '<h3>Give Aura Points</h3><p class="sub">' + esc(sc.scope === 'organisation' ? 'Anyone in the organisation' : 'Your team · ' + sc.scope) + '</p>'
-        + '<div class="au-f"><span>Employee <b>*</b></span>' + (st.emp
-          ? '<button type="button" class="au-opt on" data-change><span class="au-av">' + esc(initials(st.emp.name)) + '</span><span><span>' + esc(st.emp.name) + '</span><small>' + esc([st.emp.designation, st.emp.department].filter(Boolean).join(' · ')) + ' · change</small></span></button>'
-          : '<input class="au-in" data-q placeholder="Search by name, team or role" autocomplete="off"><div class="au-pick" data-list>' + list('') + '</div>') + '</div>'
-        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + sc.points.map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '">' + p + '</button>'; }).join('') + '</div></div>'
+      var who = sc.scope === 'organisation' ? 'All departments' : sc.scope;
+      dlg.innerHTML = '<h3>Give Aura Points</h3><p class="sub">' + esc(who) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award</p>'
+        + '<div class="au-f"><span>Employee <b>*</b></span>' + (st.emp ? optHTML(st.emp, true, true)
+          : '<input class="au-in" data-q placeholder="' + (sc.scope === 'organisation' ? 'Search by name, department, designation…' : 'Search employee…') + '" autocomplete="off" value="' + esc(st.q) + '">'
+            + (depts.length > 1 ? '<div class="au-dchips" style="margin-top:4px"><button type="button" data-dept="" class="' + (!st.dept ? 'on' : '') + '">All departments</button>' + depts.map(function (d) { return '<button type="button" data-dept="' + esc(d) + '" class="' + (st.dept === d ? 'on' : '') + '">' + esc(deptName(d)) + '</button>'; }).join('') + '</div>' : '')
+            + '<div class="au-pick" data-list>' + list() + '</div>') + '</div>'
+        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + sc.points.map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '" aria-pressed="' + (st.pts === p) + '">' + p + '</button>'; }).join('') + '</div></div>'
         + '<div class="au-f"><span>Reason <b>*</b></span><input class="au-in" data-reason maxlength="300" placeholder="What is this recognition for?" value="' + esc(st.reason) + '"><div class="au-sugg">' + REASONS.map(function (r) { return '<button type="button" data-sugg="' + esc(r) + '">' + esc(r) + '</button>'; }).join('') + '</div></div>'
-        + '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="2" placeholder="A short message to the employee">' + esc(st.note) + '</textarea></div>'
+        + '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="2" style="height:auto;padding:9px 12px" placeholder="Extra context for the employee">' + esc(st.note) + '</textarea></div>'
         + '<div class="au-err" data-err></div>'
         + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Cancel</button><button type="button" class="au-btn pri" data-next>Give Aura Points</button></div>';
       var q = dlg.querySelector('[data-q]');
-      if (q) { q.addEventListener('input', function () { dlg.querySelector('[data-list]').innerHTML = list(q.value); }); setTimeout(function () { q.focus(); }, 30); }
+      if (q) { q.addEventListener('input', function () { st.q = q.value; dlg.querySelector('[data-list]').innerHTML = list(); }); if (!('ontouchstart' in window)) setTimeout(function () { q.focus(); }, 30); }
       dlg.querySelector('[data-reason]').addEventListener('input', function () { st.reason = this.value; });
       dlg.querySelector('[data-note]').addEventListener('input', function () { st.note = this.value; });
     }
     function confirmView() {
+      var cur = life(st.emp.id);
       dlg.innerHTML = '<h3>Give ' + st.pts + ' Aura Points?</h3>'
-        + '<div class="au-confirm"><span>Employee</span><b>' + esc(st.emp.name) + '</b><span>Points</span><b>+' + st.pts + '</b><span>Reason</span><b>' + esc(st.reason) + '</b>' + (st.note ? '<span>Note</span><b>' + esc(st.note) + '</b>' : '') + '</div>'
+        + '<div class="au-confirm"><span>Employee</span><b>' + esc(st.emp.name) + '</b><span>Department</span><b>' + esc(st.emp.department || '—') + '</b>'
+        + '<span>Current Aura</span><b>' + cur.toLocaleString('en-IN') + '</b><span>Points</span><b>+' + st.pts + '</b>'
+        + '<span>Reason</span><b>' + esc(st.reason) + '</b>' + (st.note ? '<span>Note</span><b>' + esc(st.note) + '</b>' : '')
+        + '<span>New Total</span><b class="tot">' + (cur + st.pts).toLocaleString('en-IN') + '</b></div>'
         + '<div class="au-err" data-err></div>'
-        + '<div class="au-acts"><button type="button" class="au-btn" data-back>Back</button><button type="button" class="au-btn pri" data-confirm>Confirm</button></div>';
+        + '<div class="au-acts"><button type="button" class="au-btn" data-back>Cancel</button><button type="button" class="au-btn pri" data-confirm>Confirm Award</button></div>';
+    }
+    function done() {
+      dlg.innerHTML = '<div class="au-ok" role="status"><span class="halo">' + MARK + '</span><b>+' + st.pts + ' Aura Points</b><span>Successfully awarded to ' + esc(st.emp.name) + '</span></div>'
+        + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Done</button></div>';
+      setTimeout(function () { if (document.body.contains(ov)) close(); }, 2400);
     }
     dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b || st.busy) return;
       if (b.hasAttribute('data-cancel')) return close();
       if (b.hasAttribute('data-emp')) { st.emp = sc.eligible.filter(function (x) { return x.id === b.getAttribute('data-emp'); })[0]; return form(); }
       if (b.hasAttribute('data-change')) { st.emp = null; return form(); }
-      if (b.hasAttribute('data-pts')) { st.pts = +b.getAttribute('data-pts'); dlg.querySelectorAll('[data-pts]').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
+      if (b.hasAttribute('data-dept')) { st.dept = b.getAttribute('data-dept'); return form(); }
+      if (b.hasAttribute('data-pts')) { st.pts = +b.getAttribute('data-pts'); dlg.querySelectorAll('[data-pts]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); }); return; }
       if (b.hasAttribute('data-sugg')) { st.reason = b.getAttribute('data-sugg'); dlg.querySelector('[data-reason]').value = st.reason; return; }
       if (b.hasAttribute('data-back')) return form();
       if (b.hasAttribute('data-next')) {
@@ -287,13 +355,14 @@
       }
       if (b.hasAttribute('data-confirm')) {
         st.busy = true; b.disabled = true; b.textContent = 'Giving…';
+        var back = dlg.querySelector('[data-back]'); if (back) back.disabled = true;
         try {
           // Same key for every retry of THIS dialog → the server never records it twice.
           await api('award', { recipient_id: st.emp.id, points: st.pts, reason: st.reason, note: st.note || null, idempotency_key: st.key });
-          close(); pop('+' + st.pts + ' Aura Points', false, 'Awarded to ' + st.emp.name);
-          S.scopeAt = 0; if (opts.onDone) try { opts.onDone(); } catch (_) {}
-          document.dispatchEvent(new CustomEvent('be-aura-changed'));
-        } catch (x) { st.busy = false; b.disabled = false; b.textContent = 'Confirm'; dlg.querySelector('[data-err]').textContent = x.message; }
+          st.busy = false; S.scopeAt = 0; S.txAt = 0; done();
+          if (opts.onDone) try { opts.onDone(); } catch (_) {}
+          document.dispatchEvent(new CustomEvent('be-aura-changed', { detail: { employeeId: st.emp.id } }));
+        } catch (x) { st.busy = false; b.disabled = false; if (back) back.disabled = false; b.textContent = 'Confirm Award'; dlg.querySelector('[data-err]').textContent = x.message; }
       }
     });
     form();
@@ -314,7 +383,10 @@
     } catch (e) {
       el.innerHTML = '<div class="au-empty">' + (/aura_point|relation|schema cache/i.test(e.message || '') ? 'Aura Points needs the database update 20261027_aura_points.sql.' : 'Aura Points could not load.') + '</div>'; return;
     }
-    var P = period(D), active = emps.filter(function (e) { return !['exited', 'inactive'].includes(String(e.employment_status || 'active').toLowerCase()); });
+    var view = sc && sc.view_departments ? sc.view_departments : (opts.mode === 'manager' || opts.mode === 'hr' ? '*' : []);
+    var inView = function (e) { return view === '*' || view.indexOf(e.division) > -1; };
+    var P = period(D), active = emps.filter(function (e) { return inView(e) && !['exited', 'inactive'].includes(String(e.employment_status || 'active').toLowerCase()); });
+    var can = {}; ((sc && sc.eligible) || []).forEach(function (x) { can[x.id] = 1; });
     var by = {};
     rows.forEach(function (t) {
       var x = by[t.recipient_employee_id] || (by[t.recipient_employee_id] = { life: 0, per: 0, n: 0, last: '' });
@@ -330,16 +402,23 @@
     var curBest = best.filter(function (b) { return b.period_start === P.from && b.period_end === P.to; })[0];
 
     el.innerHTML = '<div class="aud">'
-      + '<div class="aud-top"><div><h2>Aura Points</h2><p>Recognition across the organisation · ' + esc(P.label) + '</p></div>'
+      + '<div class="aud-top"><div><h2>' + (view === '*' ? 'Aura Points' : esc(view.map(deptName).join(' + ') || 'Team') + ' Aura') + '</h2><p>' + (view === '*' ? 'Recognition across the organisation' : 'Recognition in your department' + (view.length > 1 ? 's' : '')) + ' · ' + esc(P.label) + '</p></div>'
       + (sc && sc.can_award ? '<button type="button" class="au-give" data-au-give style="margin-left:0">' + MARK + 'Give Aura Points</button>' : '') + '</div>'
       + '<div class="aud-bar"><div class="aud-seg" role="tablist">' + [['this', 'This month'], ['prev', 'Previous month'], ['custom', 'Custom'], ['all', 'All time']].map(function (p) { return '<button type="button" data-per="' + p[0] + '" class="' + (D.period === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div>'
       + (D.period === 'custom' ? '<input type="date" class="au-in" data-from value="' + esc(D.from) + '" aria-label="From"><input type="date" class="au-in" data-to value="' + esc(D.to) + '" aria-label="To">' : '') + '</div>'
-      + '<div class="aud-bar"><input class="au-in q" data-q placeholder="Search employee or role" value="' + esc(D.q) + '"><select class="au-in" data-dept data-native><option value="">All departments</option>' + depts.map(function (d) { return '<option value="' + d + '"' + (D.dept === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select>'
+      + '<div class="aud-bar"><input class="au-in q" data-q placeholder="Search employee or role" value="' + esc(D.q) + '">' + (depts.length > 1 ? '<select class="au-in" data-dept data-native><option value="">All departments</option>' + depts.map(function (d) { return '<option value="' + d + '"' + (D.dept === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select>' : '')
       + '<select class="au-in" data-sort data-native><option value="period"' + (key === 'per' ? ' selected' : '') + '>Sort: points in period</option><option value="life"' + (key === 'life' ? ' selected' : '') + '>Sort: lifetime points</option><option value="name"' + (key === 'name' ? ' selected' : '') + '>Sort: name</option></select></div>'
       + '<div class="aud-tabs"><button type="button" data-tab="rank" class="' + (D.tab === 'rank' ? 'on' : '') + '">Best Employee · ranking</button><button type="button" data-tab="all" class="' + (D.tab === 'all' ? 'on' : '') + '">All employees</button></div>'
-      + (D.tab === 'rank' ? rankHTML(list, P, sc, curBest) : tableHTML(list))
+      + (D.tab === 'rank' ? rankHTML(list, P, sc, curBest, can) : tableHTML(list, can))
       + '</div>';
     wireDash(el, opts, list, P, sc);
+    if (!el._auLive && window.BELive) {
+      el._auLive = 'be-aura-dash-' + Math.random().toString(36).slice(2, 8);
+      BELive.on(el._auLive, [{ table: 'aura_point_transactions', event: '*' }, { table: 'best_employee_selections', event: '*' }], function () {
+        if (!el.isConnected) return; S.txAt = 0;
+        if (!el.contains(document.activeElement) || !/INPUT|SELECT/.test(document.activeElement.tagName)) dashboard(el, opts);
+      }, { debounce: 600 });
+    }
   }
   function period(D) {
     if (D.period === 'prev') return monthRange(-1);
@@ -347,7 +426,10 @@
     if (D.period === 'custom') { var a = D.from || monthRange(0).from, b = D.to || istToday(); if (b < a) b = a; return { from: a, to: b, label: fDay(a, true) + ' – ' + fDay(b, true) }; }
     return monthRange(0);
   }
-  function rankHTML(list, P, sc, curBest) {
+  function rowActs(id, can) {
+    return '<span class="aud-act">' + (can[id] ? '<button type="button" class="au-qbtn" data-au-emp-give="' + id + '">+ Aura</button>' : '') + '<button type="button" class="au-hbtn" data-au-hist="' + id + '">History</button></span>';
+  }
+  function rankHTML(list, P, sc, curBest, can) {
     var ranked = list.filter(function (r) { return r.per > 0; }).sort(function (a, b) { return b.per - a.per || a.e.full_name.localeCompare(b.e.full_name); });
     // Standard competition ranking: equal points → equal rank, never broken at random.
     var pos = 0, prev = null;
@@ -359,21 +441,21 @@
     return bestBox + (canSel ? '' : (P.from ? '' : '<div class="au-empty" style="padding:4px 0">Choose a month or custom range to select a Best Employee.</div>'))
       + '<div class="aud-rank">' + ranked.slice(0, 50).map(function (r) {
         var isBest = curBest && curBest.employee_id === r.e.id;
-        return '<div class="aud-r' + (r.pos === 1 ? ' top' : '') + '"><span class="pos">' + r.pos + '</span>'
-          + '<span class="aud-who"><span class="au-av">' + esc(initials(r.e.full_name)) + '</span><span><b>' + esc(r.e.full_name) + '</b>' + (tieAt[r.pos] > 1 ? '<span class="aud-tie">TIE</span>' : '') + '<small>' + esc([DIV[r.e.division] || r.e.division, r.e.designation].filter(Boolean).join(' · ')) + '</small></span></span>'
+        return '<div class="aud-r wide' + (r.pos === 1 ? ' top' : '') + '"><span class="pos">' + r.pos + '</span>'
+          + '<span class="aud-who">' + av(r.e.id, r.e.full_name) + '<span><b>' + esc(r.e.full_name) + '</b>' + (tieAt[r.pos] > 1 ? '<span class="aud-tie">TIE</span>' : '') + '<small>' + esc([DIV[r.e.division] || r.e.division, r.e.designation].filter(Boolean).join(' · ')) + '</small></span></span>'
           + '<span class="pts">' + r.per + '<small>' + r.life + ' lifetime</small></span>'
           + (canSel ? (isBest ? '<span class="aud-tie" style="color:#34d399;border-color:rgba(52,211,153,.4)">SELECTED</span>' : '<button type="button" class="aud-sel" data-best="' + r.e.id + '" data-pts="' + r.per + '">Select as Best Employee</button>') : '<span></span>')
-          + '</div>';
+          + rowActs(r.e.id, can) + '</div>';
       }).join('') + '</div>';
   }
-  function tableHTML(list) {
+  function tableHTML(list, can) {
     if (!list.length) return '<div class="au-empty">No employees match.</div>';
-    return '<div class="aud-wrap"><table class="aud-tbl"><thead><tr><th>Employee</th><th>Department</th><th>Designation</th><th style="text-align:right">Aura Points</th><th style="text-align:right">In period</th><th style="text-align:right">Awards</th><th>Latest</th></tr></thead><tbody>'
+    return '<div class="aud-wrap"><table class="aud-tbl"><thead><tr><th>Employee</th><th>Department</th><th style="text-align:right">In period</th><th style="text-align:right">Total</th><th style="text-align:right">Awards</th><th></th></tr></thead><tbody>'
       + list.map(function (r) {
-        return '<tr><td><span class="aud-who"><span class="au-av">' + esc(initials(r.e.full_name)) + '</span><b>' + esc(r.e.full_name) + '</b></span></td>'
-          + '<td data-l="Department">' + esc(DIV[r.e.division] || r.e.division || '—') + '</td><td data-l="Designation">' + esc(r.e.designation || '—') + '</td>'
-          + '<td class="n" data-l="Aura Points" style="text-align:right">' + r.life + '</td><td class="n" data-l="In period" style="text-align:right">' + (r.per ? '+' + r.per : '0') + '</td>'
-          + '<td data-l="Awards" style="text-align:right">' + r.n + '</td><td data-l="Latest">' + (r.last ? esc(fDay(r.last, true)) : '—') + '</td></tr>';
+        return '<tr><td><span class="aud-who">' + av(r.e.id, r.e.full_name) + '<span><b>' + esc(r.e.full_name) + '</b><small>' + esc(r.e.designation || '') + '</small></span></span></td>'
+          + '<td data-l="Department">' + esc(deptName(r.e.division) || '—') + '</td>'
+          + '<td class="n" data-l="In period" style="text-align:right">' + (r.per ? '+' + r.per : '0') + '</td><td class="n" data-l="Total" style="text-align:right">' + r.life + '</td>'
+          + '<td data-l="Awards" style="text-align:right">' + r.n + '</td><td>' + rowActs(r.e.id, can) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
   function wireDash(el, opts, list, P, sc) {
@@ -383,6 +465,8 @@
       if (b.hasAttribute('data-per')) { D.period = b.getAttribute('data-per'); return re(); }
       if (b.hasAttribute('data-tab')) { D.tab = b.getAttribute('data-tab'); return re(); }
       if (b.hasAttribute('data-au-give')) return give({ onDone: re });
+      if (b.hasAttribute('data-au-emp-give')) return give({ employeeId: b.getAttribute('data-au-emp-give'), onDone: re });
+      if (b.hasAttribute('data-au-hist')) return openHistory(b.getAttribute('data-au-hist'));
       if (b.hasAttribute('data-best')) {
         var r = list.filter(function (x) { return x.e.id === b.getAttribute('data-best'); })[0]; if (!r) return;
         var ok = typeof window.showConfirm === 'function'
@@ -506,6 +590,68 @@
     dlg.querySelector('[data-x]').onclick = close;
   }
 
+  // ── any employee's Aura history (dashboard rows) ──────────────────────────
+  async function openHistory(empId) {
+    css();
+    var ov = document.createElement('div'); ov.className = 'au-ov au';
+    ov.innerHTML = '<div class="au-dlg au-mine" role="dialog" aria-modal="true" aria-label="Aura history"><h3>Aura History</h3><div class="au-empty">Loading…</div></div>';
+    document.body.appendChild(ov);
+    var close = function () { ov.remove(); document.removeEventListener('keydown', key); };
+    var key = function (e) { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', key);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    var dlg = ov.querySelector('.au-dlg'), emps = [], rows = [];
+    try { emps = await employees(); rows = await txFor(empId); } catch (_) {}
+    var e = emps.filter(function (x) { return x.id === empId; })[0] || { id: empId, full_name: 'Employee' };
+    var m = monthRange(0), act = rows.filter(function (t) { return t.status === 'active'; }).length;
+    var canGive = false; try { canGive = ((await scope()).eligible || []).some(function (x) { return x.id === empId; }); } catch (_) {}
+    dlg.innerHTML = '<div style="display:flex;align-items:center;gap:12px">' + av(e.id, e.full_name) + '<div style="min-width:0"><h3 style="margin:0">' + esc(e.full_name) + '</h3><p class="sub" style="margin:2px 0 0">' + esc([e.designation, deptName(e.division)].filter(Boolean).join(' · ')) + '</p></div></div>'
+      + statsHTML(sum(rows), sum(rows, m.from, m.to), act, 0)
+      + '<div class="au-rh" style="margin-top:4px"><span>Aura History</span></div><div class="au-hist">' + history(rows, { limit: 60 }) + '</div>'
+      + '<div class="au-acts">' + (canGive ? '<button type="button" class="au-btn" data-g>+ Give Aura Points</button>' : '') + '<button type="button" class="au-btn" data-x>Close</button></div>';
+    dlg.querySelector('[data-x]').onclick = close;
+    var g = dlg.querySelector('[data-g]'); if (g) g.onclick = function () { close(); give({ employeeId: empId }); };
+  }
+
+  // ── dashboard as a page-level panel (pages without their own Aura section) ─────
+  function openDashboard() {
+    css();
+    var sh = document.createElement('div'); sh.className = 'au-sheet au';
+    sh.innerHTML = '<div class="au-pane" role="dialog" aria-modal="true" aria-label="Aura Points"><button type="button" class="au-x" aria-label="Close">×</button><div data-dash></div></div>';
+    document.body.appendChild(sh);
+    var close = function () { sh.remove(); document.removeEventListener('keydown', key); };
+    var key = function (e) { if (e.key === 'Escape' && !document.querySelector('.au-ov')) close(); };
+    document.addEventListener('keydown', key);
+    sh.addEventListener('click', function (e) { if (e.target === sh) close(); });
+    sh.querySelector('.au-x').onclick = close;
+    dashboard(sh.querySelector('[data-dash]'), {});
+  }
+
+  // ── once the signed-in person's authority is known ───────────────────────────
+  function applyScope(sc) {
+    if (!sc) return; css();
+    // "+ Aura" quick buttons anywhere in the ERP: <button data-au-quick="<employee id>"> stay
+    // hidden unless that employee is inside my server-computed award scope.
+    var st = document.getElementById('aura-quick-css') || document.head.appendChild(Object.assign(document.createElement('style'), { id: 'aura-quick-css' }));
+    st.textContent = (sc.eligible || []).length ? sc.eligible.map(function (x) { return '[data-au-quick="' + String(x.id).replace(/[^\w-]/g, '') + '"]'; }).join(',') + '{display:inline-grid!important;place-items:center}' : '';
+    // Nav entry on department pages (HR + Manager pages have their own Aura section).
+    if (!(sc.can_award || sc.view_departments === '*') || document.getElementById('hr-sub-aura') || document.getElementById('mgr-aura')) return;
+    var links = document.querySelectorAll('#nav-acad-announcements, #nav-announcements, .sidebar-link[data-tab="announcements"], .sidebar-link[onclick*="\'announcements\'"]');
+    Array.prototype.forEach.call(links, function (a) {
+      if (a._auNav || (a.nextElementSibling && a.nextElementSibling.classList.contains('au-nav-aura'))) return; a._auNav = true;
+      var b = document.createElement('button'); b.type = 'button';
+      b.className = String(a.className).replace(/\bactive\b/g, '').replace(/\bhidden\b/g, '') + ' au-nav-aura';
+      b.setAttribute('style', a.getAttribute('style') || '');
+      b.innerHTML = MARK + ' <span class="be-nav-label">Aura Points</span>';
+      b.onclick = function () { try { if (typeof closeMobileSidebar === 'function') closeMobileSidebar(); } catch (_) {} openDashboard(); };
+      a.insertAdjacentElement('afterend', b);
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-au-quick]'); if (!b) return;
+    e.preventDefault(); e.stopPropagation(); give({ employeeId: b.getAttribute('data-au-quick') });
+  }, true);
+
   // ── live toast for the signed-in employee ──────────────────────────────────
   async function watch() {
     if (S.watching) return; S.watching = true;
@@ -515,6 +661,7 @@
     var me = r.data && r.data[0]; if (!me) return;
     S.me = me.id;
     loadMine().catch(function () {});
+    scope().then(applyScope).catch(function () {});
     // The header can be (re)built after us — keep the ring on it.
     var mo = new MutationObserver(function () { if (S.mine && avatars().some(function (a) { return !a.parentNode.classList.contains('au-avw'); })) paintHeader(); });
     mo.observe(document.body, { childList: true, subtree: true });
@@ -531,7 +678,7 @@
     }, { debounce: 0 });
   }
 
-  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine };
+  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard };
   // Auto: start the live toast once someone is signed in (not inside embedded frames).
   var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
   if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); if (++tries < 60) setTimeout(w, 2000); })(); }

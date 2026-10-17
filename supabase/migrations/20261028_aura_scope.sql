@@ -24,3 +24,36 @@ drop trigger if exists trg_hr_employees_managed_divisions on public.hr_employees
 create trigger trg_hr_employees_managed_divisions
   before insert or update of managed_divisions on public.hr_employees
   for each row execute function public.hr_employees_check_managed_divisions();
+
+-- ── Aura audit: the awarder's department scope at award time ─────────────────────────
+-- ('*' = organisation-wide). Together with awarder_role_snapshot this records exactly
+-- which authority the award was given under.
+alter table public.aura_point_transactions add column if not exists awarder_scope text[];
+
+-- ── Immutable history ─────────────────────────────────────────────────────────────────
+-- An award row can never be deleted, and the only change ever allowed is the one-time
+-- reversal (status active → reversed + who/when/why). Points, people, reason, note, scope
+-- and timestamps are frozen — even for the service role.
+create or replace function public.aura_tx_immutable() returns trigger
+language plpgsql as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'Aura history is permanent — reverse the award instead of deleting it';
+  end if;
+  if old.status = 'reversed'
+     or new.status is distinct from 'reversed'
+     or (new.id, new.recipient_employee_id, new.recipient_name, new.recipient_department, new.awarded_by_employee_id,
+         new.awarded_by_name, new.awarder_role_snapshot, new.awarder_scope, new.kind, new.points, new.reason, new.note,
+         new.idempotency_key, new.created_at)
+        is distinct from
+        (old.id, old.recipient_employee_id, old.recipient_name, old.recipient_department, old.awarded_by_employee_id,
+         old.awarded_by_name, old.awarder_role_snapshot, old.awarder_scope, old.kind, old.points, old.reason, old.note,
+         old.idempotency_key, old.created_at) then
+    raise exception 'Aura history is permanent — only a one-time reversal is allowed';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_aura_tx_immutable on public.aura_point_transactions;
+create trigger trg_aura_tx_immutable
+  before update or delete on public.aura_point_transactions
+  for each row execute function public.aura_tx_immutable();
