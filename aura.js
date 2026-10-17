@@ -104,6 +104,7 @@
       '.au-dchips{display:flex;gap:6px;flex-wrap:wrap}.au-dchips button{height:28px;padding:0 11px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:none;color:#8b93b8;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}.au-dchips button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.1)}',
       '.au-chip{flex:1 1 0;min-width:0}.au-confirm .tot{color:#34d399}',
       '.au-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:52px}.au-chip small{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b74a0}.au-chip.on small{color:#ffb37a}',
+      '.au-skel{display:flex;flex-direction:column;gap:8px;padding:6px 4px}.au-skel i{display:block;height:34px;border-radius:9px;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.07),rgba(255,255,255,.03));background-size:200% 100%;animation:auSk 1.1s linear infinite}@keyframes auSk{to{background-position:-200% 0}}',
       '.au-sugg button.on{color:#fff;border-color:rgba(255,107,6,.5);background:rgba(255,107,6,.1)}',
       '.au-gh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.au-dlg .au-gh .sub{margin:4px 0 0}.au-recent{display:flex;flex-direction:column;min-height:0}.au-recent .au-rh{margin-top:4px}.au-recent .au-hist{margin-top:2px;border-top:0;padding-top:0}.au-recent .au-tx{grid-template-columns:44px minmax(0,1fr) auto;padding:8px 0}.au-gh .au-x{position:static;flex-shrink:0}',
       '.au-gv{display:flex;flex-direction:column;gap:14px}.au-gv-r{display:flex;flex-direction:column;gap:14px;min-width:0}.au-gv-l{min-width:0}',
@@ -177,9 +178,23 @@
     if (!r.ok) throw new Error(j.error || 'Aura Points is unavailable right now.');
     return j;
   }
+  // Scope = who I may reward + their current Aura (server-computed, one call). Cached in memory
+  // and per tab (sessionStorage, per signed-in email) so the Give dialog can open instantly;
+  // every award is still re-checked on the server, the cache only drives the UI.
+  function scopeKey() { var e = B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : ''; return e ? 'be_aura_scope:' + e : ''; }
+  function saveScope() { var k = scopeKey(); if (!k || !S.scope) return; try { sessionStorage.setItem(k, JSON.stringify({ at: S.scopeAt, data: S.scope })); } catch (_) {} }
+  function scopeCached() {
+    if (S.scope) return S.scope;
+    var k = scopeKey(); if (!k) return null;
+    try { var c = JSON.parse(sessionStorage.getItem(k) || 'null'); if (c && c.data && Date.now() - c.at < 600000) { S.scope = c.data; S.scopeAt = c.at; return S.scope; } } catch (_) {}
+    return null;
+  }
   async function scope(force) {
-    if (!force && S.scope && Date.now() - S.scopeAt < 60000) return S.scope;
-    S.scope = await api('scope'); S.scopeAt = Date.now(); return S.scope;
+    if (!force && (S.scope || scopeCached()) && Date.now() - S.scopeAt < 60000) return S.scope;
+    if (S.scopeP) return S.scopeP;   // one request in flight, shared by every caller
+    S.scopeP = api('scope').then(function (x) { S.scope = x; S.scopeAt = Date.now(); saveScope(); return x; })
+      .finally(function () { S.scopeP = null; });
+    return S.scopeP;
   }
 
   // ── reads ──────────────────────────────────────────────────────────────
@@ -214,8 +229,9 @@
     var u = e.photo_url; try { if (typeof hrConvertDriveUrl === 'function') u = hrConvertDriveUrl(u); } catch (_) {}
     return /^(https?:|data:image)/.test(u) ? u : '';
   }
-  function av(id, name) {
-    var u = photoOf(id);
+  function av(id, name, url) {
+    var u = url ? (function () { try { return typeof hrConvertDriveUrl === 'function' ? hrConvertDriveUrl(url) : url; } catch (_) { return url; } })() : photoOf(id);
+    if (u && !/^(https?:|data:image)/.test(u)) u = '';
     return '<span class="au-av">' + (u ? '<img src="' + esc(u) + '" alt="" loading="lazy" onerror="this.remove()">' : '') + esc(initials(name)) + '</span>';
   }
   function deptName(d) { return DIV[d] || d || ''; }
@@ -289,14 +305,21 @@
   // ════════════════════════════════════════════════════════════════════════
   async function give(opts) {
     css(); opts = opts || {};
-    var sc, tot = {};
-    try { sc = await scope(true); } catch (e) { return toast('error', e.message); }
-    if (!sc.can_award) return toast('error', sc.tier === 'employee' ? 'Your role can\'t give Aura Points.' : 'There is no one in your team you can give Aura Points to.');
-    try { await employees(); tot = await totals(); } catch (_) {}
-    var pre = opts.employeeId ? sc.eligible.filter(function (x) { return x.id === opts.employeeId; })[0] || null : null;
-    if (opts.employeeId && !pre) return toast('error', 'You can\'t give Aura Points to this employee.');
-    var st = { emp: pre, pts: null, reason: '', note: '', key: uuid(), busy: false, q: '', dept: '' };
-    var depts = []; sc.eligible.forEach(function (x) { if (x.division && depts.indexOf(x.division) < 0) depts.push(x.division); });
+    // Opens at once: cached scope (prefetched after sign-in) renders immediately, a fresh copy is
+    // fetched in the background; without a cache the list shows a small skeleton meanwhile.
+    var sc = null, tot = {}, depts = [], pre = null;
+    var st = { emp: null, pts: null, reason: '', note: '', key: uuid(), busy: false, q: '', dept: '' };
+    function setSc(x) {
+      sc = x; tot = {}; depts = [];
+      (x.eligible || []).forEach(function (e) { tot[e.id] = { life: e.aura || 0, month: e.month || 0 }; if (e.division && depts.indexOf(e.division) < 0) depts.push(e.division); });
+      if (opts.employeeId) { pre = x.eligible.filter(function (e) { return e.id === opts.employeeId; })[0] || null; if (!st.emp) st.emp = pre; }
+      else if (st.emp) st.emp = x.eligible.filter(function (e) { return e.id === st.emp.id; })[0] || null;
+    }
+    function allowed() {
+      if (!sc.can_award) { close(); toast('error', sc.tier === 'employee' ? 'Your role can\'t give Aura Points.' : 'There is no one in your team you can give Aura Points to.'); return false; }
+      if (opts.employeeId && !pre) { close(); toast('error', 'You can\'t give Aura Points to this employee.'); return false; }
+      return true;
+    }
     var ov = document.createElement('div'); ov.className = 'au-ov au';
     ov.innerHTML = '<div class="au-dlg" role="dialog" aria-modal="true" aria-label="Give Aura Points"></div>';
     document.body.appendChild(ov);
@@ -307,18 +330,19 @@
     ov.addEventListener('click', function (e) { if (e.target === ov && !st.busy) close(); });
     var life = function (id) { return (tot[id] && tot[id].life) || 0; };
     function optHTML(x, on, change) {
-      return '<button type="button" class="au-opt' + (on ? ' on' : '') + '" ' + (change ? 'data-change' : 'data-emp="' + x.id + '"') + '>' + av(x.id, x.name)
+      return '<button type="button" class="au-opt' + (on ? ' on' : '') + '" ' + (change ? 'data-change' : 'data-emp="' + x.id + '"') + '>' + av(x.id, x.name, x.photo_url)
         + '<span><span>' + esc(x.name) + '</span><small>' + esc([x.designation, x.department].filter(Boolean).join(' · ')) + (change ? ' · change' : '') + '</small></span>'
         + '<span class="au-oa">Aura ' + life(x.id).toLocaleString('en-IN') + '</span></button>';
     }
     function list() {
+      if (!sc) return '<div class="au-skel"><i></i><i></i><i></i><i></i></div>';
       var q = st.q.toLowerCase();
       var l = sc.eligible.filter(function (x) { return (!st.dept || x.division === st.dept) && (!q || (x.name + ' ' + x.department + ' ' + x.designation).toLowerCase().indexOf(q) > -1); });
       return l.length ? l.slice(0, 80).map(function (x) { return optHTML(x, st.emp && st.emp.id === x.id); }).join('') : '<div class="au-empty">No one matches.</div>';
     }
     function selCard() {
       var x = st.emp, t = tot[x.id] || { life: 0, month: 0 };
-      return '<div class="au-sel"><div class="au-sel-hd">' + av(x.id, x.name).replace('class="au-av"', 'class="au-av lg"')
+      return '<div class="au-sel"><div class="au-sel-hd">' + av(x.id, x.name, x.photo_url).replace('class="au-av"', 'class="au-av lg"')
         + '<div class="au-sel-who"><b>' + esc(x.name) + '</b><small>' + esc([x.designation, x.department].filter(Boolean).join(' · ')) + '</small></div></div>'
         + '<div class="au-sel-st"><div><span>Current Aura</span><b>' + t.life.toLocaleString('en-IN') + '</b></div><div><span>This month</span><b>' + (t.month ? '+' + t.month : '0') + '</b></div>'
         + '<div class="au-after"><span>After award</span><b data-after>' + (st.pts ? (t.life + st.pts).toLocaleString('en-IN') : '—') + '</b></div></div>'
@@ -334,15 +358,16 @@
       }).catch(function () {});
     }
     function form() {
-      var who = sc.scope === 'organisation' ? 'All departments' : sc.scope;
+      var who = !sc ? 'Loading your team…' : (sc.scope === 'organisation' ? 'All departments' : sc.scope) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award';
+      var org = sc && sc.scope === 'organisation';
       dlg.classList.add('au-wide');
-      dlg.innerHTML = '<div class="au-gh"><div><h3>Give Aura Points</h3><p class="sub">' + esc(who) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award</p></div><button type="button" class="au-x" data-cancel aria-label="Close">×</button></div>'
+      dlg.innerHTML = '<div class="au-gh"><div><h3>Give Aura Points</h3><p class="sub">' + esc(who) + '</p></div><button type="button" class="au-x" data-cancel aria-label="Close">×</button></div>'
         + '<div class="au-gv"><div class="au-gv-l au-f"><span>Employee <b>*</b></span>' + (st.emp ? selCard()
-          : '<input class="au-in" data-q placeholder="' + (sc.scope === 'organisation' ? 'Search by name, department, designation…' : 'Search employee…') + '" autocomplete="off" value="' + esc(st.q) + '">'
+          : '<input class="au-in" data-q placeholder="' + (org ? 'Search by name, department, designation…' : 'Search employee…') + '" autocomplete="off" value="' + esc(st.q) + '">'
             + (depts.length > 1 ? '<div class="au-dchips"><button type="button" data-dept="" class="' + (!st.dept ? 'on' : '') + '">All departments</button>' + depts.map(function (d) { return '<button type="button" data-dept="' + esc(d) + '" class="' + (st.dept === d ? 'on' : '') + '">' + esc(deptName(d)) + '</button>'; }).join('') + '</div>' : '')
             + '<div class="au-pick" data-list>' + list() + '</div>') + '</div>'
         + '<div class="au-gv-r">'
-        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + sc.points.map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '" aria-pressed="' + (st.pts === p) + '">' + p + '<small>points</small></button>'; }).join('') + '</div></div>'
+        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + (sc ? sc.points : [10, 20, 50]).map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '"' + (sc ? '' : ' disabled') + ' aria-pressed="' + (st.pts === p) + '">' + p + '<small>points</small></button>'; }).join('') + '</div></div>'
         + '<div class="au-f"><span>Reason <b>*</b></span><input class="au-in" data-reason maxlength="300" placeholder="What is this recognition for?" value="' + esc(st.reason) + '"><div class="au-sugg">' + REASONS.map(function (r) { return '<button type="button" data-sugg="' + esc(r) + '" class="' + (st.reason === r ? 'on' : '') + '">' + esc(r) + '</button>'; }).join('') + '</div></div>'
         + '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="3" style="height:auto;padding:9px 12px" placeholder="Extra context for the employee">' + esc(st.note) + '</textarea></div>'
         + '<div class="au-err" data-err></div>'
@@ -395,13 +420,28 @@
         try {
           // Same key for every retry of THIS dialog → the server never records it twice.
           await api('award', { recipient_id: st.emp.id, points: st.pts, reason: st.reason, note: st.note || null, idempotency_key: st.key });
-          st.busy = false; S.scopeAt = 0; S.txAt = 0; done();
+          // Local update first (no list reload), then a silent server sync.
+          var me = (sc.eligible || []).filter(function (x) { return x.id === st.emp.id; })[0];
+          if (me) { me.aura = (me.aura || 0) + st.pts; me.month = (me.month || 0) + st.pts; tot[me.id] = { life: me.aura, month: me.month }; saveScope(); }
+          st.busy = false; S.txAt = 0; done();
+          setTimeout(function () { scope(true).then(applyScope).catch(function () {}); }, 1500);
           if (opts.onDone) try { opts.onDone(); } catch (_) {}
           document.dispatchEvent(new CustomEvent('be-aura-changed', { detail: { employeeId: st.emp.id } }));
         } catch (x) { st.busy = false; b.disabled = false; if (back) back.disabled = false; b.textContent = 'Confirm Award'; dlg.querySelector('[data-err]').textContent = x.message; }
       }
     });
+    var cached = scopeCached();
+    if (cached) { setSc(cached); if (!allowed()) return; }
     form();
+    if (!cached || Date.now() - S.scopeAt > 30000) {
+      scope(true).then(function (fresh) {
+        if (!ov.isConnected) return;
+        var first = !sc; setSc(fresh); applyScope(fresh);
+        if (!allowed()) return;
+        if (first || st.emp) return form();
+        var l = dlg.querySelector('[data-list]'); if (l) l.innerHTML = list();   // keep typing / focus intact
+      }).catch(function (e) { if (!sc && ov.isConnected) { close(); toast('error', e.message); } });
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -693,11 +733,12 @@
     if (S.watching) return; S.watching = true;
     var email = B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : '';
     if (!email || !db()) return;
+    scopeCached();
+    setTimeout(function () { scope().then(applyScope).catch(function () {}); }, 400);   // prefetch for the Give dialog
     var r = await db().from('hr_employees').select('id').ilike('portal_email', email.replace(/[\\%_]/g, function (c) { return '\\' + c; })).limit(1);
     var me = r.data && r.data[0]; if (!me) return;
     S.me = me.id;
     loadMine().catch(function () {});
-    scope().then(applyScope).catch(function () {});
     // The header can be (re)built after us — keep the ring on it.
     var mo = new MutationObserver(function () { if (S.mine && avatars().some(function (a) { return !a.parentNode.classList.contains('au-avw'); })) paintHeader(); });
     mo.observe(document.body, { childList: true, subtree: true });

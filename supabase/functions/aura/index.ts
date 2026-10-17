@@ -39,8 +39,15 @@ interface Ctx { auth: JarvisAuthContext; me: Row; tier: string; emps: Row[]; des
 async function context(req: Request): Promise<Ctx> {
   const auth = await resolveAuthContext(req);
   const db = adminClient();
+  // Only the columns the rules need — never select("*"): hr_employees carries base64 photos
+  // (~1 MB for the whole company), which made every Aura call slow.
+  const cols = "id,full_name,division,department,designation,system_role,account_type,employment_status,portal_email,photo_url";
   const [empR, desR, rosR] = await Promise.all([
-    db.from("hr_employees").select("*"),   // includes managed_divisions once 20261028 runs
+    (async (): Promise<{ data: Row[] | null; error: { message: string } | null }> => {
+      const r = await db.from("hr_employees").select(cols + ",managed_divisions");
+      if (r.error && /managed_divisions/i.test(r.error.message)) return await db.from("hr_employees").select(cols) as unknown as { data: Row[] | null; error: { message: string } | null };
+      return r as unknown as { data: Row[] | null; error: { message: string } | null };
+    })(),
     db.from("hr_designations").select("name,access_role,active"),
     db.from("user_roster").select("role").ilike("email", auth.email.replace(/[\\%_]/g, (c) => "\\" + c)).limit(1),
   ]);
@@ -84,8 +91,20 @@ Deno.serve(async (req) => {
       case "scope": {
         const eligible = c.tier === "employee" ? [] : c.emps
           .filter((t) => !eligibility(c, t))
-          .map((t) => ({ id: t.id, name: t.full_name, division: t.division, department: DIV[t.division] || t.division || "", designation: clean(t.designation) || "" }))
+          .map((t) => ({ id: t.id, name: t.full_name, division: t.division, department: DIV[t.division] || t.division || "", designation: clean(t.designation) || "", photo_url: t.photo_url || null, aura: 0, month: 0 }))
           .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        // Current Aura for exactly these people in ONE query (no per-employee lookups).
+        if (eligible.length) {
+          const byId: Record<string, Row> = {}; eligible.forEach((x) => { byId[x.id] = x; });
+          const monthStart = ymdIst().slice(0, 8) + "01";
+          const tx = await db.from("aura_point_transactions").select("recipient_employee_id,points,created_at")
+            .eq("status", "active").in("recipient_employee_id", eligible.map((x) => x.id)).limit(20000);
+          (tx.data || []).forEach((t: Row) => {
+            const x = byId[t.recipient_employee_id]; if (!x) return;
+            const p = Number(t.points || 0); x.aura += p;
+            if (ymdIst(new Date(t.created_at)) >= monthStart) x.month += p;
+          });
+        }
         return out(req, 200, {
           me: { id: c.me.id, name: actorName, division: c.me.division },
           tier: c.tier, points: POINTS[c.tier] || [], can_award: c.tier !== "employee" && eligible.length > 0,
@@ -194,4 +213,3 @@ Deno.serve(async (req) => {
     return out(req, 500, { error: msg });
   }
 });
-void ymdIst;
