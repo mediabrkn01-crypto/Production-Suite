@@ -220,7 +220,7 @@
       '.cc-edh{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.cc-edh p{margin:3px 0 0;font-size:12px;color:#8b93b8}',
       '.cc-ed{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;align-items:stretch}',
       '.cc-ed-main{display:flex;flex-direction:column;gap:14px;min-width:0}.cc-ed-main .cc-grow{flex:1}.cc-ed-main .cc-grow textarea{flex:1;min-height:120px}',
-      '.cc-ed-side{display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px;border-radius:14px;background:rgba(255,255,255,.022);border:1px solid var(--cc-line)}',
+      '.cc-ed-side{width:auto!important;max-width:none!important;position:static!important;display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px;border-radius:14px;background:rgba(255,255,255,.022);border:1px solid var(--cc-line)}',
       '.cc-title{height:44px!important;font-size:15px!important;font-weight:600}',
       '.cc-seg2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:3px;border-radius:11px;background:rgba(255,255,255,.035);border:1px solid var(--cc-line)}.cc-seg2.five{grid-template-columns:repeat(5,minmax(0,1fr))}.cc-seg2.seven{grid-template-columns:repeat(7,minmax(0,1fr))}',
       '.cc-seg2 button{height:30px;border:0;border-radius:8px;background:none;color:#8b93b8;font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-seg2 button:hover{color:#fff}.cc-seg2 button.on{background:rgba(255,107,6,.16);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,107,6,.45)}',
@@ -571,7 +571,7 @@
       // Full form: what the item IS on the left (title, when, notes, people), how it BEHAVES on the
       // right (platform, priority, status, reminders, repeat, links) — one screen, no long scroll.
       M.dlg.innerHTML = more
-        ? head + '<div class="cc-ed"><div class="cc-ed-main">' + basics + mainExtra() + '</div><aside class="cc-ed-side">' + side() + '</aside></div>' + foot
+        ? head + '<div class="cc-ed"><div class="cc-ed-main">' + basics + mainExtra() + '</div><div class="cc-ed-side">' + side() + '</div></div>' + foot
         : head + basics + '<button type="button" class="cc-more-t" data-more>More details — notes, people, reminders, repeat…</button>' + foot;
       if (more) loadWorks().then(function (ws) { var s = M.dlg.querySelector('[data-k="related_assignment_id"]'); if (!s) return; s.innerHTML = '<option value="">None</option>' + ws.map(function (w) { return '<option value="' + w.id + '"' + (String(f.related_assignment_id) === String(w.id) ? ' selected' : '') + '>' + esc((w.topic || w.type || 'Work') + ' · ' + (w.status || '')) + '</option>'; }).join(''); }).catch(function () {});
       if (!f.title) setTimeout(function () { var t = M.dlg.querySelector('[data-k="title"]'); if (t && !('ontouchstart' in window)) t.focus(); }, 30);
