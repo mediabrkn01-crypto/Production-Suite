@@ -131,6 +131,12 @@
       '.au-sheet > .au-pane{box-sizing:border-box;width:min(1080px,100%);background:#0b0f1c;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;position:relative;box-shadow:0 30px 80px -20px rgba(0,0,0,.85)}',
       '.au-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#a5adcf;font-size:18px;line-height:1;cursor:pointer}.au-x:hover{color:#fff}',
       '.au-nav-aura svg{color:#ff8a3d}',
+      '.au-page .au-pane{display:flex;flex-direction:column;gap:14px;min-height:calc(100vh - 56px)}',
+      '.aup-h{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}.aup-h > div:first-child{flex:1;min-width:200px}.aup-h h2{margin:0;font-size:22px;font-weight:800;color:#fff}.aup-h p{margin:4px 0 0;color:#8b93b8;font-size:12.5px}',
+      '.aup-acts{display:flex;gap:8px;align-items:center}',
+      '.aup-tabs{display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,.06)}.aup-tabs:empty{display:none}.aup-tabs button{height:36px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:none;color:#8b93b8;font:inherit;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:-1px}.aup-tabs button.on{color:#fff;border-bottom-color:#ff8a3d}',
+      '.aup-hist{border-top:0;padding-top:0;margin-top:2px}',
+      '@media(max-width:560px){.au-page .au-pane{min-height:100vh}.aup-acts{order:3;width:100%}.aup-acts .au-give{width:100%;justify-content:center}.aup-h .au-x{order:2}}',
       '@media(max-width:560px){.au-ov{place-items:end stretch;grid-template-columns:minmax(0,1fr);padding:0}.au-ov > .au-dlg{width:100%;box-sizing:border-box;max-height:92vh;border-radius:20px 20px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom));animation:auUp .22s ease-out}.au-sheet{padding:0}.au-sheet > .au-pane{border-radius:0;min-height:100%;padding:16px}.aud-r.wide{grid-template-columns:32px minmax(0,1fr) auto}.aud-r.wide .aud-act{grid-column:2/-1;justify-content:flex-start}}',
       '@keyframes auUp{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}',
       /* profile: stats row + recent */
@@ -285,9 +291,10 @@
     var rest = rows.length > 3;
     el.innerHTML = '<div class="au-stat">' + statsHTML(life, month, active.length, 0)
       + (canGive ? '<button type="button" class="au-give" data-au-give>' + MARK + 'Give Aura Points</button>' : '') + '</div>'
-      + '<div class="au-rh"><span>Recent Aura</span>' + (rest ? '<button type="button" class="au-more" data-au-toggle aria-expanded="false" style="padding:0">View all ' + rows.length + '</button>' : '') + '</div>'
+      + '<div class="au-rh"><span>Recent Aura</span>' + (opts.self ? '<button type="button" class="au-more" data-au-page style="padding:0;letter-spacing:0;text-transform:none">View Aura Details →</button>' : rest ? '<button type="button" class="au-more" data-au-toggle aria-expanded="false" style="padding:0">View all ' + rows.length + '</button>' : '') + '</div>'
       + '<div class="au-hist" style="margin-top:6px;border-top:0;padding-top:0" data-au-top>' + history(rows.slice(0, 3), { self: opts.self, limit: 3 }) + '</div>'
-      + (rest ? '<div class="au-hist" style="margin-top:0;border-top:0;padding-top:0" data-au-hist hidden>' + history(rows.slice(3), { self: opts.self, limit: 60 }) + '</div>' : '');
+      + (rest && !opts.self ? '<div class="au-hist" style="margin-top:0;border-top:0;padding-top:0" data-au-hist hidden>' + history(rows.slice(3), { self: opts.self, limit: 60 }) + '</div>' : '');
+    var vp = el.querySelector('[data-au-page]'); if (vp) vp.onclick = function () { openPage({ tab: 'mine' }); };
     var tg = el.querySelector('[data-au-toggle]');
     if (tg) tg.onclick = function () { var h = el.querySelector('[data-au-hist]'); h.hidden = !h.hidden; this.setAttribute('aria-expanded', String(!h.hidden)); this.textContent = h.hidden ? 'View all ' + rows.length : 'Show less'; };
     var g = el.querySelector('[data-au-give]'); if (g) g.onclick = function () { give({ employeeId: giveFor, onDone: function () { mountProfile(el, emp, opts); } }); };
@@ -483,8 +490,8 @@
     var curBest = best.filter(function (b) { return b.period_start === P.from && b.period_end === P.to; })[0];
 
     el.innerHTML = '<div class="aud">'
-      + '<div class="aud-top"><div><h2>' + (view === '*' ? 'Aura Points' : esc(view.map(deptName).join(' + ') || 'Team') + ' Aura') + '</h2><p>' + (view === '*' ? 'Recognition across the organisation' : 'Recognition in your department' + (view.length > 1 ? 's' : '')) + ' · ' + esc(P.label) + '</p></div>'
-      + (sc && sc.can_award ? '<button type="button" class="au-give" data-au-give style="margin-left:0">' + MARK + 'Give Aura Points</button>' : '') + '</div>'
+      + '<div class="aud-top"><div><h2>' + (view === '*' ? (opts.embedded ? 'Organisation Aura' : 'Aura Points') : esc(view.map(deptName).join(' + ') || 'Team') + ' Aura') + '</h2><p>' + (view === '*' ? 'Recognition across the organisation' : 'Recognition in your department' + (view.length > 1 ? 's' : '')) + ' · ' + esc(P.label) + '</p></div>'
+      + (sc && sc.can_award && !opts.embedded ? '<button type="button" class="au-give" data-au-give style="margin-left:0">' + MARK + 'Give Aura Points</button>' : '') + '</div>'
       + '<div class="aud-bar"><div class="aud-seg" role="tablist">' + [['this', 'This month'], ['prev', 'Previous month'], ['custom', 'Custom'], ['all', 'All time']].map(function (p) { return '<button type="button" data-per="' + p[0] + '" class="' + (D.period === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div>'
       + (D.period === 'custom' ? '<input type="date" class="au-in" data-from value="' + esc(D.from) + '" aria-label="From"><input type="date" class="au-in" data-to value="' + esc(D.to) + '" aria-label="To">' : '') + '</div>'
       + '<div class="aud-bar"><input class="au-in q" data-q placeholder="Search employee or role" value="' + esc(D.q) + '">' + (depts.length > 1 ? '<select class="au-in" data-dept data-native><option value="">All departments</option>' + depts.map(function (d) { return '<option value="' + d + '"' + (D.dept === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select>' : '')
@@ -650,26 +657,7 @@
   function pulse() {
     document.querySelectorAll('.au-avw').forEach(function (w) { w.classList.remove('pulse'); void w.offsetWidth; w.classList.add('pulse'); setTimeout(function () { w.classList.remove('pulse'); }, 4400); });
   }
-  async function openMine() {
-    css();
-    var ov = document.createElement('div'); ov.className = 'au-ov au';
-    ov.innerHTML = '<div class="au-dlg au-mine" role="dialog" aria-modal="true" aria-label="My Aura"><h3>My Aura</h3><div class="au-empty">Loading…</div></div>';
-    document.body.appendChild(ov);
-    var close = function () { ov.remove(); document.removeEventListener('keydown', key); };
-    var key = function (e) { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', key);
-    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
-    var M = null;
-    try { M = await loadMine(); } catch (_) {}
-    var dlg = ov.querySelector('.au-dlg');
-    if (!M) { dlg.innerHTML = '<h3>My Aura</h3><div class="au-empty">Aura Points could not load right now.</div><div class="au-acts"><button type="button" class="au-btn" data-x>Close</button></div>'; dlg.querySelector('[data-x]').onclick = close; return; }
-    dlg.innerHTML = '<h3>My Aura</h3><p class="sub">Recognition from your Head and Managers' + (M.rank ? ' · #' + M.rank + ' this month' : '') + '</p>'
-      + statsHTML(M.life, M.month, M.n, 0)
-      + '<div class="au-rh" style="margin-top:4px"><span>Recent recognitions</span></div>'
-      + '<div class="au-hist">' + history(M.rows, { self: true, limit: 40 }) + '</div>'
-      + '<div class="au-acts"><button type="button" class="au-btn" data-x>Close</button></div>';
-    dlg.querySelector('[data-x]').onclick = close;
-  }
+  function openMine() { return openPage({ tab: 'mine' }); }
 
   // ── any employee's Aura history (dashboard rows) ──────────────────────────
   async function openHistory(empId) {
@@ -694,18 +682,76 @@
     var g = dlg.querySelector('[data-g]'); if (g) g.onclick = function () { close(); give({ employeeId: empId }); };
   }
 
-  // ── dashboard as a page-level panel (pages without their own Aura section) ─────
-  function openDashboard() {
-    css();
-    var sh = document.createElement('div'); sh.className = 'au-sheet au';
-    sh.innerHTML = '<div class="au-pane" role="dialog" aria-modal="true" aria-label="Aura Points"><button type="button" class="au-x" aria-label="Close">×</button><div data-dash></div></div>';
+  // ════════════════════════════════════════════════════════════════════════
+  // THE Aura Points page — one shared page on every portal, for every employee.
+  // Permissions change the content, never the module:
+  //   everyone        My Aura (totals + full history: reason, awarded by, date) — read-only
+  //   heads / ops     + their department(s)' Aura (ranking, history, + Aura) + Give Aura Points
+  //   managers / HR   + organisation overview, rankings, Best Employee (when permitted)
+  // ════════════════════════════════════════════════════════════════════════
+  async function openPage(opts) {
+    css(); opts = opts || {};
+    var old = document.querySelector('.au-sheet.au-page'); if (old) old.remove();
+    var sh = document.createElement('div'); sh.className = 'au-sheet au au-page';
+    sh.innerHTML = '<div class="au-pane" role="dialog" aria-modal="true" aria-label="Aura Points"><div class="aup-h"><div><h2>Aura Points</h2><p data-sub>Recognition across Broken English</p></div><div class="aup-acts" data-acts></div><button type="button" class="au-x" style="position:static" aria-label="Close">×</button></div><div class="aup-tabs" data-tabs></div><div data-body><div class="au-empty">Loading…</div></div></div>';
     document.body.appendChild(sh);
-    var close = function () { sh.remove(); document.removeEventListener('keydown', key); };
+    var close = function () { sh.remove(); document.removeEventListener('keydown', key); try { if (location.hash === '#aura') history.replaceState(null, '', location.pathname + location.search); } catch (_) {} };
     var key = function (e) { if (e.key === 'Escape' && !document.querySelector('.au-ov')) close(); };
     document.addEventListener('keydown', key);
-    sh.addEventListener('click', function (e) { if (e.target === sh) close(); });
+    sh.addEventListener('mousedown', function (e) { if (e.target === sh) close(); });
     sh.querySelector('.au-x').onclick = close;
-    dashboard(sh.querySelector('[data-dash]'), {});
+    var body = sh.querySelector('[data-body]'), sc = null;
+    try { sc = await scope(); } catch (_) { sc = null; }   // no server sign-in → My Aura only
+    var view = sc && sc.view_departments ? sc.view_departments : [];
+    var team = view === '*' || (view && view.length > 0);
+    var teamLabel = view === '*' ? 'Organisation' : (view.map(deptName).join(' + ') || 'Team');
+    var tab = opts.tab || (team && !opts.mine ? 'team' : 'mine');
+    if (!team) tab = 'mine';
+    if (sc && sc.can_award) {
+      var g = document.createElement('button'); g.type = 'button'; g.className = 'au-give'; g.style.marginLeft = '0'; g.innerHTML = MARK + 'Give Aura Points';
+      g.onclick = function () { give({ onDone: function () { draw(); } }); };
+      sh.querySelector('[data-acts]').appendChild(g);
+    }
+    function draw() {
+      sh.querySelector('[data-sub]').textContent = tab === 'team' ? (view === '*' ? 'Organisation overview, rankings and history' : teamLabel + ' — your team’s recognition') : 'Your recognition — total, this month and full history';
+      sh.querySelector('[data-tabs]').innerHTML = team ? '<button type="button" data-t="mine" class="' + (tab === 'mine' ? 'on' : '') + '">My Aura</button><button type="button" data-t="team" class="' + (tab === 'team' ? 'on' : '') + '">' + esc(teamLabel) + '</button>' : '';
+      if (tab === 'team') { body.innerHTML = '<div></div>'; dashboard(body.firstChild, { embedded: true }); return; }
+      mineView(body);
+    }
+    sh.querySelector('[data-tabs]').onclick = function (e) { var b = e.target.closest('[data-t]'); if (!b) return; tab = b.getAttribute('data-t'); draw(); };
+    draw();
+  }
+  async function mineView(el) {
+    el.innerHTML = '<div class="au-empty">Loading…</div>';
+    if (!S.me) await meId();
+    var M = null; try { M = await loadMine(); } catch (_) {}
+    if (!M) { el.innerHTML = '<div class="au-empty">Aura Points could not load right now.</div>'; return; }
+    el.innerHTML = statsHTML(M.life, M.month, M.n, M.rank)
+      + '<div class="au-rh"><span>Aura History</span><span style="letter-spacing:0;text-transform:none;font-weight:600">' + M.rows.length + ' recognition' + (M.rows.length === 1 ? '' : 's') + '</span></div>'
+      + '<div class="au-hist aup-hist">' + history(M.rows, { self: true, limit: 1000 }) + '</div>';
+  }
+  async function meId() {
+    if (S.me) return S.me;
+    var email = B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : '';
+    if (!email || !db()) return null;
+    var r = await db().from('hr_employees').select('id').ilike('portal_email', email.replace(/[\\%_]/g, function (c) { return '\\' + c; })).limit(1);
+    S.me = r.data && r.data[0] ? r.data[0].id : null; return S.me;
+  }
+  function openDashboard() { return openPage({ tab: 'team' }); }
+
+  // Nav entry — the same "Aura Points" item on every portal, for every signed-in employee,
+  // placed after Announcements (each page's own nav markup is reused for the look).
+  function addNav() {
+    var links = document.querySelectorAll('#nav-acad-announcements, #nav-announcements, #hrtree-announcements, .sidebar-link[data-tab="announcements"], .sidebar-link[onclick*="\'announcements\'"], [data-sec="announcements"]');
+    Array.prototype.forEach.call(links, function (a) {
+      if (a._auNav) return; a._auNav = true;
+      var b = document.createElement(a.tagName === 'A' ? 'a' : 'button'); if (b.tagName === 'BUTTON') b.type = 'button';
+      b.className = String(a.className).replace(/\b(active|on|hidden)\b/g, '') + ' au-nav-aura';
+      b.setAttribute('style', a.getAttribute('style') || '');
+      b.innerHTML = MARK + ' <span class="be-nav-label">Aura Points</span>';
+      b.onclick = function (e) { e.preventDefault(); try { if (typeof closeMobileSidebar === 'function') closeMobileSidebar(); } catch (_) {} openPage(); };
+      a.insertAdjacentElement('afterend', b);
+    });
   }
 
   // ── once the signed-in person's authority is known ───────────────────────────
@@ -715,18 +761,6 @@
     // hidden unless that employee is inside my server-computed award scope.
     var st = document.getElementById('aura-quick-css') || document.head.appendChild(Object.assign(document.createElement('style'), { id: 'aura-quick-css' }));
     st.textContent = (sc.eligible || []).length ? sc.eligible.map(function (x) { return '[data-au-quick="' + String(x.id).replace(/[^\w-]/g, '') + '"]'; }).join(',') + '{display:inline-grid!important;place-items:center}' : '';
-    // Nav entry on department pages (HR + Manager pages have their own Aura section).
-    if (!(sc.can_award || sc.view_departments === '*') || document.getElementById('hr-sub-aura') || document.getElementById('mgr-aura')) return;
-    var links = document.querySelectorAll('#nav-acad-announcements, #nav-announcements, .sidebar-link[data-tab="announcements"], .sidebar-link[onclick*="\'announcements\'"]');
-    Array.prototype.forEach.call(links, function (a) {
-      if (a._auNav || (a.nextElementSibling && a.nextElementSibling.classList.contains('au-nav-aura'))) return; a._auNav = true;
-      var b = document.createElement('button'); b.type = 'button';
-      b.className = String(a.className).replace(/\bactive\b/g, '').replace(/\bhidden\b/g, '') + ' au-nav-aura';
-      b.setAttribute('style', a.getAttribute('style') || '');
-      b.innerHTML = MARK + ' <span class="be-nav-label">Aura Points</span>';
-      b.onclick = function () { try { if (typeof closeMobileSidebar === 'function') closeMobileSidebar(); } catch (_) {} openDashboard(); };
-      a.insertAdjacentElement('afterend', b);
-    });
   }
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-au-quick]'); if (!b) return;
@@ -738,6 +772,8 @@
     if (S.watching) return; S.watching = true;
     var email = B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : '';
     if (!email || !db()) return;
+    addNav(); setTimeout(addNav, 2500);
+    try { if (location.hash === '#aura') setTimeout(function () { openPage(); }, 600); } catch (_) {}
     scopeCached();
     setTimeout(function () { scope().then(applyScope).catch(function () {}); }, 400);   // prefetch for the Give dialog
     var r = await db().from('hr_employees').select('id').ilike('portal_email', email.replace(/[\\%_]/g, function (c) { return '\\' + c; })).limit(1);
@@ -760,7 +796,7 @@
     }, { debounce: 0 });
   }
 
-  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard };
+  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard, openPage: openPage };
   // Auto: start the live toast once someone is signed in (not inside embedded frames).
   var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
   if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); if (++tries < 60) setTimeout(w, 2000); })(); }
