@@ -16,33 +16,50 @@ export const DIV: Record<string, string> = { education: "Academics", production:
 const lc = (s: unknown) => String(s ?? "").trim().toLowerCase();
 export const clean = (s: unknown) => String(s ?? "").trim().replace(/^(senior|mid-level|junior)\s+/i, "");
 
-export /** Effective Aura tier of ANY employee row (same rules for caller and target). */
-function tierOf(e: Row, desig: Row[]): string {
+/** Effective Aura tier of ANY employee row (same rules for caller and target). */
+export function tierOf(e: Row, desig: Row[]): string {
   const sys = lc(e.system_role);
   if (LEADERSHIP.includes(sys) || e.account_type === "management") return "manager";
   const d = clean(e.designation), dl = d.toLowerCase();
   const hit = desig.find((x) => x.active !== false && lc(x.name) === dl);
   const access = sys || (hit && hit.access_role) || DESIG_DEFAULTS[dl] || "";
   const salesHead = e.division === "sales" && /head|manager/i.test(`${e.department || ""} ${e.designation || ""}`);
-  if (HEAD_ROLES.includes(access) || salesHead) return /operations?\s*manager/i.test(d) ? "operational_manager" : "head";
+  if (HEAD_ROLES.includes(access) || salesHead) {
+    // Operations-Manager level: the designation, or HR has assigned departments beyond their own.
+    const extra = managedDivisions(e).filter((x) => x !== e.division);
+    return /operations?\s*manager/i.test(d) || extra.length ? "operational_manager" : "head";
+  }
   return "employee";
+}
+
+/** hr_employees.managed_divisions (20261028) as a clean list of codes. */
+export function managedDivisions(e: Row): string[] {
+  const v = e && e.managed_divisions;
+  return (Array.isArray(v) ? v : []).map((x) => String(x || "").trim()).filter(Boolean);
+}
+
+/** Departments the caller may award in: "*" = organisation-wide. */
+export function authorizedDivisions(e: Row, tier: string): "*" | string[] {
+  if (tier === "manager") return "*";
+  if (tier === "employee") return [];
+  const own = e.division ? [String(e.division)] : [];
+  if (tier === "head") return own;                                       // Department Head: own department only
+  return [...new Set([...own, ...managedDivisions(e)])];                 // Operations Manager: all assigned
 }
 
 
 export interface Caller { me: Row; tier: string; desig: Row[] }
 
-export /** Can the caller reward this employee? Returns a reason when not. */
-function eligibility(c: Caller, t: Row | undefined): string | null {
+/** Can the caller reward this employee? Returns a reason when not. */
+export function eligibility(c: Caller, t: Row | undefined): string | null {
   if (!t) return "That employee was not found.";
   if (t.id === c.me.id) return "You can't give Aura Points to yourself.";
   if (t.account_type === "system") return "That account can't receive Aura Points.";
   if (["exited", "inactive"].includes(lc(t.employment_status || "active"))) return "That employee is not active.";
-  if (c.tier === "manager") return null;
-  if (c.tier === "employee") return "Your role can't give Aura Points.";
-  const sameDept = !!c.me.division && t.division === c.me.division;
-  const directReport = !!c.me.portal_email && lc(t.manager_email) === lc(c.me.portal_email);
-  if (!sameDept && !directReport) return "You can only give Aura Points within your own department or team.";
+  const scope = authorizedDivisions(c.me, c.tier);
+  if (scope === "*") return null;
+  if (!scope.length) return "Your role can't give Aura Points.";
+  if (!t.division || !scope.includes(String(t.division))) return "You can only give Aura Points within your assigned department" + (scope.length > 1 ? "s" : "") + ".";
   if (RANK[tierOf(t, c.desig)] >= RANK[c.tier]) return "You can only give Aura Points to people below your level — ask a Manager.";
   return null;
 }
-

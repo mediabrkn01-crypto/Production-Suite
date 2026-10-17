@@ -89,6 +89,9 @@
         '<div class="am-current">' + avatarHTML(rec || me.name, 34, me.name) +
           '<div style="min-width:0"><div class="am-name">' + escapeHtml(me.name || 'User') + '</div><div class="am-role">' + escapeHtml(accountTitle(rec, me.role)) + '</div></div>' +
         '</div>' +
+        // Aura Points summary (aura.js) — opens "My Aura"; same entry on phones, where the
+        // avatar has no hover.
+        (window.BEAura && BEAura.menuRow ? BEAura.menuRow() : '') +
         '<button class="am-item" data-am-action="switch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12"/></svg> Switch Account</button>' +
         '<button class="am-item" data-am-action="add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Add Another Account</button>' +
         '<div class="am-divider"></div>' +
@@ -140,6 +143,7 @@
           else if (action === 'back') { view = 'main'; renderMain(); }
           else if (action === 'add') { close(); opts.onAddAccount(); }
           else if (action === 'logout') { close(); opts.onLogout(); }
+          else if (action === 'aura') { close(); if (window.BEAura) BEAura.openMine(); }
         });
       });
       dropdown.querySelectorAll('[data-am-switch]').forEach(function (el) {

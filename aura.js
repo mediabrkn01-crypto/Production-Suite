@@ -18,7 +18,7 @@
   if (window.BEAura) return;
   var DIV = { education: 'Academics', production: 'Media / Production', sales: 'Sales', hr: 'HR', accounts: 'Accounts', management: 'Management', other: 'Administration' };
   var REASONS = ['Excellent class performance', 'Completed urgent work ahead of deadline', 'Excellent student feedback', 'Strong teamwork', 'Outstanding creative work', 'Consistent attendance', 'Went beyond assigned responsibility'];
-  var S = { client: null, emps: null, empAt: 0, scope: null, scopeAt: 0, me: null };
+  var S = { client: null, emps: null, empAt: 0, scope: null, scopeAt: 0, me: null, mine: null };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function B() { return window.BESession || {}; }
@@ -97,6 +97,35 @@
       '.aud-best .k{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ffb37a}.aud-best b{display:block;color:#fff;font-size:16px}.aud-best span{color:#8b93b8;font-size:12px}',
       '.aud-wrap{overflow-x:auto;border:1px solid rgba(255,255,255,.06);border-radius:14px}',
       '@media(max-width:700px){.aud-tbl thead{display:none}.aud-tbl,.aud-tbl tbody,.aud-tbl tr,.aud-tbl td{display:block;width:100%}.aud-tbl tr{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.05)}.aud-tbl td{padding:3px 0;border:0}.aud-tbl td[data-l]::before{content:attr(data-l) "  ";color:#6b74a0;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.aud-tbl td{text-align:left!important}.aud-tbl td.n{display:inline-block;width:auto;margin-right:16px}.aud-wrap{border:0}}',
+      /* profile: stats row + recent */
+      '.au-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:1 1 360px;min-width:0}',
+      '.au-st{display:flex;flex-direction:column;gap:3px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);min-width:0}',
+      '.au-st .au-v{font-size:24px}.au-st:first-child{background:radial-gradient(120% 140% at 0% 0%,rgba(255,138,61,.12),rgba(255,255,255,.02) 60%);border-color:rgba(255,138,61,.22)}',
+      '.au-st .au-v.pos{color:#34d399}',
+      '.au-rh{display:flex;align-items:center;justify-content:space-between;margin-top:16px;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#8b93b8}',
+      /* header ring around the avatar (decorative identity; never a progress meter) */
+      '.au-avw{position:relative;display:inline-flex;flex-shrink:0;border-radius:50%}',
+      '.au-ring{position:absolute;inset:-3px;border-radius:50%;pointer-events:none;background:conic-gradient(from var(--au-a,0deg),rgba(255,138,61,.95),rgba(249,24,47,.55) 28%,rgba(255,255,255,.08) 52%,rgba(255,180,120,.6) 78%,rgba(255,138,61,.95));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 1.6px),#000 calc(100% - 1.4px));mask:radial-gradient(farthest-side,transparent calc(100% - 1.6px),#000 calc(100% - 1.4px));opacity:.85;animation:auSpin 14s linear infinite}',
+      '.au-ring::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 10px 1px rgba(255,138,61,.0);transition:box-shadow .6s}',
+      '.au-avw.pulse .au-ring{opacity:1;animation:auSpin 14s linear infinite,auPulse 1.4s ease-out 3}',
+      '.au-avw.pulse .au-ring::after{box-shadow:0 0 14px 2px rgba(255,138,61,.45)}',
+      '@property --au-a{syntax:"<angle>";inherits:false;initial-value:0deg}',
+      '@keyframes auSpin{to{--au-a:360deg}}',
+      '@keyframes auPulse{0%{transform:scale(1)}40%{transform:scale(1.12)}100%{transform:scale(1)}}',
+      '@media (prefers-reduced-motion:reduce){.au-ring,.au-avw.pulse .au-ring{animation:none}}',
+      '.au-tag{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 0 0 10px!important;border-left:1px solid rgba(255,255,255,.08);font-size:11px;font-weight:700;color:#ffb37a;font-variant-numeric:tabular-nums;white-space:nowrap;padding:0 2px;cursor:pointer}.au-tag svg{width:11px;height:11px}',
+      '.au-tag:hover{color:#fff}',
+      '@media(max-width:1100px){.au-tag{display:none}}',
+      /* hover popover (desktop) */
+      '.au-hc{position:fixed;z-index:9250;width:248px;padding:14px;border-radius:14px;background:#0e1222;border:1px solid rgba(255,138,61,.22);box-shadow:0 24px 60px -18px rgba(0,0,0,.85);opacity:0;transform:translateY(-4px);transition:opacity .15s,transform .15s;pointer-events:none}',
+      '.au-hc.on{opacity:1;transform:none;pointer-events:auto}',
+      '.au-hc .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 12px}.au-hc .au-v{font-size:26px}.au-hc .au-sm{font-size:16px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums}.au-hc .au-sm.pos{color:#34d399}',
+      '.au-hc .au-link{width:100%;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#e6e9f5;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}.au-hc .au-link:hover{border-color:rgba(255,138,61,.4);color:#fff}',
+      /* account-menu row */
+      '.am-item.au-mrow{display:flex;align-items:center;gap:10px}.au-mrow .au-mv{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;line-height:1.15}.au-mrow .au-mv b{color:#fff;font-size:13px;font-variant-numeric:tabular-nums}.au-mrow .au-mv small{color:#34d399;font-size:10.5px;font-weight:700}.au-mrow > svg{color:#ff8a3d}',
+      /* My Aura panel */
+      '.au-mine .au-stats{margin-top:2px;flex:none}.au-mine .au-hist{margin-top:4px;border-top:0;padding-top:0}',
+      '@media(max-width:560px){.au-stats{grid-template-columns:1fr 1fr}.au-st:first-child{grid-column:1/-1}.au-st .au-v{font-size:22px}}',
       '@media(max-width:560px){.au-v{font-size:26px}.au-give{margin-left:0;width:100%;justify-content:center}.aud-r{grid-template-columns:32px minmax(0,1fr) auto;row-gap:8px}.aud-r .aud-sel{grid-column:2/-1;justify-self:start}.aud-seg{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3px}.aud-seg button{width:100%}.aud-bar .au-in{flex:1 1 140px}.au-acts .au-btn{flex:1}}'
     ].join('\n');
     document.head.appendChild(s);
@@ -162,6 +191,12 @@
   // ════════════════════════════════════════════════════════════════════════
   // Profile: Aura stat near the top + recognition history
   // ════════════════════════════════════════════════════════════════════════
+  function statsHTML(life, month, n, rank) {
+    return '<div class="au-stats">'
+      + '<div class="au-st"><span class="au-k">' + MARK + 'Aura Points</span><span class="au-v">' + life.toLocaleString('en-IN') + '</span>' + (rank ? '<span class="au-sub">#' + rank + ' this month</span>' : '') + '</div>'
+      + '<div class="au-st"><span class="au-k">This Month</span><span class="au-v' + (month > 0 ? ' pos' : '') + '">' + (month > 0 ? '+' : '') + month.toLocaleString('en-IN') + '</span></div>'
+      + '<div class="au-st"><span class="au-k">Recognition Received</span><span class="au-v">' + n + '</span></div></div>';
+  }
   async function mountProfile(el, emp, opts) {
     if (!el || !emp) return; css(); opts = opts || {};
     el.classList.add('au');
@@ -171,16 +206,16 @@
     var life = sum(rows), m = monthRange(0), month = sum(rows, m.from, m.to), active = rows.filter(function (t) { return t.status === 'active'; });
     var canGive = false;
     if (opts.self) { try { var sc = await scope(); canGive = !!sc.can_award; } catch (_) {} }
-    el.innerHTML = '<div class="au-stat"><button type="button" class="au-num" data-au-toggle aria-expanded="false" title="Show Aura history">'
-      + '<span class="au-k">' + MARK + 'Aura Points</span><span class="au-v">' + life.toLocaleString('en-IN') + '</span>'
-      + '<span class="au-sub">' + (month ? '<b>+' + month + '</b> this month' : 'No new points this month') + ' · ' + active.length + ' recognition' + (active.length === 1 ? '' : 's') + '</span></button>'
+    var rest = rows.length > 3;
+    el.innerHTML = '<div class="au-stat">' + statsHTML(life, month, active.length, 0)
       + (canGive ? '<button type="button" class="au-give" data-au-give>' + MARK + 'Give Aura Points</button>' : '') + '</div>'
-      + '<div class="au-hist" data-au-hist hidden>' + history(rows, opts) + '</div>';
-    el.querySelector('[data-au-toggle]').onclick = function () {
-      var h = el.querySelector('[data-au-hist]'); h.hidden = !h.hidden; this.setAttribute('aria-expanded', String(!h.hidden));
-    };
+      + '<div class="au-rh"><span>Recent Aura</span>' + (rest ? '<button type="button" class="au-more" data-au-toggle aria-expanded="false" style="padding:0">View all ' + rows.length + '</button>' : '') + '</div>'
+      + '<div class="au-hist" style="margin-top:6px;border-top:0;padding-top:0" data-au-top>' + history(rows.slice(0, 3), { self: opts.self, limit: 3 }) + '</div>'
+      + (rest ? '<div class="au-hist" style="margin-top:0;border-top:0;padding-top:0" data-au-hist hidden>' + history(rows.slice(3), { self: opts.self, limit: 60 }) + '</div>' : '');
+    var tg = el.querySelector('[data-au-toggle]');
+    if (tg) tg.onclick = function () { var h = el.querySelector('[data-au-hist]'); h.hidden = !h.hidden; this.setAttribute('aria-expanded', String(!h.hidden)); this.textContent = h.hidden ? 'View all ' + rows.length : 'Show less'; };
     var g = el.querySelector('[data-au-give]'); if (g) g.onclick = function () { give({ onDone: function () { mountProfile(el, emp, opts); } }); };
-    if (opts.openHistory) el.querySelector('[data-au-hist]').hidden = false;
+    if (opts.openHistory && tg) tg.click();
   }
   function history(rows, opts) {
     if (!rows.length) return '<div class="au-empty">' + (opts.self ? 'No Aura Points yet — recognitions from your Head or Manager will appear here.' : 'No Aura Points yet.') + '</div>';
@@ -375,25 +410,128 @@
     });
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Signed-in employee's own Aura: header ring, hover card, account-menu row, My Aura
+  // ════════════════════════════════════════════════════════════════════════
+  async function loadMine() {
+    if (!S.me) return null;
+    var rows = await txFor(S.me), m = monthRange(0), month = sum(rows, m.from, m.to);
+    var rank = 0;
+    if (month > 0) {   // rank only when it means something (I have points this month)
+      try {
+        var r = await db().from('aura_point_transactions').select('recipient_employee_id,points').eq('status', 'active').gte('created_at', m.from + 'T00:00:00+05:30').lte('created_at', m.to + 'T23:59:59.999+05:30').limit(5000);
+        var by = {}; (r.data || []).forEach(function (t) { by[t.recipient_employee_id] = (by[t.recipient_employee_id] || 0) + Number(t.points || 0); });
+        rank = 1 + Object.keys(by).filter(function (k) { return by[k] > month; }).length;
+      } catch (_) {}
+    }
+    S.mine = { rows: rows, life: sum(rows), month: month, n: rows.filter(function (t) { return t.status === 'active'; }).length, rank: rank };
+    paintHeader();
+    return S.mine;
+  }
+  function menuRow() {
+    var M = S.mine; if (!M) return '';
+    return '<button class="am-item au-mrow" data-am-action="aura">' + MARK + '<span>Aura Points</span><span class="au-mv"><b>' + M.life.toLocaleString('en-IN') + '</b>' + (M.month > 0 ? '<small>+' + M.month + ' this month</small>' : '') + '</span></button>';
+  }
+  function avatars() { return Array.prototype.slice.call(document.querySelectorAll('.bes-account .bes-av')); }
+  function paintHeader() {
+    if (!S.mine) return; css();
+    avatars().forEach(function (av) {
+      var w = av.parentNode;
+      if (!w.classList.contains('au-avw')) {
+        w = document.createElement('span'); w.className = 'au-avw';
+        av.parentNode.insertBefore(w, av); w.appendChild(av);
+        var ring = document.createElement('span'); ring.className = 'au-ring'; ring.setAttribute('aria-hidden', 'true'); w.appendChild(ring);
+        hoverCard(w.closest('.bes-account'), w);
+      }
+      var acct = w.closest('.bes-account'), tag = acct.querySelector('.au-tag');
+      if (!tag) {
+        tag = document.createElement('span'); tag.className = 'au-tag'; tag.setAttribute('role', 'button'); tag.tabIndex = -1;
+        tag.title = 'My Aura';
+        tag.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); hideCard(); openMine(); });
+        var who = acct.querySelector('.bes-who'); (who || w).insertAdjacentElement('afterend', tag);
+      }
+      tag.innerHTML = MARK + 'Aura ' + S.mine.life.toLocaleString('en-IN');
+      acct.setAttribute('aria-label', 'Account menu · ' + S.mine.life + ' Aura Points');
+    });
+  }
+  var HC = { el: null, t: 0 };
+  function hideCard() { clearTimeout(HC.t); if (HC.el) HC.el.classList.remove('on'); }
+  function hoverCard(acct, ringWrap) {
+    if (!acct || !window.matchMedia || !matchMedia('(hover:hover) and (pointer:fine)').matches) return;   // touch: account menu carries the Aura row
+    acct.addEventListener('mouseenter', function () {
+      clearTimeout(HC.t);
+      HC.t = setTimeout(function () {
+        if (!S.mine || document.querySelector('.am-dropdown.am-open')) return;
+        if (!HC.el) {
+          HC.el = document.createElement('div'); HC.el.className = 'au-hc au'; HC.el.setAttribute('role', 'tooltip'); document.body.appendChild(HC.el);
+          HC.el.addEventListener('mouseenter', function () { clearTimeout(HC.t); });
+          HC.el.addEventListener('mouseleave', function () { HC.t = setTimeout(hideCard, 160); });
+        }
+        var M = S.mine;
+        HC.el.innerHTML = '<span class="au-k">' + MARK + 'Aura Points</span><span class="au-v" style="display:block">' + M.life.toLocaleString('en-IN') + '</span>'
+          + '<div class="row"><div><span class="au-k">This Month</span><div class="au-sm' + (M.month > 0 ? ' pos' : '') + '">' + (M.month > 0 ? '+' : '') + M.month + '</div></div>'
+          + (M.rank ? '<div><span class="au-k">Rank</span><div class="au-sm">#' + M.rank + '</div></div>' : '') + '</div>'
+          + '<button type="button" class="au-link">View Aura History</button>';
+        HC.el.querySelector('.au-link').onclick = function () { hideCard(); openMine(); };
+        var r = ringWrap.getBoundingClientRect(), W = 248;
+        HC.el.style.top = Math.round(r.bottom + 10) + 'px';
+        HC.el.style.left = Math.round(Math.max(12, Math.min(window.innerWidth - W - 12, r.left + r.width / 2 - W + 40))) + 'px';
+        HC.el.classList.add('on');
+      }, 380);
+    });
+    acct.addEventListener('mouseleave', function () { clearTimeout(HC.t); HC.t = setTimeout(hideCard, 160); });
+    acct.addEventListener('click', hideCard);
+  }
+  function pulse() {
+    document.querySelectorAll('.au-avw').forEach(function (w) { w.classList.remove('pulse'); void w.offsetWidth; w.classList.add('pulse'); setTimeout(function () { w.classList.remove('pulse'); }, 4400); });
+  }
+  async function openMine() {
+    css();
+    var ov = document.createElement('div'); ov.className = 'au-ov au';
+    ov.innerHTML = '<div class="au-dlg au-mine" role="dialog" aria-modal="true" aria-label="My Aura"><h3>My Aura</h3><div class="au-empty">Loading…</div></div>';
+    document.body.appendChild(ov);
+    var close = function () { ov.remove(); document.removeEventListener('keydown', key); };
+    var key = function (e) { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', key);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    var M = null;
+    try { M = await loadMine(); } catch (_) {}
+    var dlg = ov.querySelector('.au-dlg');
+    if (!M) { dlg.innerHTML = '<h3>My Aura</h3><div class="au-empty">Aura Points could not load right now.</div><div class="au-acts"><button type="button" class="au-btn" data-x>Close</button></div>'; dlg.querySelector('[data-x]').onclick = close; return; }
+    dlg.innerHTML = '<h3>My Aura</h3><p class="sub">Recognition from your Head and Managers' + (M.rank ? ' · #' + M.rank + ' this month' : '') + '</p>'
+      + statsHTML(M.life, M.month, M.n, 0)
+      + '<div class="au-rh" style="margin-top:4px"><span>Recent recognitions</span></div>'
+      + '<div class="au-hist">' + history(M.rows, { self: true, limit: 40 }) + '</div>'
+      + '<div class="au-acts"><button type="button" class="au-btn" data-x>Close</button></div>';
+    dlg.querySelector('[data-x]').onclick = close;
+  }
+
   // ── live toast for the signed-in employee ──────────────────────────────────
   async function watch() {
     if (S.watching) return; S.watching = true;
     var email = B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : '';
     if (!email || !db()) return;
     var r = await db().from('hr_employees').select('id').ilike('portal_email', email.replace(/[\\%_]/g, function (c) { return '\\' + c; })).limit(1);
-    var me = r.data && r.data[0]; if (!me || !window.BELive) return;
+    var me = r.data && r.data[0]; if (!me) return;
     S.me = me.id;
+    loadMine().catch(function () {});
+    // The header can be (re)built after us — keep the ring on it.
+    var mo = new MutationObserver(function () { if (S.mine && avatars().some(function (a) { return !a.parentNode.classList.contains('au-avw'); })) paintHeader(); });
+    mo.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('be-aura-changed', function () { loadMine().catch(function () {}); });
+    if (!window.BELive) return;
     BELive.on('be-aura-me', [{ table: 'aura_point_transactions', filter: 'recipient_employee_id=eq.' + me.id, event: 'INSERT' }], function (evs) {
       (evs || []).forEach(function (p) {
         var n = p && p.new; if (!n || n.status !== 'active' || Number(n.points) <= 0) return;
         try { var seen = JSON.parse(localStorage.getItem('be_aura_seen') || '[]'); if (seen.indexOf(n.id) > -1) return; seen.push(n.id); localStorage.setItem('be_aura_seen', JSON.stringify(seen.slice(-50))); } catch (_) {}
-        pop('+' + n.points + ' Aura Points', false, n.reason + (n.awarded_by_name ? ' — ' + n.awarded_by_name : ''));
+        pop('+' + n.points + ' Aura', false, n.reason + (n.awarded_by_name ? ' — ' + n.awarded_by_name : ''));
+        pulse();
       });
       document.dispatchEvent(new CustomEvent('be-aura-changed'));
     }, { debounce: 0 });
   }
 
-  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope };
+  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine };
   // Auto: start the live toast once someone is signed in (not inside embedded frames).
   var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
   if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); if (++tries < 60) setTimeout(w, 2000); })(); }

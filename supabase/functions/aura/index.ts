@@ -11,14 +11,16 @@
 // Authority (effective ERP access — hrAccessRole rules, server-side):
 //   manager             System Role manager/founder/co_founder/managing_director/director or a
 //                       management account → every department, 10/20/50/100
-//   operational_manager head-level access (academic_head / media_head / hr_admin / Sales head)
-//                       whose designation is Operations Manager → own department, 10/20/50
-//   head                head-level access → own department, 10/20/50
-//   Own department = same hr_employees.division, or a direct report (manager_email = me).
+//   operational_manager head-level access whose designation is Operations Manager, or who has
+//                       extra departments in hr_employees.managed_divisions → own division +
+//                       every managed division, 10/20/50
+//   head                head-level access (academic_head / media_head / hr_admin / Sales head)
+//                       → own division only, 10/20/50
+//   Department = hr_employees.division (no cross-department exceptions).
 //   Non-managers can only reward people BELOW their own level; nobody can reward themselves.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { adminClient, JarvisAuthError, resolveAuthContext, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
-import { clean, DIV, eligibility, POINTS, tierOf, type Row } from "../_shared/aura/rules.ts";
+import { authorizedDivisions, clean, DIV, eligibility, POINTS, tierOf, type Row } from "../_shared/aura/rules.ts";
 
 function cors(req: Request) {
   return {
@@ -38,7 +40,7 @@ async function context(req: Request): Promise<Ctx> {
   const auth = await resolveAuthContext(req);
   const db = adminClient();
   const [empR, desR, rosR] = await Promise.all([
-    db.from("hr_employees").select("id,full_name,portal_email,division,department,designation,system_role,account_type,employment_status,manager_email"),
+    db.from("hr_employees").select("*"),   // includes managed_divisions once 20261028 runs
     db.from("hr_designations").select("name,access_role,active"),
     db.from("user_roster").select("role").ilike("email", auth.email.replace(/[\\%_]/g, (c) => "\\" + c)).limit(1),
   ]);
@@ -80,7 +82,8 @@ Deno.serve(async (req) => {
         return out(req, 200, {
           me: { id: c.me.id, name: actorName, division: c.me.division },
           tier: c.tier, points: POINTS[c.tier] || [], can_award: c.tier !== "employee" && eligible.length > 0,
-          scope: c.tier === "manager" ? "organisation" : c.tier === "employee" ? "none" : (DIV[c.me.division] || c.me.division || "your team"),
+          scope: (() => { const a = authorizedDivisions(c.me, c.tier); return a === "*" ? "organisation" : a.length ? a.map((d) => DIV[d] || d).join(" + ") : "none"; })(),
+          departments: authorizedDivisions(c.me, c.tier),
           can_select_best: c.canSelectBest, can_reverse: c.tier === "manager" || c.hrAdmin, eligible,
         });
       }
