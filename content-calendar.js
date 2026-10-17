@@ -166,7 +166,7 @@
       '.cc *{box-sizing:border-box}',
       '.cc,.cc *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent}',
       '.cc ::-webkit-scrollbar,.cc::-webkit-scrollbar{width:9px;height:9px}.cc ::-webkit-scrollbar-thumb,.cc::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}.cc ::-webkit-scrollbar-track,.cc::-webkit-scrollbar-track{background:transparent}',
-      '.cc .be-sel-wrap,.cc .be-date-wrap{width:100%}.cc-filters .be-sel-wrap{width:auto}',
+      '.cc .be-sel-wrap,.cc .be-date-wrap{width:100%!important;max-width:100%;min-width:0}.cc .be-sel-trigger,.cc .be-date-trigger{max-width:100%;box-sizing:border-box}.cc-filters .be-sel-wrap{width:auto!important}',
       '.cc-sheet{position:fixed;inset:0;z-index:9150;background:rgba(3,5,9,.7);backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:22px 16px;overflow:auto}',
       '.cc-pane{width:min(1240px,100%);min-height:calc(100vh - 44px);background:var(--cc-bg);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px -20px rgba(0,0,0,.85)}',
       '.cc-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.cc-top h2{margin:0;font-size:20px;font-weight:800;color:#fff;letter-spacing:-.01em}',
@@ -207,7 +207,7 @@
       /* modal */
       '.cc-ov{position:fixed;inset:0;z-index:9350;display:grid;place-items:center;padding:16px;background:rgba(3,5,9,.6);backdrop-filter:blur(3px)}',
       '.cc-dlg{width:min(560px,100%);max-height:calc(100vh - 32px);overflow:auto;border-radius:18px;background:#0e1222;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 80px -20px rgba(0,0,0,.85);padding:20px;display:flex;flex-direction:column;gap:14px}',
-      '.cc-dlg.wide{width:min(820px,100%)}.cc-dlg h3{margin:0;font-size:18px;color:#fff;font-weight:800;overflow-wrap:anywhere}',
+      '.cc-dlg.wide{width:min(1060px,100%)}.cc-dlg h3{margin:0;font-size:18px;color:#fff;font-weight:800;overflow-wrap:anywhere}',
       '.cc-f{display:flex;flex-direction:column;gap:6px;min-width:0}.cc-f>label,.cc-f>span{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-dim)}.cc-f b{color:#f87171}',
       '.cc-in{width:100%;height:38px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.08)!important;background:rgba(255,255,255,.03)!important;color:#fff!important;font:inherit;font-size:13px!important;outline:none;color-scheme:dark}textarea.cc-in{height:auto;padding:9px 12px;resize:vertical}',
       '.cc-in:focus{border-color:rgba(255,138,61,.5)!important}',
@@ -217,6 +217,20 @@
       '.cc-people{max-height:170px;overflow:auto;display:flex;flex-wrap:wrap;gap:6px;padding:2px}',
       '.cc-acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.cc-btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e6e9f5;font:inherit;font-size:13px;font-weight:700;cursor:pointer}',
       '.cc-btn.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.cc-btn.ok{border-color:rgba(52,211,153,.45);color:#6ee7b7;background:rgba(52,211,153,.08)}.cc-btn.ghost{border-color:transparent;background:none;color:var(--cc-mute)}.cc-btn:disabled{opacity:.6;cursor:progress}',
+      '.cc-edh{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.cc-edh p{margin:3px 0 0;font-size:12px;color:#8b93b8}',
+      '.cc-ed{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;align-items:stretch}',
+      '.cc-ed-main{display:flex;flex-direction:column;gap:14px;min-width:0}.cc-ed-main .cc-grow{flex:1}.cc-ed-main .cc-grow textarea{flex:1;min-height:120px}',
+      '.cc-ed-side{display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px;border-radius:14px;background:rgba(255,255,255,.022);border:1px solid var(--cc-line)}',
+      '.cc-title{height:44px!important;font-size:15px!important;font-weight:600}',
+      '.cc-seg2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:3px;border-radius:11px;background:rgba(255,255,255,.035);border:1px solid var(--cc-line)}.cc-seg2.five{grid-template-columns:repeat(5,minmax(0,1fr))}.cc-seg2.seven{grid-template-columns:repeat(7,minmax(0,1fr))}',
+      '.cc-seg2 button{height:30px;border:0;border-radius:8px;background:none;color:#8b93b8;font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-seg2 button:hover{color:#fff}.cc-seg2 button.on{background:rgba(255,107,6,.16);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,107,6,.45)}',
+      '.cc-sm .cc-ch{height:28px;padding:0 10px;font-size:11.5px}.cc-cust{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#8b93b8}.cc-cust .cc-in{width:64px;height:28px;text-align:center;padding:0 6px}',
+      '.cc-note-t{font-style:normal;font-size:11.5px;color:#6b74a0;letter-spacing:0;text-transform:none;font-weight:500}',
+      '.cc-sub{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-dim);margin-top:8px}',
+      '.cc-ini{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:9px;font-weight:800;background:#1d2340;color:#c7cbe0;margin-left:-5px}.cc-ch.on .cc-ini{background:rgba(255,107,6,.35);color:#fff}',
+      '.cc-people{max-height:150px}',
+      '@media(max-width:860px){.cc-ed{grid-template-columns:1fr}.cc-ed-side{padding:14px}}',
+      '@media(max-width:560px){.cc-ed-side .cc-row{grid-template-columns:1fr}.cc-seg2.five button{font-size:11px}}',
       '.cc-pickbtn{text-align:left;cursor:pointer;display:flex;align-items:center}.cc-pickbtn span{color:#6b74a0}.cc-pickbtn:hover{border-color:rgba(255,255,255,.16)!important}',
       '.cc-more-t{border:0;background:none;color:#ffb37a;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:0;align-self:flex-start}',
       '.cc-err{color:#f87171;font-size:12.5px;min-height:0}',
@@ -543,17 +557,22 @@
     function draw() {
       var tl = typesFor(f.department);
       if (!f.item_type) f.item_type = (tl[0] && tl[0].code) || 'other';
-      M.dlg.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><h3>' + (f.id ? 'Edit item' : quick ? 'Quick add · ' + esc(fDay(f.item_date, { weekday: 'short' })) : 'Add Event / Content') + '</h3><button class="cc-x" data-x aria-label="Close">×</button></div>'
-        + '<div class="cc-f"><label>Title <b>*</b></label><input class="cc-in" data-k="title" maxlength="200" placeholder="e.g. Pronunciation Challenge Winner Reel" value="' + esc(f.title) + '"></div>'
+      var head = '<div class="cc-edh"><div><h3>' + (f.id ? 'Edit item' : quick && !more ? 'Quick add · ' + esc(fDay(f.item_date, { weekday: 'short' })) : 'Add Event / Content') + '</h3>'
+        + (more ? '<p>' + esc(deptName(f.department)) + ' · ' + esc(fDay(f.item_date, { weekday: 'long' })) + (f.start_time ? ', ' + esc(fTime(f.start_time)) : ' · all day') + '</p>' : '') + '</div><button class="cc-x" data-x aria-label="Close">×</button></div>';
+      var basics = '<div class="cc-f"><label>Title <b>*</b></label><input class="cc-in cc-title" data-k="title" maxlength="200" placeholder="e.g. Pronunciation Challenge Winner Reel" value="' + esc(f.title) + '"></div>'
         + '<div class="cc-f"><span>Department <b>*</b></span><div class="cc-chips">' + depts.map(function (d) { return '<button type="button" class="cc-ch' + (f.department === d ? ' on' : '') + '" data-dept="' + esc(d) + '"><i class="cc-dot" style="--c:' + (DCOL[d] || '#94a3b8') + '"></i>' + esc(deptName(d)) + '</button>'; }).join('') + '</div></div>'
         + '<div class="cc-row3"><div class="cc-f"><label>Type <b>*</b></label>' + typeField(tl) + '</div>'
         + '<div class="cc-f"><label>Date <b>*</b></label><input class="cc-in" type="date" data-k="item_date" value="' + esc(f.item_date) + '"></div>'
         + '<div class="cc-f"><label>Time</label>' + (window.BETimePicker && BETimePicker.pick
             ? '<button type="button" class="cc-in cc-pickbtn" data-time>' + (f.start_time ? esc(fTime(f.start_time)) : '<span>All day · add time</span>') + '</button><input type="hidden" data-k="start_time" value="' + esc(f.start_time) + '">'
-            : '<input class="cc-in" type="time" data-k="start_time" value="' + esc(f.start_time) + '">') + '</div></div>'
-        + (more ? details() : '<button type="button" class="cc-more-t" data-more>More details — notes, people, reminders, repeat…</button>')
-        + '<div class="cc-err" data-err></div>'
+            : '<input class="cc-in" type="time" data-k="start_time" value="' + esc(f.start_time) + '">') + '</div></div>';
+      var foot = '<div class="cc-err" data-err></div>'
         + '<div class="cc-acts"><button type="button" class="cc-btn" data-x>Cancel</button><button type="button" class="cc-btn pri" data-save>' + (f.id ? 'Save changes' : 'Save') + '</button></div>';
+      // Full form: what the item IS on the left (title, when, notes, people), how it BEHAVES on the
+      // right (platform, priority, status, reminders, repeat, links) — one screen, no long scroll.
+      M.dlg.innerHTML = more
+        ? head + '<div class="cc-ed"><div class="cc-ed-main">' + basics + mainExtra() + '</div><aside class="cc-ed-side">' + side() + '</aside></div>' + foot
+        : head + basics + '<button type="button" class="cc-more-t" data-more>More details — notes, people, reminders, repeat…</button>' + foot;
       if (more) loadWorks().then(function (ws) { var s = M.dlg.querySelector('[data-k="related_assignment_id"]'); if (!s) return; s.innerHTML = '<option value="">None</option>' + ws.map(function (w) { return '<option value="' + w.id + '"' + (String(f.related_assignment_id) === String(w.id) ? ' selected' : '') + '>' + esc((w.topic || w.type || 'Work') + ' · ' + (w.status || '')) + '</option>'; }).join(''); }).catch(function () {});
       if (!f.title) setTimeout(function () { var t = M.dlg.querySelector('[data-k="title"]'); if (t && !('ontouchstart' in window)) t.focus(); }, 30);
     }
@@ -569,22 +588,25 @@
       return '<select class="cc-in" data-k="platform_sel"><option value="">None</option>' + PLATFORMS.map(function (p) { return '<option value="' + p + '"' + (f.platform === p ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '<option value="__other"' + (other || f._otherPlat ? ' selected' : '') + '>Other…</option></select>'
         + (other || f._otherPlat ? '<input class="cc-in" data-k="platform" placeholder="Platform" value="' + esc(other ? f.platform : '') + '" style="margin-top:6px">' : '');
     }
-    function details() {
-      var ppl = people(), cm = custom();
-      return '<div class="cc-row"><div class="cc-f"><label>Platform</label>' + platformField() + '</div>'
-        + '<div class="cc-f"><span>Priority</span><div class="cc-chips">' + ['low', 'medium', 'high'].map(function (p) { return '<button type="button" class="cc-ch' + (f.priority === p ? ' on' : '') + '" data-prio="' + p + '">' + p[0].toUpperCase() + p.slice(1) + '</button>'; }).join('') + '</div></div></div>'
-        + '<div class="cc-f"><label>Description / notes</label><textarea class="cc-in" data-k="description" rows="3" maxlength="4000" placeholder="What needs to happen?">' + esc(f.description) + '</textarea></div>'
-        + '<div class="cc-f"><span>Assigned to</span><div class="cc-people">' + (ppl.length ? ppl.map(function (p) { return '<button type="button" class="cc-ch' + (f.assignees.indexOf(p.id) > -1 ? ' on' : '') + '" data-person="' + p.id + '">' + esc(p.name) + '</button>'; }).join('') : '<span style="color:#6b74a0;font-size:12px">No one to assign in this department.</span>') + '</div></div>'
-        + '<div class="cc-f"><span>Reminders</span><div class="cc-chips">' + REM.map(function (r) { return '<button type="button" class="cc-ch' + (f.reminders.indexOf(r[0]) > -1 ? ' on' : '') + '" data-rem="' + r[0] + '">' + r[1] + '</button>'; }).join('')
-        + '<button type="button" class="cc-ch' + (cm ? ' on' : '') + '" data-rem="custom">Custom</button>' + (cm ? '<input class="cc-in" inputmode="numeric" pattern="[0-9]*" maxlength="5" data-k="custom_min" style="width:90px;height:30px" value="' + esc(cm.slice(2)) + '" aria-label="Minutes before"><span style="color:#6b74a0;font-size:12px;align-self:center">min before</span>' : '') + '</div>'
-        + (!f.start_time ? '<span style="color:#6b74a0;font-size:11.5px">All-day items only use the morning reminder.</span>' : '') + '</div>'
-        + '<div class="cc-row"><div class="cc-f"><span>Repeat</span><div class="cc-chips">' + [['', 'Never'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['weekdays', 'Selected days'], ['monthly', 'Monthly']].map(function (r) { return '<button type="button" class="cc-ch' + (f.recurrence === r[0] ? ' on' : '') + '" data-rec="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>'
-        + (f.recurrence === 'weekdays' ? '<div class="cc-chips" style="margin-top:4px">' + WD.map(function (w, n) { return '<button type="button" class="cc-ch' + (f.recurrence_days.indexOf(n) > -1 ? ' on' : '') + '" data-wd="' + n + '">' + w + '</button>'; }).join('') + '</div>' : '') + '</div>'
-        + (f.recurrence ? '<div class="cc-f"><label>Repeat until (optional)</label><input class="cc-in" type="date" data-k="recurrence_until" value="' + esc(f.recurrence_until) + '"></div>' : '<div></div>') + '</div>'
-        + '<div class="cc-row"><div class="cc-f"><label>Status</label><select class="cc-in" data-k="status">' + Object.keys(ST).map(function (k) { return '<option value="' + k + '"' + (f.status === k ? ' selected' : '') + '>' + ST[k] + '</option>'; }).join('') + '</select></div>'
-        + '<div class="cc-f"><label>Related work assignment</label><select class="cc-in" data-k="related_assignment_id"><option value="">' + (f.related_assignment_id ? 'Loading…' : 'None') + '</option></select></div></div>'
-        + '<div class="cc-row"><div class="cc-f"><label>Reference link</label><input class="cc-in" data-k="reference_url" placeholder="https://" value="' + esc(f.reference_url) + '"></div>'
-        + '<div class="cc-f"><label>Attachment link</label><input class="cc-in" data-k="attachment_url" placeholder="Drive / file URL" value="' + esc(f.attachment_url) + '"></div></div>';
+    function mainExtra() {
+      var ppl = people();
+      return '<div class="cc-f cc-grow"><label>Description / notes</label><textarea class="cc-in" data-k="description" rows="5" maxlength="4000" placeholder="What needs to happen? Caption, links, hand-off notes…">' + esc(f.description) + '</textarea></div>'
+        + '<div class="cc-f"><span>Assigned to' + (f.assignees.length ? ' · ' + f.assignees.length : '') + '</span><div class="cc-people">' + (ppl.length ? ppl.map(function (p) { return '<button type="button" class="cc-ch' + (f.assignees.indexOf(p.id) > -1 ? ' on' : '') + '" data-person="' + p.id + '"><i class="cc-ini">' + esc(initials(p.name)) + '</i>' + esc(p.name) + '</button>'; }).join('') : '<em class="cc-note-t">No one to assign in this department.</em>') + '</div></div>';
+    }
+    function side() {
+      var cm = custom();
+      return '<div class="cc-f"><label>Platform</label>' + platformField() + '</div>'
+        + '<div class="cc-row"><div class="cc-f"><span>Priority</span><div class="cc-seg2">' + ['low', 'medium', 'high'].map(function (p) { return '<button type="button" class="' + (f.priority === p ? 'on' : '') + '" data-prio="' + p + '">' + p[0].toUpperCase() + p.slice(1) + '</button>'; }).join('') + '</div></div>'
+        + '<div class="cc-f"><label>Status</label><select class="cc-in" data-k="status">' + Object.keys(ST).map(function (k) { return '<option value="' + k + '"' + (f.status === k ? ' selected' : '') + '>' + ST[k] + '</option>'; }).join('') + '</select></div></div>'
+        + '<div class="cc-f"><span>Reminders</span><div class="cc-chips cc-sm">' + REM.map(function (r) { return '<button type="button" class="cc-ch' + (f.reminders.indexOf(r[0]) > -1 ? ' on' : '') + '" data-rem="' + r[0] + '">' + r[1] + '</button>'; }).join('')
+        + '<button type="button" class="cc-ch' + (cm ? ' on' : '') + '" data-rem="custom">Custom</button>' + (cm ? '<span class="cc-cust"><input class="cc-in" inputmode="numeric" pattern="[0-9]*" maxlength="5" data-k="custom_min" value="' + esc(cm.slice(2)) + '" aria-label="Minutes before"> min before</span>' : '') + '</div>'
+        + (!f.start_time ? '<em class="cc-note-t">All-day items only use the morning reminder.</em>' : '') + '</div>'
+        + '<div class="cc-f"><span>Repeat</span><div class="cc-seg2 five">' + [['', 'Never'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['weekdays', 'Days'], ['monthly', 'Monthly']].map(function (r) { return '<button type="button" class="' + (f.recurrence === r[0] ? 'on' : '') + '" data-rec="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>'
+        + (f.recurrence === 'weekdays' ? '<div class="cc-seg2 seven" style="margin-top:6px">' + WD.map(function (w, n) { return '<button type="button" class="' + (f.recurrence_days.indexOf(n) > -1 ? 'on' : '') + '" data-wd="' + n + '">' + w.slice(0, 2) + '</button>'; }).join('') + '</div>' : '')
+        + (f.recurrence ? '<label class="cc-sub">Until (optional)</label><input class="cc-in" type="date" data-k="recurrence_until" value="' + esc(f.recurrence_until) + '">' : '') + '</div>'
+        + '<div class="cc-f"><label>Related work assignment</label><select class="cc-in" data-k="related_assignment_id"><option value="">' + (f.related_assignment_id ? 'Loading…' : 'None') + '</option></select></div>'
+        + '<div class="cc-f"><label>Reference link</label><input class="cc-in" data-k="reference_url" placeholder="https://" value="' + esc(f.reference_url) + '"></div>'
+        + '<div class="cc-f"><label>Attachment link</label><input class="cc-in" data-k="attachment_url" placeholder="Drive / file URL" value="' + esc(f.attachment_url) + '"></div>';
     }
     function grab() {
       M.dlg.querySelectorAll('[data-k]').forEach(function (el) {
@@ -612,7 +634,7 @@
       if (b.hasAttribute('data-more')) { grab(); more = true; M.dlg.classList.add('wide'); return draw(); }
       if (b.hasAttribute('data-dept')) { grab(); f.department = b.getAttribute('data-dept'); var ok = people().map(function (p) { return p.id; }); f.assignees = f.assignees.filter(function (id) { return ok.indexOf(id) > -1; }); works = null; return draw(); }
       if (b.hasAttribute('data-prio')) { f.priority = b.getAttribute('data-prio'); M.dlg.querySelectorAll('[data-prio]').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
-      if (b.hasAttribute('data-person')) { var id = b.getAttribute('data-person'), k = f.assignees.indexOf(id); if (k > -1) f.assignees.splice(k, 1); else f.assignees.push(id); b.classList.toggle('on', k < 0); return; }
+      if (b.hasAttribute('data-person')) { var id = b.getAttribute('data-person'), k = f.assignees.indexOf(id); if (k > -1) f.assignees.splice(k, 1); else f.assignees.push(id); b.classList.toggle('on', k < 0); var lab = b.closest('.cc-f') && b.closest('.cc-f').querySelector('span'); if (lab) lab.textContent = 'Assigned to' + (f.assignees.length ? ' · ' + f.assignees.length : ''); return; }
       if (b.hasAttribute('data-rem')) {
         grab(); var r = b.getAttribute('data-rem');
         if (r === 'custom') { if (custom()) f.reminders = f.reminders.filter(function (x) { return !/^m:/.test(x); }); else f.reminders.push('m:15'); return draw(); }
