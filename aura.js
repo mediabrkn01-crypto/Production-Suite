@@ -42,6 +42,8 @@
     var s = document.createElement('style'); s.id = 'aura-css';
     s.textContent = [
       '.au{--au:#ff8a3d;color:#e6e9f5;font-family:inherit}',
+      '.au,.au *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent}',
+      '.au ::-webkit-scrollbar,.au::-webkit-scrollbar{width:9px;height:9px}.au ::-webkit-scrollbar-thumb,.au::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}.au ::-webkit-scrollbar-track,.au::-webkit-scrollbar-track{background:transparent}',
       '.au-stat{display:flex;align-items:center;gap:16px;flex-wrap:wrap}',
       '.au-num{display:flex;flex-direction:column;gap:2px;min-width:0;cursor:pointer;border:0;background:none;color:inherit;font:inherit;text-align:left;padding:0}',
       '.au-k{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#8b93b8}.au-k svg{color:var(--au)}',
@@ -494,8 +496,8 @@
       + (sc && sc.can_award && !opts.embedded ? '<button type="button" class="au-give" data-au-give style="margin-left:0">' + MARK + 'Give Aura Points</button>' : '') + '</div>'
       + '<div class="aud-bar"><div class="aud-seg" role="tablist">' + [['this', 'This month'], ['prev', 'Previous month'], ['custom', 'Custom'], ['all', 'All time']].map(function (p) { return '<button type="button" data-per="' + p[0] + '" class="' + (D.period === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div>'
       + (D.period === 'custom' ? '<input type="date" class="au-in" data-from value="' + esc(D.from) + '" aria-label="From"><input type="date" class="au-in" data-to value="' + esc(D.to) + '" aria-label="To">' : '') + '</div>'
-      + '<div class="aud-bar"><input class="au-in q" data-q placeholder="Search employee or role" value="' + esc(D.q) + '">' + (depts.length > 1 ? '<select class="au-in" data-dept data-native><option value="">All departments</option>' + depts.map(function (d) { return '<option value="' + d + '"' + (D.dept === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select>' : '')
-      + '<select class="au-in" data-sort data-native><option value="period"' + (key === 'per' ? ' selected' : '') + '>Sort: points in period</option><option value="life"' + (key === 'life' ? ' selected' : '') + '>Sort: lifetime points</option><option value="name"' + (key === 'name' ? ' selected' : '') + '>Sort: name</option></select></div>'
+      + '<div class="aud-bar"><input class="au-in q" data-q placeholder="Search employee or role" value="' + esc(D.q) + '">' + (depts.length > 1 ? '<select class="au-in" data-dept><option value="">All departments</option>' + depts.map(function (d) { return '<option value="' + d + '"' + (D.dept === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select>' : '')
+      + '<select class="au-in" data-sort><option value="period"' + (key === 'per' ? ' selected' : '') + '>Sort: points in period</option><option value="life"' + (key === 'life' ? ' selected' : '') + '>Sort: lifetime points</option><option value="name"' + (key === 'name' ? ' selected' : '') + '>Sort: name</option></select></div>'
       + '<div class="aud-tabs"><button type="button" data-tab="rank" class="' + (D.tab === 'rank' ? 'on' : '') + '">Best Employee · ranking</button><button type="button" data-tab="all" class="' + (D.tab === 'all' ? 'on' : '') + '">All employees</button></div>'
       + (D.tab === 'rank' ? rankHTML(list, P, sc, curBest, can) : tableHTML(list, can))
       + '</div>';

@@ -117,27 +117,18 @@
     if (i.recurrence === 'monthly') { var want = +i.item_date.slice(8, 10), last = +monthEnd(d).slice(8, 10); return +d.slice(8, 10) === Math.min(want, last); }
     return false;
   }
+  // Calendar rows come ONLY from the calendar function, which returns what this person may see
+  // (own / managed departments + company-wide + items assigned to them; everything for
+  // managers and HR admins). The browser key cannot read these tables (20261031).
   async function load(from, to) {
-    var c = db();
-    var r = await c.from('content_calendar_items').select('*')
-      .or('and(recurrence.is.null,item_date.gte.' + from + ',item_date.lte.' + to + '),and(recurrence.not.is.null,item_date.lte.' + to + ')').limit(3000);
-    if (r.error) throw r.error;
-    var items = (r.data || []).filter(function (i) { return !i.recurrence || !i.recurrence_until || i.recurrence_until >= from; });
-    var ids = items.map(function (i) { return i.id; }), asg = {}, occ = {};
-    for (var k = 0; k < ids.length; k += 150) {
-      var part = ids.slice(k, k + 150);
-      var a = await c.from('content_calendar_assignees').select('item_id,employee_id').in('item_id', part);
-      (a.data || []).forEach(function (x) { (asg[x.item_id] = asg[x.item_id] || []).push(x.employee_id); });
-      var rec = items.filter(function (i) { return i.recurrence && part.indexOf(i.id) > -1; }).map(function (i) { return i.id; });
-      if (rec.length) {
-        var o = await c.from('content_calendar_occurrences').select('*').in('item_id', rec).gte('occ_date', from).lte('occ_date', to);
-        (o.data || []).forEach(function (x) { occ[x.item_id + '|' + x.occ_date] = x; });
-      }
-    }
+    var r = await api('list', { from: from, to: to });
+    names(r.names);
+    var asg = {}, occ = {};
+    (r.assignees || []).forEach(function (x) { (asg[x.item_id] = asg[x.item_id] || []).push(x.employee_id); });
+    (r.occurrences || []).forEach(function (x) { occ[x.item_id + '|' + x.occ_date] = x; });
     var out = [];
-    items.forEach(function (i) {
+    (r.items || []).forEach(function (i) {
       i.assignees = asg[i.id] || [];
-      if (!visible(i)) return;
       for (var d = i.recurrence ? (i.item_date > from ? i.item_date : from) : i.item_date; d <= to; d = add(d, 1)) {
         if (d >= from && occurs(i, d)) {
           var o = occ[i.id + '|' + d];
@@ -150,6 +141,7 @@
     out.sort(function (a, b) { return (a.date + (a.i.start_time || '99')).localeCompare(b.date + (b.i.start_time || '99')); });
     return out;
   }
+  function names(m) { S.names = Object.assign(S.names || {}, m || {}); }
   // Who sees what (the server applies the same scope to every write).
   function visible(i) {
     var sc = S.scope; if (!sc) return false;
@@ -163,7 +155,7 @@
     return o.date < t || (o.date === t && !!o.i.start_time && o.i.start_time.slice(0, 5) < nowHM());
   }
   function mine(o) { var me = S.scope && S.scope.me || {}; return (o.i.assignees || []).indexOf(me.id) > -1; }
-  function personName(id) { var p = (S.scope && S.scope.people || []).filter(function (x) { return x.id === id; })[0]; return p ? p.name : ''; }
+  function personName(id) { if (S.names && S.names[id]) return S.names[id]; var p = (S.scope && S.scope.people || []).filter(function (x) { return x.id === id; })[0]; return p ? p.name : ''; }
 
   // ── styles ───────────────────────────────────────────────────────────────
   function css() {
@@ -172,6 +164,9 @@
     s.textContent = [
       '.cc{--cc-bg:#0b0f1c;--cc-card:#0e1222;--cc-line:rgba(255,255,255,.06);--cc-mute:#8b93b8;--cc-dim:#6b74a0;--cc-acc:#ff8a3d;color:#e6e9f5;font-family:inherit}',
       '.cc *{box-sizing:border-box}',
+      '.cc,.cc *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent}',
+      '.cc ::-webkit-scrollbar,.cc::-webkit-scrollbar{width:9px;height:9px}.cc ::-webkit-scrollbar-thumb,.cc::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}.cc ::-webkit-scrollbar-track,.cc::-webkit-scrollbar-track{background:transparent}',
+      '.cc .be-sel-wrap,.cc .be-date-wrap{width:100%}.cc-filters .be-sel-wrap{width:auto}',
       '.cc-sheet{position:fixed;inset:0;z-index:9150;background:rgba(3,5,9,.7);backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:22px 16px;overflow:auto}',
       '.cc-pane{width:min(1240px,100%);min-height:calc(100vh - 44px);background:var(--cc-bg);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px -20px rgba(0,0,0,.85)}',
       '.cc-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.cc-top h2{margin:0;font-size:20px;font-weight:800;color:#fff;letter-spacing:-.01em}',
@@ -222,6 +217,7 @@
       '.cc-people{max-height:170px;overflow:auto;display:flex;flex-wrap:wrap;gap:6px;padding:2px}',
       '.cc-acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.cc-btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e6e9f5;font:inherit;font-size:13px;font-weight:700;cursor:pointer}',
       '.cc-btn.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.cc-btn.ok{border-color:rgba(52,211,153,.45);color:#6ee7b7;background:rgba(52,211,153,.08)}.cc-btn.ghost{border-color:transparent;background:none;color:var(--cc-mute)}.cc-btn:disabled{opacity:.6;cursor:progress}',
+      '.cc-pickbtn{text-align:left;cursor:pointer;display:flex;align-items:center}.cc-pickbtn span{color:#6b74a0}.cc-pickbtn:hover{border-color:rgba(255,255,255,.16)!important}',
       '.cc-more-t{border:0;background:none;color:#ffb37a;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:0;align-self:flex-start}',
       '.cc-err{color:#f87171;font-size:12.5px;min-height:0}',
       '.cc-ro{font-size:12px;color:#fcd34d;padding:8px 12px;border-radius:10px;border:1px solid rgba(252,211,77,.22);background:rgba(252,211,77,.05)}',
@@ -331,7 +327,11 @@
     var pane = sh.querySelector('.cc-pane'), U = S.ui, R = range();
     var head = function () {
       var sc = S.scope;
-      var depts = sc ? (sc.view_all ? sc.departments.map(function (d) { return d.code; }) : uniq([sc.me && sc.me.division].concat(manageable())).filter(Boolean)).concat(['company']) : [];
+      // Department filter: only the departments this person may browse (server scope). One
+      // department → no filter at all; several (Operations Manager) → just those; managers / HR
+      // admins → All departments + every department.
+      var vis = sc ? (sc.view_departments === '*' || sc.view_all ? sc.departments.map(function (d) { return d.code; }) : (sc.view_departments || uniq([sc.me && sc.me.division].concat(manageable())).filter(Boolean))) : [];
+      var showDept = vis.length > 1;
       var people = (sc && sc.people) || [];
       return '<div class="cc-top"><h2>Content Calendar</h2>'
         + '<div class="cc-nav"><button type="button" class="cc-ib" data-mv="-1" aria-label="Previous">‹</button><button type="button" class="cc-tbtn" data-today>Today</button><button type="button" class="cc-ib" data-mv="1" aria-label="Next">›</button></div>'
@@ -340,12 +340,12 @@
         + (canAdd() ? '<button type="button" class="cc-add" data-new>+ Add Event / Content</button>' : '')
         + '<button type="button" class="cc-x" data-close aria-label="Close">×</button></div>'
         + '<div class="cc-filters">'
-        + '<select class="cc-sel" data-native data-f="dept"><option value="">' + (sc && sc.view_all ? 'All departments' : 'My calendar') + '</option>' + depts.map(function (d) { return '<option value="' + esc(d) + '"' + (U.dept === d ? ' selected' : '') + '>' + esc(deptName(d)) + '</option>'; }).join('') + '</select>'
-        + '<select class="cc-sel" data-native data-f="type"><option value="">All types</option>' + (S.types || []).map(function (t) { return '<option value="' + esc(t.code) + '"' + (U.type === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>'; }).join('') + '</select>'
-        + '<select class="cc-sel" data-native data-f="status"><option value="">Any status</option>' + Object.keys(ST).concat(['overdue']).map(function (k) { return '<option value="' + k + '"' + (U.status === k ? ' selected' : '') + '>' + (ST[k] || 'Overdue') + '</option>'; }).join('') + '</select>'
-        + '<select class="cc-sel" data-native data-f="prio"><option value="">Any priority</option>' + ['high', 'medium', 'low'].map(function (k) { return '<option value="' + k + '"' + (U.prio === k ? ' selected' : '') + '>' + k[0].toUpperCase() + k.slice(1) + '</option>'; }).join('') + '</select>'
-        + '<select class="cc-sel" data-native data-f="person"><option value="">Everyone</option><option value="me"' + (U.person === 'me' ? ' selected' : '') + '>Assigned to me</option>' + people.map(function (p) { return '<option value="' + p.id + '"' + (U.person === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'
-        + '</div>' + (sc && sc.readonly ? '<div class="cc-ro">Showing your department, company-wide and assigned items (view only). To add or edit items, sign out and sign in again.</div>' : '') + '<div data-body></div>';
+        + (showDept ? '<select class="cc-sel" data-f="dept"><option value="">' + (sc && sc.view_all ? 'All departments' : esc(vis.map(deptName).join(' + '))) + '</option>' + vis.concat(['company']).map(function (d) { return '<option value="' + esc(d) + '"' + (U.dept === d ? ' selected' : '') + '>' + esc(deptName(d)) + '</option>'; }).join('') + '</select>' : '')
+        + '<select class="cc-sel" data-f="type"><option value="">All types</option>' + (S.types || []).filter(function (t) { return sc && (sc.view_all || !t.departments || !t.departments.length || t.departments.some(function (d) { return vis.indexOf(d) > -1; })); }).map(function (t) { return '<option value="' + esc(t.code) + '"' + (U.type === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>'; }).join('') + '</select>'
+        + '<select class="cc-sel" data-f="status"><option value="">Any status</option>' + Object.keys(ST).concat(['overdue']).map(function (k) { return '<option value="' + k + '"' + (U.status === k ? ' selected' : '') + '>' + (ST[k] || 'Overdue') + '</option>'; }).join('') + '</select>'
+        + '<select class="cc-sel" data-f="prio"><option value="">Any priority</option>' + ['high', 'medium', 'low'].map(function (k) { return '<option value="' + k + '"' + (U.prio === k ? ' selected' : '') + '>' + k[0].toUpperCase() + k.slice(1) + '</option>'; }).join('') + '</select>'
+        + (people.length ? '<select class="cc-sel" data-f="person"><option value="">Everyone</option><option value="me"' + (U.person === 'me' ? ' selected' : '') + '>Assigned to me</option>' + people.map(function (p) { return '<option value="' + p.id + '"' + (U.person === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>' : '')
+        + '</div>' + (sc && sc.readonly ? '<div class="cc-ro">Sign out and sign in again to load your calendar.</div>' : '') + '<div data-body></div>';
     };
     pane.innerHTML = head();
     var body = pane.querySelector('[data-body]');
@@ -438,22 +438,23 @@
   // ════════════════════════════════════════════════════════════════════════
   // One item
   // ════════════════════════════════════════════════════════════════════════
-  async function fetchItem(id) {
-    var r = await db().from('content_calendar_items').select('*').eq('id', id).maybeSingle();
-    if (!r.data) return null;
-    var a = await db().from('content_calendar_assignees').select('employee_id').eq('item_id', id);
-    r.data.assignees = (a.data || []).map(function (x) { return x.employee_id; });
-    return r.data;
+  async function fetchItem(id, date) {
+    var r = await api('item', { id: id, occ_date: date || null });
+    names(r.names); r.item._occ = r.occurrence || null; r.item._occDate = date || null;
+    return r.item;
   }
   async function openItem(id, date) {
     css();
     var M = modal('<h3>Loading…</h3>');
     var i, sc;
-    try { var res = await Promise.all([fetchItem(id), scope(), types()]); i = res[0]; sc = res[1]; } catch (e) { M.dlg.innerHTML = '<h3>Could not load</h3><div class="cc-err">' + esc(e.message) + '</div>'; return; }
+    try { var res = await Promise.all([fetchItem(id, date), scope(), types()]); i = res[0]; sc = res[1]; } catch (e) { M.dlg.innerHTML = '<h3>Not available</h3><p style="color:#8b93b8;margin:0">' + esc(e.message) + '</p><div class="cc-acts"><button class="cc-btn" data-x>Close</button></div>'; M.dlg.querySelector('[data-x]').onclick = M.close; return; }
     if (!i || !visible(i)) { M.dlg.innerHTML = '<h3>Not available</h3><p style="color:#8b93b8;margin:0">This item was removed or is outside your calendar.</p><div class="cc-acts"><button class="cc-btn" data-x>Close</button></div>'; M.dlg.querySelector('[data-x]').onclick = M.close; return; }
     if (!date || !occurs(i, date)) date = i.recurrence ? (occurs(i, today()) ? today() : i.item_date) : i.item_date;
     var o = { i: i, date: date, status: i.status };
-    if (i.recurrence && i.status !== 'cancelled') { var r = await db().from('content_calendar_occurrences').select('*').eq('item_id', i.id).eq('occ_date', date).maybeSingle(); o.status = r.data ? r.data.status : 'planned'; o.occ = r.data; }
+    if (i.recurrence && i.status !== 'cancelled') {
+      var oc = i._occDate === date ? i._occ : ((await fetchItem(id, date).catch(function () { return {}; }))._occ || null);
+      o.status = oc ? oc.status : 'planned'; o.occ = oc;
+    }
     var me = sc.me || {}, manage = canManage(i.department), assigned = i.assignees.indexOf(me.id) > -1;
     var canStatus = manage || assigned;
     var rec = i.recurrence ? ({ daily: 'Every day', weekly: 'Every ' + WD[dow(i.item_date)], weekdays: 'Every ' + ((i.recurrence_days && i.recurrence_days.length ? i.recurrence_days : [dow(i.item_date)]).map(function (n) { return WD[n]; }).join(', ')), monthly: 'Monthly on day ' + (+i.item_date.slice(8)) }[i.recurrence] + (i.recurrence_until ? ' until ' + fDay(i.recurrence_until, { year: 'numeric' }) : '')) : '';
@@ -545,43 +546,69 @@
       M.dlg.innerHTML = '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><h3>' + (f.id ? 'Edit item' : quick ? 'Quick add · ' + esc(fDay(f.item_date, { weekday: 'short' })) : 'Add Event / Content') + '</h3><button class="cc-x" data-x aria-label="Close">×</button></div>'
         + '<div class="cc-f"><label>Title <b>*</b></label><input class="cc-in" data-k="title" maxlength="200" placeholder="e.g. Pronunciation Challenge Winner Reel" value="' + esc(f.title) + '"></div>'
         + '<div class="cc-f"><span>Department <b>*</b></span><div class="cc-chips">' + depts.map(function (d) { return '<button type="button" class="cc-ch' + (f.department === d ? ' on' : '') + '" data-dept="' + esc(d) + '"><i class="cc-dot" style="--c:' + (DCOL[d] || '#94a3b8') + '"></i>' + esc(deptName(d)) + '</button>'; }).join('') + '</div></div>'
-        + '<div class="cc-row3"><div class="cc-f"><label>Type <b>*</b></label><input class="cc-in" data-k="item_type_label" list="cc-types" value="' + esc(typeLabel(f.item_type)) + '"><datalist id="cc-types">' + tl.map(function (t) { return '<option value="' + esc(t.label) + '">'; }).join('') + '</datalist></div>'
-        + '<div class="cc-f"><label>Date <b>*</b></label><input class="cc-in" type="date" data-native data-k="item_date" value="' + esc(f.item_date) + '"></div>'
-        + '<div class="cc-f"><label>Time</label><input class="cc-in" type="time" data-native data-k="start_time" value="' + esc(f.start_time) + '"></div></div>'
+        + '<div class="cc-row3"><div class="cc-f"><label>Type <b>*</b></label>' + typeField(tl) + '</div>'
+        + '<div class="cc-f"><label>Date <b>*</b></label><input class="cc-in" type="date" data-k="item_date" value="' + esc(f.item_date) + '"></div>'
+        + '<div class="cc-f"><label>Time</label>' + (window.BETimePicker && BETimePicker.pick
+            ? '<button type="button" class="cc-in cc-pickbtn" data-time>' + (f.start_time ? esc(fTime(f.start_time)) : '<span>All day · add time</span>') + '</button><input type="hidden" data-k="start_time" value="' + esc(f.start_time) + '">'
+            : '<input class="cc-in" type="time" data-k="start_time" value="' + esc(f.start_time) + '">') + '</div></div>'
         + (more ? details() : '<button type="button" class="cc-more-t" data-more>More details — notes, people, reminders, repeat…</button>')
         + '<div class="cc-err" data-err></div>'
         + '<div class="cc-acts"><button type="button" class="cc-btn" data-x>Cancel</button><button type="button" class="cc-btn pri" data-save>' + (f.id ? 'Save changes' : 'Save') + '</button></div>';
       if (more) loadWorks().then(function (ws) { var s = M.dlg.querySelector('[data-k="related_assignment_id"]'); if (!s) return; s.innerHTML = '<option value="">None</option>' + ws.map(function (w) { return '<option value="' + w.id + '"' + (String(f.related_assignment_id) === String(w.id) ? ' selected' : '') + '>' + esc((w.topic || w.type || 'Work') + ' · ' + (w.status || '')) + '</option>'; }).join(''); }).catch(function () {});
       if (!f.title) setTimeout(function () { var t = M.dlg.querySelector('[data-k="title"]'); if (t && !('ontouchstart' in window)) t.focus(); }, 30);
     }
+    // Type: the shared ERP dropdown of known types, plus "Other…" → free text (new types allowed).
+    function typeField(tl) {
+      var known = tl.some(function (t) { return t.code === f.item_type; });
+      var other = f._otherType || (!known && f.item_type);
+      return '<select class="cc-in" data-k="item_type_sel">' + tl.map(function (t) { return '<option value="' + esc(t.code) + '"' + (!other && f.item_type === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>'; }).join('') + '<option value="__other"' + (other ? ' selected' : '') + '>Other…</option></select>'
+        + (other ? '<input class="cc-in" data-k="item_type_other" placeholder="Type name" value="' + esc(f._typeLabel || (known ? '' : typeLabel(f.item_type))) + '" style="margin-top:6px">' : '');
+    }
+    function platformField() {
+      var other = f.platform && PLATFORMS.indexOf(f.platform) < 0;
+      return '<select class="cc-in" data-k="platform_sel"><option value="">None</option>' + PLATFORMS.map(function (p) { return '<option value="' + p + '"' + (f.platform === p ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '<option value="__other"' + (other || f._otherPlat ? ' selected' : '') + '>Other…</option></select>'
+        + (other || f._otherPlat ? '<input class="cc-in" data-k="platform" placeholder="Platform" value="' + esc(other ? f.platform : '') + '" style="margin-top:6px">' : '');
+    }
     function details() {
       var ppl = people(), cm = custom();
-      return '<div class="cc-row"><div class="cc-f"><label>Platform</label><input class="cc-in" data-k="platform" list="cc-plat" placeholder="Instagram, YouTube…" value="' + esc(f.platform) + '"><datalist id="cc-plat">' + PLATFORMS.map(function (p) { return '<option value="' + p + '">'; }).join('') + '</datalist></div>'
+      return '<div class="cc-row"><div class="cc-f"><label>Platform</label>' + platformField() + '</div>'
         + '<div class="cc-f"><span>Priority</span><div class="cc-chips">' + ['low', 'medium', 'high'].map(function (p) { return '<button type="button" class="cc-ch' + (f.priority === p ? ' on' : '') + '" data-prio="' + p + '">' + p[0].toUpperCase() + p.slice(1) + '</button>'; }).join('') + '</div></div></div>'
         + '<div class="cc-f"><label>Description / notes</label><textarea class="cc-in" data-k="description" rows="3" maxlength="4000" placeholder="What needs to happen?">' + esc(f.description) + '</textarea></div>'
         + '<div class="cc-f"><span>Assigned to</span><div class="cc-people">' + (ppl.length ? ppl.map(function (p) { return '<button type="button" class="cc-ch' + (f.assignees.indexOf(p.id) > -1 ? ' on' : '') + '" data-person="' + p.id + '">' + esc(p.name) + '</button>'; }).join('') : '<span style="color:#6b74a0;font-size:12px">No one to assign in this department.</span>') + '</div></div>'
         + '<div class="cc-f"><span>Reminders</span><div class="cc-chips">' + REM.map(function (r) { return '<button type="button" class="cc-ch' + (f.reminders.indexOf(r[0]) > -1 ? ' on' : '') + '" data-rem="' + r[0] + '">' + r[1] + '</button>'; }).join('')
-        + '<button type="button" class="cc-ch' + (cm ? ' on' : '') + '" data-rem="custom">Custom</button>' + (cm ? '<input class="cc-in" type="number" min="1" max="10080" data-native data-k="custom_min" style="width:110px;height:30px" value="' + esc(cm.slice(2)) + '" aria-label="Minutes before"><span style="color:#6b74a0;font-size:12px;align-self:center">min before</span>' : '') + '</div>'
+        + '<button type="button" class="cc-ch' + (cm ? ' on' : '') + '" data-rem="custom">Custom</button>' + (cm ? '<input class="cc-in" inputmode="numeric" pattern="[0-9]*" maxlength="5" data-k="custom_min" style="width:90px;height:30px" value="' + esc(cm.slice(2)) + '" aria-label="Minutes before"><span style="color:#6b74a0;font-size:12px;align-self:center">min before</span>' : '') + '</div>'
         + (!f.start_time ? '<span style="color:#6b74a0;font-size:11.5px">All-day items only use the morning reminder.</span>' : '') + '</div>'
         + '<div class="cc-row"><div class="cc-f"><span>Repeat</span><div class="cc-chips">' + [['', 'Never'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['weekdays', 'Selected days'], ['monthly', 'Monthly']].map(function (r) { return '<button type="button" class="cc-ch' + (f.recurrence === r[0] ? ' on' : '') + '" data-rec="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>'
         + (f.recurrence === 'weekdays' ? '<div class="cc-chips" style="margin-top:4px">' + WD.map(function (w, n) { return '<button type="button" class="cc-ch' + (f.recurrence_days.indexOf(n) > -1 ? ' on' : '') + '" data-wd="' + n + '">' + w + '</button>'; }).join('') + '</div>' : '') + '</div>'
-        + (f.recurrence ? '<div class="cc-f"><label>Repeat until (optional)</label><input class="cc-in" type="date" data-native data-k="recurrence_until" value="' + esc(f.recurrence_until) + '"></div>' : '<div></div>') + '</div>'
-        + '<div class="cc-row"><div class="cc-f"><label>Status</label><select class="cc-in" data-native data-k="status">' + Object.keys(ST).map(function (k) { return '<option value="' + k + '"' + (f.status === k ? ' selected' : '') + '>' + ST[k] + '</option>'; }).join('') + '</select></div>'
-        + '<div class="cc-f"><label>Related work assignment</label><select class="cc-in" data-native data-k="related_assignment_id"><option value="">' + (f.related_assignment_id ? 'Loading…' : 'None') + '</option></select></div></div>'
+        + (f.recurrence ? '<div class="cc-f"><label>Repeat until (optional)</label><input class="cc-in" type="date" data-k="recurrence_until" value="' + esc(f.recurrence_until) + '"></div>' : '<div></div>') + '</div>'
+        + '<div class="cc-row"><div class="cc-f"><label>Status</label><select class="cc-in" data-k="status">' + Object.keys(ST).map(function (k) { return '<option value="' + k + '"' + (f.status === k ? ' selected' : '') + '>' + ST[k] + '</option>'; }).join('') + '</select></div>'
+        + '<div class="cc-f"><label>Related work assignment</label><select class="cc-in" data-k="related_assignment_id"><option value="">' + (f.related_assignment_id ? 'Loading…' : 'None') + '</option></select></div></div>'
         + '<div class="cc-row"><div class="cc-f"><label>Reference link</label><input class="cc-in" data-k="reference_url" placeholder="https://" value="' + esc(f.reference_url) + '"></div>'
         + '<div class="cc-f"><label>Attachment link</label><input class="cc-in" data-k="attachment_url" placeholder="Drive / file URL" value="' + esc(f.attachment_url) + '"></div></div>';
     }
     function grab() {
       M.dlg.querySelectorAll('[data-k]').forEach(function (el) {
         var k = el.getAttribute('data-k');
+        if (k === 'item_type_sel') { if (el.value === '__other') { f._otherType = true; } else { f._otherType = false; f.item_type = el.value; f._typeLabel = ''; } return; }
+        if (k === 'item_type_other') { var tv = el.value.trim(); f._typeLabel = tv; f.item_type = tv ? tv.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') : ''; return; }
+        if (k === 'platform_sel') { if (el.value === '__other') { f._otherPlat = true; } else { f._otherPlat = false; f.platform = el.value; } return; }
         if (k === 'item_type_label') { var v = el.value.trim(); var t = (S.types || []).filter(function (x) { return x.label.toLowerCase() === v.toLowerCase() || x.code === v.toLowerCase(); })[0]; f.item_type = t ? t.code : (v ? v.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') : ''); f._typeLabel = v; return; }
         if (k === 'custom_min') { var n = Math.max(1, Math.min(10080, parseInt(el.value, 10) || 0)); f.reminders = f.reminders.filter(function (r) { return !/^m:/.test(r); }); if (n) f.reminders.push('m:' + n); return; }
         f[k] = el.value;
       });
     }
+    M.dlg.addEventListener('change', function (e) {
+      var k = e.target.getAttribute && e.target.getAttribute('data-k');
+      if (k === 'item_type_sel' || k === 'platform_sel') { grab(); if (k === 'item_type_sel' && f._otherType && !f._typeLabel) f.item_type = ''; draw(); }
+    });
     M.dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b || busy) return;
       if (b.hasAttribute('data-x')) return M.close();
+      if (b.hasAttribute('data-time')) {   // the shared ERP clock (be-timepicker.js)
+        grab();
+        BETimePicker.pick({ value: f.start_time || '', title: 'Time', onConfirm: function (t) { f.start_time = String(t || '').slice(0, 5); draw(); }, onClear: function () { f.start_time = ''; draw(); } });
+        return;
+      }
       if (b.hasAttribute('data-more')) { grab(); more = true; M.dlg.classList.add('wide'); return draw(); }
       if (b.hasAttribute('data-dept')) { grab(); f.department = b.getAttribute('data-dept'); var ok = people().map(function (p) { return p.id; }); f.assignees = f.assignees.filter(function (id) { return ok.indexOf(id) > -1; }); works = null; return draw(); }
       if (b.hasAttribute('data-prio')) { f.priority = b.getAttribute('data-prio'); M.dlg.querySelectorAll('[data-prio]').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
@@ -689,20 +716,11 @@
     // Deep links: #calendar, ?cal=<id>[&d=<date>]
     try { var q = new URLSearchParams(location.search); if (q.get('cal')) openItem(q.get('cal'), q.get('d')); else if (location.hash === '#calendar') open(); } catch (_) {}
     if (!window.BELive || !S.me) return;
-    BELive.on('be-cal-items', [{ table: 'content_calendar_items', event: '*' }, { table: 'content_calendar_occurrences', event: '*' }, { table: 'content_calendar_assignees', event: '*' }], function () { refresh(); }, { debounce: 500 });
-    // Assigned while the ERP is open → toast right away.
-    BELive.on('be-cal-mine', [{ table: 'content_calendar_assignees', filter: 'employee_id=eq.' + S.me, event: 'INSERT' }], async function (evs) {
-      for (var k = 0; k < (evs || []).length; k++) {
-        var n = evs[k] && evs[k].new; if (!n) continue;
-        try { var seen = JSON.parse(sessionStorage.getItem('be_cal_seen') || '[]'); if (seen.indexOf(n.item_id) > -1) continue; seen.push(n.item_id); sessionStorage.setItem('be_cal_seen', JSON.stringify(seen.slice(-50))); } catch (_) {}
-        var i = await fetchItem(n.item_id); if (!i || i.created_by_employee_id === S.me) continue;
-        (function (i) { note({ title: 'New calendar item', sub: 'You were assigned “' + i.title + '” — ' + (i.item_date === today() ? 'today' : fDay(i.item_date, { weekday: 'short' })) + (i.start_time ? ', ' + fTime(i.start_time) : ''), onView: function () { openItem(i.id, i.item_date); } }); })(i);
-      }
-    }, { debounce: 0 });
+    BELive.on('be-cal-items', [{ table: 'content_calendar_pings', event: '*' }], function () { refresh(); }, { debounce: 500 });
     // Reminders delivered by the server → small toast with View (also in the Notification Center).
     if (S.email) BELive.on('be-cal-rem', [{ table: 'erp_notifications', filter: 'recipient_email=eq.' + S.email, event: 'INSERT' }], function (evs) {
       (evs || []).forEach(function (p) {
-        var n = p && p.new; if (!n || n.type !== 'calendar_reminder') return;
+        var n = p && p.new; if (!n || (n.type !== 'calendar_reminder' && n.type !== 'calendar_assigned')) return;   // reminders + "you were assigned" (server-created)
         var m = String(n.link || '').match(/^cal:([^:]+):?(.*)$/);
         note({ title: n.title, sub: n.message, onView: m ? function () { openItem(m[1], m[2]); } : null, ms: 9000 });
       });

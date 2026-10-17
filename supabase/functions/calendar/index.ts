@@ -6,14 +6,18 @@
 //   {action:"scope"}                                      what I may see / manage + who I may assign
 //   {action:"save", item:{id?,…}, assignees:[employee ids]} create or edit (managers of that department)
 //   {action:"status", id, occ_date?, status}              planned | in_progress | completed | cancelled
+//   {action:"list", from, to}                             items I may see in a date range (+ assignees, occurrences)
+//   {action:"item", id}                                   one item, only if I may see it
 //
 // Authority (same effective-access rules as Aura, _shared/aura/rules.ts):
 //   manager tier (leadership system role / management account) → manage every department + company-wide
-//   HR admin                       → manage HR + company-wide; see everything
+//   HR admin (system role hr_admin) → manage HR + company-wide; see every department
 //   operational_manager / head     → manage own division (+ managed_divisions for Operations Managers)
 //   employee                       → view; update status of items assigned to them
-// Viewing: managers / HR see all; everyone else sees their manageable departments, their own
-// department, company-wide items and anything assigned to them.
+// Viewing (enforced HERE — the browser cannot read the calendar tables, 20261031):
+//   manager tier / HR admin → every department
+//   everyone else           → own division + departments they manage + company-wide
+//                             + the individual items assigned to them (not that department's calendar)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { adminClient, JarvisAuthError, resolveAuthContext, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
 import { authorizedDivisions, clean, DIV, tierOf, type Row } from "../_shared/aura/rules.ts";
@@ -58,17 +62,23 @@ async function context(req: Request): Promise<Ctx> {
   const me = emps.find((e) => e.id === auth.employeeId);
   if (!me) throw new JarvisAuthError(403, "FORBIDDEN", "Your sign-in is not linked to an employee record.");
   const tier = tierOf(me, (desR.data || []) as Row[]);
-  const hrAdmin = lc(me.system_role) === "hr_admin" || lc(rosR.data?.[0]?.role) === "admin";
+  // HR's organisation-wide calendar access comes from the HR admin system role only — not from
+  // being in the HR division, payroll permission or the app-admin roster flag.
+  const hrAdmin = lc(me.system_role) === "hr_admin";
+  void rosR;
   let manage: "*" | string[] = authorizedDivisions(me, tier);
   if (hrAdmin && manage !== "*" && !manage.includes("hr")) manage = [...manage, "hr"];
   const company = tier === "manager" || hrAdmin;
-  const viewAll = tier === "manager" || hrAdmin || auth.permissions.includes("hr.payroll");
+  const viewAll = tier === "manager" || hrAdmin;
   return { auth, me, tier, emps, manage, company, viewAll, hrAdmin };
 }
 const active = (e: Row) => !["exited", "inactive"].includes(lc(e.employment_status || "active")) && e.account_type !== "system";
 const canManageDept = (c: Ctx, dept: string) => dept === "company" ? c.company : (c.manage === "*" || c.manage.includes(dept));
 // Who may be assigned to an item of this department.
 const assignable = (c: Ctx, dept: string) => c.emps.filter((e) => active(e) && (dept === "company" || c.manage === "*" || e.division === dept));
+// Departments whose whole calendar I may browse ("*" = all). Company-wide is always visible.
+const visibleDepts = (c: Ctx): "*" | string[] => c.viewAll ? "*" : [...new Set([c.me.division, ...(c.manage === "*" ? [] : c.manage)].filter(Boolean) as string[])];
+const canSee = (c: Ctx, it: Row, mine: Set<string>) => { const v = visibleDepts(c); return v === "*" || it.department === "company" || v.includes(it.department) || mine.has(it.id); };
 const ymdIst = (d = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
 
 Deno.serve(async (req) => {
@@ -94,13 +104,63 @@ Deno.serve(async (req) => {
         const people = c.emps.filter((e) => active(e) && (c.company || c.manage === "*" || mgr.has(e.division)))
           .map((e) => ({ id: e.id, name: e.full_name, division: e.division, designation: clean(e.designation) || "", photo_url: e.photo_url || null }))
           .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        const vis = visibleDepts(c);
         return out(req, 200, {
           me: { id: c.me.id, name: actorName, division: c.me.division || null },
           tier: c.tier, view_all: c.viewAll, can_company: c.company,
+          view_departments: vis,
           manage_departments: c.manage === "*" ? "*" : c.manage,
           departments: Object.keys(DIV).map((k) => ({ code: k, name: DIV[k] })),
           people,
         });
+      }
+
+      case "list": {
+        const from = String(body.from || ""), to = String(body.to || "");
+        if (!isDate(from) || !isDate(to) || to < from) return out(req, 400, { error: "Bad date range." });
+        const vis = visibleDepts(c);
+        const mineR = await db.from("content_calendar_assignees").select("item_id").eq("employee_id", c.me.id);
+        const mine = new Set(((mineR.data || []) as Row[]).map((r) => r.item_id));
+        // Only rows I may see leave the server: my departments + company-wide (+ my own items).
+        let q = db.from("content_calendar_items").select("*")
+          .or(`and(recurrence.is.null,item_date.gte.${from},item_date.lte.${to}),and(recurrence.not.is.null,item_date.lte.${to})`).limit(3000);
+        if (vis !== "*") q = q.in("department", [...vis, "company"]);
+        const r = await q;
+        if (r.error) throw new Error(r.error.message);
+        let items = ((r.data || []) as Row[]).filter((i) => !i.recurrence || !i.recurrence_until || i.recurrence_until >= from);
+        if (vis !== "*" && mine.size) {   // assigned items from other departments — only those exact items
+          const extra = await db.from("content_calendar_items").select("*").in("id", [...mine].slice(0, 500))
+            .or(`and(recurrence.is.null,item_date.gte.${from},item_date.lte.${to}),and(recurrence.not.is.null,item_date.lte.${to})`);
+          const have = new Set(items.map((i) => i.id));
+          ((extra.data || []) as Row[]).forEach((i) => { if (!have.has(i.id) && (!i.recurrence || !i.recurrence_until || i.recurrence_until >= from)) items.push(i); });
+        }
+        items = items.filter((i) => canSee(c, i, mine));
+        const ids = items.map((i) => i.id);
+        const asg: Row[] = [], occ: Row[] = [];
+        for (let k = 0; k < ids.length; k += 200) {
+          const part = ids.slice(k, k + 200);
+          const a = await db.from("content_calendar_assignees").select("item_id,employee_id").in("item_id", part);
+          asg.push(...((a.data || []) as Row[]));
+          const rec = items.filter((i) => i.recurrence && part.includes(i.id)).map((i) => i.id);
+          if (rec.length) { const o = await db.from("content_calendar_occurrences").select("*").in("item_id", rec).gte("occ_date", from).lte("occ_date", to); occ.push(...((o.data || []) as Row[])); }
+        }
+        const names: Record<string, string> = {};
+        asg.forEach((a) => { const e = c.emps.find((x) => x.id === a.employee_id); if (e) names[e.id] = e.full_name; });
+        return out(req, 200, { items, assignees: asg, occurrences: occ, names });
+      }
+
+      case "item": {
+        const p = await db.from("content_calendar_items").select("*").eq("id", body.id).maybeSingle();
+        if (!p.data) return out(req, 404, { error: "That item no longer exists." });
+        const a = await db.from("content_calendar_assignees").select("employee_id").eq("item_id", body.id);
+        const ids = ((a.data || []) as Row[]).map((x) => x.employee_id);
+        const it = p.data as Row;
+        if (!canSee(c, it, new Set(ids.includes(c.me.id) ? [it.id] : []))) return out(req, 403, { error: "This item is outside your calendar." });
+        let occ: Row | null = null;
+        if (it.recurrence && isDate(body.occ_date)) { const o = await db.from("content_calendar_occurrences").select("*").eq("item_id", it.id).eq("occ_date", body.occ_date).maybeSingle(); occ = (o.data as Row) || null; }
+        const names: Record<string, string> = {};
+        ids.forEach((id) => { const e = c.emps.find((x) => x.id === id); if (e) names[id] = e.full_name; });
+        return out(req, 200, { item: { ...it, assignees: ids }, occurrence: occ, names });
       }
 
       case "save": {
