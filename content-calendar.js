@@ -74,8 +74,23 @@
     if (!force && scopeCached() && Date.now() - S.scopeAt < 60000) return Promise.resolve(S.scope);
     if (S.scopeP) return S.scopeP;
     S.scopeP = api('scope').then(function (x) { S.scope = x; S.scopeAt = Date.now(); S.me = x.me && x.me.id; try { sessionStorage.setItem(scopeKey(), JSON.stringify({ at: S.scopeAt, data: x })); } catch (_) {} return x; })
+      .catch(function (e) { return localScope(e); })
       .finally(function () { S.scopeP = null; });
     return S.scopeP;
+  }
+  // No valid server sign-in token on this browser (signed in before tokens existed, account
+  // switched without a password, token expired) → the calendar still opens READ-ONLY for this
+  // person's own department, company-wide items and their assignments. Adding / editing needs
+  // the server token (fresh sign-in); nothing here grants write access.
+  async function localScope(err) {
+    var email = S.email || (B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : '');
+    if (!email || !db()) throw err;
+    var r = await db().from('hr_employees').select('id,division').ilike('portal_email', email.replace(/[\\%_]/g, function (c) { return '\\' + c; })).limit(1);
+    var me = r.data && r.data[0]; if (!me) throw err;
+    var x = { me: { id: me.id, division: me.division || null }, tier: 'employee', view_all: false, can_company: false, manage_departments: [],
+      departments: Object.keys(DNAME).filter(function (k) { return k !== 'company'; }).map(function (k) { return { code: k, name: DNAME[k] }; }), people: [], readonly: true, reason: err && err.message };
+    S.scope = x; S.scopeAt = Date.now() - 45000; S.me = me.id;   // retry the server within ~15 s
+    return x;
   }
   async function types() {
     if (S.types) return S.types;
@@ -204,6 +219,7 @@
       '.cc-btn.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.cc-btn.ok{border-color:rgba(52,211,153,.45);color:#6ee7b7;background:rgba(52,211,153,.08)}.cc-btn.ghost{border-color:transparent;background:none;color:var(--cc-mute)}.cc-btn:disabled{opacity:.6;cursor:progress}',
       '.cc-more-t{border:0;background:none;color:#ffb37a;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:0;align-self:flex-start}',
       '.cc-err{color:#f87171;font-size:12.5px;min-height:0}',
+      '.cc-ro{font-size:12px;color:#fcd34d;padding:8px 12px;border-radius:10px;border:1px solid rgba(252,211,77,.22);background:rgba(252,211,77,.05)}',
       '.cc-kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 14px;font-size:13px}.cc-kv span{color:var(--cc-dim)}.cc-kv b{color:#fff;font-weight:600;overflow-wrap:anywhere}.cc-kv a{color:#ffb37a}',
       '.cc-desc{font-size:13px;color:#c7cbe0;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.03)}',
       '.cc-work{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid rgba(96,165,250,.25);background:rgba(96,165,250,.05)}.cc-work div{flex:1;min-width:0}.cc-work small{display:block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#93c5fd}.cc-work b{color:#fff;font-size:13.5px}',
@@ -324,7 +340,7 @@
         + '<select class="cc-sel" data-native data-f="status"><option value="">Any status</option>' + Object.keys(ST).concat(['overdue']).map(function (k) { return '<option value="' + k + '"' + (U.status === k ? ' selected' : '') + '>' + (ST[k] || 'Overdue') + '</option>'; }).join('') + '</select>'
         + '<select class="cc-sel" data-native data-f="prio"><option value="">Any priority</option>' + ['high', 'medium', 'low'].map(function (k) { return '<option value="' + k + '"' + (U.prio === k ? ' selected' : '') + '>' + k[0].toUpperCase() + k.slice(1) + '</option>'; }).join('') + '</select>'
         + '<select class="cc-sel" data-native data-f="person"><option value="">Everyone</option><option value="me"' + (U.person === 'me' ? ' selected' : '') + '>Assigned to me</option>' + people.map(function (p) { return '<option value="' + p.id + '"' + (U.person === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'
-        + '</div><div data-body></div>';
+        + '</div>' + (sc && sc.readonly ? '<div class="cc-ro">Showing your department, company-wide and assigned items (view only). To add or edit items, sign out and sign in again.</div>' : '') + '<div data-body></div>';
     };
     pane.innerHTML = head();
     var body = pane.querySelector('[data-body]');
