@@ -30,6 +30,7 @@
     return '';
   }
 
+  var inflight = {};
   window.BESession = {
     url: URL_, anonKey: ANON,
     currentEmail: currentEmail,
@@ -60,10 +61,36 @@
       if (!s || !s.t || (s.exp && s.exp * 1000 < Date.now())) return null;
       return s.t;
     },
+    /** Valid token for this account, re-issued when missing or about to expire.
+     *  The login form is the only place a token used to be created, so an account reached
+     *  through the account switcher, a sign-in older than the token's 30 days, or one made
+     *  before tokens existed had none — and every server-checked feature (Aura, Content
+     *  Calendar, Jarvis) failed with "session expired". The switcher already keeps that
+     *  account's credentials on this device (be_saved_accounts); we re-run the same server
+     *  sign-in with them. Resolves to the token or null (then the user must sign in). */
+    ensure: function (email) {
+      var e = norm(email || currentEmail());
+      if (!e) return Promise.resolve(null);
+      var m = load(), s = m[e];
+      if (s && s.t && (!s.exp || s.exp * 1000 > Date.now() + 3 * 86400000)) return Promise.resolve(s.t);
+      if (inflight[e]) return inflight[e];
+      var acc = null;
+      try { acc = (JSON.parse(localStorage.getItem('be_saved_accounts') || '[]') || []).filter(function (a) { return a && norm(a.email) === e && a.pass; })[0] || null; } catch (_) {}
+      var still = s && s.t && (!s.exp || s.exp * 1000 > Date.now()) ? s.t : null;
+      if (!acc) return Promise.resolve(still);
+      inflight[e] = window.BESession.issue(acc.email, acc.pass)
+        .then(function (t) { return t || still; })
+        .finally(function () { delete inflight[e]; });
+      return inflight[e];
+    },
     clear: function (email) {
       var m = load();
       if (email) delete m[norm(email)]; else m = {};
       save(m);
     }
   };
+  // Self-heal on every portal load (and after an account switch in another tab) so the token
+  // is ready before Aura / Calendar / Jarvis need it.
+  setTimeout(function () { window.BESession.ensure().catch(function () {}); }, 1500);
+  window.addEventListener('storage', function (ev) { if (ev.key === 'be_active_email') window.BESession.ensure().catch(function () {}); });
 })();

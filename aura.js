@@ -169,12 +169,17 @@
 
   // ── server calls (the only write path) ───────────────────────────────────
   async function api(action, body) {
-    var tk = B().token ? B().token() : null;
+    var tk = B().ensure ? await B().ensure() : (B().token ? B().token() : null);
     if (!tk) throw new Error('Your session has expired. Please sign in again.');
     var r = await fetch(B().url + '/functions/v1/aura', { method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': B().anonKey, 'Authorization': 'Bearer ' + B().anonKey, 'x-erp-session': tk },
       body: JSON.stringify(Object.assign({ action: action }, body || {})) });
     var j = {}; try { j = await r.json(); } catch (_) {}
+    if (r.status === 401 && !(body && body._retry) && B().clear && B().ensure && j.code === 'SESSION_EXPIRED') {
+      // Token rejected by the server (expired / rotated): drop it, re-issue once, retry.
+      try { B().clear(B().currentEmail()); } catch (_) {}
+      if (await B().ensure()) return api(action, Object.assign({}, body || {}, { _retry: true }));
+    }
     if (!r.ok) throw new Error(j.error || 'Aura Points is unavailable right now.');
     return j;
   }
