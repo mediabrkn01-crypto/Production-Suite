@@ -55,7 +55,8 @@
     var on = function (k) { return c[k] !== false; };
     return { preset: t.preset, label: t.name || p.label, particles: on('particles') ? p.particles : null, caps: on('caps') ? p.caps : null,
       overlay: on('overlay') ? p.overlay : null, glow: on('glow'), accent: on('accent'), intensity: c.intensity === 'normal' ? 'normal' : 'subtle',
-      colors: p, asset: t.asset_url || null };
+      colors: p, asset: t.asset_url || null,
+      banner: c.banner || null, bannerDark: ({ light: 0.3, medium: 0.5, strong: 0.7 })[c.banner_dark || 'medium'], bannerPos: ({ top: 'center top', center: 'center center', bottom: 'center bottom' })[c.banner_pos || 'center'], bannerTall: c.banner_h === 'tall' };
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -97,6 +98,11 @@
       '.bst-bg{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:inherit}',
       '.bst-caps{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:visible}',
       '.bst-bg canvas{position:absolute;inset:0;width:100%;height:100%}',
+      '.bst-banner{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;opacity:0;transform:scale(1.02);transition:opacity .7s ease,transform 1.2s ease}.bst-banner.on{opacity:1;transform:none}',
+      '.bst-scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,8,16,calc(var(--bst-dark) + .15)),rgba(5,8,16,calc(var(--bst-dark) - .1)) 35%,rgba(5,8,16,calc(var(--bst-dark) - .1)) 65%,rgba(5,8,16,calc(var(--bst-dark) + .15))),linear-gradient(0deg,rgba(5,8,16,var(--bst-dark)),transparent 70%)}',
+      '.bst-hasbanner .bst-sky,.bst-hasbanner .bst-corner,.bst-hasbanner .bst-mid,.bst-hasbanner .bst-drift,.bst-hasbanner .bst-frost{display:none!important}',
+      '.bst-hasbanner.bst-tall.bst-scene{padding-top:58px!important}',
+      '@media(max-width:767px){.bst-hasbanner.bst-tall.bst-scene{padding-top:30px!important}}',
       '.bst-sky,.bst-top,.bst-drift{position:absolute;left:0;right:0}.bst-sky{inset:0}.bst-top{top:0;height:22px}',
       '.bst-mid{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:18px}.bst-mid[hidden]{display:none}',
       '.bst-corner{position:absolute;top:0;pointer-events:none}.bst-corner.l{left:0}.bst-corner.r{right:0;transform:scaleX(-1)}',
@@ -262,6 +268,18 @@
       if (c.preset === 'navaratri') { mid.innerHTML = '<span class="bst-mwrap">' + SVG.mandala + '</span><span class="bst-drow">' + SVG.diya + SVG.diya + SVG.diya + SVG.diya + SVG.diya + '</span>'; }
       if (c.preset === 'independence') { mid.innerHTML = '<span class="bst-mf l">' + SVG.flag2('l') + '</span><span class="bst-chw">' + SVG.chakra + '</span><span class="bst-mf r">' + SVG.flag2('r') + '</span>' + SVG.birds; }
     }
+    if (c.banner) {
+      // illustrated background: loaded lazily, fades in; drawn sky / corner art / middle art hide
+      header.classList.add('bst-hasbanner'); if (c.bannerTall) header.classList.add('bst-tall');
+      header.style.setProperty('--bst-dark', c.bannerDark);
+      var ban = document.createElement('div'); ban.className = 'bst-banner'; ban.style.backgroundPosition = c.bannerPos;
+      var scrim = document.createElement('div'); scrim.className = 'bst-scrim';
+      bg.insertBefore(scrim, bg.firstChild); bg.insertBefore(ban, bg.firstChild);
+      var bimg = new Image(); bimg.decoding = 'async';
+      bimg.onload = function () { ban.style.backgroundImage = 'url("' + c.banner.replace(/"/g, '%22') + '")'; setTimeout(function () { ban.classList.add('on'); }, 30); };
+      bimg.onerror = function () { header.classList.remove('bst-hasbanner', 'bst-tall'); ban.remove(); scrim.remove(); };
+      bimg.src = c.banner;
+    }
     if (c.asset && !phone) { var img = new Image(); img.className = 'bst-asset'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.onerror = function () { img.remove(); }; img.src = c.asset; bg.appendChild(img); }
 
     // layout-dependent pieces: caps on the controls, the middle band, the string of lights / toran
@@ -388,7 +406,7 @@
     return function destroy() {
       cancelAnimationFrame(raf); if (ro) ro.disconnect(); mo.disconnect(); if (io) io.disconnect();
       bg.remove(); caps.remove();
-      cls.forEach(function (k) { header.classList.remove(k); });
+      cls.concat(['bst-hasbanner', 'bst-tall']).forEach(function (k) { header.classList.remove(k); }); header.style.removeProperty('--bst-dark');
       ['--bst-accent', '--bst-line', '--bst-glow'].forEach(function (v) { header.style.removeProperty(v); });
     };
   }
@@ -571,15 +589,23 @@
         + '<div class="bsa-f"><span>Preview</span><div class="bsa-mock" data-mock>' + mockHeader() + '</div></div>'
         + '<div class="bsa-f"><span>Effects</span><div class="bsa-chips">' + EFFECTS.map(function (x) { return '<button type="button" class="bsa-ch' + (f.config[x[0]] !== false ? ' on' : '') + '" data-fx="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div><em class="bsa-note">Effects a style doesn’t have are ignored (e.g. Summer has no falling effect).</em></div>'
         + '<div class="bsa-f"><span>Intensity</span><div class="bsa-chips"><button type="button" class="bsa-ch' + (f.config.intensity !== 'normal' ? ' on' : '') + '" data-int="subtle">Subtle</button><button type="button" class="bsa-ch' + (f.config.intensity === 'normal' ? ' on' : '') + '" data-int="normal">Normal</button></div></div>'
-        + '<div class="bsa-f"><label>Decorative image (optional)</label><div style="display:flex;gap:8px"><input class="bsa-in" data-k="asset_url" placeholder="https:// — PNG / SVG / WebP" value="' + esc(f.asset_url || '') + '"><button type="button" class="bsa-btn sm" data-up style="height:38px">Upload</button><input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" data-file hidden></div><em class="bsa-note">Shown small at the right of the header on desktop only.</em></div>'
+        + '<div class="bsa-f"><label>Background banner image</label><div style="display:flex;gap:8px"><input class="bsa-in" data-cfg="banner" placeholder="https:// — wide JPG / WebP" value="' + esc(f.config.banner || '') + '"><button type="button" class="bsa-btn sm" data-up="banner" style="height:38px">Upload</button></div>'
+        + '<em class="bsa-note">The realistic look: a wide illustrated scene (≈ 2400 × 260 px, JPG/WebP, under 3 MB). Snow / rain / petals and button decorations animate on top; the drawn scenery hides.</em></div>'
+        + (f.config.banner ? '<div class="bsa-row2"><div class="bsa-f"><span>Darken</span><div class="bsa-chips">' + [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_dark || 'medium') === o[0] ? ' on' : '') + '" data-opt="banner_dark" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>'
+          + '<div class="bsa-f"><span>Show image</span><div class="bsa-chips">' + [['top', 'Top'], ['center', 'Centre'], ['bottom', 'Bottom']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_pos || 'center') === o[0] ? ' on' : '') + '" data-opt="banner_pos" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div></div>'
+          + '<div class="bsa-f"><span>Header height</span><div class="bsa-chips">' + [['slim', 'Slim'], ['tall', 'Tall (shows more of the image)']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_h || 'slim') === o[0] ? ' on' : '') + '" data-opt="banner_h" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '')
+        + '<div class="bsa-f"><label>Decorative image (optional)</label><div style="display:flex;gap:8px"><input class="bsa-in" data-k="asset_url" placeholder="https:// — PNG / SVG / WebP" value="' + esc(f.asset_url || '') + '"><button type="button" class="bsa-btn sm" data-up="asset" style="height:38px">Upload</button><input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" data-file hidden></div><em class="bsa-note">Shown small at the right of the header on desktop only.</em></div>'
         + '</div></div><div class="bsa-err" data-err></div>'
         + '<div class="bsa-foot">' + (src ? '<button type="button" class="bsa-btn" data-del style="margin-right:auto;color:#fca5a5">Delete</button>' : '') + '<button type="button" class="bsa-btn" data-x>Cancel</button><button type="button" class="bsa-btn pri" data-save>' + (src ? 'Save theme' : 'Create theme') + '</button></div>';
       if (stopPv) stopPv();
       var mh = dlg.querySelector('[data-mock] .bes-header');
       stopPv = render(mh, f, { compact: false });
     }
-    function grab() { dlg.querySelectorAll('[data-k]').forEach(function (x) { var k = x.getAttribute('data-k'); f[k] = k === 'priority' ? +x.value : x.value; }); }
-    dlg.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-k') === 'preset') { grab(); if (!f.name || Object.keys(PRESETS).some(function (k) { return PRESETS[k].label === f.name; })) f.name = PRESETS[f.preset].label; draw(); } });
+    function grab() {
+      dlg.querySelectorAll('[data-k]').forEach(function (x) { var k = x.getAttribute('data-k'); f[k] = k === 'priority' ? +x.value : x.value; });
+      dlg.querySelectorAll('[data-cfg]').forEach(function (x) { var v = x.value.trim(); if (v) f.config[x.getAttribute('data-cfg')] = v; else delete f.config[x.getAttribute('data-cfg')]; });
+    }
+    dlg.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-cfg') === 'banner') { grab(); return draw(); } if (e.target.getAttribute && e.target.getAttribute('data-k') === 'preset') { grab(); if (!f.name || Object.keys(PRESETS).some(function (k) { return PRESETS[k].label === f.name; })) f.name = PRESETS[f.preset].label; draw(); } });
     dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b || busy) return;
       if (b.hasAttribute('data-x')) return close();
@@ -587,14 +613,15 @@
       if (b.hasAttribute('data-dep')) { grab(); var c = b.getAttribute('data-dep'); if (!c) f.departments = []; else { var i = f.departments.indexOf(c); if (i > -1) f.departments.splice(i, 1); else f.departments.push(c); } return draw(); }
       if (b.hasAttribute('data-fx')) { grab(); var x = b.getAttribute('data-fx'); f.config[x] = f.config[x] === false; return draw(); }
       if (b.hasAttribute('data-int')) { grab(); f.config.intensity = b.getAttribute('data-int'); return draw(); }
-      if (b.hasAttribute('data-up')) { var fi = dlg.querySelector('[data-file]'); fi.onchange = async function () {
-          var file = fi.files && fi.files[0]; if (!file) return; if (file.size > 1024 * 1024) { dlg.querySelector('[data-err]').textContent = 'Image must be under 1 MB.'; return; }
+      if (b.hasAttribute('data-opt')) { grab(); f.config[b.getAttribute('data-opt')] = b.getAttribute('data-v'); return draw(); }
+      if (b.hasAttribute('data-up')) { var which = b.getAttribute('data-up'), fi = dlg.querySelector('[data-file]'); fi.value = ''; fi.onchange = async function () {
+          var file = fi.files && fi.files[0]; if (!file) return; var max = which === 'banner' ? 3 : 1; if (file.size > max * 1024 * 1024) { dlg.querySelector('[data-err]').textContent = 'Image must be under ' + max + ' MB.'; return; }
           b.disabled = true; b.textContent = 'Uploading…';
           var path = 'header-themes/' + Date.now() + '-' + file.name.replace(/[^a-z0-9.\-]+/gi, '_');
           var up = await db().storage.from('celebration-media').upload(path, file, { contentType: file.type, upsert: true });
           b.disabled = false; b.textContent = 'Upload';
           if (up.error) { dlg.querySelector('[data-err]').textContent = 'Upload failed: ' + up.error.message; return; }
-          grab(); f.asset_url = db().storage.from('celebration-media').getPublicUrl(path).data.publicUrl; draw();
+          grab(); var pub = db().storage.from('celebration-media').getPublicUrl(path).data.publicUrl; if (which === 'banner') f.config.banner = pub; else f.asset_url = pub; draw();
         }; fi.click(); return; }
       if (b.hasAttribute('data-del')) {
         var ok = typeof window.showConfirm === 'function' ? await showConfirm('Delete “' + src.name + '”? The header goes back to normal while it would have been active.', { title: 'Delete theme?', confirmLabel: 'Delete' }) : false;
