@@ -503,6 +503,127 @@
   };
   function hexRgb(h) { var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || ''); return m ? parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) : null; }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Gap scenery — realistic, animated detail placed ONLY in the empty space between the
+  // search box and the right-hand controls (never behind or on a control). Off on phones
+  // and when that space is narrower than 170px.
+  // ════════════════════════════════════════════════════════════════════════
+  // A string of out-of-focus fairy lights hanging across the gap (soft bokeh, not bulbs).
+  function lightString(g, H, cols, opts) {
+    opts = opts || {};
+    var w = g.b - g.a, n = Math.max(6, Math.round(w / (opts.every || 26))), sag = opts.sag || H * 0.32, y0 = opts.y0 || 3, pts = [];
+    for (var i = 0; i <= n; i++) { var t = i / n; pts.push({ t: t, c: cols[i % cols.length], s: rnd(0, 6.28), r: rnd(opts.r0 || 2.2, opts.r1 || 3.6) }); }
+    return function (ctx, time) {
+      var sway = Math.sin(time * 0.6) * 1.2;
+      ctx.globalAlpha = 0.18; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.6; ctx.beginPath();
+      for (var k = 0; k <= 40; k++) { var tt = k / 40, x = g.a + w * tt, y = y0 + sag * 4 * tt * (1 - tt) + sway * Math.sin(tt * Math.PI); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      pts.forEach(function (p) {
+        var x = g.a + w * p.t, y = y0 + sag * 4 * p.t * (1 - p.t) + sway * Math.sin(p.t * Math.PI) + 2, tw = 0.72 + 0.28 * Math.sin(time * 1.4 + p.s);
+        ctx.globalAlpha = 0.38 * tw; ctx.drawImage(sprite(Math.round(p.r * 3), p.c, true), x - p.r * 3, y - p.r * 3);
+        ctx.globalAlpha = 0.95 * tw; ctx.drawImage(sprite(Math.max(1, Math.round(p.r * 0.7)), '255,250,235', false), x - p.r * 0.7, y - p.r * 0.7);
+      });
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    };
+  }
+  var GAPS = {
+    christmas: function (g, H) {
+      // misty pine forest far away at the bottom of the gap + a hanging string of warm lights
+      var w = Math.ceil(g.b - g.a), pine = document.createElement('canvas'); pine.width = Math.max(1, w); pine.height = Math.max(1, Math.ceil(H));
+      var pc = pine.getContext('2d');
+      [[0.45, '#1b2b4f', 0.55, 7, 13], [0.75, '#0d1730', 0.8, 10, 18]].forEach(function (L) {
+        pc.globalAlpha = L[0]; pc.fillStyle = L[1]; pc.beginPath(); pc.moveTo(0, H);
+        for (var x = -6; x < w + 10; x += rnd(L[3] * 0.6, L[3] * 1.2)) { var h = rnd(L[3], L[4]), b = H * (L[2] + 0.3); pc.lineTo(x - h * 0.28, b); pc.lineTo(x - h * 0.12, b - h * 0.5); pc.lineTo(x - h * 0.2, b - h * 0.5); pc.lineTo(x, b - h); pc.lineTo(x + h * 0.2, b - h * 0.5); pc.lineTo(x + h * 0.12, b - h * 0.5); pc.lineTo(x + h * 0.28, b); }
+        pc.lineTo(w + 10, H); pc.closePath(); pc.fill();
+      });
+      pc.globalCompositeOperation = 'destination-in'; pc.globalAlpha = 1;   // fade into mist at both ends
+      var fade = pc.createLinearGradient(0, 0, w, 0); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(0.15, '#000'); fade.addColorStop(0.85, '#000'); fade.addColorStop(1, 'rgba(0,0,0,0)'); pc.fillStyle = fade; pc.fillRect(0, 0, w, H);
+      var lights = lightString(g, H, ['255,200,130', '255,214,160', '255,120,100', '255,200,130', '150,240,180', '255,214,160']);
+      return function (ctx, t) {
+        ctx.drawImage(pine, g.a, 0);
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.08; ctx.drawImage(sprite(40, '200,220,255', true), (g.a + g.b) / 2 - 40, H - 30); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+        lights(ctx, t);
+      };
+    },
+    navaratri: function (g, H) {
+      var str = lightString(g, H, ['255,160,60', '255,200,90', '236,72,153', '255,160,60'], { every: 34, sag: H * 0.22, r0: 1.8, r1: 2.8 });
+      return function (ctx, t) { str(ctx, t); };
+    },
+    independence: function (g, H) {
+      // three slow silk ribbons of light (saffron / white / green) drifting across the gap
+      var w = g.b - g.a;
+      return function (ctx, t) {
+        ctx.globalCompositeOperation = 'lighter';
+        [['255,153,51', 0, 0.2], ['248,250,252', 1.1, 0.12], ['19,160,8', 2.2, 0.18]].forEach(function (R, i) {
+          ctx.beginPath();
+          for (var k = 0; k <= 48; k++) { var tt = k / 48, x = g.a + w * tt, y = H * (0.36 + i * 0.12) + Math.sin(tt * 6 + t * 0.7 + R[1]) * H * 0.1; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+          for (var k2 = 48; k2 >= 0; k2--) { var t2 = k2 / 48, x2 = g.a + w * t2, y2 = H * (0.36 + i * 0.12) + Math.sin(t2 * 6 + t * 0.7 + R[1]) * H * 0.1 + 3 + Math.sin(t2 * 3 + t) * 1.5; ctx.lineTo(x2, y2); }
+          var gr = ctx.createLinearGradient(g.a, 0, g.b, 0); gr.addColorStop(0, 'rgba(' + R[0] + ',0)'); gr.addColorStop(0.5, 'rgba(' + R[0] + ',' + R[2] + ')'); gr.addColorStop(1, 'rgba(' + R[0] + ',0)');
+          ctx.fillStyle = gr; ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+      };
+    },
+    vishu: function (g, H) {
+      // drooping konna (golden shower) clusters hanging from the top of the gap, swaying
+      var w = g.b - g.a, cl = [], n = Math.max(2, Math.min(5, Math.round(w / 110)));
+      for (var i = 0; i < n; i++) { var fl = []; var len = rnd(H * 0.45, H * 0.8); for (var j = 0; j < 26; j++) { var f = j / 26; fl.push({ y: f * len, x: rnd(-1, 1) * (2 + f * 6), r: rnd(1.2, 2.2) * (1 - f * 0.4), c: pick(['#facc15', '#fde047', '#eab308', '#fbbf24']) }); } cl.push({ x: g.a + w * (i + 0.5) / n + rnd(-14, 14), s: rnd(0, 6.28), fl: fl }); }
+      return function (ctx, t) {
+        cl.forEach(function (c) {
+          var sw = Math.sin(t * 0.8 + c.s) * 0.06;
+          ctx.save(); ctx.translate(c.x, -2); ctx.rotate(sw);
+          ctx.globalAlpha = 0.5; ctx.strokeStyle = '#3f6212'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, c.fl[c.fl.length - 1].y); ctx.stroke();
+          c.fl.forEach(function (f) { ctx.globalAlpha = 0.88; ctx.fillStyle = f.c; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, f.r * 0.8, 0, 0, 6.283); ctx.fill(); });
+          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.18; ctx.drawImage(sprite(14, '255,214,90', true), -14, c.fl[10].y - 14); ctx.globalCompositeOperation = 'source-over';
+          ctx.restore();
+        });
+        ctx.globalAlpha = 1;
+      };
+    },
+    onam: function (g, H) {
+      // calm backwater shimmer along the bottom of the gap
+      var w = g.b - g.a;
+      return function (ctx, t) {
+        ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 1;
+        for (var r = 0; r < 4; r++) { ctx.strokeStyle = 'rgba(190,240,255,' + (0.07 + r * 0.02) + ')'; ctx.beginPath(); for (var x = 0; x <= w; x += 8) { var y = H - 10 + r * 2.5 + Math.sin(x * 0.04 + t * (0.8 + r * 0.25) + r) * 1.1; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
+        ctx.globalCompositeOperation = 'source-over';
+      };
+    },
+    newyear: function (g, H) {
+      var str = lightString(g, H, ['255,214,120', '255,236,180', '230,190,255'], { every: 22, sag: H * 0.18, r0: 1.6, r1: 2.6 });
+      return function (ctx, t) { str(ctx, t); };
+    },
+    monsoon: function (g, H) {
+      // water on glass: beads with refraction + highlight, some sliding with a wet trail;
+      // a faint distant lightning fork now and then inside the gap
+      var w = g.b - g.a, beads = [], nextBolt = rnd(5, 9), bolt = null;
+      for (var i = 0; i < Math.round(w / 18); i++) beads.push({ x: g.a + rnd(0, w), y: rnd(2, H - 4), r: rnd(1.2, 2.8), v: Math.random() < 0.3 ? rnd(0.12, 0.35) : 0, tr: [] });
+      return function (ctx, t, dt) {
+        nextBolt -= dt || 0.033;
+        if (nextBolt <= 0) { var x = rnd(g.a + w * 0.2, g.b - w * 0.2), y = -2, pts = [[x, y]]; while (y < H * 0.75) { x += rnd(-6, 6); y += rnd(4, 7); pts.push([x, y]); } bolt = { pts: pts, age: 0 }; nextBolt = rnd(10, 18); }
+        if (bolt && bolt.age < 5) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45 * (1 - bolt.age / 5); ctx.strokeStyle = '#dbeafe'; ctx.lineWidth = 1; ctx.beginPath(); bolt.pts.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }); ctx.stroke(); ctx.globalCompositeOperation = 'source-over'; bolt.age++; }
+        beads.forEach(function (b) {
+          if (b.v) { b.tr.push([b.x, b.y]); if (b.tr.length > 14) b.tr.shift(); b.y += b.v; b.x += Math.sin(t + b.r) * 0.05; if (b.y > H + 3) { b.y = -3; b.x = g.a + rnd(0, w); b.tr = []; } }
+          if (b.tr.length > 2) { ctx.globalAlpha = 0.14; ctx.strokeStyle = '#cfe8ff'; ctx.lineWidth = b.r * 0.6; ctx.beginPath(); b.tr.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }); ctx.stroke(); }
+          ctx.globalAlpha = 0.45; ctx.fillStyle = 'rgba(6,14,26,.9)'; ctx.beginPath(); ctx.arc(b.x, b.y + 0.5, b.r, 0, 6.283); ctx.fill();
+          ctx.globalAlpha = 0.55; ctx.fillStyle = 'rgba(186,220,255,.6)'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.92, 0, 6.283); ctx.fill();
+          ctx.globalAlpha = 0.95; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x - b.r * 0.35, b.y - b.r * 0.35, Math.max(0.4, b.r * 0.22), 0, 6.283); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+      };
+    },
+    summer: function (g, H) {
+      // heat-haze shimmer and sun glints rising in the gap
+      var w = g.b - g.a, glints = []; for (var i = 0; i < Math.round(w / 40); i++) glints.push({ x: g.a + rnd(0, w), y: rnd(H * 0.3, H - 4), s: rnd(0, 6.28) });
+      return function (ctx, t) {
+        ctx.globalCompositeOperation = 'lighter';
+        for (var r = 0; r < 3; r++) { ctx.strokeStyle = 'rgba(255,214,150,' + (0.05 + r * 0.02) + ')'; ctx.lineWidth = 1; ctx.beginPath(); for (var x = 0; x <= w; x += 10) { var y = H - 8 - r * 4 + Math.sin(x * 0.05 - t * 1.6 + r) * 1.4; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
+        glints.forEach(function (gl) { var a = Math.max(0, Math.sin(t * 1.2 + gl.s)); if (a < 0.2) return; ctx.globalAlpha = 0.5 * a; ctx.drawImage(sprite(3, '255,236,190', true), gl.x - 3, gl.y - 3); });
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      };
+    }
+  };
+
   function render(header, theme, opts) {
     if (!header || !theme) return function () {};
     css(); opts = opts || {};
@@ -559,7 +680,7 @@
       });
     }
     // the scene
-    var ctx = cv.getContext('2d'), W = 0, H = 0, scene = null, raf = 0, last = 0, visible = true, io = null, t0 = performance.now(), prev = t0;
+    var gapDraw = null, ctx = cv.getContext('2d'), W = 0, H = 0, scene = null, raf = 0, last = 0, visible = true, io = null, t0 = performance.now(), prev = t0;
     var factor = phone ? 0.4 : weak ? 0.6 : 1, intens = c.intensity === 'normal' ? 1.3 : 1;
     var q = function (n) { return Math.max(1, Math.round(n * factor * intens)); };
     function build() {
@@ -568,6 +689,7 @@
       cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr)); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var mk = SCENES[c.preset] || SCENES.custom;
       scene = mk(W, H, band, q, hexRgb(c.colors.accent), gap);
+      gapDraw = c.overlay && GAPS[c.preset] && !phone && gap.b - gap.a >= 170 ? GAPS[c.preset]({ a: gap.a, b: gap.b }, H) : null;
       frame(performance.now(), true);
     }
     function frame(now, force) {
@@ -575,6 +697,7 @@
       var t = (now - t0) / 1000, dt = Math.min(0.1, (now - prev) / 1000); prev = now;
       ctx.clearRect(0, 0, W, H);
       if (!c.banner && c.overlay) scene.bg(ctx, t, dt);
+      if (gapDraw) gapDraw(ctx, t, dt);
       if (c.particles || force) { if (c.particles) scene.fx(ctx, t, dt); }
     }
     function loop(now) {
@@ -676,7 +799,10 @@
       '.bsa-btn.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.bsa-btn.sm{height:30px;padding:0 11px;font-size:12px}.bsa-btn:disabled{opacity:.6;cursor:progress}',
       '.bsa-pv{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}.bsa-pv span{font-size:12px;color:#8b93b8}',
       '.bsa-list{display:flex;flex-direction:column;gap:8px}',
-      '.bsa-row{display:grid;grid-template-columns:96px minmax(0,1.4fr) minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:#0e1222;border:1px solid rgba(255,255,255,.07)}',
+      '.bsa-card{border-radius:16px;background:#0e1222;border:1px solid rgba(255,255,255,.07);overflow:hidden}.bsa-card .bsa-row{border:0;border-radius:0;background:none}',
+      '.bsa-live{padding:14px 16px 2px;background:#070a14;border-top:1px solid rgba(255,255,255,.05)}.bsa-live .bes-header{margin:0!important}.bsa-live .bes-search{flex:0 1 300px;max-width:300px}.bsa-live .bes-right{margin-left:auto}',
+      '@media(max-width:860px){.bsa-live .bes-search{max-width:140px}}',
+      '.bsa-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:#0e1222;border:1px solid rgba(255,255,255,.07)}',
       '.bsa-sw{width:96px;height:30px;border-radius:9px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.1)}',
       '.bsa-row b{display:block;color:#fff;font-size:14px}.bsa-row small{display:block;color:#8b93b8;font-size:11.5px;margin-top:2px}',
       '.bsa-pill{height:22px;padding:0 9px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.1);color:#8b93b8;white-space:nowrap}',
@@ -696,7 +822,7 @@
       '.bsa-note{font-style:normal}',
       '.bsa-note{font-size:11.5px;color:#6b74a0}.bsa-err{color:#f87171;font-size:12.5px}',
       '.bsa-foot{display:flex;justify-content:flex-end;gap:8px}',
-      '@media(max-width:860px){.bsa-row{grid-template-columns:72px minmax(0,1fr);}.bsa-sw{width:72px!important}.bsa-row>.bsa-when,.bsa-row>.bsa-seg,.bsa-row>.bsa-acts{grid-column:1/-1}.bsa-grid{grid-template-columns:1fr}}'
+      '@media(max-width:860px){.bsa-row{grid-template-columns:minmax(0,1fr);}.bsa-row>.bsa-when,.bsa-row>.bsa-seg,.bsa-row>.bsa-acts{grid-column:1/-1}.bsa-grid{grid-template-columns:1fr}}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -714,6 +840,7 @@
   }
   async function mountAdmin(el, opts) {
     if (!el) return; css(); acss(); opts = opts || {};
+    (el._bsaKill || []).forEach(function (k) { try { k(); } catch (_) {} }); el._bsaKill = [];
     el.classList.add('bsa');
     el.innerHTML = '<div class="bsa-note">Loading themes…</div>';
     var rows = await loadThemes(true);
@@ -722,16 +849,17 @@
     var d0 = today();
     rows.sort(function (a, b) { return (b.priority || 0) - (a.priority || 0) || a.name.localeCompare(b.name); });
     var cur = schedule(rows, null, d0);
-    el.innerHTML = '<div class="bsa-top"><div style="flex:1;min-width:220px"><h2>Header Themes</h2><p>Seasonal and special-day decorations for the ERP top header. Today: ' + (cur ? '<b style="color:#fff">' + esc(cur.name) + '</b> is live for all departments it applies to.' : 'no theme is active — the normal header shows.') + '</p></div><button type="button" class="bsa-btn pri" data-new>+ Add theme</button></div>'
-      + '<div class="bsa-pv"><span>Preview any theme on this page</span><select class="bsa-in" data-pv style="width:auto;min-width:200px">' + Object.keys(PRESETS).filter(function (k) { return k !== 'custom'; }).map(function (k) { return '<option value="p:' + k + '">' + esc(PRESETS[k].label) + ' (preset)</option>'; }).join('') + rows.map(function (t) { return '<option value="t:' + t.id + '">' + esc(t.name) + '</option>'; }).join('') + '</select><button type="button" class="bsa-btn sm" data-pvgo>Preview</button><button type="button" class="bsa-btn sm" data-pvstop>Stop preview</button></div>'
+    el.innerHTML = '<div class="bsa-top"><div style="flex:1;min-width:220px"><h2>Header Themes</h2><p>Seasonal and special-day decorations for the ERP top header. Today: ' + (cur ? '<b style="color:#fff">' + esc(cur.name) + '</b> is live for all departments it applies to.' : 'no theme is active — the normal header shows.') + '</p></div><div style="display:flex;gap:8px"><button type="button" class="bsa-btn" data-pvstop>Stop page preview</button><button type="button" class="bsa-btn pri" data-new>+ Add theme</button></div></div>'
+      + ''
       + '<div class="bsa-list">' + (rows.length ? rows.map(function (t) {
           var st = statusOf(t, d0), L = ST_LABEL[st] || [st, ''], p = PRESETS[t.preset] || PRESETS.custom;
           var art = t.config && t.config.banner && t.config.banner !== 'none' ? t.config.banner : (t.config && t.config.banner === 'none' ? null : p.art);
-          return '<div class="bsa-row" data-id="' + t.id + '"><span class="bsa-sw" data-sw="' + t.id + '" style="background:' + (art ? 'url(&quot;' + esc(art) + '&quot;) center/cover' : 'linear-gradient(135deg,' + p.glow + ',#0b0f1c)') + '"></span>'
+          return '<div class="bsa-card" data-id="' + t.id + '"><div class="bsa-row">'
             + '<div><b>' + esc(t.name) + '</b><small>' + esc((KINDS.filter(function (k) { return k[0] === t.kind; })[0] || ['', p.kind || ''])[1]) + ' · priority ' + (t.priority || 0) + ' · ' + (t.portals && t.portals.length ? esc(t.portals.map(function (x) { return (PORTALS.filter(function (o) { return o[0] === x; })[0] || [0, x])[1]; }).join(', ')) + ' · ' : '') + (t.departments && t.departments.length ? esc(t.departments.map(function (c) { var d = divs.filter(function (x) { return x.code === c; })[0]; return d ? d.name : c; }).join(', ')) : 'All departments') + '</small></div>'
             + '<div class="bsa-when"><span class="bsa-pill ' + L[1] + '">' + esc(L[0]) + '</span><small style="color:#8b93b8;font-size:11.5px;margin-top:4px;display:block">' + esc(rangeText(t)) + '</small></div>'
             + '<div class="bsa-seg" role="group" aria-label="Activation">' + [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']].map(function (m) { return '<button type="button" data-ms="' + m[0] + '" class="' + (t.manual_state === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '</div>'
-            + '<div class="bsa-acts"><button type="button" class="bsa-btn sm" data-pvid="' + t.id + '">Preview</button><button type="button" class="bsa-btn sm" data-edit="' + t.id + '">Edit</button></div></div>';
+            + '<div class="bsa-acts"><button type="button" class="bsa-btn sm" data-pvid="' + t.id + '">Preview</button><button type="button" class="bsa-btn sm" data-edit="' + t.id + '">Edit</button></div></div>'
+            + '<div class="bsa-live" data-live="' + t.id + '" aria-hidden="true">' + mockHeader() + '</div></div>';
         }).join('') : '<div class="bsa-note">No themes yet. Run 20261101_header_themes.sql to add the built-in presets.</div>') + '</div>'
       + '<p class="bsa-note">Only the top header changes (search, clock, date, bell, profile). Effects pause off-screen, shrink on phones, stay still for reduced-motion users, and anyone can switch them off from their account menu.</p>';
     el.onclick = async function (e) {
@@ -748,8 +876,9 @@
         if (r.error) toast('error', 'Could not update: ' + r.error.message); else { ss(K_CACHE, null); S.themes = null; mountAdmin(el, opts); decorate(); }
       }
     };
-    // tiny live swatches (still render of each theme)
-    rows.forEach(function (t) { var sw = el.querySelector('[data-sw="' + t.id + '"]'); if (sw) sw.title = (PRESETS[t.preset] || PRESETS.custom).label; });
+    // live animated preview of every theme, exactly as the header will look
+    (el._bsaKill || []).forEach(function (k) { try { k(); } catch (_) {} });
+    el._bsaKill = rows.map(function (t) { var h = el.querySelector('[data-live="' + t.id + '"] .bes-header'); return h ? render(h, t, {}) : null; }).filter(Boolean);
   }
   function who() { try { if (typeof currentUser !== 'undefined' && currentUser && currentUser.name) return currentUser.name; } catch (_) {} return B().currentEmail ? B().currentEmail() : ''; }
   function toast(k, m) { if (typeof window.showToast === 'function') return window.showToast(k, m); }
