@@ -338,13 +338,15 @@
         var pg2 = ctx.createLinearGradient(x0 - 4, 0, x0 - 1.5, 0); pg2.addColorStop(0, '#64748b'); pg2.addColorStop(0.5, '#e2e8f0'); pg2.addColorStop(1, '#94a3b8');
         ctx.globalAlpha = 0.95; ctx.fillStyle = pg2; ctx.fillRect(x0 - 4, y0 - 2, 2.2, H - y0 + 2);   // pole
         ctx.fillStyle = '#e8c56a'; ctx.beginPath(); ctx.arc(x0 - 2.9, y0 - 3.2, 2, 0, 6.283); ctx.fill();   // brass finial
-        for (var x = 0; x < fw; x += step) {
-          var ph = x * 0.11 - t * 2.2, k = x / fw, dy = Math.sin(ph) * 2.2 * k, sh = Math.cos(ph) * 0.24 * (0.3 + k);
-          ctx.globalAlpha = 0.92; ctx.fillStyle = '#ff9933'; ctx.fillRect(x0 + x, y0 + dy, step + 0.5, fh / 3);
-          ctx.fillStyle = '#f6f7f2'; ctx.fillRect(x0 + x, y0 + dy + fh / 3, step + 0.5, fh / 3);
-          ctx.fillStyle = '#138808'; ctx.fillRect(x0 + x, y0 + dy + 2 * fh / 3, step + 0.5, fh / 3);
-          ctx.globalAlpha = Math.abs(sh); ctx.fillStyle = sh > 0 ? '#fff' : '#000'; ctx.fillRect(x0 + x, y0 + dy, step + 0.5, fh);
-        }
+        // cloth: three solid stripes whose edges follow the wave (no strips → no seams), then one
+        // horizontal gradient carrying the light on each fold, clipped to the flag
+        var N = 28, dyAt = function (x) { return Math.sin(x * 0.11 - t * 2.2) * 2.2 * (x / fw); };
+        function band(f0, f1) { ctx.beginPath(); for (var i = 0; i <= N; i++) { var x = fw * i / N; ctx.lineTo(x0 + x, y0 + dyAt(x) + fh * f0); } for (var i2 = N; i2 >= 0; i2--) { var x2 = fw * i2 / N; ctx.lineTo(x0 + x2, y0 + dyAt(x2) + fh * f1); } ctx.closePath(); }
+        ctx.globalAlpha = 1;
+        [['#f2903a', 0, 0.34], ['#eef0ea', 1 / 3, 0.67], ['#17803a', 2 / 3, 1]].forEach(function (S) { ctx.fillStyle = S[0]; band(S[1], S[2]); ctx.fill(); });
+        var shg = ctx.createLinearGradient(x0, 0, x0 + fw, 0);
+        for (var i = 0; i <= N; i++) { var xs = fw * i / N, sh = Math.cos(xs * 0.11 - t * 2.2) * 0.24 * (0.3 + xs / fw); shg.addColorStop(i / N, sh > 0 ? 'rgba(255,248,236,' + sh.toFixed(3) + ')' : 'rgba(11,13,20,' + (-sh).toFixed(3) + ')'); }
+        ctx.fillStyle = shg; band(0, 1); ctx.fill();
         var cx = x0 + fw / 2, cy = y0 + fh / 2 + Math.sin(fw / 2 * 0.11 - t * 2.2) * 1.1, rr = fh / 7;
         ctx.globalAlpha = 0.95; ctx.strokeStyle = '#1e3a8a'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.283); ctx.stroke();
         for (var s2 = 0; s2 < 24; s2 += 2) { var an = s2 * 0.2618; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(an) * rr, cy + Math.sin(an) * rr); ctx.stroke(); }
@@ -381,21 +383,12 @@
     },
 
     onam: function (W, H, band, q, accent, gap) {
-      // A small realistic pookalam turning very slowly in the empty space; a few petals.
+      // Warm dusk-green tint and a few petals; the backwater scene lives in the gap.
       var free = gap && gap.b - gap.a > 120 && !isPhone() ? gap : null;
       var pal = ['#f97316', '#facc15', '#e11d48', '#fafaf9', '#c026d3'], pet = []; for (var i = 0; i < q(7); i++) pet.push(newPetal(W, H, pal, true, [1.6, 2.6]));
-      var pr = Math.max(10, H * 0.32), pk = document.createElement('canvas'); pk.width = pk.height = Math.ceil(pr * 2 + 4);
-      var pg = pk.getContext('2d'), RC = ['#fde047', '#f97316', '#be123c', '#f5f5f4', '#15803d', '#a21caf'];
-      for (var ring = 0; ring < 6; ring++) { var rad = pr * (1 - ring * 0.16), n2 = Math.max(6, Math.round(rad * 1.1)); pg.fillStyle = RC[ring];
-        for (var j = 0; j < n2; j++) { var an2 = j / n2 * 6.283 + ring * 0.2; pg.beginPath(); pg.ellipse(pr + 2 + Math.cos(an2) * rad * 0.86, pr + 2 + Math.sin(an2) * rad * 0.86, rad * 0.08 + 0.5, rad * 0.045 + 0.4, an2, 0, 6.283); pg.fill(); } }
       return {
         bg: function (ctx, t) {
           ctx.fillStyle = lin(ctx, H, [[0, 'rgba(20,36,24,.35)'], [1, 'rgba(14,24,16,.08)']]); ctx.fillRect(0, 0, W, H);
-          if (free) {
-            var cx = (free.a + free.b) / 2, cy = H / 2;
-            ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12; ctx.drawImage(sprite(Math.round(pr * 2.2), '255,180,90', true), cx - pr * 2.2, cy - pr * 2.2); ctx.globalCompositeOperation = 'source-over';
-            ctx.save(); ctx.globalAlpha = 0.8; ctx.translate(cx, cy); ctx.rotate(t * 0.04); ctx.drawImage(pk, -pk.width / 2, -pk.height / 2); ctx.restore(); ctx.globalAlpha = 1;
-          }
         },
         fx: function (ctx) { pet.forEach(function (p, i) { p.v = Math.min(p.v, 0.35); if (!stepPetal(p, W, H)) pet[i] = newPetal(W, H, pal, false, [1.6, 2.6]); petal(ctx, p); }); }
       };
@@ -473,12 +466,6 @@
       var lamps = [], free = gap && gap.b - gap.a > 120 ? gap : null;
       if (free && !isPhone()) { var n = free.b - free.a > 360 ? 3 : free.b - free.a > 200 ? 2 : 1; for (var i = 0; i < n; i++) lamps.push({ x: free.a + (free.b - free.a) * (i + 1) / (n + 1), y: H * 0.5, s: rnd(0, 6.28), sz: i === Math.floor(n / 2) ? 1 : 0.85 }); }
       var embers = []; for (var k = 0; k < q(7); k++) embers.push({ x: free ? rnd(free.a, free.b) : rnd(0, W), y: rnd(0, H), v: rnd(0.06, 0.16), s: rnd(0, 6.28), a: rnd(0.25, 0.5) });
-      // faint gold line mandala (prerendered) turning very slowly behind the centre lamp
-      var mr = Math.max(12, Math.round(H * 0.46)), md = document.createElement('canvas'); md.width = md.height = mr * 2 + 2;
-      var mg = md.getContext('2d'); mg.translate(mr + 1, mr + 1); mg.strokeStyle = '#f6c66b'; mg.lineWidth = 0.6;
-      [[1, 16], [0.72, 12], [0.46, 8]].forEach(function (rg) { var R = mr * rg[0];
-        for (var i2 = 0; i2 < rg[1]; i2++) { mg.save(); mg.rotate(i2 / rg[1] * 6.283); mg.beginPath(); mg.moveTo(0, -R * 0.55); mg.quadraticCurveTo(R * 0.24, -R * 0.8, 0, -R); mg.quadraticCurveTo(-R * 0.24, -R * 0.8, 0, -R * 0.55); mg.stroke(); mg.restore(); }
-        mg.beginPath(); mg.arc(0, 0, R * 0.55, 0, 6.283); mg.stroke(); });
       function lamp(ctx, L, t) {
         var sc = L.sz, x = L.x, y = L.y;
         var f = 0.92 + 0.05 * Math.sin(t * 3.1 + L.s) + 0.03 * Math.sin(t * 7.3 + L.s * 2);   // calm flicker, never blinking
@@ -497,7 +484,6 @@
         bg: function (ctx, t) {
           ctx.fillStyle = lin(ctx, H, [[0, 'rgba(48,10,22,.42)'], [1, 'rgba(30,8,14,.12)']]); ctx.fillRect(0, 0, W, H);
           ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12; if (free) ctx.drawImage(sprite(90, '255,160,60', true), (free.a + free.b) / 2 - 90, H * 0.5 - 90); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-          if (lamps.length) { var mL = lamps[Math.floor(lamps.length / 2)]; ctx.save(); ctx.globalAlpha = 0.09; ctx.translate(mL.x, mL.y); ctx.rotate(t * 0.025); ctx.drawImage(md, -md.width / 2, -md.height / 2); ctx.restore(); ctx.globalAlpha = 1; }
           lamps.forEach(function (L) { lamp(ctx, L, t); });
         },
         fx: function (ctx, t) {
@@ -525,76 +511,78 @@
   // search box and the right-hand controls (never behind or on a control). Off on phones
   // and when that space is narrower than 170px.
   // ════════════════════════════════════════════════════════════════════════
-  // A string of out-of-focus fairy lights hanging across the gap (soft bokeh, not bulbs).
-  function lightString(g, H, cols, opts) {
-    // Draped in loops (swags) across the gap, each bulb a soft out-of-focus glow with a hot
-    // core; the whole string sways a little and bulbs breathe at their own pace.
-    opts = opts || {};
-    var w = g.b - g.a, loops = Math.max(2, Math.round(w / (opts.loop || 210))), sag = opts.sag || H * 0.42, y0 = opts.y0 || 2, per = opts.per || 7, pts = [];
-    for (var L = 0; L < loops; L++) for (var i = 0; i < per; i++) { var t = (i + 0.5) / per; pts.push({ L: L, t: t, c: cols[(L * per + i) % cols.length], s: rnd(0, 6.28), r: rnd(opts.r0 || 2.4, opts.r1 || 3.8) }); }
-    function at(L, t, sway) { var seg = w / loops; return { x: g.a + seg * (L + t), y: y0 + sag * 4 * t * (1 - t) * (0.85 + 0.15 * Math.sin(L * 1.7)) + sway * Math.sin(t * Math.PI) }; }
-    return function (ctx, time) {
-      var sway = Math.sin(time * 0.55) * 1.4;
-      ctx.globalAlpha = 0.22; ctx.strokeStyle = '#64748b'; ctx.lineWidth = 0.7;
-      for (var L = 0; L < loops; L++) { ctx.beginPath(); for (var k = 0; k <= 20; k++) { var p = at(L, k / 20, sway); k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); } ctx.stroke(); }
-      ctx.globalCompositeOperation = 'lighter';
-      pts.forEach(function (p) {
-        var q = at(p.L, p.t, sway), tw = 0.7 + 0.3 * Math.sin(time * 1.2 + p.s);
-        ctx.globalAlpha = 0.42 * tw; ctx.drawImage(sprite(Math.round(p.r * 3.2), p.c, true), q.x - p.r * 3.2, q.y + 2 - p.r * 3.2);
-        ctx.globalAlpha = tw; ctx.drawImage(sprite(Math.max(1, Math.round(p.r * 0.75)), '255,250,235', false), q.x - p.r * 0.75, q.y + 2 - p.r * 0.75);
-      });
-      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-    };
-  }
   // small shared helpers for gap scenery
+  // Realism rule: no drawn figures. Everything reads like a photograph — out-of-focus light
+  // (bokeh discs), soft-focus silhouettes, light rays, flare, glints. Only real light sources
+  // (flames, sparks, snow, water beads) are drawn sharp.
   function offscreen(w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; }
   function edgeFade(pc, w, h, e) {   // fade an offscreen layer out at its left / right ends
     e = e || 0.15; pc.globalCompositeOperation = 'destination-in'; pc.globalAlpha = 1;
     var f = pc.createLinearGradient(0, 0, w, 0); f.addColorStop(0, 'rgba(0,0,0,0)'); f.addColorStop(e, '#000'); f.addColorStop(1 - e, '#000'); f.addColorStop(1, 'rgba(0,0,0,0)');
     pc.fillStyle = f; pc.fillRect(0, 0, w, h); pc.globalCompositeOperation = 'source-over';
   }
+  function soften(src, k) {   // lens blur by down- then up-sampling (works on every browser, no ctx.filter)
+    var s = offscreen(src.width / k, src.height / k), sc = s.getContext('2d'); sc.imageSmoothingEnabled = true; sc.drawImage(src, 0, 0, s.width, s.height);
+    var o = offscreen(src.width, src.height), oc = o.getContext('2d'); oc.imageSmoothingEnabled = true; oc.imageSmoothingQuality = 'high'; oc.drawImage(s, 0, 0, o.width, o.height); return o;
+  }
   function edgeA(x, g, m) { m = m || 36; return Math.max(0, Math.min(1, (x - g.a) / m, (g.b - x) / m)); }
+  var DSC = {};
+  function disc(r, rgb) {   // a real bokeh disc: flat body, slightly brighter rim, soft edge
+    r = Math.max(2, Math.round(r)); var k = r + '|' + rgb; if (DSC[k]) return DSC[k];
+    var c = offscreen(r * 2 + 2, r * 2 + 2), g = c.getContext('2d'), gr = g.createRadialGradient(r + 1, r + 1, 0, r + 1, r + 1, r);
+    gr.addColorStop(0, 'rgba(' + rgb + ',.5)'); gr.addColorStop(0.7, 'rgba(' + rgb + ',.56)'); gr.addColorStop(0.88, 'rgba(' + rgb + ',.62)'); gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(r + 1, r + 1, r, 0, 6.283); g.fill(); return (DSC[k] = c);
+  }
+  function discs(g, H, n, cols, rr, ya) {
+    var a = []; ya = ya || [0.1, 0.9];
+    for (var i = 0; i < n; i++) a.push({ x: g.a + rnd(0, g.b - g.a), y: rnd(H * ya[0], H * ya[1]), r: rnd(rr[0], rr[1]), c: pick(cols), a: rnd(0.18, 0.42), s: rnd(0, 6.28), vx: rnd(-0.6, 0.6) });
+    return a;
+  }
+  function drawDiscs(ctx, list, g, t, dt) {
+    ctx.globalCompositeOperation = 'lighter';
+    list.forEach(function (b) {
+      b.x += b.vx * (dt || 0.033); if (b.x < g.a - b.r) b.x = g.b + b.r; if (b.x > g.b + b.r) b.x = g.a - b.r;
+      ctx.globalAlpha = b.a * (0.78 + 0.22 * Math.sin(t * 0.6 + b.s)) * edgeA(b.x, g, 30); var d = disc(b.r, b.c); ctx.drawImage(d, b.x - d.width / 2, b.y - d.height / 2);
+    });
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
   function flame(ctx, x, y, fh, lean, wd) {   // teardrop flame: pale core → orange edge
     var gf = ctx.createRadialGradient(x, y - fh * 0.2, 0.4, x, y - fh * 0.45, fh * 0.75);
     gf.addColorStop(0, 'rgba(255,250,225,1)'); gf.addColorStop(0.35, 'rgba(255,214,110,.95)'); gf.addColorStop(0.75, 'rgba(249,115,22,.55)'); gf.addColorStop(1, 'rgba(249,115,22,0)');
     ctx.fillStyle = gf; ctx.beginPath(); ctx.moveTo(x - wd, y); ctx.quadraticCurveTo(x - wd * 0.85, y - fh * 0.6, x + lean, y - fh); ctx.quadraticCurveTo(x + wd * 0.85, y - fh * 0.6, x + wd, y); ctx.closePath(); ctx.fill();
   }
-  function palm(pc, x, base, h, lean, col) {   // coconut palm silhouette: curved trunk + drooping fronds
+  function palm(pc, x, base, h, lean, col) {   // coconut palm silhouette (always shown soft-focus)
     pc.strokeStyle = col; pc.lineCap = 'round';
     var tx = x + lean * h, ty = base - h;
-    pc.lineWidth = Math.max(1.2, h * 0.05); pc.beginPath(); pc.moveTo(x, base); pc.quadraticCurveTo(x + lean * h * 0.15, base - h * 0.6, tx, ty); pc.stroke();
-    for (var i = 0; i < 9; i++) {
-      var an = -Math.PI - 0.45 + i / 8 * (Math.PI + 0.9) + rnd(-0.1, 0.1), L = h * rnd(0.42, 0.58), ex = tx + Math.cos(an) * L, ey = ty + Math.sin(an) * L * 0.45 + L * 0.4;
-      pc.lineWidth = Math.max(0.7, h * 0.028); pc.beginPath(); pc.moveTo(tx, ty); pc.quadraticCurveTo(tx + Math.cos(an) * L * 0.55, ty + Math.sin(an) * L * 0.55 - L * 0.1, ex, ey); pc.stroke();
+    pc.lineWidth = Math.max(1.4, h * 0.055); pc.beginPath(); pc.moveTo(x, base); pc.quadraticCurveTo(x + lean * h * 0.15, base - h * 0.6, tx, ty); pc.stroke();
+    for (var i = 0; i < 11; i++) {
+      var an = -Math.PI - 0.5 + i / 10 * (Math.PI + 1) + rnd(-0.1, 0.1), L = h * rnd(0.42, 0.6), ex = tx + Math.cos(an) * L, ey = ty + Math.sin(an) * L * 0.45 + L * 0.42;
+      pc.lineWidth = Math.max(0.8, h * 0.03); pc.beginPath(); pc.moveTo(tx, ty); pc.quadraticCurveTo(tx + Math.cos(an) * L * 0.55, ty + Math.sin(an) * L * 0.55 - L * 0.1, ex, ey); pc.stroke();
     }
+  }
+  function sunRays(ctx, x, y, H, n, a, t) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(t * 0.02);
+    for (var i = 0; i < n; i++) { ctx.rotate(6.283 / n); var gr = ctx.createLinearGradient(0, 0, 0, H * 1.5); gr.addColorStop(0, 'rgba(255,220,160,' + a + ')'); gr.addColorStop(1, 'rgba(255,220,160,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-5, H * 1.5); ctx.lineTo(5, H * 1.5); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
   }
 
   var GAPS = {
     christmas: function (g, H) {
-      // a thin crescent moon, now and then a shooting star, misty pines with one lit cabin
-      // (chimney smoke) at the bottom, and a light string hanging across the top
+      // soft-focus misty pines, a hazy moon, now and then a shooting star, and out-of-focus
+      // warm window / fairy lights far away (bokeh discs)
       var w = Math.ceil(g.b - g.a), pine = offscreen(w, H), pc = pine.getContext('2d');
-      [[0.45, '#1b2b4f', 0.55, 7, 13], [0.75, '#0d1730', 0.8, 10, 18]].forEach(function (L) {
+      [[0.5, '#1b2b4f', 0.55, 7, 13], [0.85, '#0b1530', 0.8, 10, 18]].forEach(function (L) {
         pc.globalAlpha = L[0]; pc.fillStyle = L[1]; pc.beginPath(); pc.moveTo(0, H);
         for (var x = -6; x < w + 10; x += rnd(L[3] * 0.6, L[3] * 1.2)) { var h = rnd(L[3], L[4]), b = H * (L[2] + 0.3); pc.lineTo(x - h * 0.28, b); pc.lineTo(x - h * 0.12, b - h * 0.5); pc.lineTo(x - h * 0.2, b - h * 0.5); pc.lineTo(x, b - h); pc.lineTo(x + h * 0.2, b - h * 0.5); pc.lineTo(x + h * 0.12, b - h * 0.5); pc.lineTo(x + h * 0.28, b); }
         pc.lineTo(w + 10, H); pc.closePath(); pc.fill();
       });
-      var cab = { x: Math.round(w * 0.66), y: H - 1 };   // cabin: body, pitched roof, chimney
-      pc.globalAlpha = 1; pc.fillStyle = '#0a1226';
-      pc.fillRect(cab.x - 8, cab.y - 8, 16, 8);
-      pc.beginPath(); pc.moveTo(cab.x - 10, cab.y - 7.5); pc.lineTo(cab.x, cab.y - 14); pc.lineTo(cab.x + 10, cab.y - 7.5); pc.closePath(); pc.fill();
-      pc.fillRect(cab.x + 4, cab.y - 15, 2.4, 5);
-      pc.fillStyle = 'rgba(226,236,255,.55)'; pc.fillRect(cab.x - 10, cab.y - 8.6, 20, 1.1);   // snow line on the roof edge
-      edgeFade(pc, w, H, 0.15);
-      var moon = offscreen(18, 18), mc = moon.getContext('2d');
-      mc.fillStyle = '#eef3ff'; mc.beginPath(); mc.arc(9, 9, 6, 0, 6.283); mc.fill();
-      mc.globalCompositeOperation = 'destination-out'; mc.beginPath(); mc.arc(12, 7, 5.6, 0, 6.283); mc.fill();
+      edgeFade(pc, w, H, 0.15); pine = soften(pine, 2.5);
       var mx = g.a + w * 0.1, my = 13, star = null, nextStar = rnd(4, 8);
-      var lights = lightString(g, H, ['255,196,120', '255,214,160', '255,120,100', '255,196,120', '150,190,255'], { loop: 230, per: 5, r0: 2.2, r1: 3.4 });
+      var bk = discs(g, H, Math.max(5, Math.round(w / 55)), ['255,190,120', '255,214,160', '255,170,110', '210,225,255'], [4, 9], [0.2, 0.85]);
       return function (ctx, t, dt) {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.16; ctx.drawImage(sprite(22, '200,215,255', true), mx - 22, my - 22);
-        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.85; ctx.drawImage(moon, mx - 9, my - 9);
+        ctx.globalAlpha = 0.18; ctx.drawImage(sprite(26, '200,215,255', true), mx - 26, my - 26);
+        ctx.globalAlpha = 0.75; ctx.drawImage(sprite(5, '236,242,255', false), mx - 5, my - 5);
         nextStar -= dt || 0.033;
         if (nextStar <= 0 && !star) { star = { x: rnd(g.a + w * 0.2, g.a + w * 0.6), y: rnd(3, 9), age: 0 }; nextStar = rnd(9, 16); }
         if (star) {
@@ -604,51 +592,24 @@
           ctx.globalAlpha = Math.max(0, a); ctx.strokeStyle = sg; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(star.x - 26, star.y - 7); ctx.lineTo(star.x, star.y); ctx.stroke();
           if (star.age >= 16) star = null;
         }
-        ctx.globalAlpha = 1; ctx.drawImage(pine, g.a, 0);
-        var wx = g.a + cab.x, fl = 0.8 + 0.12 * Math.sin(t * 2.3) + 0.08 * Math.sin(t * 5.1);
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.35 * fl; ctx.drawImage(sprite(9, '255,180,90', true), wx - 3 - 9, cab.y - 4.5 - 9);
-        ctx.globalAlpha = 0.95 * fl; ctx.fillStyle = '#ffcf87'; ctx.fillRect(wx - 4.5, cab.y - 6, 3, 2.6);
-        ctx.globalAlpha = 0.08; ctx.drawImage(sprite(40, '200,220,255', true), (g.a + g.b) / 2 - 40, H - 30);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 0.09; ctx.strokeStyle = '#dbe4f5'; ctx.lineWidth = 1.1; ctx.beginPath();   // chimney smoke
-        for (var k = 0; k < 12; k++) { var yy = cab.y - 15 - k * 1.8, xx = wx + 5.2 + k * 0.9 + Math.sin(t * 0.9 + k * 0.5) * (k * 0.25); k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
-        ctx.stroke(); ctx.globalAlpha = 1;
-        lights(ctx, t);
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.drawImage(pine, g.a, 0);
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.08; ctx.drawImage(sprite(40, '200,220,255', true), (g.a + g.b) / 2 - 40, H - 30); ctx.globalCompositeOperation = 'source-over';
+        drawDiscs(ctx, bk, g, t, dt);
       };
     },
     navaratri: function (g, H) {
-      // a marigold toran (thread of marigold beads with mango leaves) draped across the top
-      var w = g.b - g.a, loops = Math.max(1, Math.round(w / 300)), seg = w / loops, sag = H * 0.2, beads = [], leaves = [];
-      for (var L = 0; L < loops; L++) {
-        for (var x = 1.5; x < seg; x += 3.3) beads.push({ L: L, t: x / seg, c: pick(['#f59e0b', '#fb923c', '#fbbf24', '#ea580c', '#f97316']), r: rnd(1.5, 2.1) });
-        for (var x2 = 13; x2 < seg - 6; x2 += 26) leaves.push({ L: L, t: x2 / seg, s: rnd(0, 6.28), len: rnd(7, 10) });
-      }
-      function at(L, t, sw) { return { x: g.a + seg * (L + t), y: 1 + sag * 4 * t * (1 - t) + sw * Math.sin(t * Math.PI) }; }
-      return function (ctx, t) {
-        var sw = Math.sin(t * 0.5) * 1.2;
-        leaves.forEach(function (lf) {
-          var p = at(lf.L, lf.t, sw), swing = Math.sin(t * 0.9 + lf.s) * 1.4, wd = 2.4;
-          var lg = ctx.createLinearGradient(p.x - wd, 0, p.x + wd, 0); lg.addColorStop(0, '#1f3d10'); lg.addColorStop(0.5, '#4d7c0f'); lg.addColorStop(1, '#1f3d10');
-          ctx.globalAlpha = 0.9; ctx.fillStyle = lg; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(p.x + wd + 0.6, p.y + lf.len * 0.5, p.x + swing, p.y + lf.len); ctx.quadraticCurveTo(p.x - wd - 0.6, p.y + lf.len * 0.5, p.x, p.y); ctx.fill();
-          ctx.globalAlpha = 0.35; ctx.strokeStyle = '#a3c96a'; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(p.x, p.y + 1); ctx.lineTo(p.x + swing * 0.9, p.y + lf.len - 1); ctx.stroke();
-        });
-        beads.forEach(function (b) {
-          var p = at(b.L, b.t, sw);
-          ctx.globalAlpha = 0.95; ctx.fillStyle = b.c; ctx.beginPath(); ctx.arc(p.x, p.y, b.r, 0, 6.283); ctx.fill();
-          ctx.globalAlpha = 0.4; ctx.fillStyle = '#7c2d12'; ctx.beginPath(); ctx.arc(p.x + b.r * 0.25, p.y + b.r * 0.3, b.r * 0.55, 0, 6.283); ctx.fill();
-          ctx.globalAlpha = 0.5; ctx.fillStyle = '#fef3c7'; ctx.beginPath(); ctx.arc(p.x - b.r * 0.35, p.y - b.r * 0.35, b.r * 0.3, 0, 6.283); ctx.fill();
-        });
-        ctx.globalAlpha = 1;
-      };
+      // far-away festival lights, completely out of focus (marigold, amber, a little rose)
+      var bk = discs(g, H, Math.max(6, Math.round((g.b - g.a) / 45)), ['255,170,70', '255,200,110', '255,140,60', '236,90,140'], [4, 10], [0.12, 0.6]);
+      return function (ctx, t, dt) { drawDiscs(ctx, bk, g, t, dt); };
     },
     independence: function (g, H) {
-      // two paper kites flying high on either side of the flag + faint silk ribbons of light
-      var w = g.b - g.a;
-      var kites = [{ f: 0.13, y: 0.3, s: rnd(0, 6.28), c: ['#fb923c', '#c2410c'], sz: 7.5 }, { f: 0.87, y: 0.24, s: rnd(0, 6.28), c: ['#22c55e', '#15803d'], sz: 6.5 }];
-      return function (ctx, t) {
+      // morning light from above the flag, faint silk ribbons of saffron / white / green light
+      // and a few soft tricolour bokeh discs
+      var w = g.b - g.a, bk = discs(g, H, Math.max(4, Math.round(w / 80)), ['255,170,90', '240,244,250', '60,190,90'], [4, 8], [0.15, 0.85]);
+      return function (ctx, t, dt) {
         ctx.globalCompositeOperation = 'lighter';
-        [['255,153,51', 0, 0.12], ['248,250,252', 1.1, 0.07], ['19,160,8', 2.2, 0.11]].forEach(function (R, i) {
+        sunRays(ctx, (g.a + g.b) / 2, -14, H, 9, 0.05, t);
+        [['255,153,51', 0, 0.11], ['248,250,252', 1.1, 0.06], ['19,160,8', 2.2, 0.1]].forEach(function (R, i) {
           ctx.beginPath();
           for (var k = 0; k <= 48; k++) { var tt = k / 48, x = g.a + w * tt, y = H * (0.36 + i * 0.12) + Math.sin(tt * 6 + t * 0.7 + R[1]) * H * 0.1; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
           for (var k2 = 48; k2 >= 0; k2--) { var t2 = k2 / 48, x2 = g.a + w * t2, y2 = H * (0.36 + i * 0.12) + Math.sin(t2 * 6 + t * 0.7 + R[1]) * H * 0.1 + 2.4 + Math.sin(t2 * 3 + t) * 1.2; ctx.lineTo(x2, y2); }
@@ -656,111 +617,105 @@
           ctx.fillStyle = gr; ctx.fill();
         });
         ctx.globalCompositeOperation = 'source-over';
-        kites.forEach(function (k) {
-          var kx = g.a + w * k.f + Math.sin(t * 0.45 + k.s) * 4, ky = H * k.y + Math.sin(t * 0.9 + k.s) * 2.4, rot = Math.sin(t * 0.7 + k.s) * 0.16, sz = k.sz;
-          ctx.globalAlpha = 0.28; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 0.5;   // string down to the ground
-          ctx.beginPath(); ctx.moveTo(kx, ky + sz * 0.4); ctx.quadraticCurveTo(kx - 8, H * 0.85, kx - 24, H + 2); ctx.stroke();
-          ctx.save(); ctx.translate(kx, ky); ctx.rotate(rot + 0.08);
-          var kg = ctx.createLinearGradient(-sz, -sz, sz, sz); kg.addColorStop(0, k.c[0]); kg.addColorStop(1, k.c[1]);
-          ctx.globalAlpha = 0.88; ctx.fillStyle = kg; ctx.beginPath(); ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.78, -sz * 0.05); ctx.lineTo(0, sz * 1.05); ctx.lineTo(-sz * 0.78, -sz * 0.05); ctx.closePath(); ctx.fill();
-          ctx.globalAlpha = 0.3; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.78, -sz * 0.05); ctx.lineTo(0, -sz * 0.05); ctx.closePath(); ctx.fill();   // lit facet
-          ctx.globalAlpha = 0.45; ctx.strokeStyle = '#3b2a14'; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(0, -sz); ctx.lineTo(0, sz * 1.05); ctx.moveTo(-sz * 0.78, -sz * 0.05); ctx.quadraticCurveTo(0, -sz * 0.45, sz * 0.78, -sz * 0.05); ctx.stroke();
-          ctx.globalAlpha = 0.6; ctx.strokeStyle = k.c[0]; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(0, sz * 1.05);   // tail
-          for (var j = 1; j <= 6; j++) ctx.lineTo(Math.sin(t * 4 + j * 0.9 + k.s) * 1.6, sz * 1.05 + j * 1.7);
-          ctx.stroke(); ctx.restore();
-        });
-        ctx.globalAlpha = 1;
+        drawDiscs(ctx, bk, g, t, dt);
       };
     },
     vishu: function (g, H) {
-      // drooping konna (golden shower) clusters swaying from the top, and a small brass
-      // nilavilakku with three calm flames at the right end of the gap
+      // foreground konna (golden shower) blossom sprays in soft focus, swaying; golden morning
+      // bokeh; a brass nilavilakku in shallow focus — only its three flames are sharp
       var w = g.b - g.a, cl = [], n = Math.max(2, Math.min(4, Math.round((w - 60) / 120)));
-      for (var i = 0; i < n; i++) { var fl = []; var len = rnd(H * 0.45, H * 0.75); for (var j = 0; j < 24; j++) { var f = j / 24; fl.push({ y: f * len, x: rnd(-1, 1) * (2 + f * 6), r: rnd(1.2, 2.2) * (1 - f * 0.4), c: pick(['#facc15', '#fde047', '#eab308', '#fbbf24']) }); } cl.push({ x: g.a + (w - 60) * (i + 0.5) / n + rnd(-12, 12), s: rnd(0, 6.28), fl: fl }); }
-      var lx = g.b - 26, base = H - 3, lh = Math.min(H * 0.72, 40);
-      function brass(x0, x1) { var gb = ctx0.createLinearGradient(x0, 0, x1, 0); gb.addColorStop(0, '#4a2a0c'); gb.addColorStop(0.45, '#c08a2c'); gb.addColorStop(0.6, '#f1cf7a'); gb.addColorStop(1, '#3d220a'); return gb; }
-      var ctx0 = null;
-      return function (ctx, t) {
-        ctx0 = ctx;
-        cl.forEach(function (c) {
-          var sw = Math.sin(t * 0.8 + c.s) * 0.06;
-          ctx.save(); ctx.translate(c.x, -2); ctx.rotate(sw);
-          ctx.globalAlpha = 0.5; ctx.strokeStyle = '#3f6212'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, c.fl[c.fl.length - 1].y); ctx.stroke();
-          c.fl.forEach(function (f) { ctx.globalAlpha = 0.88; ctx.fillStyle = f.c; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r, f.r * 0.8, 0, 0, 6.283); ctx.fill(); });
-          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.16; ctx.drawImage(sprite(14, '255,214,90', true), -14, c.fl[10].y - 14); ctx.globalCompositeOperation = 'source-over';
-          ctx.restore();
-        });
-        // nilavilakku: foot, stem with two knobs, wide top bowl, three wicks
-        var f = 0.93 + 0.04 * Math.sin(t * 3.1) + 0.03 * Math.sin(t * 7.7), top = base - lh * 0.8;
-        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.3 * f; ctx.drawImage(sprite(26, '255,170,70', true), lx - 26, top - 32); ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1; ctx.fillStyle = brass(lx - lh * 0.2, lx + lh * 0.2);
-        ctx.beginPath(); ctx.moveTo(lx - lh * 0.2, base); ctx.lineTo(lx + lh * 0.2, base); ctx.lineTo(lx + lh * 0.06, base - lh * 0.1); ctx.lineTo(lx - lh * 0.06, base - lh * 0.1); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = brass(lx - 2, lx + 2); ctx.fillRect(lx - lh * 0.025, top, lh * 0.05, lh * 0.72);
-        [0.35, 0.58].forEach(function (k) { ctx.fillStyle = brass(lx - lh * 0.06, lx + lh * 0.06); ctx.beginPath(); ctx.ellipse(lx, base - lh * k, lh * 0.06, lh * 0.035, 0, 0, 6.283); ctx.fill(); });
-        ctx.fillStyle = brass(lx - lh * 0.17, lx + lh * 0.17); ctx.beginPath(); ctx.ellipse(lx, top, lh * 0.17, lh * 0.06, 0, 0, Math.PI); ctx.fill();
-        ctx.strokeStyle = 'rgba(246,211,140,.85)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(lx, top, lh * 0.17, lh * 0.025, 0, 0, 6.283); ctx.stroke();
-        [-0.11, 0, 0.11].forEach(function (o, i) { flame(ctx, lx + o * lh, top - 0.5, lh * (i === 1 ? 0.2 : 0.16) * f, Math.sin(t * 1.3 + i) * 0.5, 1.6); });
+      for (var i = 0; i < n; i++) {
+        var len = rnd(H * 0.5, H * 0.8), cv = offscreen(26, len + 6), cc = cv.getContext('2d');
+        cc.strokeStyle = 'rgba(63,98,18,.6)'; cc.lineWidth = 0.8; cc.beginPath(); cc.moveTo(13, 0); cc.lineTo(13, len); cc.stroke();
+        for (var j = 0; j < 30; j++) { var f = j / 30; cc.globalAlpha = 0.9; cc.fillStyle = pick(['#facc15', '#fde047', '#eab308', '#fbbf24']); cc.beginPath(); cc.ellipse(13 + rnd(-1, 1) * (2 + f * 7), f * len + 2, rnd(1.4, 2.4) * (1 - f * 0.4), rnd(1.1, 1.9) * (1 - f * 0.4), rnd(0, 3), 0, 6.283); cc.fill(); }
+        cl.push({ x: g.a + (w - 60) * (i + 0.5) / n + rnd(-12, 12), s: rnd(0, 6.28), img: soften(cv, i % 2 ? 1.6 : 2.2) });
+      }
+      var bk = discs(g, H, Math.max(4, Math.round(w / 70)), ['255,214,120', '255,190,90', '255,236,170'], [4, 8], [0.2, 0.9]);
+      var lx = g.b - 26, base = H - 3, lh = Math.min(H * 0.72, 40), top = base - lh * 0.8;
+      var lp = offscreen(lh * 0.5, lh + 4), lc = lp.getContext('2d'), cx = lh * 0.25;   // lamp body, rendered once then softened
+      function brass(x0, x1) { var gb = lc.createLinearGradient(x0, 0, x1, 0); gb.addColorStop(0, '#3a2009'); gb.addColorStop(0.45, '#a8751f'); gb.addColorStop(0.6, '#e8c46e'); gb.addColorStop(1, '#2e1906'); return gb; }
+      var by = lh + 2, ty = by - lh * 0.8;
+      lc.fillStyle = brass(cx - lh * 0.2, cx + lh * 0.2); lc.beginPath(); lc.moveTo(cx - lh * 0.2, by); lc.lineTo(cx + lh * 0.2, by); lc.lineTo(cx + lh * 0.06, by - lh * 0.1); lc.lineTo(cx - lh * 0.06, by - lh * 0.1); lc.closePath(); lc.fill();
+      lc.fillStyle = brass(cx - 2, cx + 2); lc.fillRect(cx - lh * 0.025, ty, lh * 0.05, lh * 0.72);
+      [0.35, 0.58].forEach(function (k) { lc.fillStyle = brass(cx - lh * 0.06, cx + lh * 0.06); lc.beginPath(); lc.ellipse(cx, by - lh * k, lh * 0.06, lh * 0.035, 0, 0, 6.283); lc.fill(); });
+      lc.fillStyle = brass(cx - lh * 0.17, cx + lh * 0.17); lc.beginPath(); lc.ellipse(cx, ty, lh * 0.17, lh * 0.06, 0, 0, Math.PI); lc.fill();
+      lp = soften(lp, 1.6);
+      return function (ctx, t, dt) {
+        ctx.globalCompositeOperation = 'lighter'; sunRays(ctx, (g.a + g.b) / 2, -16, H, 7, 0.045, t); ctx.globalCompositeOperation = 'source-over';
+        drawDiscs(ctx, bk, g, t, dt);
+        cl.forEach(function (c) { ctx.save(); ctx.translate(c.x, -3); ctx.rotate(Math.sin(t * 0.8 + c.s) * 0.06); ctx.globalAlpha = 0.9; ctx.drawImage(c.img, -13, 0); ctx.restore(); });
+        var f = 0.93 + 0.04 * Math.sin(t * 3.1) + 0.03 * Math.sin(t * 7.7);
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.32 * f; ctx.drawImage(sprite(28, '255,170,70', true), lx - 28, top - 32); ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.8; ctx.drawImage(lp, lx - lp.width / 2, base - lp.height + 2);
+        ctx.globalAlpha = 1; [-0.11, 0, 0.11].forEach(function (o, i) { flame(ctx, lx + o * lh, top - 0.5, lh * (i === 1 ? 0.2 : 0.16) * f, Math.sin(t * 1.3 + i) * 0.5, 1.6); });
         ctx.globalAlpha = 1;
       };
     },
     onam: function (g, H) {
-      // backwater at the bottom: two coconut palms at the ends, a chundan vallam (snake boat)
-      // rowing slowly across with its reflection, and a calm shimmer on the water
-      var w = g.b - g.a, pl = offscreen(w, H), pc = pl.getContext('2d'), dusk = offscreen(w, H), dc = dusk.getContext('2d');
-      var dg = dc.createLinearGradient(0, 0, 0, H); dg.addColorStop(0, 'rgba(120,90,140,.05)'); dg.addColorStop(0.55, 'rgba(255,150,90,.14)'); dg.addColorStop(0.82, 'rgba(255,190,120,.24)'); dg.addColorStop(1, 'rgba(120,180,200,.1)');
-      dc.fillStyle = dg; dc.fillRect(0, 0, w, H); edgeFade(dc, w, H, 0.2);
-      pc.globalAlpha = 0.95; palm(pc, 10, H + 2, H * 0.78, 0.16, '#050c07'); palm(pc, w - 12, H + 2, H * 0.66, -0.18, '#050c07');
-      pc.globalAlpha = 0.5; palm(pc, w - 34, H + 2, H * 0.48, -0.08, '#12261a');
-      var boat = { x: g.a + rnd(w * 0.05, w * 0.35), v: 8 };
+      // Kerala backwater at dusk, shot through a long lens: a low sun, its glittering path on
+      // the water, soft-focus coconut palms at the edges and a distant snake-boat silhouette
+      var w = g.b - g.a, sx = g.a + w * 0.62, sy = H * 0.62, wl = H - 11;
+      var sky = offscreen(w, H), kc = sky.getContext('2d'), dg = kc.createLinearGradient(0, 0, 0, H);
+      dg.addColorStop(0, 'rgba(120,90,140,.05)'); dg.addColorStop(0.55, 'rgba(255,150,90,.15)'); dg.addColorStop(0.8, 'rgba(255,190,120,.22)'); dg.addColorStop(1, 'rgba(110,170,190,.1)');
+      kc.fillStyle = dg; kc.fillRect(0, 0, w, H); edgeFade(kc, w, H, 0.2);
+      var pl = offscreen(w, H), pc = pl.getContext('2d');
+      palm(pc, 10, H + 2, H * 0.8, 0.16, '#050c07'); palm(pc, w - 12, H + 2, H * 0.68, -0.18, '#050c07');
+      pc.globalAlpha = 0.6; palm(pc, w - 36, H + 2, H * 0.5, -0.08, '#0a160d');
+      pl = soften(pl, 2.2);
+      var bt = offscreen(84, 20), bc = bt.getContext('2d');   // boat silhouette, soft (distance haze)
+      bc.fillStyle = '#0a120c'; bc.beginPath(); bc.moveTo(4, 2); bc.quadraticCurveTo(8, 14, 18, 15); bc.lineTo(78, 14.6); bc.quadraticCurveTo(82, 15, 80, 17); bc.lineTo(16, 17.4); bc.quadraticCurveTo(4, 16, 3, 2); bc.closePath(); bc.fill();
+      bc.fillRect(20, 12.4, 54, 2.2);   // the crew as one low dark mass, as it reads from far away
+      bt = soften(bt, 2);
+      var boat = { x: g.a + rnd(w * 0.05, w * 0.3), v: 6 }, glit = [];
+      for (var i = 0; i < 26; i++) glit.push({ dx: rnd(-1, 1), y: rnd(wl + 1, H - 1), s: rnd(0, 6.28), l: rnd(2, 6) });
       return function (ctx, t, dt) {
-        ctx.drawImage(dusk, g.a, 0);
-        ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 1;
-        for (var r = 0; r < 4; r++) { ctx.strokeStyle = 'rgba(190,240,255,' + (0.06 + r * 0.02) + ')'; ctx.beginPath(); for (var x = 0; x <= w; x += 8) { var y = H - 10 + r * 2.5 + Math.sin(x * 0.04 + t * (0.8 + r * 0.25) + r) * 1.1; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
+        ctx.drawImage(sky, g.a, 0);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.28; ctx.drawImage(sprite(34, '255,170,90', true), sx - 34, sy - 34);
+        ctx.globalAlpha = 0.7; ctx.drawImage(sprite(6, '255,226,170', false), sx - 6, sy - 6);
+        ctx.fillStyle = '#ffd9a0';   // sun path: horizontal glints that widen toward the viewer
+        glit.forEach(function (gl) { var k = (gl.y - wl) / (H - wl), a = Math.max(0, Math.sin(t * 1.6 + gl.s)); ctx.globalAlpha = 0.5 * a; ctx.fillRect(sx + gl.dx * (4 + k * 14) - gl.l / 2, gl.y, gl.l, 0.8); });
+        ctx.lineWidth = 0.8;
+        for (var r = 0; r < 3; r++) { ctx.strokeStyle = 'rgba(190,230,255,' + (0.05 + r * 0.02) + ')'; ctx.beginPath(); for (var x = 0; x <= w; x += 8) { var y = wl + 1 + r * 3 + Math.sin(x * 0.04 + t * (0.8 + r * 0.25) + r) * 0.9; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
         ctx.globalCompositeOperation = 'source-over';
         boat.x += boat.v * (dt || 0.033); if (boat.x > g.b + 10) boat.x = g.a - 90;
-        var bx = boat.x, by = H - 8 + Math.sin(t * 1.2) * 0.4, L = 70, a = Math.min(edgeA(bx, g, 40), edgeA(bx + L, g, 40)) * 0.9;
-        if (a > 0) {
-          ctx.save(); ctx.beginPath(); ctx.rect(g.a, 0, w, H); ctx.clip();
-          ctx.globalAlpha = a; ctx.fillStyle = '#0d160f';
-          ctx.beginPath(); ctx.moveTo(bx - 1, by - 14);   // tall curved stern (left) sweeping into a long low hull
-          ctx.quadraticCurveTo(bx + 3, by - 2, bx + 14, by - 1.4); ctx.lineTo(bx + L, by - 1.8); ctx.quadraticCurveTo(bx + L + 3, by - 1.6, bx + L + 1, by + 0.6); ctx.lineTo(bx + 12, by + 1); ctx.quadraticCurveTo(bx + 1, by, bx - 2, by - 14); ctx.closePath(); ctx.fill();
-          ctx.strokeStyle = '#0d160f'; ctx.lineWidth = 0.7; var row = Math.sin(t * 4.2);
-          for (var i = 0; i < 13; i++) { var px = bx + 17 + i * 4; ctx.fillRect(px - 0.5, by - 4.4, 1.1, 3); ctx.beginPath(); ctx.moveTo(px, by - 2.2); ctx.lineTo(px - 1.5 + row * 2.2, by + 2.6); ctx.stroke(); }
-          ctx.globalAlpha = a * 0.22; ctx.fillRect(bx + 8, by + 2, L - 8, 1.1);   // reflection
-          ctx.restore();
-        }
+        var a = Math.min(edgeA(boat.x, g, 40), edgeA(boat.x + 84, g, 40));
+        if (a > 0) { ctx.globalAlpha = 0.85 * a; ctx.drawImage(bt, boat.x, wl - 15 + Math.sin(t * 1.2) * 0.4); ctx.globalAlpha = 0.16 * a; ctx.fillStyle = '#0a120c'; ctx.fillRect(boat.x + 18, wl + 2.5, 60, 1); }
         ctx.globalAlpha = 1; ctx.drawImage(pl, g.a, 0);
       };
     },
     newyear: function (g, H) {
-      // a far city skyline along the bottom (lit windows, one blinking tower light) under a
-      // short string of warm lights; fireworks come from the scene
+      // the city far away and out of focus: a soft skyline on a glowing haze, window lights as
+      // tiny bokeh, one blinking aircraft-warning light, warm gold bokeh drifting near the lens
       var w = Math.ceil(g.b - g.a), sk = offscreen(w, H), sc = sk.getContext('2d'), wins = [], tower = null;
       var cg = sc.createLinearGradient(0, H * 0.45, 0, H); cg.addColorStop(0, 'rgba(150,110,255,0)'); cg.addColorStop(0.7, 'rgba(170,120,255,.14)'); cg.addColorStop(1, 'rgba(255,190,120,.2)');
-      sc.fillStyle = cg; sc.fillRect(0, 0, w, H);   // city glow on the low haze
+      sc.fillStyle = cg; sc.fillRect(0, 0, w, H);
       sc.fillStyle = '#0b0920';
       for (var x = 0; x < w; ) { var bw = rnd(6, 15), bh = rnd(4, 12); if (!tower && x > w * 0.55) { bh = 15; tower = { x: x + bw / 2, y: H - bh - 4 }; sc.fillRect(x + bw / 2 - 0.4, H - bh - 4, 0.8, 4); }
         sc.fillRect(x, H - bh, bw, bh);
-        for (var wy = H - bh + 2; wy < H - 1; wy += 2.6) for (var wx = x + 1.5; wx < x + bw - 1.5; wx += 2.6) if (Math.random() < 0.18) wins.push({ x: g.a + wx, y: wy, s: rnd(0, 6.28), on: Math.random() < 0.85 });
+        for (var wy = H - bh + 2; wy < H - 1; wy += 2.6) for (var wx = x + 1.5; wx < x + bw - 1.5; wx += 2.6) if (Math.random() < 0.16) wins.push({ x: g.a + wx, y: wy, s: rnd(0, 6.28) });
         x += bw + rnd(0, 2); }
-      edgeFade(sc, w, H, 0.12);
-      var str = lightString(g, H, ['255,214,120', '255,236,180', '230,190,255'], { loop: 200, per: 6, sag: H * 0.26, r0: 1.5, r1: 2.4 });
-      return function (ctx, t) {
-        ctx.globalAlpha = 0.9; ctx.drawImage(sk, g.a, 0);
-        ctx.fillStyle = '#ffd68a';
-        wins.forEach(function (wn) { if (!wn.on) return; ctx.globalAlpha = 0.45 * (0.75 + 0.25 * Math.sin(t * 0.6 + wn.s)) * edgeA(wn.x, g, 40); ctx.fillRect(wn.x, wn.y, 1, 1); });
-        if (tower) { var on = Math.sin(t * 2.4) > 0.6; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = on ? 0.9 : 0.15; ctx.drawImage(sprite(3, '255,80,80', true), g.a + tower.x - 3, tower.y - 3); ctx.globalCompositeOperation = 'source-over'; }
-        ctx.globalAlpha = 1; str(ctx, t);
+      edgeFade(sc, w, H, 0.12); sk = soften(sk, 2.2);
+      var bk = discs(g, H, Math.max(4, Math.round(w / 75)), ['255,214,120', '255,236,180', '230,190,255'], [5, 10], [0.1, 0.55]);
+      return function (ctx, t, dt) {
+        ctx.globalAlpha = 0.95; ctx.drawImage(sk, g.a, 0);
+        ctx.globalCompositeOperation = 'lighter';
+        wins.forEach(function (wn) { ctx.globalAlpha = 0.35 * (0.75 + 0.25 * Math.sin(t * 0.6 + wn.s)) * edgeA(wn.x, g, 40); ctx.drawImage(sprite(2, '255,214,138', true), wn.x - 1.5, wn.y - 1.5); });
+        if (tower) { var on = Math.sin(t * 2.4) > 0.6; ctx.globalAlpha = on ? 0.9 : 0.12; ctx.drawImage(sprite(3, '255,80,80', true), g.a + tower.x - 3, tower.y - 3); }
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+        drawDiscs(ctx, bk, g, t, dt);
       };
     },
     monsoon: function (g, H) {
-      // low rain clouds drifting along the top, water beads on glass (some sliding), rings
-      // where drops land along the bottom, and a faint distant lightning fork now and then
+      // night rain on a window: out-of-focus street / city lights behind the glass, low clouds
+      // drifting, water beads (some sliding), rings where drops land, a far lightning fork
       var w = g.b - g.a, beads = [], rings = [], nextRing = 0.3, nextBolt = rnd(5, 9), bolt = null, clouds = [];
+      var bk = discs(g, H, Math.max(5, Math.round(w / 55)), ['255,190,120', '120,200,220', '255,214,160', '160,180,255'], [5, 11], [0.25, 0.95]);
       for (var i = 0; i < Math.round(w / 30); i++) beads.push({ x: g.a + rnd(0, w), y: rnd(2, H - 4), r: rnd(1.8, 4), v: Math.random() < 0.3 ? rnd(0.12, 0.35) : 0, tr: [] });
       for (var c = 0; c < Math.max(3, Math.round(w / 90)); c++) { var pf = []; for (var k = 0; k < 4; k++) pf.push({ dx: rnd(-22, 22), dy: rnd(-5, 4), r: Math.round(rnd(13, 22)) }); clouds.push({ x: g.a + rnd(0, w), pf: pf }); }
       return function (ctx, t, dt) {
         dt = dt || 0.033;
+        drawDiscs(ctx, bk, g, t, dt);
         clouds.forEach(function (cd) { cd.x += 3 * dt; if (cd.x > g.b + 30) cd.x = g.a - 30; var a = edgeA(cd.x, g, 50);
           cd.pf.forEach(function (p) { ctx.globalAlpha = 0.13 * a; ctx.drawImage(sprite(p.r, '150,170,200', true), cd.x + p.dx - p.r, p.dy - p.r); }); });
         nextBolt -= dt;
@@ -783,25 +738,19 @@
       };
     },
     summer: function (g, H) {
-      // slow sun rays, two distant birds gliding across, heat-haze shimmer and sun glints
+      // slow sun rays, a real lens flare (ghosts along the line through the frame centre),
+      // heat-haze shimmer and sun glints
       var w = g.b - g.a, glints = []; for (var i = 0; i < Math.round(w / 60); i++) glints.push({ x: g.a + rnd(0, w), y: rnd(H * 0.3, H - 4), s: rnd(0, 6.28) });
-      var sx = g.b - w * 0.25, birds = [{ x: g.a + w * 0.15, y: H * 0.38, v: 14, s: rnd(0, 6.28), sz: 4.2 }, { x: g.a + w * 0.3, y: H * 0.5, v: 11, s: rnd(0, 6.28), sz: 3.2 }];
-      return function (ctx, t, dt) {
+      var sx = g.b - w * 0.25, cx = (g.a + g.b) / 2, cy = H / 2;
+      var ghosts = [[0.55, 5, '255,200,140', 0.16], [0.9, 3, '170,220,255', 0.18], [1.25, 9, '255,170,120', 0.08], [1.6, 4, '200,255,210', 0.12], [1.85, 13, '255,214,160', 0.05]];
+      return function (ctx, t) {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.save(); ctx.translate(sx, 0); ctx.rotate(t * 0.03);
-        for (var ry = 0; ry < 8; ry++) { ctx.rotate(0.785); var gr = ctx.createLinearGradient(0, 0, 0, H * 1.4); gr.addColorStop(0, 'rgba(255,214,140,.09)'); gr.addColorStop(1, 'rgba(255,214,140,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4, H * 1.4); ctx.lineTo(4, H * 1.4); ctx.closePath(); ctx.fill(); }
-        ctx.restore();
-        for (var r = 0; r < 3; r++) { ctx.strokeStyle = 'rgba(255,214,150,' + (0.05 + r * 0.02) + ')'; ctx.lineWidth = 1; ctx.beginPath(); for (var x = 0; x <= w; x += 10) { var y = H - 8 - r * 4 + Math.sin(x * 0.05 - t * 1.6 + r) * 1.4; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
+        sunRays(ctx, sx, 0, H, 8, 0.09, t);
+        var dx = cx - sx, dy = cy - 2;
+        ghosts.forEach(function (gh) { var gx = sx + dx * gh[0], gy = 2 + dy * gh[0]; if (gx < g.a + 6) return; var d = disc(gh[1], gh[2]); ctx.globalAlpha = gh[3] * (0.85 + 0.15 * Math.sin(t * 0.7 + gh[0])); ctx.drawImage(d, gx - d.width / 2, gy - d.height / 2); });
+        for (var r = 0; r < 3; r++) { ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(255,214,150,' + (0.05 + r * 0.02) + ')'; ctx.lineWidth = 1; ctx.beginPath(); for (var x = 0; x <= w; x += 10) { var y = H - 8 - r * 4 + Math.sin(x * 0.05 - t * 1.6 + r) * 1.4; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
         glints.forEach(function (gl) { var a = Math.max(0, Math.sin(t * 1.2 + gl.s)); if (a < 0.2) return; ctx.globalAlpha = 0.5 * a; ctx.drawImage(sprite(3, '255,236,190', true), gl.x - 3, gl.y - 3); });
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = '#e9d7b8'; ctx.lineWidth = 1; ctx.lineCap = 'round';
-        birds.forEach(function (b) {   // glide, with a few wing beats every now and then
-          b.x += b.v * (dt || 0.033); if (b.x > g.b + 8) { b.x = g.a - 8; b.y = H * rnd(0.3, 0.55); }
-          var beat = Math.sin(t * 0.5 + b.s) > 0.4 ? Math.sin(t * 9 + b.s) : 0.25, y = b.y + Math.sin(t * 0.8 + b.s) * 1.5, s = b.sz;
-          ctx.globalAlpha = 0.42 * edgeA(b.x, g, 30); ctx.beginPath();
-          ctx.moveTo(b.x - s, y - beat * s * 0.5); ctx.quadraticCurveTo(b.x - s * 0.45, y - s * 0.45, b.x, y); ctx.quadraticCurveTo(b.x + s * 0.45, y - s * 0.45, b.x + s, y - beat * s * 0.5); ctx.stroke();
-        });
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
       };
     }
   };
