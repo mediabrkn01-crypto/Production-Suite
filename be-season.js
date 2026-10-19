@@ -29,7 +29,7 @@
   // pal: colours for falling petals / flowers.
   var ART = (function () { try { return new URL('assets/header-themes/', (document.currentScript && document.currentScript.src) || location.href).href; } catch (_) { return 'assets/header-themes/'; } })();
   var PRESETS = {
-    christmas:    { label: 'Christmas',        kind: 'festival', particles: 'snow',    caps: 'snow',  overlay: 'frost',    art: null,    accent: '#cfe6ff', line: 'rgba(207,230,255,.28)', glow: 'rgba(186,220,255,.16)' },
+    christmas:    { label: 'Christmas',        kind: 'festival', particles: 'snow',    caps: null,  overlay: 'frost',    art: null,    accent: '#cfe6ff', line: 'rgba(207,230,255,.28)', glow: 'rgba(186,220,255,.16)' },
     newyear:      { label: 'New Year',         kind: 'special',  particles: 'sparkle', caps: null,    overlay: 'night',    art: null,      accent: '#fbbf24', line: 'rgba(251,191,36,.28)',  glow: 'rgba(251,191,36,.14)' },
     independence: { label: 'Independence Day', kind: 'special',  particles: 'petals',  caps: null,    overlay: 'tricolor', art: null, accent: '#ff9933', line: 'rgba(255,255,255,.18)', glow: 'rgba(255,153,51,.10)', pal: ['#ff9933', '#f8fafc', '#16a34a', '#ff9933'] },
     vishu:        { label: 'Vishu',            kind: 'festival', particles: 'petals',  caps: null,    overlay: 'warm',     art: null,        accent: '#facc15', line: 'rgba(250,204,21,.28)',  glow: 'rgba(250,204,21,.14)', pal: ['#facc15', '#fde047', '#eab308', '#fbbf24'] },
@@ -106,31 +106,21 @@
     s.textContent = [
       '.bst{position:relative;isolation:isolate}',
       /* themed header = a card with its own scene behind the controls */
-      '.bst-navaratri.bst-scene,.bst-independence.bst-scene{padding-top:24px!important}.bst-christmas.bst-scene{padding-top:30px!important}',
-      '.bst.bst-scene{padding:12px 14px!important;border:1px solid var(--bst-line)!important;border-radius:16px;margin-top:2px;transition:padding .2s}',
-      '.bst-bg{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:inherit}',
+      '.bst-bg{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:12px;-webkit-mask:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent);mask:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}',
       '.bst-caps{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:visible}',
       '.bst-bg canvas{position:absolute;inset:0;width:100%;height:100%}',
       /* band layout: live scene across the top, controls on a frosted glass bar */
-      '.bst.bst-band.bst-scene{padding:calc(var(--bst-band,54px) - 10px) 12px 10px!important;border-radius:16px}',
       '.bst-band .bst-bg{background:#080c17}',
-      '.bst.bst-band.bst-scene .bes-search,.bst.bst-band.bst-scene .bes-date,.bst.bst-band.bst-scene .bes-icon,.bst.bst-band.bst-scene .bes-clockpill{background:rgba(255,255,255,.04)!important;backdrop-filter:none;-webkit-backdrop-filter:none}',
-      '.bst.bst-band.bst-scene .bes-account{background:transparent!important}',
-      '@media(max-width:767px){.bst.bst-band.bst-scene{padding:calc(var(--bst-band,38px) - 8px) 8px 8px!important}}',
       /* banner band + glass control bar (realistic themes) */
-      '.bst-hasbanner.bst-scene{padding:calc(var(--bst-band,52px) - 10px) 12px 10px!important}',
       '.bst-hasbanner .bst-bg{background:linear-gradient(180deg,#0b1020,#080c17)}',
-      '.bst-banner{position:absolute;left:0;right:0;top:0;height:calc(var(--bst-band,52px) + 14px);background-size:cover;background-repeat:no-repeat;opacity:0;transform:scale(1.015);transition:opacity .8s ease,transform 1.4s ease;-webkit-mask:linear-gradient(#000 62%,transparent);mask:linear-gradient(#000 62%,transparent)}',
+      '.bst-banner{position:absolute;left:0;right:0;top:0;bottom:0;background-size:cover;background-repeat:no-repeat;opacity:0;transform:scale(1.015);transition:opacity .8s ease,transform 1.4s ease;-webkit-mask:linear-gradient(#000 62%,transparent);mask:linear-gradient(#000 62%,transparent)}',
       '.bst-banner.on{opacity:1;transform:none}.bst-banner::after{content:"";position:absolute;inset:0;background:rgba(5,8,16,var(--bst-dark,.08))}',
       '.bst-bar{position:absolute;left:7px;right:7px;bottom:6px;top:auto;border-radius:13px;background:rgba(9,12,22,.74);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border:1px solid rgba(255,255,255,.07);box-shadow:0 -10px 24px -14px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05)}',
       '.bst-hasbanner .bst-sky,.bst-hasbanner .bst-corner,.bst-hasbanner .bst-mid,.bst-hasbanner .bst-drift,.bst-hasbanner .bst-frost,.bst-hasbanner .bst-top{display:none!important}',
-      '.bst-hasbanner.bst-scene .bes-search,.bst-hasbanner.bst-scene .bes-date,.bst-hasbanner.bst-scene .bes-icon,.bst-hasbanner.bst-scene .bes-clockpill{background:rgba(255,255,255,.035)!important;backdrop-filter:none;-webkit-backdrop-filter:none}',
-      '.bst-hasbanner.bst-scene .bes-account{background:transparent!important}',
-      '.bst-ny{position:absolute;right:21%;top:0;height:var(--bst-band,52px);display:flex;align-items:center;gap:10px;pointer-events:none;opacity:.95}',
+      '.bst-ny{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:10px;--bst-band:46px;pointer-events:none;opacity:.95}',
       '.bst-ny em{font:400 calc(var(--bst-band,52px) * .42)/1 "Great Vibes","Snell Roundhand","Brush Script MT",cursive;color:#fde7b0;text-shadow:0 0 12px rgba(251,191,36,.45)}',
       '.bst-ny b{font:800 calc(var(--bst-band,52px) * .5)/1 Inter,system-ui,sans-serif;letter-spacing:.02em;background:linear-gradient(180deg,#fff3c4,#fbbf24 55%,#b45309);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 10px rgba(251,191,36,.5))}',
-      '@media(max-width:900px){.bst-ny{display:none}}',
-      '@media(max-width:767px){.bst-hasbanner.bst-scene{padding:calc(var(--bst-band,40px) - 8px) 8px 8px!important}.bst-bar{left:4px;right:4px;bottom:4px}}',
+      '@media(max-width:900px){.bst-ny{display:none}}.bst-ny[hidden]{display:none}',
       '.bst-sky,.bst-top,.bst-drift{position:absolute;left:0;right:0}.bst-sky{inset:0}.bst-top{top:0;height:22px}',
       '.bst-mid{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:18px}.bst-mid[hidden]{display:none}',
       '.bst-corner{position:absolute;top:0;pointer-events:none}.bst-corner.l{left:0}.bst-corner.r{right:0;transform:scaleX(-1)}',
@@ -206,7 +196,6 @@
       '.bst-independence.bst-accent .bes-av{box-shadow:0 0 0 2px #ff9933,0 0 0 4px rgba(19,136,8,.6)!important}',
       '.bst-asset{position:absolute;right:12px;top:6px;bottom:6px;max-height:46px;opacity:.85;object-fit:contain}',
       '.bst-cap{position:absolute;pointer-events:none}',
-      '@media(max-width:767px){.bst.bst-scene{padding:8px 10px!important;border-radius:14px}.bst-christmas.bst-scene,.bst-navaratri.bst-scene{padding-top:16px!important}.bst-christmas.bst-scene{padding-top:22px!important}.bst-corner{transform-origin:top left;scale:.7}.bst-corner.r{transform:scaleX(-1)}}',
       '@media (prefers-reduced-motion:reduce){.bst *{animation:none!important}}',
       '.bsa-pv .be-sel-wrap{width:auto!important;min-width:220px}',
       /* preview chip + admin */
@@ -310,39 +299,27 @@
 
   var SCENES = {
     christmas: function (W, H, band, q) {
-      var ridge = document.createElement('canvas'); ridge.width = Math.max(1, W); ridge.height = Math.max(1, band + 4);
-      var g = ridge.getContext('2d');
-      [[0.95, '#0e1d42', 9, 16], [1, '#040915', 14, 22]].forEach(function (L, li) {   // two pine ridges, far + near
-        g.fillStyle = L[1]; g.beginPath(); g.moveTo(0, band + 4);
-        for (var x = -10; x < W + 20; x += rnd(L[2] * 0.7, L[2] * 1.4)) { var h = rnd(L[2], L[3]) * (li ? 1 : 0.8), b = band - (li ? 2 : 6); g.lineTo(x - h * 0.32, b); g.lineTo(x, b - h); g.lineTo(x + h * 0.32, b); }
-        g.lineTo(W + 20, band + 4); g.closePath(); g.globalAlpha = L[0]; g.fill();
-        g.globalAlpha = li ? 0.55 : 0.3; g.strokeStyle = '#e8f1ff'; g.lineWidth = 1;   // frost on the tree tips
-        for (var x2 = rnd(0, 30); x2 < W; x2 += rnd(18, 40)) { var hh = rnd(L[2], L[3]) * (li ? 1 : 0.8), b2 = band - (li ? 2 : 6); g.beginPath(); g.moveTo(x2 - 2, b2 - hh + 5); g.lineTo(x2, b2 - hh + 1); g.lineTo(x2 + 2, b2 - hh + 5); g.stroke(); }
-      });
-      g.globalAlpha = 1;
-      var stars = []; for (var i = 0; i < W / 9; i++) stars.push({ x: rnd(0, W), y: rnd(0, band * 0.7), r: rnd(0.3, 1.1), s: rnd(0, 6.28) });
-      var lights = bokeh(W, band * 0.8, q(14), ['255,196,120', '255,120,110', '160,255,190', '255,230,170'], [5, 11], 1.8);
-      var snow = []; for (var k = 0; k < q(80); k++) { var z = Math.random(); snow.push({ z: z, x: rnd(0, W), y: rnd(-6, H), r: 0.5 + z * 2.1, v: 0.2 + z * 0.6, s: rnd(0, 6.28) }); }
+      // Only snow, done properly: three depths, soft-edged flakes (sprites, no hard dots), gentle
+      // sway, near flakes larger + slightly blurred. A faint cold moonlight and two distant warm
+      // window glows give the season without drawing any objects.
+      var snow = [];
+      for (var k = 0; k < q(64); k++) { var z = Math.random(); snow.push({ z: z, x: rnd(0, W), y: rnd(-10, H), r: 0.6 + z * z * 2.2, v: 0.12 + z * 0.42, s: rnd(0, 6.28), sw: rnd(0.15, 0.45) }); }
+      var warm = [{ x: W * rnd(0.3, 0.42), y: H * 0.7 }, { x: W * rnd(0.55, 0.68), y: H * 0.78 }];
       return {
         bg: function (ctx, t) {
-          ctx.fillStyle = sky(ctx, H, band, '#040a1d', '#22396e', '#081124'); ctx.fillRect(0, 0, W, H);
-          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; ctx.drawImage(sprite(70, '200,220,255', true), W * 0.14 - 70, -45); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-          ctx.globalCompositeOperation = 'lighter';   // aurora: two drifting curtains of light
-          [['52,211,153', 0.16, 0], ['129,140,248', 0.12, 2.1]].forEach(function (A) {
-            ctx.beginPath(); for (var x = 0; x <= W; x += 10) { var y = band * 0.28 + Math.sin(x * 0.005 + t * 0.12 + A[2]) * band * 0.16 + Math.sin(x * 0.013 - t * 0.08) * band * 0.08; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-            for (var x3 = W; x3 >= 0; x3 -= 10) { var y3 = band * 0.28 + Math.sin(x3 * 0.005 + t * 0.12 + A[2]) * band * 0.16 + Math.sin(x3 * 0.013 - t * 0.08) * band * 0.08 + band * 0.42; ctx.lineTo(x3, y3); }
-            var gr = ctx.createLinearGradient(0, 0, 0, band); gr.addColorStop(0, 'rgba(' + A[0] + ',0)'); gr.addColorStop(0.5, 'rgba(' + A[0] + ',' + A[1] + ')'); gr.addColorStop(1, 'rgba(' + A[0] + ',0)'); ctx.fillStyle = gr; ctx.fill();
-          });
-          ctx.globalCompositeOperation = 'source-over';
-          stars.forEach(function (s) { ctx.globalAlpha = 0.35 + 0.45 * Math.abs(Math.sin(s.s + t * 0.6)); ctx.fillStyle = '#fff'; ctx.fillRect(s.x, s.y, s.r, s.r); }); ctx.globalAlpha = 1;
-          ctx.drawImage(ridge, 0, 0);
-          drawBokeh(ctx, lights, W, band, true);
+          ctx.fillStyle = lin(ctx, H, [[0, 'rgba(8,16,38,.55)'], [1, 'rgba(6,10,24,.15)']]); ctx.fillRect(0, 0, W, H);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.22; ctx.drawImage(sprite(90, '170,200,255', true), W * 0.18 - 90, -70);
+          warm.forEach(function (w, i) { ctx.globalAlpha = 0.07 + 0.02 * Math.sin(t * 0.7 + i * 2); ctx.drawImage(sprite(26, '255,190,120', true), w.x - 26, w.y - 26); });
+          ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
         },
         fx: function (ctx) {
-          ctx.fillStyle = '#f4f8ff';
-          snow.forEach(function (p) { p.y += p.v; p.s += 0.02; p.x += Math.sin(p.s) * (0.15 + p.z * 0.3); if (p.y > H + 4) { p.y = -4; p.x = rnd(0, W); }
-            ctx.globalAlpha = 0.3 + p.z * 0.6; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
-            if (p.z > 0.92) { ctx.globalAlpha = 0.07; ctx.drawImage(sprite(8, '235,244,255', true), p.x - 8, p.y - 8); } });
+          for (var i = 0; i < snow.length; i++) {
+            var p = snow[i]; p.y += p.v; p.s += 0.015 + p.z * 0.01; p.x += Math.sin(p.s) * p.sw * (0.5 + p.z);
+            if (p.y > H + 6) { p.y = -6; p.x = rnd(0, W); }
+            var rr = Math.max(1, Math.round(p.r * (p.z > 0.85 ? 2.4 : 1.6)));
+            ctx.globalAlpha = 0.25 + p.z * 0.55; ctx.drawImage(sprite(rr, '240,246,255', p.z > 0.85), p.x - rr, p.y - rr);
+          }
           ctx.globalAlpha = 1;
         }
       };
@@ -500,21 +477,35 @@
       };
     },
 
-    navaratri: function (W, H, band, q) {
-      var diyas = []; var n = Math.max(4, Math.round(W / 140)); for (var i = 0; i < n; i++) diyas.push({ x: (i + 0.5) * W / n + rnd(-10, 10), s: rnd(0, 6) });
-      var embers = []; for (var k = 0; k < q(26); k++) embers.push({ x: rnd(0, W), y: rnd(0, H), v: rnd(0.15, 0.45), s: rnd(0, 6.28), r: rnd(0.6, 1.6) });
-      var marigold = bokeh(W, band, q(10), ['255,150,40', '255,200,60', '236,72,153'], [6, 12], 1.7);
+    navaratri: function (W, H, band, q, accent, gap) {
+      // Minimal: a faint maroon-gold wash, 3 (desktop) small brass lamps placed only in the empty
+      // space between search and the right-hand controls, a calm flame flicker, a few slow embers.
+      var lamps = [], free = gap && gap.b - gap.a > 120 ? gap : null;
+      if (free && !isPhone()) { var n = free.b - free.a > 360 ? 3 : free.b - free.a > 200 ? 2 : 1; for (var i = 0; i < n; i++) lamps.push({ x: free.a + (free.b - free.a) * (i + 1) / (n + 1), y: H * 0.5, s: rnd(0, 6.28), sz: i === Math.floor(n / 2) ? 1 : 0.85 }); }
+      var embers = []; for (var k = 0; k < q(7); k++) embers.push({ x: free ? rnd(free.a, free.b) : rnd(0, W), y: rnd(0, H), v: rnd(0.06, 0.16), s: rnd(0, 6.28), a: rnd(0.25, 0.5) });
+      function lamp(ctx, L, t) {
+        var sc = L.sz, x = L.x, y = L.y;
+        var f = 0.92 + 0.05 * Math.sin(t * 3.1 + L.s) + 0.03 * Math.sin(t * 7.3 + L.s * 2);   // calm flicker, never blinking
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.28 * f; ctx.drawImage(sprite(Math.round(22 * sc), '255,150,50', true), x - 22 * sc, y - 26 * sc); ctx.globalCompositeOperation = 'source-over';
+        // brass bowl: shaded half-ellipse with a lit rim
+        ctx.globalAlpha = 1; var bw = 9 * sc, bh = 4.2 * sc, by = y + 4 * sc;
+        var gb = ctx.createLinearGradient(x - bw, by, x + bw, by); gb.addColorStop(0, '#4a2a0c'); gb.addColorStop(0.45, '#b7791f'); gb.addColorStop(0.6, '#e2b45a'); gb.addColorStop(1, '#3d220a');
+        ctx.fillStyle = gb; ctx.beginPath(); ctx.ellipse(x, by, bw, bh, 0, 0, Math.PI); ctx.fill();
+        ctx.strokeStyle = 'rgba(246,211,140,.8)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.ellipse(x, by, bw, 1.4 * sc, 0, 0, 6.283); ctx.stroke();
+        // flame: outer orange body, inner pale core, both leaning very slightly
+        var fh = 9 * sc * f, lean = Math.sin(t * 1.3 + L.s) * 0.6;
+        var gf = ctx.createRadialGradient(x, by - 2 * sc, 0.5, x, by - fh * 0.45, fh * 0.75); gf.addColorStop(0, 'rgba(255,250,225,1)'); gf.addColorStop(0.35, 'rgba(255,214,110,.95)'); gf.addColorStop(0.75, 'rgba(249,115,22,.55)'); gf.addColorStop(1, 'rgba(249,115,22,0)');
+        ctx.fillStyle = gf; ctx.beginPath(); ctx.moveTo(x - 2.6 * sc, by - 1 * sc); ctx.quadraticCurveTo(x - 2.2 * sc, by - fh * 0.6, x + lean, by - fh); ctx.quadraticCurveTo(x + 2.2 * sc, by - fh * 0.6, x + 2.6 * sc, by - 1 * sc); ctx.closePath(); ctx.fill();
+      }
       return {
         bg: function (ctx, t) {
-          ctx.fillStyle = sky(ctx, H, band, '#17060f', '#4a1428', '#16070f'); ctx.fillRect(0, 0, W, H);
-          drawBokeh(ctx, marigold, W, band, true);
-          ctx.globalCompositeOperation = 'lighter';
-          diyas.forEach(function (d) { var f = 0.78 + 0.22 * Math.sin(t * 7 + d.s) * Math.sin(t * 2.9 + d.s); ctx.globalAlpha = 0.5 * f; ctx.drawImage(sprite(22, '255,150,40', true), d.x - 22, band * 0.5 - 22); ctx.globalAlpha = f; ctx.drawImage(sprite(3, '255,246,210', false), d.x - 3, band * 0.5 - 3); });
-          ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = lin(ctx, H, [[0, 'rgba(48,10,22,.42)'], [1, 'rgba(30,8,14,.12)']]); ctx.fillRect(0, 0, W, H);
+          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12; if (free) ctx.drawImage(sprite(90, '255,160,60', true), (free.a + free.b) / 2 - 90, H * 0.5 - 90); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+          lamps.forEach(function (L) { lamp(ctx, L, t); });
         },
         fx: function (ctx) {
           ctx.globalCompositeOperation = 'lighter';
-          embers.forEach(function (e) { e.y -= e.v; e.s += 0.08; e.x += Math.sin(e.s) * 0.25; if (e.y < -4) { e.y = H + 4; e.x = rnd(0, W); } ctx.globalAlpha = 0.5 + 0.4 * Math.sin(e.s); ctx.drawImage(sprite(3, '255,170,60', true), e.x - 3, e.y - 3); });
+          embers.forEach(function (e) { e.y -= e.v; e.s += 0.02; e.x += Math.sin(e.s) * 0.15; if (e.y < -3) { e.y = H + 3; e.x = free ? rnd(free.a, free.b) : rnd(0, W); } ctx.globalAlpha = e.a * (0.7 + 0.3 * Math.sin(e.s * 2)); ctx.drawImage(sprite(2, '255,180,90', true), e.x - 2, e.y - 2); });
           ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
         }
       };
@@ -536,11 +527,10 @@
     header.style.setProperty('--bst-accent', c.colors.accent);
     header.style.setProperty('--bst-line', c.colors.line);
     header.style.setProperty('--bst-glow', c.colors.glow);
-    var band = phone ? 38 : (c.bannerTall ? 72 : 54);
-    header.style.setProperty('--bst-band', band + 'px');
+    var band = 44, gap = { a: 0, b: 0 };   // band = the header's own height (measured in build); gap = empty space between search and the right controls
     var bg = document.createElement('div'); bg.className = 'bst-bg'; bg.setAttribute('aria-hidden', 'true');
     var caps = document.createElement('div'); caps.className = 'bst-caps'; caps.setAttribute('aria-hidden', 'true');
-    var cv = document.createElement('canvas'), bar = document.createElement('div'); bar.className = 'bst-bar';
+    var cv = document.createElement('canvas');
     bg.appendChild(cv);
     header.insertBefore(bg, header.firstChild); header.appendChild(caps);
     // optional own banner image (HR upload): shown under the scene's moving light
@@ -553,7 +543,6 @@
       bimg.onerror = function () { ban.remove(); ban = null; };
       bimg.src = c.banner;
     }
-    bg.appendChild(bar);
     if (c.preset === 'newyear') {
       var td = today(), yr = +td.slice(0, 4) + (td.slice(5, 7) === '12' ? 1 : 0);
       if (!document.getElementById('bst-font')) { var lk = document.createElement('link'); lk.id = 'bst-font'; lk.rel = 'stylesheet'; lk.href = 'https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap'; document.head.appendChild(lk); }
@@ -565,8 +554,10 @@
     var TARGETS = '.bes-clockpill .bcp-btn,.bes-date,.bes-icon,.bes-account .bes-av,.bes-search';
     function place() {
       var hr = header.getBoundingClientRect(); if (!hr.width) return;
-      var tops = []; header.querySelectorAll(TARGETS + ',.bes-clockpill,.bes-account').forEach(function (el) { if (el.offsetParent === null) return; var r0 = el.getBoundingClientRect(); if (r0.height) tops.push(r0.top - hr.top); });
-      if (tops.length) bar.style.top = Math.max(0, Math.min.apply(null, tops) - 6) + 'px';
+      var sr = header.querySelector('.bes-search'), rr = header.querySelector('.bes-right'), ga = sr && sr.offsetParent ? sr.getBoundingClientRect().right - hr.left : 0, gb = hr.width;
+      if (rr) Array.prototype.forEach.call(rr.children, function (ch) { if (ch.offsetParent === null) return; var l = ch.getBoundingClientRect().left - hr.left; if (l > ga && l < gb) gb = l; });
+      gap.a = ga + 14; gap.b = gb - 14;
+      var nyEl = bg.querySelector('.bst-ny'); if (nyEl) { nyEl.style.left = gap.a + 'px'; nyEl.style.width = Math.max(0, gap.b - gap.a) + 'px'; nyEl.hidden = gap.b - gap.a < 260; }
       caps.innerHTML = '';
       if (!c.caps) return;
       header.querySelectorAll(TARGETS).forEach(function (el) {
@@ -588,10 +579,10 @@
     var q = function (n) { return Math.max(1, Math.round(n * factor * intens)); };
     function build() {
       var r = bg.getBoundingClientRect(), dpr = Math.min(phone ? 1.25 : 1.5, window.devicePixelRatio || 1);
-      if (!r.width) return; W = r.width; H = r.height;
+      if (!r.width) return; W = r.width; H = r.height; band = H;
       cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr)); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var mk = SCENES[c.preset] || SCENES.custom;
-      scene = mk(W, H, band, q, hexRgb(c.colors.accent));
+      scene = mk(W, H, band, q, hexRgb(c.colors.accent), gap);
       frame(performance.now(), true);
     }
     function frame(now, force) {
@@ -606,11 +597,11 @@
       if (!visible || document.hidden || now - last < 33) return; last = now;
       frame(now);
     }
-    build(); place();
-    var ro = window.ResizeObserver ? new ResizeObserver(function () { clearTimeout(ro.t); ro.t = setTimeout(function () { build(); place(); }, 120); }) : null;
+    place(); build();
+    var ro = window.ResizeObserver ? new ResizeObserver(function () { clearTimeout(ro.t); ro.t = setTimeout(function () { place(); build(); }, 120); }) : null;
     if (ro) ro.observe(header);
     var mo = new MutationObserver(function () { clearTimeout(mo.t); mo.t = setTimeout(place, 150); });
-    mo.observe(header, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+    mo.observe(header, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
     if (!still) {
       if (window.IntersectionObserver) { io = new IntersectionObserver(function (es) { visible = es[0] && es[0].isIntersecting; }); io.observe(header); }
       raf = requestAnimationFrame(loop);
