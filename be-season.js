@@ -39,6 +39,8 @@
     summer:       { label: 'Summer',           kind: 'seasonal', particles: 'motes',   caps: null,    overlay: 'sun',      art: null,                      accent: '#fbbf24', line: 'rgba(251,191,36,.26)',  glow: 'rgba(251,191,36,.14)' },
     custom:       { label: 'Custom',           kind: 'custom',   particles: null,      caps: null,    overlay: null,       art: null,                      accent: '#ff8a3d', line: 'rgba(255,138,61,.24)',  glow: 'rgba(255,138,61,.12)' }
   };
+  // default dates for built-ins (yearly); festivals that move every year have none — HR sets them
+  var DEF_DATES = { christmas: ['2026-12-20', '2026-12-31', '20 Dec – 31 Dec · every year'], newyear: ['2026-12-31', '2027-01-01', '31 Dec – 1 Jan · every year'], independence: ['2026-08-15', '2026-08-15', '15 Aug · every year'], vishu: ['2026-04-14', '2026-04-15', '14 – 15 Apr · every year'], monsoon: ['2026-06-01', '2026-09-30', '1 Jun – 30 Sep · every year'], summer: ['2026-03-01', '2026-05-31', '1 Mar – 31 May · every year'] };
   var KINDS = [['seasonal', 'Seasonal'], ['festival', 'Festival'], ['special', 'Special day'], ['custom', 'Custom event']];
   var PORTALS = [['media', 'Media'], ['academics', 'Academics'], ['sales', 'Sales'], ['hr', 'HR'], ['manager', 'Manager']];
   function currentPortal() { var f = (location.pathname.split('/').pop() || 'index.html').toLowerCase(); return { 'app.html': 'media', 'index.html': 'media', 'academics.html': 'academics', 'sales.html': 'sales', 'hr.html': 'hr', 'manager.html': 'manager' }[f] || ''; }
@@ -331,8 +333,11 @@
       var free = gap && gap.b - gap.a > 140 && !isPhone() ? gap : null;
       var pal = ['#ff9933', '#f6f7f2', '#138808'], pet = []; for (var i = 0; i < q(9); i++) pet.push(newPetal(W, H, pal, true, [1.8, 2.8]));
       function flag(ctx, t) {
-        var fw = Math.min(74, (free.b - free.a) * 0.4), fh = fw * 0.6, x0 = (free.a + free.b) / 2 - fw / 2 + 4, y0 = H * 0.5 - fh / 2 - 2, step = 2;
-        ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(203,213,225,.85)'; ctx.fillRect(x0 - 3, y0 - 3, 1.6, fh + 14);   // pole
+        var fw = Math.min(96, (free.b - free.a) * 0.42, (H - 10) / 0.62), fh = fw * 0.6, x0 = (free.a + free.b) / 2 - fw / 2 + 4, y0 = Math.max(4, H * 0.5 - fh / 2 - 4), step = 2;
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12; ctx.drawImage(sprite(Math.round(fw * 0.9), '255,220,170', true), x0 + fw / 2 - fw * 0.9, y0 + fh / 2 - fw * 0.9); ctx.globalCompositeOperation = 'source-over';
+        var pg2 = ctx.createLinearGradient(x0 - 4, 0, x0 - 1.5, 0); pg2.addColorStop(0, '#64748b'); pg2.addColorStop(0.5, '#e2e8f0'); pg2.addColorStop(1, '#94a3b8');
+        ctx.globalAlpha = 0.95; ctx.fillStyle = pg2; ctx.fillRect(x0 - 4, y0 - 2, 2.2, H - y0 + 2);   // pole
+        ctx.fillStyle = '#e8c56a'; ctx.beginPath(); ctx.arc(x0 - 2.9, y0 - 3.2, 2, 0, 6.283); ctx.fill();   // brass finial
         for (var x = 0; x < fw; x += step) {
           var ph = x * 0.11 - t * 2.2, k = x / fw, dy = Math.sin(ph) * 2.2 * k, sh = Math.cos(ph) * 0.24 * (0.3 + k);
           ctx.globalAlpha = 0.92; ctx.fillStyle = '#ff9933'; ctx.fillRect(x0 + x, y0 + dy, step + 0.5, fh / 3);
@@ -488,7 +493,12 @@
           ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12; if (free) ctx.drawImage(sprite(90, '255,160,60', true), (free.a + free.b) / 2 - 90, H * 0.5 - 90); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
           lamps.forEach(function (L) { lamp(ctx, L, t); });
         },
-        fx: function (ctx) {
+        fx: function (ctx, t) {
+          lamps.forEach(function (L, li) {   // thin smoke wisps rising from each flame
+            ctx.globalAlpha = 0.08; ctx.strokeStyle = '#e7e5e4'; ctx.lineWidth = 1; ctx.beginPath();
+            for (var k = 0; k < 10; k++) { var yy = L.y - 6 - k * 2.2, xx = L.x + Math.sin(t * 1.4 + k * 0.6 + li) * (k * 0.35); k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+            ctx.stroke();
+          });
           ctx.globalCompositeOperation = 'lighter';
           embers.forEach(function (e) { e.y -= e.v; e.s += 0.02; e.x += Math.sin(e.s) * 0.15; if (e.y < -3) { e.y = H + 3; e.x = free ? rnd(free.a, free.b) : rnd(0, W); } ctx.globalAlpha = e.a * (0.7 + 0.3 * Math.sin(e.s * 2)); ctx.drawImage(sprite(2, '255,180,90', true), e.x - 2, e.y - 2); });
           ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -510,18 +520,21 @@
   // ════════════════════════════════════════════════════════════════════════
   // A string of out-of-focus fairy lights hanging across the gap (soft bokeh, not bulbs).
   function lightString(g, H, cols, opts) {
+    // Draped in loops (swags) across the gap, each bulb a soft out-of-focus glow with a hot
+    // core; the whole string sways a little and bulbs breathe at their own pace.
     opts = opts || {};
-    var w = g.b - g.a, n = Math.max(6, Math.round(w / (opts.every || 26))), sag = opts.sag || H * 0.32, y0 = opts.y0 || 3, pts = [];
-    for (var i = 0; i <= n; i++) { var t = i / n; pts.push({ t: t, c: cols[i % cols.length], s: rnd(0, 6.28), r: rnd(opts.r0 || 2.2, opts.r1 || 3.6) }); }
+    var w = g.b - g.a, loops = Math.max(2, Math.round(w / (opts.loop || 210))), sag = opts.sag || H * 0.42, y0 = opts.y0 || 2, per = opts.per || 7, pts = [];
+    for (var L = 0; L < loops; L++) for (var i = 0; i < per; i++) { var t = (i + 0.5) / per; pts.push({ L: L, t: t, c: cols[(L * per + i) % cols.length], s: rnd(0, 6.28), r: rnd(opts.r0 || 2.4, opts.r1 || 3.8) }); }
+    function at(L, t, sway) { var seg = w / loops; return { x: g.a + seg * (L + t), y: y0 + sag * 4 * t * (1 - t) * (0.85 + 0.15 * Math.sin(L * 1.7)) + sway * Math.sin(t * Math.PI) }; }
     return function (ctx, time) {
-      var sway = Math.sin(time * 0.6) * 1.2;
-      ctx.globalAlpha = 0.18; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.6; ctx.beginPath();
-      for (var k = 0; k <= 40; k++) { var tt = k / 40, x = g.a + w * tt, y = y0 + sag * 4 * tt * (1 - tt) + sway * Math.sin(tt * Math.PI); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+      var sway = Math.sin(time * 0.55) * 1.4;
+      ctx.globalAlpha = 0.22; ctx.strokeStyle = '#64748b'; ctx.lineWidth = 0.7;
+      for (var L = 0; L < loops; L++) { ctx.beginPath(); for (var k = 0; k <= 20; k++) { var p = at(L, k / 20, sway); k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); } ctx.stroke(); }
       ctx.globalCompositeOperation = 'lighter';
       pts.forEach(function (p) {
-        var x = g.a + w * p.t, y = y0 + sag * 4 * p.t * (1 - p.t) + sway * Math.sin(p.t * Math.PI) + 2, tw = 0.72 + 0.28 * Math.sin(time * 1.4 + p.s);
-        ctx.globalAlpha = 0.38 * tw; ctx.drawImage(sprite(Math.round(p.r * 3), p.c, true), x - p.r * 3, y - p.r * 3);
-        ctx.globalAlpha = 0.95 * tw; ctx.drawImage(sprite(Math.max(1, Math.round(p.r * 0.7)), '255,250,235', false), x - p.r * 0.7, y - p.r * 0.7);
+        var q = at(p.L, p.t, sway), tw = 0.7 + 0.3 * Math.sin(time * 1.2 + p.s);
+        ctx.globalAlpha = 0.42 * tw; ctx.drawImage(sprite(Math.round(p.r * 3.2), p.c, true), q.x - p.r * 3.2, q.y + 2 - p.r * 3.2);
+        ctx.globalAlpha = tw; ctx.drawImage(sprite(Math.max(1, Math.round(p.r * 0.75)), '255,250,235', false), q.x - p.r * 0.75, q.y + 2 - p.r * 0.75);
       });
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     };
@@ -538,7 +551,7 @@
       });
       pc.globalCompositeOperation = 'destination-in'; pc.globalAlpha = 1;   // fade into mist at both ends
       var fade = pc.createLinearGradient(0, 0, w, 0); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(0.15, '#000'); fade.addColorStop(0.85, '#000'); fade.addColorStop(1, 'rgba(0,0,0,0)'); pc.fillStyle = fade; pc.fillRect(0, 0, w, H);
-      var lights = lightString(g, H, ['255,200,130', '255,214,160', '255,120,100', '255,200,130', '150,240,180', '255,214,160']);
+      var lights = lightString(g, H, ['255,196,120', '255,214,160', '255,96,90', '255,196,120', '120,230,160', '255,214,160', '150,190,255'], { loop: 190, per: 7 });
       return function (ctx, t) {
         ctx.drawImage(pine, g.a, 0);
         ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.08; ctx.drawImage(sprite(40, '200,220,255', true), (g.a + g.b) / 2 - 40, H - 30); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -546,7 +559,7 @@
       };
     },
     navaratri: function (g, H) {
-      var str = lightString(g, H, ['255,160,60', '255,200,90', '236,72,153', '255,160,60'], { every: 34, sag: H * 0.22, r0: 1.8, r1: 2.8 });
+      var str = lightString(g, H, ['255,160,60', '255,200,90', '236,72,153', '255,160,60'], { loop: 230, per: 6, sag: H * 0.3, r0: 1.8, r1: 2.8 });
       return function (ctx, t) { str(ctx, t); };
     },
     independence: function (g, H) {
@@ -590,14 +603,14 @@
       };
     },
     newyear: function (g, H) {
-      var str = lightString(g, H, ['255,214,120', '255,236,180', '230,190,255'], { every: 22, sag: H * 0.18, r0: 1.6, r1: 2.6 });
+      var str = lightString(g, H, ['255,214,120', '255,236,180', '230,190,255'], { loop: 170, per: 8, sag: H * 0.3, r0: 1.6, r1: 2.6 });
       return function (ctx, t) { str(ctx, t); };
     },
     monsoon: function (g, H) {
       // water on glass: beads with refraction + highlight, some sliding with a wet trail;
       // a faint distant lightning fork now and then inside the gap
       var w = g.b - g.a, beads = [], nextBolt = rnd(5, 9), bolt = null;
-      for (var i = 0; i < Math.round(w / 18); i++) beads.push({ x: g.a + rnd(0, w), y: rnd(2, H - 4), r: rnd(1.2, 2.8), v: Math.random() < 0.3 ? rnd(0.12, 0.35) : 0, tr: [] });
+      for (var i = 0; i < Math.round(w / 22); i++) beads.push({ x: g.a + rnd(0, w), y: rnd(2, H - 4), r: rnd(1.8, 4.2), v: Math.random() < 0.3 ? rnd(0.12, 0.35) : 0, tr: [] });
       return function (ctx, t, dt) {
         nextBolt -= dt || 0.033;
         if (nextBolt <= 0) { var x = rnd(g.a + w * 0.2, g.b - w * 0.2), y = -2, pts = [[x, y]]; while (y < H * 0.75) { x += rnd(-6, 6); y += rnd(4, 7); pts.push([x, y]); } bolt = { pts: pts, age: 0 }; nextBolt = rnd(10, 18); }
@@ -607,16 +620,22 @@
           if (b.tr.length > 2) { ctx.globalAlpha = 0.14; ctx.strokeStyle = '#cfe8ff'; ctx.lineWidth = b.r * 0.6; ctx.beginPath(); b.tr.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }); ctx.stroke(); }
           ctx.globalAlpha = 0.45; ctx.fillStyle = 'rgba(6,14,26,.9)'; ctx.beginPath(); ctx.arc(b.x, b.y + 0.5, b.r, 0, 6.283); ctx.fill();
           ctx.globalAlpha = 0.55; ctx.fillStyle = 'rgba(186,220,255,.6)'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.92, 0, 6.283); ctx.fill();
+          ctx.globalAlpha = 0.35; ctx.strokeStyle = 'rgba(15,23,42,.9)'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0.2, 2.9); ctx.stroke();
           ctx.globalAlpha = 0.95; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x - b.r * 0.35, b.y - b.r * 0.35, Math.max(0.4, b.r * 0.22), 0, 6.283); ctx.fill();
+          ctx.globalAlpha = 0.4; ctx.beginPath(); ctx.arc(b.x + b.r * 0.3, b.y + b.r * 0.45, Math.max(0.3, b.r * 0.12), 0, 6.283); ctx.fill();
         });
         ctx.globalAlpha = 1;
       };
     },
     summer: function (g, H) {
-      // heat-haze shimmer and sun glints rising in the gap
+      // slow sun rays, heat-haze shimmer and sun glints in the gap
       var w = g.b - g.a, glints = []; for (var i = 0; i < Math.round(w / 40); i++) glints.push({ x: g.a + rnd(0, w), y: rnd(H * 0.3, H - 4), s: rnd(0, 6.28) });
+      var sx = g.b - w * 0.25;
       return function (ctx, t) {
         ctx.globalCompositeOperation = 'lighter';
+        ctx.save(); ctx.translate(sx, 0); ctx.rotate(t * 0.03);
+        for (var ry = 0; ry < 10; ry++) { ctx.rotate(0.628); var gr = ctx.createLinearGradient(0, 0, 0, H * 1.4); gr.addColorStop(0, 'rgba(255,214,140,.10)'); gr.addColorStop(1, 'rgba(255,214,140,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4, H * 1.4); ctx.lineTo(4, H * 1.4); ctx.closePath(); ctx.fill(); }
+        ctx.restore();
         for (var r = 0; r < 3; r++) { ctx.strokeStyle = 'rgba(255,214,150,' + (0.05 + r * 0.02) + ')'; ctx.lineWidth = 1; ctx.beginPath(); for (var x = 0; x <= w; x += 10) { var y = H - 8 - r * 4 + Math.sin(x * 0.05 - t * 1.6 + r) * 1.4; x ? ctx.lineTo(g.a + x, y) : ctx.moveTo(g.a + x, y); } ctx.stroke(); }
         glints.forEach(function (gl) { var a = Math.max(0, Math.sin(t * 1.2 + gl.s)); if (a < 0.2) return; ctx.globalAlpha = 0.5 * a; ctx.drawImage(sprite(3, '255,236,190', true), gl.x - 3, gl.y - 3); });
         ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -799,6 +818,7 @@
       '.bsa-btn.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.bsa-btn.sm{height:30px;padding:0 11px;font-size:12px}.bsa-btn:disabled{opacity:.6;cursor:progress}',
       '.bsa-pv{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}.bsa-pv span{font-size:12px;color:#8b93b8}',
       '.bsa-list{display:flex;flex-direction:column;gap:8px}',
+      '.bsa-missing{border-style:dashed;opacity:.92}@media(min-width:861px){.bsa-missing .bsa-row{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 133px 124px}}.bsa-missing .bsa-acts{justify-content:flex-end}',
       '.bsa-card{border-radius:16px;background:#0e1222;border:1px solid rgba(255,255,255,.07);overflow:hidden}.bsa-card .bsa-row{border:0;border-radius:0;background:none}',
       '.bsa-live{padding:14px 16px 2px;background:#070a14;border-top:1px solid rgba(255,255,255,.05)}.bsa-live .bes-header{margin:0!important}.bsa-live .bes-search{flex:0 1 300px;max-width:300px}.bsa-live .bes-right{margin-left:auto}',
       '@media(max-width:860px){.bsa-live .bes-search{max-width:140px}}',
@@ -849,6 +869,7 @@
     var d0 = today();
     rows.sort(function (a, b) { return (b.priority || 0) - (a.priority || 0) || a.name.localeCompare(b.name); });
     var cur = schedule(rows, null, d0);
+    var missing = Object.keys(PRESETS).filter(function (k) { return k !== 'custom' && !rows.some(function (r) { return r.preset === k; }); });
     el.innerHTML = '<div class="bsa-top"><div style="flex:1;min-width:220px"><h2>Header Themes</h2><p>Seasonal and special-day decorations for the ERP top header. Today: ' + (cur ? '<b style="color:#fff">' + esc(cur.name) + '</b> is live for all departments it applies to.' : 'no theme is active — the normal header shows.') + '</p></div><div style="display:flex;gap:8px"><button type="button" class="bsa-btn" data-pvstop>Stop page preview</button><button type="button" class="bsa-btn pri" data-new>+ Add theme</button></div></div>'
       + ''
       + '<div class="bsa-list">' + (rows.length ? rows.map(function (t) {
@@ -860,7 +881,14 @@
             + '<div class="bsa-seg" role="group" aria-label="Activation">' + [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']].map(function (m) { return '<button type="button" data-ms="' + m[0] + '" class="' + (t.manual_state === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '</div>'
             + '<div class="bsa-acts"><button type="button" class="bsa-btn sm" data-pvid="' + t.id + '">Preview</button><button type="button" class="bsa-btn sm" data-edit="' + t.id + '">Edit</button></div></div>'
             + '<div class="bsa-live" data-live="' + t.id + '" aria-hidden="true">' + mockHeader() + '</div></div>';
-        }).join('') : '<div class="bsa-note">No themes yet. Run 20261101_header_themes.sql to add the built-in presets.</div>') + '</div>'
+        }).join('') : '<div class="bsa-note">No themes yet. Run 20261101_header_themes.sql to add the built-in presets.</div>')
+      + missing.map(function (k) {
+          var pp = PRESETS[k];
+          return '<div class="bsa-card bsa-missing" data-pid="' + k + '"><div class="bsa-row"><div><b>' + esc(pp.label) + '</b><small>' + esc((KINDS.filter(function (x) { return x[0] === pp.kind; })[0] || ['', ''])[1]) + ' · built-in · not added yet</small></div>'
+            + '<div class="bsa-when"><span class="bsa-pill warn">Not added</span><small style="color:#8b93b8;font-size:11.5px;margin-top:4px;display:block">' + esc(DEF_DATES[k] ? DEF_DATES[k][2] : 'Dates set by HR') + '</small></div><span></span>'
+            + '<div class="bsa-acts"><button type="button" class="bsa-btn sm" data-pvp="' + k + '">Preview</button><button type="button" class="bsa-btn sm pri" data-addp="' + k + '">Add</button></div></div>'
+            + '<div class="bsa-live" data-live="p_' + k + '" aria-hidden="true">' + mockHeader() + '</div></div>';
+        }).join('') + '</div>'
       + '<p class="bsa-note">Only the top header changes (search, clock, date, bell, profile). Effects pause off-screen, shrink on phones, stay still for reduced-motion users, and anyone can switch them off from their account menu.</p>';
     el.onclick = async function (e) {
       var b = e.target.closest('button'); if (!b) return;
@@ -868,6 +896,14 @@
       if (b.hasAttribute('data-edit')) return editor(rows.filter(function (t) { return t.id === b.getAttribute('data-edit'); })[0], divs, function () { mountAdmin(el, opts); });
       if (b.hasAttribute('data-pvid')) return preview(b.getAttribute('data-pvid'));
       if (b.hasAttribute('data-pvstop')) return stopPreview();
+      if (b.hasAttribute('data-pvp')) return preview(b.getAttribute('data-pvp'));
+      if (b.hasAttribute('data-addp')) {
+        var k = b.getAttribute('data-addp'), dd = DEF_DATES[k];
+        b.disabled = true; b.textContent = 'Adding…';
+        var ins = await db().from('erp_header_themes').insert({ preset: k, kind: PRESETS[k].kind, name: PRESETS[k].label, start_date: dd ? dd[0] : null, end_date: dd ? dd[1] : null, repeat_yearly: true, auto_active: !!dd, priority: k === 'newyear' ? 95 : PRESETS[k].kind === 'seasonal' ? 10 : 90, updated_by: who() });
+        if (ins.error) { b.disabled = false; b.textContent = 'Add'; toast('error', /check constraint|kind|portals/i.test(ins.error.message) ? 'Run the database update 20261102_header_themes_v2.sql first, then add ' + PRESETS[k].label + '.' : ins.error.message); return; }
+        ss(K_CACHE, null); S.themes = null; toast('success', PRESETS[k].label + ' added'); return mountAdmin(el, opts);
+      }
       if (b.hasAttribute('data-pvgo')) { var v = el.querySelector('[data-pv]').value; return preview(v.slice(0, 2) === 'p:' ? v.slice(2) : v.slice(2)); }
       if (b.hasAttribute('data-ms')) {
         var id = b.closest('[data-id]').getAttribute('data-id'), ms = b.getAttribute('data-ms');
@@ -878,7 +914,8 @@
     };
     // live animated preview of every theme, exactly as the header will look
     (el._bsaKill || []).forEach(function (k) { try { k(); } catch (_) {} });
-    el._bsaKill = rows.map(function (t) { var h = el.querySelector('[data-live="' + t.id + '"] .bes-header'); return h ? render(h, t, {}) : null; }).filter(Boolean);
+    el._bsaKill = rows.map(function (t) { var h = el.querySelector('[data-live="' + t.id + '"] .bes-header'); return h ? render(h, t, {}) : null; })
+      .concat(missing.map(function (k) { var h = el.querySelector('[data-live="p_' + k + '"] .bes-header'); return h ? render(h, { id: 'p_' + k, preset: k, name: PRESETS[k].label, config: {} }, {}) : null; })).filter(Boolean);
   }
   function who() { try { if (typeof currentUser !== 'undefined' && currentUser && currentUser.name) return currentUser.name; } catch (_) {} return B().currentEmail ? B().currentEmail() : ''; }
   function toast(k, m) { if (typeof window.showToast === 'function') return window.showToast(k, m); }
