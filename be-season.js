@@ -92,7 +92,7 @@
     s.textContent = [
       '.bst{position:relative;isolation:isolate}',
       /* themed header = a card with its own scene behind the controls */
-      '.bst-christmas.bst-scene,.bst-navaratri.bst-scene,.bst-independence.bst-scene{padding-top:24px!important}',
+      '.bst-navaratri.bst-scene,.bst-independence.bst-scene{padding-top:24px!important}.bst-christmas.bst-scene{padding-top:30px!important}',
       '.bst.bst-scene{padding:12px 14px!important;border:1px solid var(--bst-line)!important;border-radius:16px;margin-top:2px;transition:padding .2s}',
       '.bst-bg{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:inherit}',
       '.bst-caps{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:visible}',
@@ -111,7 +111,7 @@
       '.bst-christmas .bst-sky{background:radial-gradient(1px 1px at 12% 40%,#fff 60%,transparent),radial-gradient(1px 1px at 27% 70%,rgba(255,255,255,.7) 60%,transparent),radial-gradient(1.2px 1.2px at 46% 35%,#fff 60%,transparent),radial-gradient(1px 1px at 63% 62%,rgba(255,255,255,.8) 60%,transparent),radial-gradient(1px 1px at 78% 30%,#fff 60%,transparent),radial-gradient(1px 1px at 91% 66%,rgba(255,255,255,.7) 60%,transparent),radial-gradient(60% 140% at 30% -50%,rgba(52,211,153,.10),transparent 60%),radial-gradient(60% 140% at 75% -60%,rgba(129,140,248,.14),transparent 60%),linear-gradient(180deg,#081228,#0b1834 55%,#0d1a30)}',
       '.bst-christmas .bst-sky::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,rgba(94,234,212,.07) 35%,rgba(129,140,248,.08) 50%,transparent 65%);animation:bstAur 14s ease-in-out infinite alternate}',
       '@keyframes bstAur{from{transform:translateX(-8%)}to{transform:translateX(8%)}}',
-      '.bst-christmas .bst-top{height:30px;z-index:1}',
+      '.bst-christmas .bst-top{height:18px;z-index:1}',
       '.bst-spark{position:absolute;width:3px;height:3px;border-radius:50%;background:#fff;box-shadow:0 0 4px 1px rgba(255,255,255,.9);opacity:0;animation:bstSpk 4.5s ease-in-out infinite}',
       '@keyframes bstSpk{0%,70%,100%{opacity:0;transform:scale(.4)}80%{opacity:1;transform:scale(1)}}',
       '.bst-xm{position:relative;display:flex;align-items:flex-end;gap:2px;align-self:flex-end;margin-bottom:-2px}.bst-xm .bst-tree{margin:0}.bst-gifts{display:block;margin-bottom:1px}',
@@ -129,7 +129,7 @@
       '.bst-flag2{display:block;width:150px;height:60px}.bst-mf{display:block;opacity:.9;filter:drop-shadow(0 4px 8px rgba(0,0,0,.4))}.bst-mf.r{transform:scaleX(-1)}.bst-mid.w-s .bst-mf.r{display:none}',
       '.bst-drift{bottom:-1px;height:9px;background:radial-gradient(18px 7px at 6% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(26px 8px at 22% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(22px 7px at 41% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(30px 9px at 63% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(20px 7px at 82% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(26px 8px at 97% 100%,#e8f1ff 60%,transparent 62%);opacity:.38}',
       '.bst-tree{display:block;margin-top:auto;align-self:flex-end;filter:drop-shadow(0 0 10px rgba(253,230,138,.18))}.bst-tl circle{animation:bstTw 2.2s ease-in-out infinite}.bst-tl circle:nth-child(2n){animation-delay:1.1s}',
-      '.bst-cap.snow{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45))}.bst-cap svg{display:block}',
+      '.bst-cap.snow{filter:drop-shadow(0 1px 1px rgba(2,6,23,.35))}.bst-cap svg{display:block}',
       /* monsoon */
       '.bst-monsoon .bst-sky{background:radial-gradient(70% 120% at 50% -30%,rgba(148,163,184,.16),transparent 70%),linear-gradient(180deg,#0a1726,#0d2033 60%,#0b1a2a)}',
       '.bst-cloud{position:absolute;top:-30px;width:280px;height:70px;border-radius:50%;background:radial-gradient(closest-side,rgba(148,163,184,.22),transparent);filter:blur(4px);animation:bstCl 60s linear infinite}',
@@ -169,7 +169,7 @@
       '.bst-independence.bst-accent .bes-av{box-shadow:0 0 0 2px #ff9933,0 0 0 4px rgba(19,136,8,.6)!important}',
       '.bst-asset{position:absolute;right:12px;top:6px;bottom:6px;max-height:46px;opacity:.85;object-fit:contain}',
       '.bst-cap{position:absolute;pointer-events:none}',
-      '@media(max-width:767px){.bst.bst-scene{padding:8px 10px!important;border-radius:14px}.bst-christmas.bst-scene,.bst-navaratri.bst-scene{padding-top:16px!important}.bst-corner{transform-origin:top left;scale:.7}.bst-corner.r{transform:scaleX(-1)}}',
+      '@media(max-width:767px){.bst.bst-scene{padding:8px 10px!important;border-radius:14px}.bst-christmas.bst-scene,.bst-navaratri.bst-scene{padding-top:16px!important}.bst-christmas.bst-scene{padding-top:22px!important}.bst-corner{transform-origin:top left;scale:.7}.bst-corner.r{transform:scaleX(-1)}}',
       '@media (prefers-reduced-motion:reduce){.bst *{animation:none!important}}',
       '.bsa-pv .be-sel-wrap{width:auto!important;min-width:220px}',
       /* preview chip + admin */
@@ -182,15 +182,23 @@
   // ── scene helpers (SVG built once per layout; ids unique per instance) ─────
   var UID = 0;
   function rnd(a, b) { return a + Math.random() * (b - a); }
+  // Fluffy snow piled on a control: a mound of overlapping, individually shaded clumps (taller in
+  // the middle, spilling 3px past each side), a soft blue under-shadow and drips over the front.
   function snowCapSVG(w) {
-    var id = 'bstg' + (++UID), h = 13, n = Math.max(3, Math.round(w / 16)), d = 'M1 ' + h + ' L1 7 ';
-    for (var i = 0; i < n; i++) { var x1 = (i + 1) * (w - 2) / n + 1, cx = (i + 0.5) * (w - 2) / n + 1; d += 'Q' + cx.toFixed(1) + ' ' + rnd(-1.5, 1.5).toFixed(1) + ' ' + x1.toFixed(1) + ' ' + rnd(5, 7.5).toFixed(1) + ' '; }
-    d += 'L' + (w - 1) + ' ' + h + ' Z';
+    var id = 'bstg' + (++UID), H = Math.round(Math.min(18, 10 + w / 18)), base = H - 3, W = w + 6, clumps = '', n = Math.max(4, Math.round(w / 9));
+    for (var i = 0; i < n; i++) {
+      var t = (i + 0.5) / n, cx = 3 + t * w + rnd(-2, 2), hump = Math.sin(Math.PI * t), r = (3.6 + hump * (H * 0.32)) * rnd(0.85, 1.12);
+      clumps += '<circle cx="' + cx.toFixed(1) + '" cy="' + (base - hump * (H * 0.38) - r * 0.25 + rnd(-0.8, 0.8)).toFixed(1) + '" r="' + r.toFixed(1) + '" fill="url(#' + id + 'c)"/>';
+    }
     var drips = '';
-    [rnd(.18, .35), rnd(.62, .82)].forEach(function (p) { var x = (w * p).toFixed(1), l = rnd(3, 6).toFixed(1); drips += '<path d="M' + (x - 1.6) + ' ' + (h - 1) + ' q1.6 ' + l + ' 3.2 0 z" fill="url(#' + id + ')"/>'; });
-    return '<svg width="' + w + '" height="' + (h + 7) + '" viewBox="0 0 ' + w + ' ' + (h + 7) + '" aria-hidden="true"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#eef4ff"/><stop offset="1" stop-color="#c9dcf5"/></linearGradient></defs>'
-      + '<path d="' + d + '" fill="url(#' + id + ')"/>' + drips + '<path d="' + d + '" fill="none" stroke="rgba(255,255,255,.9)" stroke-width=".8"/>'
-      + '<circle cx="' + (w * rnd(.3, .7)).toFixed(1) + '" cy="4" r=".9" fill="#fff"/></svg>';
+    [rnd(0.15, 0.3), rnd(0.55, 0.72), rnd(0.82, 0.92)].forEach(function (p, k) { if (w < 60 && k === 1) return; var x = (3 + w * p).toFixed(1), L = rnd(2.5, 5.5), rw = rnd(1.4, 2.2); drips += '<path d="M' + (x - rw) + ' ' + base + ' q0 ' + L.toFixed(1) + ' ' + rw + ' ' + L.toFixed(1) + ' q' + rw + ' 0 ' + rw + ' -' + L.toFixed(1) + ' z" fill="url(#' + id + 'd)"/>'; });
+    return '<svg width="' + W + '" height="' + (H + 6) + '" viewBox="0 0 ' + W + ' ' + (H + 6) + '" aria-hidden="true" style="overflow:visible"><defs>'
+      + '<radialGradient id="' + id + 'c" cx=".38" cy=".3" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f4f8ff"/><stop offset="1" stop-color="#c9d9ee"/></radialGradient>'
+      + '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef4fd"/><stop offset="1" stop-color="#b9cbe4"/></linearGradient>'
+      + '<linearGradient id="' + id + 'd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6effa"/><stop offset="1" stop-color="#cfe0f3" stop-opacity=".85"/></linearGradient></defs>'
+      + '<ellipse cx="' + (W / 2) + '" cy="' + (base + 2.5) + '" rx="' + (W / 2 - 1) + '" ry="2.6" fill="rgba(15,23,42,.45)" style="filter:blur(1.2px)"/>'
+      + '<rect x="0" y="' + (base - 4) + '" width="' + W + '" height="6" rx="3" fill="url(#' + id + 'b)"/>' + clumps + drips
+      + '<circle cx="' + (W * rnd(.3, .45)).toFixed(1) + '" cy="' + (base - H * 0.45).toFixed(1) + '" r=".9" fill="#fff"/><circle cx="' + (W * rnd(.6, .75)).toFixed(1) + '" cy="' + (base - H * 0.3).toFixed(1) + '" r=".7" fill="#fff" opacity=".9"/></svg>';
   }
   // catenary-ish swoops across the header top: used for fairy lights and the marigold toran
   function swoops(W, every, sag, fn) {
@@ -273,10 +281,10 @@
         lastW = hr.width; var W = hr.width, bits = '';
         if (c.preset === 'christmas') {
           // a sculpted snowbank resting on the header's top edge, with icicles hanging from it
-          var id = 'bstsb' + (++UID), d = 'M0 0 L0 7 ', x = 0, ice = '', spark = '';
-          while (x < W) { var stp = rnd(18, 34), nx = Math.min(W, x + stp); d += 'Q' + ((x + nx) / 2).toFixed(1) + ' ' + rnd(9, 15).toFixed(1) + ' ' + nx.toFixed(1) + ' ' + rnd(6, 9).toFixed(1) + ' '; x = nx; }
+          var id = 'bstsb' + (++UID), d = 'M0 0 L0 5 ', x = 0, ice = '', spark = '';
+          while (x < W) { var stp = rnd(18, 34), nx = Math.min(W, x + stp); d += 'Q' + ((x + nx) / 2).toFixed(1) + ' ' + rnd(6, 9).toFixed(1) + ' ' + nx.toFixed(1) + ' ' + rnd(4, 6).toFixed(1) + ' '; x = nx; }
           d += 'L' + W + ' 0 Z';
-          for (var ix = rnd(20, 50); ix < W - 10; ix += rnd(phone ? 60 : 38, phone ? 110 : 80)) { var L = rnd(6, phone ? 10 : 15).toFixed(1), wd = rnd(2.2, 3.6).toFixed(1); ice += '<path d="M' + (ix - wd / 2).toFixed(1) + ' 8 Q' + ix.toFixed(1) + ' ' + (8 + L * 1.15).toFixed(1) + ' ' + ix.toFixed(1) + ' ' + (8 + +L).toFixed(1) + ' Q' + ix.toFixed(1) + ' ' + (8 + L * 0.6).toFixed(1) + ' ' + (ix + wd / 2).toFixed(1) + ' 8 Z" fill="url(#' + id + 'i)"/>'; }
+          for (var ix = rnd(20, 50); ix < W - 10; ix += rnd(phone ? 60 : 38, phone ? 110 : 80)) { var L = rnd(4, phone ? 7 : 10).toFixed(1), wd = rnd(1.8, 3).toFixed(1); ice += '<path d="M' + (ix - wd / 2).toFixed(1) + ' 5 Q' + ix.toFixed(1) + ' ' + (5 + L * 1.15).toFixed(1) + ' ' + ix.toFixed(1) + ' ' + (5 + +L).toFixed(1) + ' Q' + ix.toFixed(1) + ' ' + (5 + L * 0.6).toFixed(1) + ' ' + (ix + wd / 2).toFixed(1) + ' 5 Z" fill="url(#' + id + 'i)"/>'; }
           for (var sx = rnd(10, 40); sx < W; sx += rnd(50, 120)) spark += '<i class="bst-spark" style="left:' + sx.toFixed(0) + 'px;top:' + rnd(2, 7).toFixed(0) + 'px;animation-delay:' + rnd(0, 4).toFixed(2) + 's"></i>';
           top.innerHTML = '<svg width="' + W + '" height="26" aria-hidden="true" style="overflow:visible"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#eef4ff"/><stop offset="1" stop-color="#c7d8f0"/></linearGradient>'
             + '<linearGradient id="' + id + 'i" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0f9ff" stop-opacity=".95"/><stop offset="1" stop-color="#bae6fd" stop-opacity=".25"/></linearGradient></defs>'
@@ -301,8 +309,8 @@
           var hat = document.createElement('i'); hat.className = 'bst-cap hat'; hat.innerHTML = SVG.hat;
           hat.style.left = (x + r.width - 20) + 'px'; hat.style.top = (y - 15) + 'px'; caps.appendChild(hat);
         } else if (c.caps === 'snow') {
-          var w = Math.round(Math.min(r.width + 4, phone ? 70 : 150)), cap = document.createElement('i'); cap.className = 'bst-cap snow';
-          cap.style.left = (x + (r.width - w) / 2) + 'px'; cap.style.top = (y - 7) + 'px'; cap.innerHTML = snowCapSVG(w); caps.appendChild(cap);
+          var w = Math.round(Math.min(r.width, phone ? 70 : 160)), H = Math.round(Math.min(18, 10 + w / 18)), cap = document.createElement('i'); cap.className = 'bst-cap snow';
+          cap.style.left = (x + (r.width - w) / 2 - 3) + 'px'; cap.style.top = (y - H + 2) + 'px'; cap.innerHTML = snowCapSVG(w); caps.appendChild(cap);
         } else if (c.caps === 'drops') {
           [[0.18, -1, 4], [0.74, 1, 6], [0.9, r.height - 4, 4]].forEach(function (p, i) { if (phone && i) return; var dr = document.createElement('i'); dr.className = 'bst-cap drop'; dr.style.left = (x + r.width * p[0]) + 'px'; dr.style.top = (y + p[1]) + 'px'; dr.style.setProperty('--s', p[2] + 'px'); caps.appendChild(dr); });
         }
