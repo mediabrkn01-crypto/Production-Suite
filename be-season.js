@@ -25,14 +25,23 @@
   var K_OFF = 'be_season_off', K_PREVIEW = 'be_season_preview', K_CACHE = 'be_season_cache';
 
   // ── theme config ─────────────────────────────────────────────────────────
+  // art: realistic banner shipped with the app (HR can replace or remove it per theme).
+  // pal: colours for falling petals / flowers.
+  var ART = (function () { try { return new URL('assets/header-themes/', (document.currentScript && document.currentScript.src) || location.href).href; } catch (_) { return 'assets/header-themes/'; } })();
   var PRESETS = {
-    christmas:    { label: 'Christmas',        particles: 'snow',   caps: 'snow',  overlay: 'frost',    accent: '#cfe6ff', line: 'rgba(207,230,255,.28)', glow: 'rgba(186,220,255,.16)' },
-    monsoon:      { label: 'Monsoon',          particles: 'rain',   caps: 'drops', overlay: 'mist',     accent: '#7dd3fc', line: 'rgba(125,211,252,.24)', glow: 'rgba(96,165,250,.12)' },
-    summer:       { label: 'Summer',           particles: 'motes',     caps: null,    overlay: 'sun',      accent: '#fbbf24', line: 'rgba(251,191,36,.26)',  glow: 'rgba(251,191,36,.14)' },
-    navaratri:    { label: 'Navaratri',        particles: 'embers', caps: null,    overlay: 'diyas',    accent: '#f59e0b', line: 'rgba(245,158,11,.30)',  glow: 'rgba(245,158,11,.14)' },
-    independence: { label: 'Independence Day', particles: 'petals',     caps: null,    overlay: 'tricolor', accent: '#ff9933', line: 'rgba(255,255,255,.18)', glow: 'rgba(255,153,51,.10)' },
-    custom:       { label: 'Custom',           particles: null,     caps: null,    overlay: null,       accent: '#ff8a3d', line: 'rgba(255,138,61,.24)',  glow: 'rgba(255,138,61,.12)' }
+    christmas:    { label: 'Christmas',        kind: 'festival', particles: 'snow',    caps: 'snow',  overlay: 'frost',    art: ART + 'christmas.webp',    accent: '#cfe6ff', line: 'rgba(207,230,255,.28)', glow: 'rgba(186,220,255,.16)' },
+    newyear:      { label: 'New Year',         kind: 'special',  particles: 'sparkle', caps: null,    overlay: 'night',    art: ART + 'newyear.webp',      accent: '#fbbf24', line: 'rgba(251,191,36,.28)',  glow: 'rgba(251,191,36,.14)' },
+    independence: { label: 'Independence Day', kind: 'special',  particles: 'petals',  caps: null,    overlay: 'tricolor', art: ART + 'independence.webp', accent: '#ff9933', line: 'rgba(255,255,255,.18)', glow: 'rgba(255,153,51,.10)', pal: ['#ff9933', '#f8fafc', '#16a34a', '#ff9933'] },
+    vishu:        { label: 'Vishu',            kind: 'festival', particles: 'petals',  caps: null,    overlay: 'warm',     art: ART + 'vishu.webp',        accent: '#facc15', line: 'rgba(250,204,21,.28)',  glow: 'rgba(250,204,21,.14)', pal: ['#facc15', '#fde047', '#eab308', '#fbbf24'] },
+    onam:         { label: 'Onam',             kind: 'festival', particles: 'petals',  caps: null,    overlay: 'warm',     art: ART + 'onam.webp',         accent: '#f59e0b', line: 'rgba(245,158,11,.28)',  glow: 'rgba(245,158,11,.12)', pal: ['#f97316', '#facc15', '#e11d48', '#f8fafc', '#c026d3'] },
+    navaratri:    { label: 'Navaratri',        kind: 'festival', particles: 'embers',  caps: null,    overlay: 'diyas',    art: null,                      accent: '#f59e0b', line: 'rgba(245,158,11,.30)',  glow: 'rgba(245,158,11,.14)' },
+    monsoon:      { label: 'Monsoon',          kind: 'seasonal', particles: 'rain',    caps: 'drops', overlay: 'mist',     art: ART + 'monsoon.webp',      accent: '#7dd3fc', line: 'rgba(125,211,252,.24)', glow: 'rgba(96,165,250,.12)' },
+    summer:       { label: 'Summer',           kind: 'seasonal', particles: 'motes',   caps: null,    overlay: 'sun',      art: null,                      accent: '#fbbf24', line: 'rgba(251,191,36,.26)',  glow: 'rgba(251,191,36,.14)' },
+    custom:       { label: 'Custom',           kind: 'custom',   particles: null,      caps: null,    overlay: null,       art: null,                      accent: '#ff8a3d', line: 'rgba(255,138,61,.24)',  glow: 'rgba(255,138,61,.12)' }
   };
+  var KINDS = [['seasonal', 'Seasonal'], ['festival', 'Festival'], ['special', 'Special day'], ['custom', 'Custom event']];
+  var PORTALS = [['media', 'Media'], ['academics', 'Academics'], ['sales', 'Sales'], ['hr', 'HR'], ['manager', 'Manager']];
+  function currentPortal() { var f = (location.pathname.split('/').pop() || 'index.html').toLowerCase(); return { 'app.html': 'media', 'index.html': 'media', 'academics.html': 'academics', 'sales.html': 'sales', 'hr.html': 'hr', 'manager.html': 'manager' }[f] || ''; }
   var EFFECTS = [['particles', 'Falling effect'], ['caps', 'Button decorations'], ['overlay', 'Header overlay'], ['glow', 'Glow'], ['accent', 'Accent colours']];
   var S = { client: null, themes: null, division: null, active: null, live: null, header: null };
 
@@ -56,7 +65,8 @@
     return { preset: t.preset, label: t.name || p.label, particles: on('particles') ? p.particles : null, caps: on('caps') ? p.caps : null,
       overlay: on('overlay') ? p.overlay : null, glow: on('glow'), accent: on('accent'), intensity: c.intensity === 'normal' ? 'normal' : 'subtle',
       colors: p, asset: t.asset_url || null,
-      banner: c.banner || null, bannerDark: ({ light: 0.3, medium: 0.5, strong: 0.7 })[c.banner_dark || 'medium'], bannerPos: ({ top: 'center top', center: 'center center', bottom: 'center bottom' })[c.banner_pos || 'center'], bannerTall: c.banner_h === 'tall' };
+      banner: c.banner === 'none' ? null : (c.banner || p.art || null), bannerBuiltin: !c.banner && !!p.art, pal: p.pal || null,
+      bannerDark: ({ light: 0.08, medium: 0.2, strong: 0.38 })[c.banner_dark || 'light'], bannerPos: ({ top: 'center top', center: 'center center', bottom: 'center bottom' })[c.banner_pos || 'center'], bannerTall: c.banner_h === 'tall' };
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -68,7 +78,10 @@
     var md = d.slice(5), a = String(t.start_date).slice(5), b = String(t.end_date).slice(5);
     return a <= b ? (md >= a && md <= b) : (md >= a || md <= b);   // e.g. Dec 28 – Jan 3
   }
-  function appliesTo(t, division) { return !t.departments || !t.departments.length || (division && t.departments.indexOf(division) > -1); }
+  function appliesTo(t, division, portal) {
+    if (t.portals && t.portals.length && portal !== undefined && t.portals.indexOf(portal) < 0) return false;
+    return !t.departments || !t.departments.length || (division && t.departments.indexOf(division) > -1);
+  }
   function statusOf(t, d) {
     if (!t.enabled) return 'disabled';
     if (t.manual_state === 'off') return 'off';
@@ -77,9 +90,9 @@
     if (!t.auto_active) return 'manual';
     return inWindow(t, d || today()) ? 'active' : 'scheduled';
   }
-  function schedule(themes, division, d) {
+  function schedule(themes, division, d, portal) {
     d = d || today();
-    var live = (themes || []).filter(function (t) { var s = statusOf(t, d); return (s === 'forced' || s === 'active') && appliesTo(t, division); });
+    var live = (themes || []).filter(function (t) { var s = statusOf(t, d); return (s === 'forced' || s === 'active') && appliesTo(t, division, portal); });
     live.sort(function (a, b) { return (b.manual_state === 'on') - (a.manual_state === 'on') || (b.priority || 0) - (a.priority || 0) || String(b.start_date || '').localeCompare(String(a.start_date || '')); });
     return live[0] || null;
   }
@@ -98,11 +111,20 @@
       '.bst-bg{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:inherit}',
       '.bst-caps{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:visible}',
       '.bst-bg canvas{position:absolute;inset:0;width:100%;height:100%}',
-      '.bst-banner{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;opacity:0;transform:scale(1.02);transition:opacity .7s ease,transform 1.2s ease}.bst-banner.on{opacity:1;transform:none}',
-      '.bst-scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,8,16,calc(var(--bst-dark) + .15)),rgba(5,8,16,calc(var(--bst-dark) - .1)) 35%,rgba(5,8,16,calc(var(--bst-dark) - .1)) 65%,rgba(5,8,16,calc(var(--bst-dark) + .15))),linear-gradient(0deg,rgba(5,8,16,var(--bst-dark)),transparent 70%)}',
-      '.bst-hasbanner .bst-sky,.bst-hasbanner .bst-corner,.bst-hasbanner .bst-mid,.bst-hasbanner .bst-drift,.bst-hasbanner .bst-frost{display:none!important}',
-      '.bst-hasbanner.bst-tall.bst-scene{padding-top:58px!important}',
-      '@media(max-width:767px){.bst-hasbanner.bst-tall.bst-scene{padding-top:30px!important}}',
+      /* banner band + glass control bar (realistic themes) */
+      '.bst-hasbanner.bst-scene{padding:calc(var(--bst-band,52px) - 10px) 12px 10px!important}',
+      '.bst-hasbanner .bst-bg{background:linear-gradient(180deg,#0b1020,#080c17)}',
+      '.bst-banner{position:absolute;left:0;right:0;top:0;height:calc(var(--bst-band,52px) + 14px);background-size:cover;background-repeat:no-repeat;opacity:0;transform:scale(1.015);transition:opacity .8s ease,transform 1.4s ease;-webkit-mask:linear-gradient(#000 62%,transparent);mask:linear-gradient(#000 62%,transparent)}',
+      '.bst-banner.on{opacity:1;transform:none}.bst-banner::after{content:"";position:absolute;inset:0;background:rgba(5,8,16,var(--bst-dark,.08))}',
+      '.bst-bar{position:absolute;left:7px;right:7px;bottom:6px;top:auto;border-radius:13px;background:rgba(9,12,22,.74);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border:1px solid rgba(255,255,255,.07);box-shadow:0 -10px 24px -14px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05)}',
+      '.bst-hasbanner .bst-sky,.bst-hasbanner .bst-corner,.bst-hasbanner .bst-mid,.bst-hasbanner .bst-drift,.bst-hasbanner .bst-frost,.bst-hasbanner .bst-top{display:none!important}',
+      '.bst-hasbanner.bst-scene .bes-search,.bst-hasbanner.bst-scene .bes-date,.bst-hasbanner.bst-scene .bes-icon,.bst-hasbanner.bst-scene .bes-clockpill{background:rgba(255,255,255,.035)!important;backdrop-filter:none;-webkit-backdrop-filter:none}',
+      '.bst-hasbanner.bst-scene .bes-account{background:transparent!important}',
+      '.bst-ny{position:absolute;right:21%;top:0;height:var(--bst-band,52px);display:flex;align-items:center;gap:10px;pointer-events:none;opacity:.95}',
+      '.bst-ny em{font:400 calc(var(--bst-band,52px) * .42)/1 "Great Vibes","Snell Roundhand","Brush Script MT",cursive;color:#fde7b0;text-shadow:0 0 12px rgba(251,191,36,.45)}',
+      '.bst-ny b{font:800 calc(var(--bst-band,52px) * .5)/1 Inter,system-ui,sans-serif;letter-spacing:.02em;background:linear-gradient(180deg,#fff3c4,#fbbf24 55%,#b45309);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 10px rgba(251,191,36,.5))}',
+      '@media(max-width:900px){.bst-ny{display:none}}',
+      '@media(max-width:767px){.bst-hasbanner.bst-scene{padding:calc(var(--bst-band,40px) - 8px) 8px 8px!important}.bst-bar{left:4px;right:4px;bottom:4px}}',
       '.bst-sky,.bst-top,.bst-drift{position:absolute;left:0;right:0}.bst-sky{inset:0}.bst-top{top:0;height:22px}',
       '.bst-mid{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:18px}.bst-mid[hidden]{display:none}',
       '.bst-corner{position:absolute;top:0;pointer-events:none}.bst-corner.l{left:0}.bst-corner.r{right:0;transform:scaleX(-1)}',
@@ -136,6 +158,9 @@
       '.bst-drift{bottom:-1px;height:9px;background:radial-gradient(18px 7px at 6% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(26px 8px at 22% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(22px 7px at 41% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(30px 9px at 63% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(20px 7px at 82% 100%,#e8f1ff 60%,transparent 62%),radial-gradient(26px 8px at 97% 100%,#e8f1ff 60%,transparent 62%);opacity:.38}',
       '.bst-tree{display:block;margin-top:auto;align-self:flex-end;filter:drop-shadow(0 0 10px rgba(253,230,138,.18))}.bst-tl circle{animation:bstTw 2.2s ease-in-out infinite}.bst-tl circle:nth-child(2n){animation-delay:1.1s}',
       '.bst-cap.snow{filter:drop-shadow(0 1px 1px rgba(2,6,23,.35))}.bst-cap svg{display:block}',
+      '.bst-vishu .bst-sky{background:radial-gradient(50% 160% at 20% 120%,rgba(250,204,21,.22),transparent 60%),linear-gradient(180deg,#1d1606,#231a08 60%,#17120a)}',
+      '.bst-onam .bst-sky{background:radial-gradient(45% 150% at 10% 120%,rgba(249,115,22,.22),transparent 60%),radial-gradient(45% 150% at 90% 120%,rgba(225,29,72,.16),transparent 60%),linear-gradient(180deg,#14180c,#1a1d0e 60%,#121509)}',
+      '.bst-newyear .bst-sky{background:radial-gradient(50% 160% at 50% -40%,rgba(192,132,252,.18),transparent 60%),linear-gradient(180deg,#0c0a1e,#120d26 60%,#0d0a1c)}',
       /* monsoon */
       '.bst-monsoon .bst-sky{background:radial-gradient(70% 120% at 50% -30%,rgba(148,163,184,.16),transparent 70%),linear-gradient(180deg,#0a1726,#0d2033 60%,#0b1a2a)}',
       '.bst-cloud{position:absolute;top:-30px;width:280px;height:70px;border-radius:50%;background:radial-gradient(closest-side,rgba(148,163,184,.22),transparent);filter:blur(4px);animation:bstCl 60s linear infinite}',
@@ -268,17 +293,28 @@
       if (c.preset === 'navaratri') { mid.innerHTML = '<span class="bst-mwrap">' + SVG.mandala + '</span><span class="bst-drow">' + SVG.diya + SVG.diya + SVG.diya + SVG.diya + SVG.diya + '</span>'; }
       if (c.preset === 'independence') { mid.innerHTML = '<span class="bst-mf l">' + SVG.flag2('l') + '</span><span class="bst-chw">' + SVG.chakra + '</span><span class="bst-mf r">' + SVG.flag2('r') + '</span>' + SVG.birds; }
     }
+    var bar = null;
     if (c.banner) {
-      // illustrated background: loaded lazily, fades in; drawn sky / corner art / middle art hide
+      // Realistic banner band across the top; the controls sit on a glass bar that overlaps its
+      // lower edge. Drawn scenery and string decorations hide; particles / caps / accents stay.
       header.classList.add('bst-hasbanner'); if (c.bannerTall) header.classList.add('bst-tall');
       header.style.setProperty('--bst-dark', c.bannerDark);
+      var aspect = 24;   // shipped art is ~24:1; refined from the real image once it loads
+      var setBand = function () { var w = header.getBoundingClientRect().width || 1000; var hb = Math.max(phone ? 34 : 44, Math.min(phone ? 54 : 86, w / aspect)) * (c.bannerTall ? 1.4 : 1); header.style.setProperty('--bst-band', Math.round(hb) + 'px'); };
+      setBand();
       var ban = document.createElement('div'); ban.className = 'bst-banner'; ban.style.backgroundPosition = c.bannerPos;
-      var scrim = document.createElement('div'); scrim.className = 'bst-scrim';
-      bg.insertBefore(scrim, bg.firstChild); bg.insertBefore(ban, bg.firstChild);
+      bar = document.createElement('div'); bar.className = 'bst-bar';
+      bg.insertBefore(bar, bg.firstChild); bg.insertBefore(ban, bg.firstChild);
       var bimg = new Image(); bimg.decoding = 'async';
-      bimg.onload = function () { ban.style.backgroundImage = 'url("' + c.banner.replace(/"/g, '%22') + '")'; setTimeout(function () { ban.classList.add('on'); }, 30); };
-      bimg.onerror = function () { header.classList.remove('bst-hasbanner', 'bst-tall'); ban.remove(); scrim.remove(); };
+      bimg.onload = function () { if (bimg.naturalWidth && bimg.naturalHeight) { aspect = bimg.naturalWidth / bimg.naturalHeight; setBand(); } ban.style.backgroundImage = 'url("' + c.banner.replace(/"/g, '%22') + '")'; setTimeout(function () { ban.classList.add('on'); place(); }, 30); };
+      bimg.onerror = function () { header.classList.remove('bst-hasbanner', 'bst-tall'); header.style.removeProperty('--bst-band'); ban.remove(); bar.remove(); bar = null; };
       bimg.src = c.banner;
+      if (c.preset === 'newyear') {
+        // greeting drawn live so the year is always right (Dec → next year)
+        var td = today(), yr = +td.slice(0, 4) + (td.slice(5, 7) === '12' ? 1 : 0);
+        if (!document.getElementById('bst-font')) { var lk = document.createElement('link'); lk.id = 'bst-font'; lk.rel = 'stylesheet'; lk.href = 'https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap'; document.head.appendChild(lk); }
+        var ny = document.createElement('span'); ny.className = 'bst-ny'; ny.innerHTML = '<em>Happy New Year</em><b>' + yr + '</b>'; bg.appendChild(ny);
+      }
     }
     if (c.asset && !phone) { var img = new Image(); img.className = 'bst-asset'; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.onerror = function () { img.remove(); }; img.src = c.asset; bg.appendChild(img); }
 
@@ -287,6 +323,10 @@
     var lastW = 0;
     function place() {
       var hr = header.getBoundingClientRect(); if (!hr.width) return;
+      if (bar) {
+        var tops = []; header.querySelectorAll(TARGETS + ',.bes-clockpill,.bes-account').forEach(function (el) { if (el.offsetParent === null) return; var rr2 = el.getBoundingClientRect(); if (rr2.height) tops.push(rr2.top - hr.top); });
+        if (tops.length) bar.style.top = Math.max(0, Math.min.apply(null, tops) - 6) + 'px';
+      }
       // middle band
       var sr = header.querySelector('.bes-search'), rr = header.querySelector('.bes-right');
       var a = sr && sr.offsetParent ? sr.getBoundingClientRect().right - hr.left : 0, b = hr.width;
@@ -341,20 +381,22 @@
     mo.observe(header, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
 
     // particles: one canvas, capped count, ~30 fps, paused when hidden / off-screen
-    var cv = null, ctx = null, parts = [], fx = [], raf = 0, last = 0, visible = true, W = 0, H = 0, io = null;
+    var bursts = [], cv = null, ctx = null, parts = [], fx = [], raf = 0, last = 0, visible = true, W = 0, H = 0, io = null;
     function sizeCanvas() {
       if (!cv) return; var r = bg.getBoundingClientRect(), dpr = Math.min(1.5, window.devicePixelRatio || 1);
       W = r.width; H = r.height; cv.width = Math.max(1, W * dpr); cv.height = Math.max(1, H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     if (c.particles && !(phone && lowPower())) {
       cv = document.createElement('canvas'); bg.insertBefore(cv, mid); ctx = cv.getContext('2d'); sizeCanvas();
-      var base = { snow: 72, rain: 70, embers: 26, motes: 18, petals: 22 }[c.particles] || 20;
+      var base = { snow: 72, rain: 70, embers: 26, motes: 18, petals: 22, sparkle: 26 }[c.particles] || 20;
+      var bandH = function () { return parseFloat(getComputedStyle(header).getPropertyValue('--bst-band')) || H * 0.5; };
       var count = Math.round(base * (phone ? 0.4 : 1) * (c.intensity === 'normal' ? 1.3 : 1));
       var spawn = function (fresh) {
         var z = Math.random();
         if (c.particles === 'snow') return { z: z, x: rnd(0, W), y: fresh ? rnd(-6, H) : -4, r: 0.5 + z * 2, v: 0.18 + z * 0.55, s: rnd(0, 6.28), a: 0.3 + z * 0.6 };
         if (c.particles === 'rain') return { z: z, x: rnd(-10, W + 50), y: fresh ? rnd(-20, H) : rnd(-30, -8), l: 6 + z * 10, v: 3 + z * 4.5, a: 0.1 + z * 0.3 };
-        if (c.particles === 'petals') return { x: rnd(0, W), y: fresh ? rnd(-8, H) : -6, r: rnd(2, 3.4), v: rnd(0.25, 0.55), s: rnd(0, 6.28), rot: rnd(0, 6.28), vr: rnd(-0.05, 0.05), col: ['#ff9933', '#f8fafc', '#16a34a', '#ff9933'][Math.floor(rnd(0, 4))], a: rnd(0.45, 0.8) };
+        if (c.particles === 'petals') { var pal = c.pal || ['#ff9933', '#f8fafc', '#16a34a']; return { x: rnd(0, W), y: fresh ? rnd(-8, H) : -6, r: rnd(1.8, 3.2), v: rnd(0.2, 0.5), s: rnd(0, 6.28), rot: rnd(0, 6.28), vr: rnd(-0.05, 0.05), col: pal[Math.floor(rnd(0, pal.length))], a: rnd(0.45, 0.85) }; }
+        if (c.particles === 'sparkle') return { x: rnd(0, W), y: rnd(2, Math.max(8, bandH() - 4)), r: rnd(1.2, 2.6), s: rnd(0, 6.28), sp: rnd(0.04, 0.09), a: rnd(0.5, 1) };
         if (c.particles === 'motes') return { x: rnd(0, W), y: rnd(0, H), r: rnd(0.6, 1.6), vx: rnd(-0.12, 0.12), vy: rnd(-0.08, 0.04), s: rnd(0, 6.28), a: rnd(0.2, 0.55) };
         return { x: rnd(0, W), y: fresh ? rnd(0, H) : H + 4, r: rnd(0.6, 1.8), v: rnd(0.15, 0.45), s: rnd(0, 6.28), a: rnd(0.35, 0.85) };
       };
@@ -371,6 +413,10 @@
           } else if (c.particles === 'rain') {
             var g = ctx.createLinearGradient(p.x, p.y, p.x - p.l * 0.28, p.y + p.l); g.addColorStop(0, 'rgba(186,230,253,0)'); g.addColorStop(1, 'rgba(186,230,253,' + p.a + ')');
             ctx.globalAlpha = 1; ctx.strokeStyle = g; ctx.lineWidth = p.z > 0.7 ? 1.2 : 0.8; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.l * 0.28, p.y + p.l); ctx.stroke();
+          } else if (c.particles === 'sparkle') {
+            var tw = Math.max(0, Math.sin(p.s)); if (tw < 0.05) continue;
+            ctx.globalAlpha = p.a * tw; ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(p.x - p.r * 2 * tw, p.y); ctx.lineTo(p.x + p.r * 2 * tw, p.y); ctx.moveTo(p.x, p.y - p.r * 2 * tw); ctx.lineTo(p.x, p.y + p.r * 2 * tw); ctx.stroke();
+            ctx.fillStyle = '#fff7d6'; ctx.beginPath(); ctx.arc(p.x, p.y, 0.9, 0, 6.283); ctx.fill();
           } else if (c.particles === 'petals') {
             ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = p.a; ctx.fillStyle = p.col; ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * 0.45, 0, 0, 6.283); ctx.fill(); ctx.restore();
           } else if (c.particles === 'motes') {
@@ -380,6 +426,10 @@
             ctx.globalAlpha = p.a * fl * 0.25; ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 3, 0, 6.283); ctx.fill();
           }
         }
+        // New Year: a soft firework burst now and then, only inside the banner band
+        for (var bi = bursts.length - 1; bi >= 0; bi--) { var bu = bursts[bi], k2 = bu.t / 40; ctx.globalAlpha = Math.max(0, 0.7 * (1 - k2)); ctx.strokeStyle = bu.c; ctx.lineWidth = 1;
+          for (var rr = 0; rr < 16; rr++) { var an = rr / 16 * 6.283, r1 = 3 + k2 * 18, r2 = r1 + 3; ctx.beginPath(); ctx.moveTo(bu.x + Math.cos(an) * r1, bu.y + Math.sin(an) * r1 + k2 * 4); ctx.lineTo(bu.x + Math.cos(an) * r2, bu.y + Math.sin(an) * r2 + k2 * 4); ctx.stroke(); }
+          if (++bu.t > 40) bursts.splice(bi, 1); }
         // rain splashes along the bottom edge
         for (var s = fx.length - 1; s >= 0; s--) { var f = fx[s]; ctx.globalAlpha = f.a * (1 - f.t / 8); ctx.strokeStyle = '#bae6fd'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.ellipse(f.x, H - 2, 1 + f.t * 0.9, 0.6 + f.t * 0.25, 0, Math.PI, 2 * Math.PI); ctx.stroke(); if (++f.t > 8) fx.splice(s, 1); }
         ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -387,10 +437,12 @@
       var step = function (t) {
         raf = requestAnimationFrame(step);
         if (!visible || document.hidden || t - last < 33) return; last = t;
+        if (c.particles === 'sparkle' && c.banner && !phone && bursts.length < 2 && Math.random() < 0.012) bursts.push({ x: rnd(W * 0.08, W * 0.55), y: rnd(8, Math.max(12, bandH() - 10)), t: 0, c: ['#fde68a', '#f0abfc', '#fca5a5', '#bae6fd'][Math.floor(rnd(0, 4))] });
         for (var i = 0; i < parts.length; i++) {
           var p = parts[i];
           if (c.particles === 'snow') { p.y += p.v; p.s += 0.02 + p.z * 0.01; p.x += Math.sin(p.s) * (0.15 + p.z * 0.25); if (p.y > H + 4) parts[i] = spawn(false); }
           else if (c.particles === 'rain') { p.y += p.v; p.x -= p.v * 0.28; if (p.y + p.l > H) { if (p.z > 0.55 && fx.length < 14) fx.push({ x: p.x, t: 0, a: p.a + 0.15 }); parts[i] = spawn(false); } }
+          else if (c.particles === 'sparkle') { p.s += p.sp; if (p.s > 6.28) parts[i] = spawn(true); }
           else if (c.particles === 'petals') { p.y += p.v; p.s += 0.03; p.rot += p.vr; p.x += Math.sin(p.s) * 0.4; if (p.y > H + 6) parts[i] = spawn(false); }
           else if (c.particles === 'motes') { p.x += p.vx; p.y += p.vy; p.s += 0.03; if (p.x < -4 || p.x > W + 4 || p.y < -4 || p.y > H + 4) parts[i] = spawn(true); }
           else { p.y -= p.v; p.s += 0.09; p.x += Math.sin(p.s) * 0.22; if (p.y < -4) parts[i] = spawn(false); }
@@ -406,7 +458,7 @@
     return function destroy() {
       cancelAnimationFrame(raf); if (ro) ro.disconnect(); mo.disconnect(); if (io) io.disconnect();
       bg.remove(); caps.remove();
-      cls.concat(['bst-hasbanner', 'bst-tall']).forEach(function (k) { header.classList.remove(k); }); header.style.removeProperty('--bst-dark');
+      cls.concat(['bst-hasbanner', 'bst-tall']).forEach(function (k) { header.classList.remove(k); }); ['--bst-dark', '--bst-band'].forEach(function (v) { header.style.removeProperty(v); });
       ['--bst-accent', '--bst-line', '--bst-glow'].forEach(function (v) { header.style.removeProperty(v); });
     };
   }
@@ -453,7 +505,7 @@
     if (S.header !== header && S.live) { try { S.live(); } catch (_) {} S.live = null; S.active = null; }
     S.header = header;
     var pv = previewTheme();
-    var t = pv || (ls(K_OFF) === '1' ? null : schedule(await loadThemes(), await myDivision()));
+    var t = pv || (ls(K_OFF) === '1' ? null : schedule(await loadThemes(), await myDivision(), null, currentPortal()));
     chip(pv);
     var key = t ? t.id + '|' + (t.updated_at || '') + '|' + JSON.stringify(t.config || {}) + '|' + t.preset : '';
     if (key === S.active) return;
@@ -486,8 +538,8 @@
       '.bsa-btn.pri{border:0;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.bsa-btn.sm{height:30px;padding:0 11px;font-size:12px}.bsa-btn:disabled{opacity:.6;cursor:progress}',
       '.bsa-pv{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}.bsa-pv span{font-size:12px;color:#8b93b8}',
       '.bsa-list{display:flex;flex-direction:column;gap:8px}',
-      '.bsa-row{display:grid;grid-template-columns:44px minmax(0,1.4fr) minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:#0e1222;border:1px solid rgba(255,255,255,.07)}',
-      '.bsa-sw{width:44px;height:30px;border-radius:9px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.1)}',
+      '.bsa-row{display:grid;grid-template-columns:96px minmax(0,1.4fr) minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:#0e1222;border:1px solid rgba(255,255,255,.07)}',
+      '.bsa-sw{width:96px;height:30px;border-radius:9px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.1)}',
       '.bsa-row b{display:block;color:#fff;font-size:14px}.bsa-row small{display:block;color:#8b93b8;font-size:11.5px;margin-top:2px}',
       '.bsa-pill{height:22px;padding:0 9px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.1);color:#8b93b8;white-space:nowrap}',
       '.bsa-pill.on{color:#6ee7b7;border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.08)}.bsa-pill.sch{color:#93c5fd;border-color:rgba(96,165,250,.35)}.bsa-pill.warn{color:#fcd34d;border-color:rgba(252,211,77,.35)}',
@@ -506,7 +558,7 @@
       '.bsa-note{font-style:normal}',
       '.bsa-note{font-size:11.5px;color:#6b74a0}.bsa-err{color:#f87171;font-size:12.5px}',
       '.bsa-foot{display:flex;justify-content:flex-end;gap:8px}',
-      '@media(max-width:860px){.bsa-row{grid-template-columns:44px minmax(0,1fr);}.bsa-row>.bsa-when,.bsa-row>.bsa-seg,.bsa-row>.bsa-acts{grid-column:1/-1}.bsa-grid{grid-template-columns:1fr}}'
+      '@media(max-width:860px){.bsa-row{grid-template-columns:72px minmax(0,1fr);}.bsa-sw{width:72px!important}.bsa-row>.bsa-when,.bsa-row>.bsa-seg,.bsa-row>.bsa-acts{grid-column:1/-1}.bsa-grid{grid-template-columns:1fr}}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -536,8 +588,9 @@
       + '<div class="bsa-pv"><span>Preview any theme on this page</span><select class="bsa-in" data-pv style="width:auto;min-width:200px">' + Object.keys(PRESETS).filter(function (k) { return k !== 'custom'; }).map(function (k) { return '<option value="p:' + k + '">' + esc(PRESETS[k].label) + ' (preset)</option>'; }).join('') + rows.map(function (t) { return '<option value="t:' + t.id + '">' + esc(t.name) + '</option>'; }).join('') + '</select><button type="button" class="bsa-btn sm" data-pvgo>Preview</button><button type="button" class="bsa-btn sm" data-pvstop>Stop preview</button></div>'
       + '<div class="bsa-list">' + (rows.length ? rows.map(function (t) {
           var st = statusOf(t, d0), L = ST_LABEL[st] || [st, ''], p = PRESETS[t.preset] || PRESETS.custom;
-          return '<div class="bsa-row" data-id="' + t.id + '"><span class="bsa-sw" data-sw="' + t.id + '" style="background:linear-gradient(135deg,' + p.glow + ',#0b0f1c)"></span>'
-            + '<div><b>' + esc(t.name) + '</b><small>' + esc(p.label) + ' · priority ' + (t.priority || 0) + ' · ' + (t.departments && t.departments.length ? esc(t.departments.map(function (c) { var d = divs.filter(function (x) { return x.code === c; })[0]; return d ? d.name : c; }).join(', ')) : 'All departments') + '</small></div>'
+          var art = t.config && t.config.banner && t.config.banner !== 'none' ? t.config.banner : (t.config && t.config.banner === 'none' ? null : p.art);
+          return '<div class="bsa-row" data-id="' + t.id + '"><span class="bsa-sw" data-sw="' + t.id + '" style="background:' + (art ? 'url(&quot;' + esc(art) + '&quot;) center/cover' : 'linear-gradient(135deg,' + p.glow + ',#0b0f1c)') + '"></span>'
+            + '<div><b>' + esc(t.name) + '</b><small>' + esc((KINDS.filter(function (k) { return k[0] === t.kind; })[0] || ['', p.kind || ''])[1]) + ' · priority ' + (t.priority || 0) + ' · ' + (t.portals && t.portals.length ? esc(t.portals.map(function (x) { return (PORTALS.filter(function (o) { return o[0] === x; })[0] || [0, x])[1]; }).join(', ')) + ' · ' : '') + (t.departments && t.departments.length ? esc(t.departments.map(function (c) { var d = divs.filter(function (x) { return x.code === c; })[0]; return d ? d.name : c; }).join(', ')) : 'All departments') + '</small></div>'
             + '<div class="bsa-when"><span class="bsa-pill ' + L[1] + '">' + esc(L[0]) + '</span><small style="color:#8b93b8;font-size:11.5px;margin-top:4px;display:block">' + esc(rangeText(t)) + '</small></div>'
             + '<div class="bsa-seg" role="group" aria-label="Activation">' + [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']].map(function (m) { return '<button type="button" data-ms="' + m[0] + '" class="' + (t.manual_state === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '</div>'
             + '<div class="bsa-acts"><button type="button" class="bsa-btn sm" data-pvid="' + t.id + '">Preview</button><button type="button" class="bsa-btn sm" data-edit="' + t.id + '">Edit</button></div></div>';
@@ -565,7 +618,7 @@
 
   function editor(src, divs, onDone) {
     acss(); css();
-    var f = src ? JSON.parse(JSON.stringify(src)) : { preset: 'custom', name: '', start_date: today(), end_date: today(), repeat_yearly: false, auto_active: true, manual_state: 'auto', priority: 50, departments: [], enabled: true, config: {}, asset_url: '' };
+    var f = src ? JSON.parse(JSON.stringify(src)) : { preset: 'custom', kind: 'custom', portals: [], name: '', start_date: today(), end_date: today(), repeat_yearly: false, auto_active: true, manual_state: 'auto', priority: 50, departments: [], enabled: true, config: {}, asset_url: '' };
     f.config = f.config || {};
     var ov = document.createElement('div'); ov.className = 'bsa-ov bsa';
     ov.innerHTML = '<div class="bsa-dlg" role="dialog" aria-modal="true" aria-label="Header theme"></div>';
@@ -579,19 +632,23 @@
       dlg.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h3>' + (src ? 'Edit theme' : 'New theme') + '</h3><p class="bsa-note" style="margin:4px 0 0">Dates use India time. Repeating themes only use day and month.</p></div><button type="button" class="bsa-btn sm" data-x aria-label="Close">×</button></div>'
         + '<div class="bsa-grid"><div class="bsa-col">'
         + '<div class="bsa-f"><label>Theme name</label><input class="bsa-in" data-k="name" maxlength="60" value="' + esc(f.name) + '" placeholder="e.g. Diwali"></div>'
-        + '<div class="bsa-f"><label>Style</label><select class="bsa-in" data-k="preset">' + Object.keys(PRESETS).map(function (k) { return '<option value="' + k + '"' + (f.preset === k ? ' selected' : '') + '>' + esc(PRESETS[k].label) + '</option>'; }).join('') + '</select></div>'
+        + '<div class="bsa-row2"><div class="bsa-f"><label>Type</label><select class="bsa-in" data-k="kind">' + KINDS.map(function (k) { return '<option value="' + k[0] + '"' + ((f.kind || 'festival') === k[0] ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select></div>'
+        + '<div class="bsa-f"><label>Style</label><select class="bsa-in" data-k="preset">' + Object.keys(PRESETS).map(function (k) { return '<option value="' + k + '"' + (f.preset === k ? ' selected' : '') + '>' + esc(PRESETS[k].label) + '</option>'; }).join('') + '</select></div></div>'
         + '<div class="bsa-row2"><div class="bsa-f"><label>Start date</label><input class="bsa-in" type="date" data-k="start_date" value="' + esc(f.start_date || '') + '"></div><div class="bsa-f"><label>End date</label><input class="bsa-in" type="date" data-k="end_date" value="' + esc(f.end_date || '') + '"></div></div>'
         + '<div class="bsa-f"><span>Schedule</span><div class="bsa-chips"><button type="button" class="bsa-ch' + (f.repeat_yearly ? ' on' : '') + '" data-tog="repeat_yearly">Repeat every year</button><button type="button" class="bsa-ch' + (f.auto_active ? ' on' : '') + '" data-tog="auto_active">Auto-activate on these dates</button><button type="button" class="bsa-ch' + (f.enabled ? ' on' : '') + '" data-tog="enabled">Enabled</button></div></div>'
         + '<div class="bsa-row2"><div class="bsa-f"><label>Activation</label><select class="bsa-in" data-k="manual_state"><option value="auto"' + (f.manual_state === 'auto' ? ' selected' : '') + '>Automatic (by date)</option><option value="on"' + (f.manual_state === 'on' ? ' selected' : '') + '>On now (manual)</option><option value="off"' + (f.manual_state === 'off' ? ' selected' : '') + '>Off (manual)</option></select></div>'
         + '<div class="bsa-f"><label>Priority</label><select class="bsa-in" data-k="priority">' + [10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(function (n) { return '<option value="' + n + '"' + (+f.priority === n ? ' selected' : '') + '>' + n + (n === 100 ? ' (highest)' : n === 10 ? ' (lowest)' : '') + '</option>'; }).join('') + '</select></div></div>'
         + '<div class="bsa-f"><span>Applies to</span><div class="bsa-chips"><button type="button" class="bsa-ch' + (!f.departments.length ? ' on' : '') + '" data-dep="">All departments</button>' + divs.map(function (d) { return '<button type="button" class="bsa-ch' + (f.departments.indexOf(d.code) > -1 ? ' on' : '') + '" data-dep="' + esc(d.code) + '">' + esc(d.name) + '</button>'; }).join('') + '</div></div>'
+        + '<div class="bsa-f"><span>Show in</span><div class="bsa-chips"><button type="button" class="bsa-ch' + (!(f.portals || []).length ? ' on' : '') + '" data-por="">All suites</button>' + PORTALS.map(function (o) { return '<button type="button" class="bsa-ch' + ((f.portals || []).indexOf(o[0]) > -1 ? ' on' : '') + '" data-por="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>'
         + '</div><div class="bsa-col">'
         + '<div class="bsa-f"><span>Preview</span><div class="bsa-mock" data-mock>' + mockHeader() + '</div></div>'
         + '<div class="bsa-f"><span>Effects</span><div class="bsa-chips">' + EFFECTS.map(function (x) { return '<button type="button" class="bsa-ch' + (f.config[x[0]] !== false ? ' on' : '') + '" data-fx="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div><em class="bsa-note">Effects a style doesn’t have are ignored (e.g. Summer has no falling effect).</em></div>'
         + '<div class="bsa-f"><span>Intensity</span><div class="bsa-chips"><button type="button" class="bsa-ch' + (f.config.intensity !== 'normal' ? ' on' : '') + '" data-int="subtle">Subtle</button><button type="button" class="bsa-ch' + (f.config.intensity === 'normal' ? ' on' : '') + '" data-int="normal">Normal</button></div></div>'
-        + '<div class="bsa-f"><label>Background banner image</label><div style="display:flex;gap:8px"><input class="bsa-in" data-cfg="banner" placeholder="https:// — wide JPG / WebP" value="' + esc(f.config.banner || '') + '"><button type="button" class="bsa-btn sm" data-up="banner" style="height:38px">Upload</button></div>'
-        + '<em class="bsa-note">The realistic look: a wide illustrated scene (≈ 2400 × 260 px, JPG/WebP, under 3 MB). Snow / rain / petals and button decorations animate on top; the drawn scenery hides.</em></div>'
-        + (f.config.banner ? '<div class="bsa-row2"><div class="bsa-f"><span>Darken</span><div class="bsa-chips">' + [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_dark || 'medium') === o[0] ? ' on' : '') + '" data-opt="banner_dark" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>'
+        + (function () { var pa = (PRESETS[f.preset] || {}).art, cur = f.config.banner, mode = cur === 'none' ? 'none' : cur ? 'custom' : (pa ? 'builtin' : 'none');
+            return '<div class="bsa-f"><label>Banner image</label><div class="bsa-chips">' + (pa ? '<button type="button" class="bsa-ch' + (mode === 'builtin' ? ' on' : '') + '" data-ban="builtin">Built-in artwork</button>' : '') + '<button type="button" class="bsa-ch' + (mode === 'custom' ? ' on' : '') + '" data-ban="custom">My image</button><button type="button" class="bsa-ch' + (mode === 'none' ? ' on' : '') + '" data-ban="none">No banner</button></div>'
+              + (mode === 'custom' ? '<div style="display:flex;gap:8px;margin-top:6px"><input class="bsa-in" data-cfg="banner" placeholder="https:// — wide JPG / WebP" value="' + esc(cur || '') + '"><button type="button" class="bsa-btn sm" data-up="banner" style="height:38px">Upload</button></div>' : '')
+              + '<em class="bsa-note">' + (mode === 'none' ? 'Uses the drawn header scene instead of a photo banner.' : 'Wide scene (about 24:1, e.g. 2400 × 100 px or larger, JPG/WebP under 3 MB). Shown as a band above the controls; effects animate on top.') + '</em></div>'; })()
+        + ((f.config.banner !== 'none' && (f.config.banner || (PRESETS[f.preset] || {}).art)) ? '<div class="bsa-row2"><div class="bsa-f"><span>Darken</span><div class="bsa-chips">' + [['light', 'Light'], ['medium', 'Medium'], ['strong', 'Strong']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_dark || 'medium') === o[0] ? ' on' : '') + '" data-opt="banner_dark" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>'
           + '<div class="bsa-f"><span>Show image</span><div class="bsa-chips">' + [['top', 'Top'], ['center', 'Centre'], ['bottom', 'Bottom']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_pos || 'center') === o[0] ? ' on' : '') + '" data-opt="banner_pos" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div></div>'
           + '<div class="bsa-f"><span>Header height</span><div class="bsa-chips">' + [['slim', 'Slim'], ['tall', 'Tall (shows more of the image)']].map(function (o) { return '<button type="button" class="bsa-ch' + ((f.config.banner_h || 'slim') === o[0] ? ' on' : '') + '" data-opt="banner_h" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '')
         + '<div class="bsa-f"><label>Decorative image (optional)</label><div style="display:flex;gap:8px"><input class="bsa-in" data-k="asset_url" placeholder="https:// — PNG / SVG / WebP" value="' + esc(f.asset_url || '') + '"><button type="button" class="bsa-btn sm" data-up="asset" style="height:38px">Upload</button><input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" data-file hidden></div><em class="bsa-note">Shown small at the right of the header on desktop only.</em></div>'
@@ -603,9 +660,9 @@
     }
     function grab() {
       dlg.querySelectorAll('[data-k]').forEach(function (x) { var k = x.getAttribute('data-k'); f[k] = k === 'priority' ? +x.value : x.value; });
-      dlg.querySelectorAll('[data-cfg]').forEach(function (x) { var v = x.value.trim(); if (v) f.config[x.getAttribute('data-cfg')] = v; else delete f.config[x.getAttribute('data-cfg')]; });
+      dlg.querySelectorAll('[data-cfg]').forEach(function (x) { f.config[x.getAttribute('data-cfg')] = x.value.trim(); });
     }
-    dlg.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-cfg') === 'banner') { grab(); return draw(); } if (e.target.getAttribute && e.target.getAttribute('data-k') === 'preset') { grab(); if (!f.name || Object.keys(PRESETS).some(function (k) { return PRESETS[k].label === f.name; })) f.name = PRESETS[f.preset].label; draw(); } });
+    dlg.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-cfg') === 'banner') { grab(); return draw(); } if (e.target.getAttribute && e.target.getAttribute('data-k') === 'preset') { grab(); if (!f.name || Object.keys(PRESETS).some(function (k) { return PRESETS[k].label === f.name; })) f.name = PRESETS[f.preset].label; f.kind = PRESETS[f.preset].kind || f.kind; draw(); } });
     dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b || busy) return;
       if (b.hasAttribute('data-x')) return close();
@@ -613,6 +670,8 @@
       if (b.hasAttribute('data-dep')) { grab(); var c = b.getAttribute('data-dep'); if (!c) f.departments = []; else { var i = f.departments.indexOf(c); if (i > -1) f.departments.splice(i, 1); else f.departments.push(c); } return draw(); }
       if (b.hasAttribute('data-fx')) { grab(); var x = b.getAttribute('data-fx'); f.config[x] = f.config[x] === false; return draw(); }
       if (b.hasAttribute('data-int')) { grab(); f.config.intensity = b.getAttribute('data-int'); return draw(); }
+      if (b.hasAttribute('data-ban')) { grab(); var bm = b.getAttribute('data-ban'); if (bm === 'builtin') delete f.config.banner; else if (bm === 'none') f.config.banner = 'none'; else if (!f.config.banner || f.config.banner === 'none') f.config.banner = ''; return draw(); }
+      if (b.hasAttribute('data-por')) { grab(); var po = b.getAttribute('data-por'); f.portals = f.portals || []; if (!po) f.portals = []; else { var pi2 = f.portals.indexOf(po); if (pi2 > -1) f.portals.splice(pi2, 1); else f.portals.push(po); } return draw(); }
       if (b.hasAttribute('data-opt')) { grab(); f.config[b.getAttribute('data-opt')] = b.getAttribute('data-v'); return draw(); }
       if (b.hasAttribute('data-up')) { var which = b.getAttribute('data-up'), fi = dlg.querySelector('[data-file]'); fi.value = ''; fi.onchange = async function () {
           var file = fi.files && fi.files[0]; if (!file) return; var max = which === 'banner' ? 3 : 1; if (file.size > max * 1024 * 1024) { dlg.querySelector('[data-err]').textContent = 'Image must be under ' + max + ' MB.'; return; }
@@ -635,7 +694,8 @@
         var err = !String(f.name || '').trim() ? 'Add a name.' : (f.start_date && f.end_date && !f.repeat_yearly && f.end_date < f.start_date) ? 'End date is before the start date.' : (f.auto_active && f.manual_state === 'auto' && (!f.start_date || !f.end_date)) ? 'Set start and end dates, or switch activation to manual.' : '';
         if (err) { dlg.querySelector('[data-err]').textContent = err; return; }
         busy = true; b.disabled = true; b.textContent = 'Saving…';
-        var row = { preset: f.preset, name: String(f.name).trim().slice(0, 60), start_date: f.start_date || null, end_date: f.end_date || null, repeat_yearly: !!f.repeat_yearly, auto_active: !!f.auto_active,
+        if (f.config.banner === '') delete f.config.banner;
+        var row = { preset: f.preset, kind: f.kind || (PRESETS[f.preset] || {}).kind || 'custom', portals: f.portals || [], name: String(f.name).trim().slice(0, 60), start_date: f.start_date || null, end_date: f.end_date || null, repeat_yearly: !!f.repeat_yearly, auto_active: !!f.auto_active,
           manual_state: f.manual_state, priority: +f.priority || 50, departments: f.departments, enabled: !!f.enabled, config: f.config, asset_url: String(f.asset_url || '').trim() || null, updated_by: who(), updated_at: new Date().toISOString() };
         var r = src ? await db().from('erp_header_themes').update(row).eq('id', src.id) : await db().from('erp_header_themes').insert(row);
         busy = false;
