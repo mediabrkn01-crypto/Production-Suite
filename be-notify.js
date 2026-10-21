@@ -42,6 +42,7 @@
     work_completed:       { c: '#34d399', ic: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>', l: 'Work completed' },
     calendar_reminder:    { c: '#ff8a3d', ic: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', l: 'Calendar reminder' },
     calendar_assigned:    { c: '#a78bfa', ic: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/>', l: 'New calendar item' },
+    file_shared:          { c: '#ff9a4d', ic: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>', l: 'File shared with you' },
     work_output_uploaded: { c: '#60a5fa', ic: '<rect x="2" y="5" width="15" height="14" rx="2"/><path d="m17 10 5-3v10l-5-3"/>', l: 'Output ready for review' }
   };
   function meta(t) { return META[t] || { c: '#a5b4fc', ic: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>', l: 'Notification' }; }
@@ -136,6 +137,7 @@
       var row = S.rows.find(function (n) { return String(n.id) === id; });
       markRead(id); close();
       if (row && /^cal:/.test(String(row.link || '')) && window.BECal) { BECal.openFromLink(row.link); return; }   // Content Calendar item
+      if (row && /^share:/.test(String(row.link || '')) && window.BEShare) { BEShare.openFromLink(row.link); return; }   // file shared with me
       if (row && typeof S.opts.onOpen === 'function') S.opts.onOpen(row);
     });
     setTimeout(function () { document.addEventListener('mousedown', outside, true); }, 0);
@@ -173,7 +175,7 @@
     var gone = function () { el.classList.remove('on'); setTimeout(function () { el.remove(); }, 220); };
     var t = setTimeout(gone, 9000);
     el.querySelector('[data-d]').onclick = function () { clearTimeout(t); gone(); };
-    el.querySelector('[data-v]').onclick = function () { clearTimeout(t); gone(); markRead(n.id); if (/^cal:/.test(String(n.link || '')) && window.BECal) return BECal.openFromLink(n.link); if (typeof S.opts.onOpen === 'function') S.opts.onOpen(n); };
+    el.querySelector('[data-v]').onclick = function () { clearTimeout(t); gone(); markRead(n.id); if (/^cal:/.test(String(n.link || '')) && window.BECal) return BECal.openFromLink(n.link); if (/^share:/.test(String(n.link || '')) && window.BEShare) return BEShare.openFromLink(n.link); if (typeof S.opts.onOpen === 'function') S.opts.onOpen(n); };
   }
 
   // ── writes ─────────────────────────────────────────────────────────────
