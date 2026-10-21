@@ -284,16 +284,27 @@
   function empOptions(sel) {
     return '<option value="">Select employee</option>' + empList().map(function (e) { return '<option value="' + esc(e.name) + '"' + (e.name === sel ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('');
   }
+  // Photos: HR's employee list when present (hr.html), else app.html's shared lazy cache
+  // (beEmpForEmail: one batched hr_employees query) — avatars repaint when photos arrive.
   function avatar(name, email) {
     if (!name) return '<span class="wp-av empty">+</span>';
+    email = String(email || '').toLowerCase();
     try {
       if (typeof hrAvatarHTML === 'function') {
         var emp = (typeof hrEmployees !== 'undefined' && Array.isArray(hrEmployees)) ? hrEmployees.filter(function (e) { return (e.portal_email || '').toLowerCase() === email; })[0] : null;
-        var h = hrAvatarHTML(emp || name, 30); if (h) return '<span class="wp-av">' + h + '</span>';
+        if (!emp && email && typeof window.beEmpForEmail === 'function') emp = window.beEmpForEmail(email, repaintAvatars);
+        var h = hrAvatarHTML(emp || name, 30); if (h) return '<span class="wp-av" data-av-email="' + esc(email) + '">' + h + '</span>';
       }
     } catch (_) {}
     var ini = String(name).trim().split(/\s+/).map(function (w) { return w[0] || ''; }).slice(0, 2).join('').toUpperCase();
-    return '<span class="wp-av">' + esc(ini) + '</span>';
+    return '<span class="wp-av" data-av-email="' + esc(email) + '">' + esc(ini) + '</span>';
+  }
+  function repaintAvatars() {
+    if (typeof hrAvatarHTML !== 'function' || typeof window.beEmpForEmail !== 'function') return;
+    document.querySelectorAll('.wp-av[data-av-email]').forEach(function (s) {
+      var em = s.getAttribute('data-av-email'); if (!em) return;
+      var e = window.beEmpForEmail(em); if (e && (e.photo_url || e.photo_base64)) s.innerHTML = hrAvatarHTML(e, 30);
+    });
   }
   function classOptions(sel) {
     var src = document.getElementById('task-type'), list = CLASSES.slice();
