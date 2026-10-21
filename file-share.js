@@ -136,6 +136,19 @@
       '.fs-btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e6e9f5;font:inherit;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none}',
       '.fs-btn:hover{background:rgba(255,255,255,.08)}.fs-btn.pri{background:linear-gradient(135deg,#ff6b06,#f9182f);border-color:transparent;color:#fff}.fs-btn.pri:disabled{opacity:.45;cursor:not-allowed}',
       '.fs-btn.sm{height:30px;padding:0 11px;font-size:11.5px;border-radius:8px}',
+      // wide two-pane Send dialog
+      '.fs-dlg.wide{width:min(1040px,100%);height:min(720px,calc(100vh - 32px))}',
+      '.fs-split{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,370px) minmax(0,1fr);border-top:1px solid var(--fs-line)}',
+      '.fs-side{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;border-right:1px solid var(--fs-line);background:rgba(255,255,255,.012)}',
+      '.fs-main{padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}',
+      '.fs-main .fs-lbl{margin-bottom:0}.fs-who{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--fs-dim);padding:3px 9px;border-radius:999px;border:1px solid var(--fs-line)}.fs-who.on{color:#ffcfa8;border-color:rgba(255,107,6,.4);background:rgba(255,107,6,.1)}',
+      '.fs-seg.full{display:grid;grid-template-columns:repeat(3,1fr);width:100%;margin:0}.fs-seg.full button{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px}',
+      '.fs-main .fs-box{flex:1;min-height:0;display:flex;flex-direction:column}',
+      '.fs-main .fs-res{flex:1;max-height:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));align-content:start;gap:2px}.fs-res .fs-empty{grid-column:1/-1}',
+      '.fs-q input,.fs-q input:focus,.fs-q input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;padding:0!important;height:100%!important;border-radius:0!important}',
+      '.fs-work{display:flex;gap:12px;align-items:flex-start}.fs-tile{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;background:linear-gradient(140deg,rgba(255,107,6,.22),rgba(249,24,47,.12));color:#ffb27a;border:1px solid rgba(255,107,6,.3)}',
+      '.fs-side .fs-ta{min-height:96px}',
+      '.fs-ft{align-items:center}.fs-ftsum{margin-right:auto;font-size:12px;color:var(--fs-mute);min-width:0}.fs-ftsum b{color:#e6e9f5;font-weight:700}',
       // panel
       '.fs-sheet{position:fixed;inset:0;z-index:9150;background:rgba(3,5,9,.7);backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:22px 16px;overflow:auto}',
       '.fs-pane{width:min(860px,100%);min-height:min(640px,calc(100vh - 44px));background:var(--fs-bg);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px -20px rgba(0,0,0,.85)}',
@@ -162,7 +175,10 @@
       '.fs-note{position:fixed;right:18px;bottom:18px;z-index:9500;display:flex;gap:12px;align-items:center;max-width:min(380px,calc(100vw - 24px));padding:12px 12px 12px 14px;border-radius:14px;background:linear-gradient(170deg,#161c30,#0d1120);border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 50px -12px rgba(0,0,0,.8);color:#e6e9f5;transform:translateY(12px);opacity:0;transition:.22s}',
       '.fs-note.on{transform:none;opacity:1}.fs-note b{display:block;font-size:13px;color:#fff}.fs-note span{display:block;font-size:12px;color:var(--fs-mute);margin-top:2px}.fs-note .fs-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(255,107,6,.14);color:#ff9a4d;flex-shrink:0}',
       '@media(max-width:720px){',
-      ' .fs-ov{place-items:end stretch;padding:0}.fs-dlg{width:100%;max-height:92vh;border-radius:20px 20px 0 0}.fs-ft{padding-bottom:calc(14px + env(safe-area-inset-bottom))}.fs-ft .fs-btn{flex:1}',
+      ' .fs-ov{place-items:end stretch;padding:0}.fs-dlg,.fs-dlg.wide{width:100%;height:auto;max-height:92vh;border-radius:20px 20px 0 0}',
+      ' .fs-split{display:flex;flex-direction:column;overflow-y:auto;padding:14px 16px 6px;gap:16px}.fs-side{display:contents}.fs-main{padding:0;min-height:auto}',
+      ' .o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.fs-main .fs-res{max-height:240px;display:block}.fs-ftsum{display:none}',
+      ' .fs-seg.full button{font-size:11.5px;padding:0 4px}.fs-ft{padding-bottom:calc(14px + env(safe-area-inset-bottom))}.fs-ft .fs-btn{flex:1}',
       ' .fs-sheet{padding:0}.fs-pane{border-radius:0;min-height:100vh;padding:14px 14px 24px;border:0}.fs-top h2{font-size:18px}.fs-tabs{order:3;width:100%}.fs-tabs button{flex:1;justify-content:center}',
       ' .fs-det{padding:0 12px 12px}.fs-fl{flex-wrap:wrap}.fs-fl .fs-fn{flex-basis:calc(100% - 30px)}.fs-fl .fs-a{width:100%}.fs-fl .fs-a .fs-btn{flex:1}',
       ' .fs-note{left:12px;right:12px;bottom:12px;max-width:none}',
@@ -191,7 +207,7 @@
     var st = { files: files.map(function (f) { return f.index; }), picked: [], mode: 'person', q: '', msg: '', fwd: false, busy: false, hi: 0 };
     var isFwd = work.source && work.source.type === 'forward';
     var ov = document.createElement('div'); ov.className = 'fs-ov fs';
-    ov.innerHTML = '<div class="fs-dlg" role="dialog" aria-modal="true" aria-label="' + (isFwd ? 'Forward file' : 'Send approved work') + '"></div>';
+    ov.innerHTML = '<div class="fs-dlg wide" role="dialog" aria-modal="true" aria-label="' + (isFwd ? 'Forward file' : 'Send approved work') + '"></div>';
     document.body.appendChild(ov);
     var dlg = ov.firstChild, targets = null, terr = '';
     var close = function () { ov.remove(); document.removeEventListener('keydown', onKey); };
@@ -221,26 +237,31 @@
     }
     function footer() {
       var n = count(), ok = n > 0 && st.files.length > 0 && !st.busy;
-      return '<button type="button" class="fs-btn" data-cancel>Cancel</button><button type="button" class="fs-btn pri" data-go' + (ok ? '' : ' disabled') + '>' + svg(IC.send, 14) + (st.busy ? 'Sending…' : n ? 'Send to ' + n + (n === 1 ? ' person' : ' people') : 'Send') + '</button>';
+      var nf = st.files.length;
+      return '<span class="fs-ftsum">' + (n && nf ? 'Sending <b>' + nf + (nf === 1 ? ' file' : ' files') + '</b> to <b>' + n + (n === 1 ? ' person' : ' people') + '</b> · no re-upload' : nf ? 'Pick who should receive ' + (nf === 1 ? 'this file' : 'these files') : 'Select at least one file') + '</span>'
+        + '<button type="button" class="fs-btn" data-cancel>Cancel</button><button type="button" class="fs-btn pri" data-go' + (ok ? '' : ' disabled') + '>' + svg(IC.send, 14) + (st.busy ? 'Sending…' : n ? 'Send to ' + n + (n === 1 ? ' person' : ' people') : 'Send') + '</button>';
     }
     function fileRows() {
       return files.map(function (f) { var on = st.files.indexOf(f.index) > -1; return '<button type="button" class="fs-fr" role="checkbox" aria-checked="' + on + '" data-file="' + f.index + '"><span class="fs-cb">' + svg(IC.check, 12) + '</span>' + kindIcon(f.kind) + '<span class="fs-fn">' + esc(f.name) + '</span></button>'; }).join('');
     }
     function draw() {
-      var all = st.files.length === files.length;
+      var all = st.files.length === files.length, k0 = (files[0] && files[0].kind) || 'file';
+      // Desktop: two panes — WHAT is sent (left) and WHO gets it (right, full height). Phone: one column.
       dlg.innerHTML = '<div class="fs-hd"><h3>' + (isFwd ? 'Forward File' : 'Send Approved Work') + '</h3><button type="button" class="fs-x" data-cancel aria-label="Close">' + svg(IC.x, 15) + '</button></div>'
-        + '<div class="fs-bd">'
-        + '<div class="fs-work"><b>' + esc(work.title || 'Untitled') + '</b><div class="fs-meta">' + (work.type ? '<span>Type <b>' + esc(work.type) + '</b></span>' : '') + (work.approved_at ? '<span>Approved <b>' + esc(fDate(work.approved_at)) + '</b></span>' : '') + (isFwd && work.from ? '<span>From <b>' + esc(work.from) + '</b></span>' : '') + '</div></div>'
-        + '<div><div class="fs-lbl">Files · ' + st.files.length + ' of ' + files.length + (files.length > 1 ? '<button type="button" class="fs-link" data-all>' + (all ? 'Clear all' : 'Select all') + '</button>' : '') + '</div><div class="fs-files" role="group" aria-label="Files to send">' + fileRows() + '</div></div>'
-        + '<div><div class="fs-lbl">Recipients</div>'
-        + '<div class="fs-seg" role="tablist"><button type="button" data-mode="person"' + (st.mode === 'person' ? ' class="on"' : '') + '>Individual</button><button type="button" data-mode="dept"' + (st.mode === 'dept' ? ' class="on"' : '') + '>Department</button><button type="button" data-mode="role"' + (st.mode === 'role' ? ' class="on"' : '') + '>Role / Group</button></div>'
+        + '<div class="fs-split"><div class="fs-side">'
+        + '<div class="fs-work o1"><span class="fs-tile">' + kindIcon(k0) + '</span><div style="min-width:0"><b>' + esc(work.title || 'Untitled') + '</b><div class="fs-meta">' + (work.type ? '<span>Type <b>' + esc(work.type) + '</b></span>' : '') + (work.approved_at ? '<span>Approved <b>' + esc(fDate(work.approved_at)) + '</b></span>' : '') + (isFwd && work.from ? '<span>From <b>' + esc(work.from) + '</b></span>' : '') + '</div></div></div>'
+        + '<div class="o2"><div class="fs-lbl">Files · ' + st.files.length + ' of ' + files.length + (files.length > 1 ? '<button type="button" class="fs-link" data-all>' + (all ? 'Clear all' : 'Select all') + '</button>' : '') + '</div><div class="fs-files" role="group" aria-label="Files to send">' + fileRows() + '</div></div>'
+        + '<div class="o4"><div class="fs-lbl">Message <span style="font-weight:600;letter-spacing:0;text-transform:none">(optional)</span></div><textarea class="fs-ta" data-msg maxlength="600" placeholder="e.g. Final approved video for tomorrow’s student session.">' + esc(st.msg) + '</textarea><div class="fs-cnt" data-cnt>' + st.msg.length + ' / 600</div></div>'
+        + '<button type="button" class="fs-sw o5" role="switch" aria-checked="' + st.fwd + '" data-fwd><span class="fs-tg"></span><div><b>Allow recipients to forward</b><small>Off: only the people you pick can open these files.</small></div></button>'
+        + '</div><div class="fs-main o3">'
+        + '<div class="fs-lbl">Recipients<span class="fs-who" data-who>' + whoText() + '</span></div>'
+        + '<div class="fs-seg full" role="tablist"><button type="button" data-mode="person"' + (st.mode === 'person' ? ' class="on"' : '') + '>' + svg(IC.users, 13) + 'Individual</button><button type="button" data-mode="dept"' + (st.mode === 'dept' ? ' class="on"' : '') + '>' + svg(IC.dept, 13) + 'Department</button><button type="button" data-mode="role"' + (st.mode === 'role' ? ' class="on"' : '') + '>' + svg(IC.users, 13) + 'Role / Group</button></div>'
         + '<div class="fs-box"><div class="fs-chips" data-chips>' + chips() + '</div><label class="fs-q">' + svg(IC.search, 15) + '<input type="text" data-q placeholder="' + (st.mode === 'person' ? 'Search name, department, designation, role…' : st.mode === 'dept' ? 'Search departments or heads…' : 'Search role groups…') + '" value="' + esc(st.q) + '" autocomplete="off" aria-label="Search recipients"></label>'
-        + '<div class="fs-res" role="listbox" aria-multiselectable="true" data-res>' + results() + '</div></div></div>'
-        + '<div><div class="fs-lbl">Message <span style="font-weight:600;letter-spacing:0;text-transform:none">(optional)</span></div><textarea class="fs-ta" data-msg maxlength="600" placeholder="e.g. Final approved video for tomorrow’s student session.">' + esc(st.msg) + '</textarea><div class="fs-cnt" data-cnt>' + st.msg.length + ' / 600</div></div>'
-        + '<button type="button" class="fs-sw" role="switch" aria-checked="' + st.fwd + '" data-fwd><span class="fs-tg"></span><div><b>Allow recipients to forward</b><small>Off: only the people you pick can open these files.</small></div></button>'
-        + '</div><div class="fs-ft" data-ft>' + footer() + '</div>';
+        + '<div class="fs-res" role="listbox" aria-multiselectable="true" data-res>' + results() + '</div></div>'
+        + '</div></div><div class="fs-ft" data-ft>' + footer() + '</div>';
     }
-    function redrawPicker() { var r = dlg.querySelector('[data-res]'); if (r) r.innerHTML = results(); var c = dlg.querySelector('[data-chips]'); if (c) c.innerHTML = chips(); dlg.querySelector('[data-ft]').innerHTML = footer(); }
+    function whoText() { var n = count(); return n ? n + (n === 1 ? ' person' : ' people') : 'No one selected'; }
+    function redrawPicker() { var r = dlg.querySelector('[data-res]'); if (r) r.innerHTML = results(); var c = dlg.querySelector('[data-chips]'); if (c) c.innerHTML = chips(); var w = dlg.querySelector('[data-who]'); if (w) { w.textContent = whoText(); w.classList.toggle('on', count() > 0); } dlg.querySelector('[data-ft]').innerHTML = footer(); }
     function toggle(k) { var i = st.picked.indexOf(k); if (i > -1) st.picked.splice(i, 1); else st.picked.push(k); redrawPicker(); }
     dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b) return;
