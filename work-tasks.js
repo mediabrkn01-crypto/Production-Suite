@@ -160,6 +160,27 @@
     return hasCols._v;
   }
   // Update that survives a database where the migration hasn't run yet (drops new columns).
+  // Server-checked create path (supabase/functions/work): org-wide HR / leadership assignment and
+  // multi-person projects. Used when a board is mounted with { server: true }.
+  async function workApi(action, body) {
+    var B = window.BESession || {}, tk = B.ensure ? await B.ensure() : (B.token ? B.token() : null);
+    if (!tk) throw new Error('Your session has expired. Please sign in again.');
+    var r = await fetch(B.url + '/functions/v1/work', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: B.anonKey, Authorization: 'Bearer ' + B.anonKey, 'x-erp-session': tk }, body: JSON.stringify(Object.assign({ action: action }, body || {})) });
+    var j = {}; try { j = await r.json(); } catch (_) {}
+    if (r.status === 401 && !(body && body._retry) && B.clear && B.ensure && j.code === 'SESSION_EXPIRED') { try { B.clear(B.currentEmail()); } catch (_) {} if (await B.ensure()) return workApi(action, Object.assign({}, body || {}, { _retry: true })); }
+    if (!r.ok) throw new Error(j.error || 'Work assignment is unavailable right now.');
+    return j;
+  }
+  // Notification Center entry for work created in the browser (individual / team); the server path
+  // writes its own. "View Work" deep-links to the task (link work:<id>).
+  function notifyNew(db, rows, actor) {
+    var list = rows.filter(function (r) { return r && r.employee_email; }).map(function (r) {
+      return { recipient_email: lc(r.employee_email), recipient_employee_id: r.employee_id || null, type: 'work_assigned', title: 'New work assigned',
+        message: actor + ' assigned you “' + (r.topic || 'work') + '”' + (r.date ? ' · due ' + fmtD(r.date) : '') + '.', entity_type: 'assignment', entity_id: String(r.id),
+        dedupe_key: 'work-new:' + r.id + (r.member ? ':' + lc(r.employee_email) : ''), link: 'work:' + r.id, metadata: { title: r.topic, due: r.date, by: actor } };
+    });
+    if (list.length) db.from('erp_notifications').upsert(list, { onConflict: 'recipient_email,dedupe_key', ignoreDuplicates: true }).then(function () {}, function () {});
+  }
   async function saveRow(db, id, patch) {
     var ok = await hasCols(db), p = Object.assign({}, patch);
     if (!ok) ['scope', 'department', 'employee_id', 'created_by', 'created_at', 'updated_at', 'started_at', 'completed_at', 'progress', 'reference_link', 'history'].forEach(function (k) { delete p[k]; });
@@ -479,7 +500,23 @@
       '.bw [hidden]{display:none!important}',
       '.bw-contrib{width:auto!important;flex:0 0 auto;max-width:190px}',
       // assignment type cards
-      '.bw-types{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
+      '.bw-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}',
+      '.bw-projb{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;color:#c4b5fd;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.35);vertical-align:2px}',
+      '.bw-drs{display:flex;flex-direction:column;gap:8px}',
+      '.bw-dr{border:1px solid var(--bw-b);border-radius:14px;background:rgba(0,0,0,.16);padding:10px;display:flex;flex-direction:column;gap:8px}',
+      '.bw-dr-top{display:grid;grid-template-columns:minmax(170px,230px) minmax(0,1fr) auto;gap:8px;align-items:center}',
+      '.bw-dr-emp{display:flex;align-items:center;gap:8px;min-width:0;height:40px;padding:0 10px;border-radius:11px;border:1px solid var(--bw-b);background:var(--bw-s);color:var(--bw-t);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}',
+      '.bw-dr-emp:hover{border-color:rgba(255,107,6,.45)}.bw-dr-emp .bw-ep-t{min-width:0;flex:1}.bw-dr-emp b{display:block;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bw-dr-emp small{display:block;font-size:10.5px;color:var(--bw-m);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.bw-dr-emp.empty{color:var(--bw-m);border-style:dashed}',
+      '.bw-dr-x{width:32px;height:32px;border-radius:9px;border:1px solid var(--bw-b);background:none;color:var(--bw-m);cursor:pointer}.bw-dr-x:hover{color:#fca5a5;border-color:rgba(248,113,113,.4)}',
+      '.bw-dr-meta{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;align-items:center}',
+      '.bw-dr-more{display:flex;flex-direction:column;gap:8px}.bw-dr-more[hidden]{display:none}',
+      '.bw-dr-tg{height:36px;padding:0 11px;border-radius:10px;border:1px solid var(--bw-b);background:none;color:var(--bw-m);font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.bw-dr-tg.on{color:#ffb37a;border-color:rgba(255,107,6,.4)}',
+      '.bw-addr{align-self:flex-start}',
+      '.bw-ep{position:fixed;z-index:10050;width:340px;max-width:calc(100vw - 24px);max-height:380px;display:flex;flex-direction:column;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#11162a;box-shadow:0 24px 60px -16px rgba(0,0,0,.85);overflow:hidden}',
+      '.bw-ep .bw-pick-top{border-bottom:1px solid var(--bw-b)}.bw-ep-l{overflow-y:auto;padding:6px}',
+      '.bw-ep-o{display:flex;align-items:center;gap:9px;width:100%;padding:7px 8px;border-radius:9px;border:0;background:none;color:var(--bw-t);font:inherit;text-align:left;cursor:pointer}.bw-ep-o:hover,.bw-ep-o.hi{background:rgba(255,255,255,.06)}.bw-ep-o b{display:block;font-size:12.5px}.bw-ep-o small{display:block;font-size:11px;color:var(--bw-m)}.bw-ep-o[disabled]{opacity:.45;cursor:not-allowed}',
+      '@media(max-width:640px){.bw-dr-top{grid-template-columns:1fr auto}.bw-dr-top .bw-in[data-del]{grid-column:1/-1;order:3}.bw-dr-meta{grid-template-columns:1fr 1fr}.bw-dr-meta .bw-dr-tg{grid-column:1/-1}.bw-ep{left:12px!important;right:12px;width:auto}}',
       '.bw-types button{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--bw-b);background:var(--bw-s);color:var(--bw-t);font-family:inherit;cursor:pointer;transition:border-color .15s,background .15s}',
       '.bw-types button:hover:not(:disabled){border-color:rgba(255,255,255,.18)}',
       '.bw-types button.on{border-color:rgba(255,107,6,.6);background:linear-gradient(135deg,rgba(255,107,6,.12),rgba(249,24,47,.06));box-shadow:0 0 0 3px rgba(255,107,6,.1)}',
@@ -742,7 +779,7 @@
         (list.length ? '<div class="bw-cards">' + list.map(function (t) {
           var isNew = isOpen(t) && !S.known.has(String(t.id));
           return '<button type="button" class="bw-card st-' + state(t) + (isOverdue(t) ? ' od' : '') + (isNew ? ' new' : '') + '" data-id="' + esc(t.id) + '">' +
-            '<h4>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</h4>' + (t.description ? '<p>' + esc(t.description) + '</p>' : '') +
+            '<h4>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</h4>' + (t.deliverable ? '<p style="color:#ffcfa8;font-weight:600">Your part: ' + esc(t.deliverable) + '</p>' : '') + (t.description ? '<p>' + esc(t.description) + '</p>' : '') +
             (isTeam(t) ? '<div class="bw-tm">With ' + esc(joinNames(teamNames(S.mem[String(t.id)], me)) || 'your team') + '</div>' : '') +
             '<div class="bw-card-m">' + stPill(t) + priPill(t.priority) + (t.type ? '<span class="bw-pri">' + esc(t.type) + '</span>' : '') + '</div>' +
             (t.progress > 0 && isOpen(t) ? '<div class="bw-prog"><i style="width:' + t.progress + '%"></i></div>' : '') +
@@ -752,6 +789,11 @@
       el.querySelectorAll('[data-f]').forEach(function (b) { b.onclick = function () { S.f = b.dataset.f; render(); }; });
       el.querySelectorAll('.bw-card').forEach(function (b) { b.onclick = function () { openTask(S.rows.find(function (t) { return String(t.id) === b.dataset.id; })); }; });
     }
+    window.BEWork.openTask = async function (id) {
+      var t = S.rows.find(function (x) { return String(x.id) === String(id); });
+      if (!t) { await load(); t = S.rows.find(function (x) { return String(x.id) === String(id); }); }
+      if (t) openTask(t); else toast('info', 'That work is no longer assigned to you.');
+    };
     function markSeen(id) { S.known.add(String(id)); try { localStorage.setItem('bw_seen_' + me, JSON.stringify([].concat(Array.from(S.known)).slice(-400))); } catch (_) {} }
     async function openTask(t) {
       if (!t) return; markSeen(t.id);
@@ -908,7 +950,7 @@
             var out = outputSummary(t), when = t.completed_at || t.submitted_at;
             var late = when && t.date && String(fmtIso(when)) > String(t.date).slice(0, 10);
             return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
-              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</b><span>' + esc(t.type || 'Task') + (isTeam(t) && t.final_submitted_by ? ' · submitted by ' + esc(t.final_submitted_by) : '') + '</span></div>' +
+              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + (t.project_id ? ' <span class="bw-projb">Project</span>' : '') + '</b><span>' + (t.deliverable ? esc(t.deliverable) + ' · ' : '') + esc(t.type || 'Task') + (isTeam(t) && t.final_submitted_by ? ' · submitted by ' + esc(t.final_submitted_by) : '') + (t.completed_at && state(t) === 'completed' ? ' · done ' + esc(fmtTs(t.completed_at)) : '') + '</span></div>' +
               whoCell(t) +
               '<div class="bw-c-by bw-due">' + esc(t.assigned_by || '—') + '</div>' +
               '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
@@ -922,7 +964,7 @@
           list.slice(0, 300).map(function (t) {
             var pg = t.status === 'Completed' ? 100 : (t.progress || (t.status === 'In Progress' ? 10 : 0));
             return '<div class="bw-row' + (isOverdue(t) ? ' od' : '') + '" data-id="' + esc(t.id) + '">' +
-              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + '</b><span>' + esc(t.type || 'Task') + ' · assigned ' + esc(fmtD(t.assigned_date)) + '</span></div>' +
+              '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + (t.project_id ? ' <span class="bw-projb">Project</span>' : '') + '</b><span>' + (t.deliverable ? esc(t.deliverable) + ' · ' : '') + esc(t.type || 'Task') + ' · assigned ' + esc(fmtD(t.assigned_date)) + '</span></div>' +
               whoCell(t) +
               '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
               '<div class="bw-due bw-c-due' + (isOverdue(t) ? ' od' : '') + '">' + esc(t.date ? fmtD(t.date) : '—') + '<small>' + esc(isOpen(t) ? dueText(t) : '') + '</small></div>' +
@@ -1043,7 +1085,9 @@
             : '<div class="bw-f"><span class="bw-l">Assignment type</span><div class="bw-types" role="radiogroup" id="bw-type">' +
                 '<button type="button" role="radio" aria-checked="true" data-ty="individual" class="on"><span class="bw-ty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span><span><b>Individual</b><small>One employee owns the task</small></span></button>' +
                 '<button type="button" role="radio" aria-checked="false" data-ty="team"' + (S.teams ? '' : ' disabled title="Run 20261013_work_teams.sql to enable team work"') + '><span class="bw-ty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.8"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15 14.5a5 5 0 0 1 6.5 5.5"/></svg></span><span><b>Team work</b><small>' + (S.teams ? '2+ people, one shared task' : 'Needs 20261013_work_teams.sql') + '</small></span></button>' +
+                (o.server ? '<button type="button" role="radio" aria-checked="false" data-ty="project"><span class="bw-ty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></span><span><b>Project</b><small>Several people, own deliverable each</small></span></button>' : '') +
               '</div></div>' +
+              (o.server ? '<div class="bw-f" id="bw-projf" hidden><div class="bw-l bw-tl-h"><span>People &amp; deliverables <b>*</b></span><span class="bw-tcount" id="bw-pcount">Add at least 1</span></div><div class="bw-drs" id="bw-drs"></div><button type="button" class="bw-btn ghost bw-addr" id="bw-addr">+ Add person</button></div>' : '') +
               '<div class="bw-f" id="bw-teamf" hidden><div class="bw-l bw-tl-h"><span>Team members <b>*</b></span><span class="bw-tcount" id="bw-tcount">Choose at least 2</span></div>' +
                 '<div class="bw-chips" id="bw-chips"><span class="bw-chips-e">Pick people below — tap ★ on a person to make them team lead (optional).</span></div>' +
                 '<div class="bw-pick-box"><div class="bw-pick-top"><input class="bw-in" id="bw-tsearch" type="search" placeholder="Search by name, role or department…" autocomplete="off" aria-label="Search employees">' +
@@ -1078,9 +1122,59 @@
         var type = 'individual';
         ov.querySelectorAll('[data-ty]').forEach(function (b) { b.onclick = function () { if (b.disabled) return; type = b.dataset.ty;
           ov.querySelectorAll('[data-ty]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
-          ov.querySelector('#bw-teamf').hidden = type !== 'team'; ov.querySelector('#bw-indf').hidden = type === 'team';
-          var sv = ov.querySelector('[data-save]'); if (sv) sv.textContent = type === 'team' ? 'Assign team work' : 'Assign work';
-          var sub = ov.querySelector('.bw-mh p'); if (sub) sub.textContent = type === 'team' ? 'Every team member is notified instantly in their own portal.' : 'The employee is notified instantly in their own portal.'; }; });
+          ov.querySelector('#bw-teamf').hidden = type !== 'team'; ov.querySelector('#bw-indf').hidden = type !== 'individual';
+          var pf = ov.querySelector('#bw-projf'); if (pf) { pf.hidden = type !== 'project'; if (type === 'project' && !rowsEl().children.length) addRow(); }
+          var lab = function (sel, txt) { var l = ov.querySelector(sel); if (l) l.firstChild.textContent = txt; };
+          lab('label[for="bw-title"]', type === 'project' ? 'Project / campaign title ' : 'Task / work title ');
+          lab('label[for="bw-desc"]', type === 'project' ? 'Shared brief' : 'Description / instructions');
+          var catf = ov.querySelector('#bw-cat'); if (catf) catf.closest('.bw-f').hidden = type === 'project';
+          var duef = ov.querySelector('label[for="bw-due"]'); if (duef) duef.firstChild.textContent = type === 'project' ? 'Default due date ' : 'Due date ';
+          var sv = ov.querySelector('[data-save]'); if (sv) sv.textContent = type === 'team' ? 'Assign team work' : type === 'project' ? 'Assign project' : 'Assign work';
+          var sub = ov.querySelector('.bw-mh p'); if (sub) sub.textContent = type === 'individual' ? 'The employee is notified instantly in their own portal.' : type === 'team' ? 'Every team member is notified instantly in their own portal.' : 'One shared project — each person gets their own deliverable and is notified in their own portal.'; }; });
+        // ── Project: one row per person (own deliverable, type, due date, instructions, files) ──
+        var rowsEl = function () { return ov.querySelector('#bw-drs') || document.createElement('div'); };
+        var rowFiles = {}, rowSeq = 0;
+        function pcount() { var n = rowsEl().querySelectorAll('.bw-dr').length, c = ov.querySelector('#bw-pcount'); if (c) { c.textContent = n + (n === 1 ? ' person' : ' people'); c.classList.toggle('ok', n > 0); } }
+        function addRow() {
+          var k = 'r' + (++rowSeq); rowFiles[k] = [];
+          var d = document.createElement('div'); d.className = 'bw-dr'; d.dataset.k = k;
+          d.innerHTML = '<div class="bw-dr-top"><button type="button" class="bw-dr-emp empty" data-pick-emp><span class="bw-ep-t"><b>Choose employee</b><small>Any department</small></span>▾</button>' +
+            '<input class="bw-in" data-del maxlength="300" placeholder="Deliverable — e.g. Edit the introduction video"><button type="button" class="bw-dr-x" data-rm-row aria-label="Remove person">✕</button></div>' +
+            '<div class="bw-dr-meta"><input class="bw-in" data-rtype maxlength="60" placeholder="Type — e.g. Video Editing, Report, Poster"><input class="bw-in" type="date" data-rdue value="' + esc((ov.querySelector('#bw-due') || {}).value || '') + '" min="' + today() + '"><button type="button" class="bw-dr-tg" data-more>Instructions &amp; files</button></div>' +
+            '<div class="bw-dr-more" hidden><textarea class="bw-in" data-ins rows="2" placeholder="Instructions just for this person (optional)"></textarea><div class="bw-files" data-rfl></div><label class="bw-drop"><input type="file" multiple hidden data-rfile>' + IC_UP + ' Add files for this person</label></div>';
+          rowsEl().appendChild(d); pcount();
+          d.querySelector('[data-rm-row]').onclick = function () { delete rowFiles[k]; d.remove(); pcount(); };
+          d.querySelector('[data-more]').onclick = function () { var m = d.querySelector('.bw-dr-more'); m.hidden = !m.hidden; this.classList.toggle('on', !m.hidden); };
+          d.querySelector('[data-pick-emp]').onclick = function () { empPop(this, function (x) { d.dataset.emp = x.id; var b = d.querySelector('[data-pick-emp]'); b.classList.remove('empty'); b.innerHTML = ava(x.id, x.full_name, x.division) + '<span class="bw-ep-t"><b>' + esc(x.full_name) + '</b><small>' + esc([x.designation, DIV[x.division] || x.division].filter(Boolean).join(' · ')) + '</small></span>▾'; }); };
+          var rf = d.querySelector('[data-rfile]'); rf.onchange = function () { Array.prototype.forEach.call(rf.files, function (f) { if (f.size > 50 * 1024 * 1024) toast('warning', f.name + ' is over 50 MB — skipped.'); else rowFiles[k].push(f); }); rf.value = ''; paintRow(d, k); };
+          return d;
+        }
+        function paintRow(d, k) { var box = d.querySelector('[data-rfl]'); box.innerHTML = rowFiles[k].map(function (f, i) { return '<div class="bw-file new">📎<span>' + esc(f.name) + '</span><a href="#" data-rrm="' + i + '">Remove</a></div>'; }).join('');
+          box.querySelectorAll('[data-rrm]').forEach(function (a) { a.onclick = function (e) { e.preventDefault(); rowFiles[k].splice(+a.dataset.rrm, 1); paintRow(d, k); }; }); }
+        var ab = ov.querySelector('#bw-addr'); if (ab) ab.onclick = function () { var d = addRow(); d.querySelector('[data-pick-emp]').click(); };
+        // Employee picker popover: search name / role / department + department chips (no native select)
+        function empPop(anchor, onPick) {
+          var old = document.querySelector('.bw-ep'); if (old) old.remove();
+          var pop = document.createElement('div'); pop.className = 'bw-ep bw';
+          var deps0 = Object.keys(DIV).filter(function (d) { return activeTargets(d).length; });
+          pop.innerHTML = '<div class="bw-pick-top"><input class="bw-in" type="search" placeholder="Search name, designation, department…" autocomplete="off" aria-label="Search employees"><div class="bw-dfil"><button type="button" data-df="" class="on">All</button>' + deps0.map(function (d) { return '<button type="button" data-df="' + d + '"><i style="background:' + (DIV_COLOR[d] || '#94a3b8') + '"></i>' + esc(DIV[d]) + '</button>'; }).join('') + '</div></div><div class="bw-ep-l" role="listbox"></div>';
+          document.body.appendChild(pop);
+          var r = anchor.getBoundingClientRect(), top = r.bottom + 6; if (top + 380 > innerHeight) top = Math.max(12, r.top - 386);
+          pop.style.left = Math.max(12, Math.min(innerWidth - 352, r.left)) + 'px'; pop.style.top = top + 'px';
+          var inp = pop.querySelector('input'), df = '';
+          function paint() {
+            var q = lc(inp.value), list = activeTargets(df).filter(function (x) { return !q || lc(x.full_name + ' ' + (x.designation || '') + ' ' + (DIV[x.division] || '') + ' ' + (x.department || '')).indexOf(q) > -1; });
+            pop.querySelector('.bw-ep-l').innerHTML = list.length ? list.map(function (x) { var ok = !!x.portal_email; return '<button type="button" class="bw-ep-o" data-id="' + esc(x.id) + '"' + (ok ? '' : ' disabled') + '>' + ava(x.id, x.full_name, x.division) + '<span><b>' + esc(x.full_name) + '</b><small>' + esc([x.designation, DIV[x.division] || x.division].filter(Boolean).join(' · ')) + (ok ? '' : ' · no login') + '</small></span></button>'; }).join('') : '<div class="bw-pick-none">No employees match.</div>';
+          }
+          paint(); setTimeout(function () { inp.focus(); }, 20);
+          inp.oninput = paint;
+          pop.querySelectorAll('[data-df]').forEach(function (b) { b.onclick = function () { df = b.dataset.df; pop.querySelectorAll('[data-df]').forEach(function (x) { x.classList.toggle('on', x === b); }); paint(); }; });
+          pop.addEventListener('click', function (e) { var o2 = e.target.closest('.bw-ep-o'); if (!o2 || o2.disabled) return; var x = empById(o2.dataset.id); if (x) onPick(x); close2(); });
+          var close2 = function () { pop.remove(); document.removeEventListener('mousedown', out, true); document.removeEventListener('keydown', key2, true); };
+          var out = function (e) { if (!pop.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) close2(); };
+          var key2 = function (e) { if (e.key === 'Escape') { e.stopPropagation(); close2(); } };
+          setTimeout(function () { document.addEventListener('mousedown', out, true); document.addEventListener('keydown', key2, true); }, 0);
+        }
         var picked = function () { return Array.prototype.map.call(ov.querySelectorAll('#bw-pick input:checked'), function (c) { return c.value; }); };
         // Selected people as chips (✕ remove, ★ team lead) — no separate lead dropdown.
         var syncPick = function () {
@@ -1116,6 +1210,33 @@
           var btn = this, title = ov.querySelector('#bw-title').value.trim(), due = ov.querySelector('#bw-due').value, ad = ov.querySelector('#bw-ad').value || today();
           var link = ov.querySelector('#bw-link').value.trim(), cat = ov.querySelector('#bw-cat').value.trim(), desc = ov.querySelector('#bw-desc').value.trim();
           if (!title) { toast('warning', 'Add a task title.'); ov.querySelector('#bw-title').focus(); return; }
+          if (!t && o.server && (type === 'project' || type === 'individual')) {
+            var items = [];
+            if (type === 'project') {
+              var bad = '';
+              rowsEl().querySelectorAll('.bw-dr').forEach(function (d) { if (bad) return;
+                var x = empById(d.dataset.emp), del = d.querySelector('[data-del]').value.trim(), rdue = d.querySelector('[data-rdue]').value || due;
+                if (!x) { bad = 'Choose the employee for every row.'; return; } if (!del) { bad = 'Add ' + x.full_name + '’s deliverable.'; return; } if (!rdue) { bad = 'Set a due date for ' + x.full_name + '.'; return; }
+                items.push({ employee_id: x.id, deliverable: del, type: d.querySelector('[data-rtype]').value.trim(), due: rdue, instructions: d.querySelector('[data-ins]').value.trim(), _k: d.dataset.k }); });
+              if (bad) { toast('warning', bad); return; }
+              if (!items.length) { toast('warning', 'Add at least one person.'); return; }
+            } else {
+              var ie = empById(emp.value); if (!ie) { toast('warning', 'Choose the employee.'); emp.focus(); return; }
+              if (!due) { toast('warning', 'Set a due date.'); ov.querySelector('#bw-due').focus(); return; }
+              items.push({ employee_id: ie.id, type: cat, due: due, instructions: '' });
+            }
+            if (link && !/^https?:\/\//i.test(link)) { toast('warning', 'The link must start with https://'); return; }
+            btn.disabled = true; btn.textContent = 'Uploading…';
+            try {
+              var sharedUp = files.length ? await uploadFiles(db, files, function (pc) { btn.textContent = 'Uploading shared files ' + pc + '%…'; }) : [];
+              for (var ii = 0; ii < items.length; ii++) { var fk = items[ii]._k, ff = fk ? (rowFiles[fk] || []) : []; items[ii].files = ff.length ? await uploadFiles(db, ff, function (pc) { btn.textContent = 'Uploading files ' + pc + '%…'; }) : []; delete items[ii]._k; }
+              btn.textContent = 'Assigning…';
+              var res = await workApi('create', { title: title, brief: desc, priority: pri, assigned_date: ad, link: link || null, project: type === 'project', shared_files: sharedUp, items: items });
+              toast('success', type === 'project' ? '“' + title + '” assigned to ' + res.assignments.length + (res.assignments.length === 1 ? ' person' : ' people') + ' — each has been notified.' : 'Work assigned to ' + res.assignments[0].employee + ' — they have been notified.');
+              close(); load();
+            } catch (err) { toast('error', err.message || String(err)); btn.disabled = false; btn.textContent = type === 'project' ? 'Assign project' : 'Assign work'; }
+            return;
+          }
           var teamIds = !t && type === 'team' ? picked() : null;
           var teamEmps = teamIds ? teamIds.map(empById).filter(Boolean) : null;
           var leadId = teamIds ? (ov.querySelector('#bw-lead') || {}).value || '' : '';
@@ -1155,6 +1276,7 @@
             }
           }
           if (r.error) { toast('error', 'Could not save: ' + r.error.message); btn.disabled = false; btn.textContent = t ? 'Save changes' : 'Assign work'; return; }
+          if (!t) notifyNew(db, teamEmps ? teamEmps.map(function (x) { return { id: newId, topic: title, date: due, employee_email: x.portal_email, employee_id: x.id, member: true }; }) : [{ id: newId, topic: title, date: due, employee_email: e.portal_email, employee_id: e.id }], actor);
           toast('success', t ? 'Task updated.' : teamEmps ? 'Team work assigned to ' + teamEmps.length + ' people — each of them has been notified.' : 'Work assigned to ' + e.full_name + ' — they have been notified.');
           close(); load();
         };
