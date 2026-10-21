@@ -55,10 +55,15 @@
     if (document.getElementById('beld-css')) return;
     var s = document.createElement('style'); s.id = 'beld-css';
     s.textContent = [
-      '.ld{display:flex;flex-direction:column;gap:8px}',
-      '.ld-sub{font-size:11.5px;color:#8b93b8}.ld-sub b{color:#fbbf24;font-weight:700}',
-      '.ld-acts{display:flex;flex-wrap:wrap;gap:6px}',
-      '.ld-btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#e6e9f5;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}',
+      '.ld{display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:normal;font-weight:500;font-size:13px;color:#e6e9f5}',
+      '.ld-zone{position:relative;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px;border-radius:14px;border:1.5px dashed rgba(255,255,255,.12);background:rgba(255,255,255,.02);transition:border-color .15s,background .15s}',
+      '.ld-zone.drag{border-color:rgba(255,138,61,.7);background:rgba(255,107,6,.07)}.ld-zone.req{border-color:rgba(251,191,36,.35)}',
+      '.ld-zi{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex-shrink:0;color:#ff9a4d;background:linear-gradient(140deg,rgba(255,107,6,.18),rgba(249,24,47,.08));border:1px solid rgba(255,138,61,.25)}',
+      '.ld-zt{flex:1;min-width:200px}.ld-zt b{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;color:#fff}.ld-zt small{display:block;font-size:11.5px;color:#8b93b8;margin-top:3px;line-height:1.45}',
+      '.ld-badge{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.12);color:#8b93b8}.ld-badge.req{color:#fbbf24;border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.1)}',
+      '.ld-sub{display:none}',
+      '.ld-acts{display:flex;flex-wrap:wrap;gap:6px;width:100%}',
+      '.ld-btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;text-transform:none;letter-spacing:normal;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#e6e9f5;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}',
       '.ld-btn:hover{background:rgba(255,255,255,.07);border-color:rgba(255,138,61,.35)}.ld-btn svg{color:#ff9a4d}.ld-btn:focus-visible{outline:2px solid rgba(255,138,61,.6);outline-offset:2px}',
       '.ld-list{display:flex;flex-direction:column;gap:6px}.ld-list:empty{display:none}',
       '.ld-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:11px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);min-width:0}',
@@ -83,7 +88,8 @@
       '.ld-view{flex:1;display:grid;place-items:center;padding:12px;min-height:320px;background:rgba(0,0,0,.25)}.ld-view img{max-width:100%;max-height:62vh;border-radius:10px}.ld-view iframe{width:100%;height:62vh;border:0;border-radius:10px;background:#fff}',
       '.ld-view .ld-msg{color:#8b93b8;font-size:13px;text-align:center;line-height:1.6}',
       '.ld-pacts{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:1px solid rgba(255,255,255,.07);flex-wrap:wrap}',
-      '@media(max-width:720px){.ld-btn{flex:1;justify-content:center}.ld-ov{padding:0;place-items:end stretch}.ld-dlg{width:100%;max-height:94vh;border-radius:18px 18px 0 0}.ld-body{grid-template-columns:1fr}.ld-side{border-right:0;border-bottom:1px solid rgba(255,255,255,.07);max-height:180px}.ld-view{min-height:240px}.ld-view iframe{height:50vh}}'
+      '@media(min-width:721px){.ld-acts{width:auto}}',
+      '@media(max-width:720px){.ld-btn{flex:1;justify-content:center}.ld-zt{min-width:0}.ld-ov{padding:0;place-items:end stretch}.ld-dlg{width:100%;max-height:94vh;border-radius:18px 18px 0 0}.ld-body{grid-template-columns:1fr}.ld-side{border-right:0;border-bottom:1px solid rgba(255,255,255,.07);max-height:180px}.ld-view{min-height:240px}.ld-view iframe{height:50vh}}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -100,8 +106,9 @@
     css(); opts = opts || {};
     var items = [], seq = 0;
     el.classList.add('ld');
-    el.innerHTML = '<div class="ld-sub" data-ld-sub>Attach supporting documents or a medical certificate — photos (JPG, PNG, HEIC) or PDF / Word, up to 20 MB each.</div>'
-      + '<div class="ld-acts"><button type="button" class="ld-btn" data-ld="photo">' + svg(IC.cam) + 'Upload Photo</button><button type="button" class="ld-btn" data-ld="file">' + svg(IC.file) + 'Upload File</button><button type="button" class="ld-btn" data-ld="drive">' + svg(IC.drive) + 'Choose from Drive</button></div>'
+    el.innerHTML = '<div class="ld-zone" data-ld-zone><span class="ld-zi">' + svg(IC.clip, 19) + '</span>'
+      + '<div class="ld-zt"><b>Medical certificate or proof <span class="ld-badge" data-ld-badge>Optional</span></b><small>Photos (JPG, PNG, HEIC) or PDF / Word · up to 20 MB each · drag &amp; drop here. Only you, HR and leadership can open them.</small></div>'
+      + '<div class="ld-acts"><button type="button" class="ld-btn" data-ld="photo">' + svg(IC.cam) + 'Upload Photo</button><button type="button" class="ld-btn" data-ld="file">' + svg(IC.file) + 'Upload File</button><button type="button" class="ld-btn" data-ld="drive">' + svg(IC.drive) + 'Choose from Drive</button></div></div>'
       + '<input type="file" data-ld-in="photo" accept="image/*,.heic,.heif" multiple hidden>'
       + '<input type="file" data-ld-in="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.heic" multiple hidden>'
       + '<div class="ld-list" data-ld-list></div>';
@@ -169,13 +176,17 @@
         if (it.path && it.state === 'done') api('remove', { path: it.path }).catch(function () {});   // not attached yet → delete it
       }
     });
+    var zone = el.querySelector('[data-ld-zone]');
+    ['dragenter', 'dragover'].forEach(function (t) { zone.addEventListener(t, function (ev) { ev.preventDefault(); zone.classList.add('drag'); }); });
+    ['dragleave', 'drop'].forEach(function (t) { zone.addEventListener(t, function (ev) { ev.preventDefault(); if (t === 'dragleave' && zone.contains(ev.relatedTarget)) return; zone.classList.remove('drag'); }); });
+    zone.addEventListener('drop', function (ev) { if (ev.dataTransfer && ev.dataTransfer.files) add(ev.dataTransfer.files); });
     el.querySelectorAll('[data-ld-in]').forEach(function (inp) { inp.addEventListener('change', function () { add(inp.files); inp.value = ''; }); });
     return {
       files: function () { return items.filter(function (x) { return x.state === 'done'; }).map(function (x) { return { path: x.path, name: x.name, size: x.size, type: x.type }; }); },
       busy: function () { return items.some(function (x) { return x.state === 'uploading'; }); },
       failed: function () { return items.some(function (x) { return x.state === 'failed'; }); },
       clear: function () { items.forEach(function (x) { if (x.preview) try { URL.revokeObjectURL(x.preview); } catch (_) {} }); items = []; draw(); },
-      setRequired: function (on) { var s = el.querySelector('[data-ld-sub]'); if (s) s.innerHTML = (on ? '<b>Required for this request.</b> ' : '') + 'Attach supporting documents or a medical certificate — photos (JPG, PNG, HEIC) or PDF / Word, up to 20 MB each.'; }
+      setRequired: function (on) { var b = el.querySelector('[data-ld-badge]'), z = el.querySelector('[data-ld-zone]'); if (b) { b.textContent = on ? 'Required' : 'Optional'; b.classList.toggle('req', !!on); } if (z) z.classList.toggle('req', !!on); }
     };
   }
 

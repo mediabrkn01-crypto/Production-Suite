@@ -286,7 +286,7 @@
       + '<div class="mw-f2"><label class="mw-f"><span>Start date</span><input type="date" data-f="start"></label><label class="mw-f" data-w="end"><span>End date</span><input type="date" data-f="end"></label></div>'
       + '<label class="mw-f"><span>Reason</span><textarea rows="2" data-f="reason" placeholder="Optional"></textarea></label>'
       + '<div class="mw-f"><span>Supporting document / medical certificate</span><div data-ld-host></div></div>'
-      + '<label class="mw-check"><input type="checkbox" data-f="emergency"> Emergency request (last-minute — notify HR + attach proof)</label>'
+      + '<label class="mw-check mw-emg"><input type="checkbox" data-f="emergency"><span><b>Emergency request</b><small>Last-minute leave — HR is notified right away. Emergency Sick Leave needs a document.</small></span></label>'
       + '<div class="mw-note">Leave is reviewed by HR. Max 2 consecutive days; leave adjacent to a weekly-off/holiday may be LOP unless an exception is granted; WFH is exceptional (medical) only.</div>'
       + '<div><button class="mw-btn mw-btn-primary" data-submit>Submit request</button></div></div></div>'
       + '<div class="mw-card"><div class="mw-card-t">My balances</div><div data-bal>' + loading() + '</div></div></div>'
@@ -538,6 +538,12 @@
     '.mw-f input:focus,.mw-f select:focus,.mw-f textarea:focus{border-color:rgba(255,107,6,.6)}',
     '.mw-f2{display:flex;gap:12px;flex-wrap:wrap}',
     '.mw-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#c7cbe0;cursor:pointer}',
+    '.mw-check input[type=checkbox]{appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;flex-shrink:0;border-radius:5px;border:1.5px solid rgba(255,255,255,.28);background:rgba(255,255,255,.03);cursor:pointer;display:grid;place-items:center;transition:.15s}',
+    '.mw-check input[type=checkbox]:checked{background:#ff6b06 url("data:image/svg+xml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%273.2%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Cpath d=%27m5 12 5 5 9-10%27/%3E%3C/svg%3E") center/12px no-repeat;border-color:#ff6b06}',
+    '.mw-check input[type=checkbox]:focus-visible{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
+    '.mw-emg{align-items:flex-start;gap:11px;padding:11px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);transition:.15s}.mw-emg input{margin-top:1px!important}',
+    '.mw-emg span b{display:block;font-size:13px;color:#fff;font-weight:700}.mw-emg span small{display:block;font-size:11.5px;color:#8b93b8;margin-top:2px}',
+    '.mw-emg:has(input:checked){border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.06)}.mw-emg:has(input:checked) span b{color:#fca5a5}',
     '.mw-check input{width:16px;height:16px;accent-color:#ff6b06}',
     '.mw-note{font-size:11.5px;color:#8890b5;line-height:1.55;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}',
     '.mw-note-warn{color:#fbbf24;background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.25)}',
