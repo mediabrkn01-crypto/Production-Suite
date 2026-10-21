@@ -365,7 +365,7 @@
 
     // WFH is not a paid balance — it's an approval-gated attendance mode (§9).
     if (kind === 'WFH') {
-      if (!request.proof_url) warnings.push('Exceptional WFH normally requires a medical certificate/supporting document.');
+      if (!request.proof_url && !(Array.isArray(request.proof_files) && request.proof_files.length)) warnings.push('Exceptional WFH normally requires a medical certificate/supporting document.');
       return {
         eligible: true, treatment: 'wfh', kind: 'WFH', days: days,
         warnings: warnings, requiresException: true, // WFH always needs mgr+HR approval
