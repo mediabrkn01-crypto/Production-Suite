@@ -48,13 +48,53 @@ export function authorizedDivisions(e: Row, tier: string): "*" | string[] {
 }
 
 
-export interface Caller { me: Row; tier: string; desig: Row[] }
+export interface Caller { me: Row; tier: string; desig: Row[]; hrAdmin?: boolean }
+
+/** Founders / co-founders / leadership (manager tier) never hold Aura Points: they only award,
+ *  deduct and view — no balance, no leaderboard, nothing can be given to or taken from them. */
+export const holdsAura = (e: Row, desig: Row[]) => tierOf(e, desig) !== "manager" && e.account_type !== "system";
+
+/** Points a caller may DEDUCT per action: leadership + HR manager 10/20/50/100, heads 10/20/50. */
+export function deductPoints(c: Caller): number[] {
+  if (c.tier === "manager" || c.hrAdmin) return [10, 20, 50, 100];
+  return c.tier === "employee" ? [] : [10, 20, 50];
+}
+
+/** Can the caller deduct from this employee? Returns a reason when not.
+ *  Leadership and the HR manager: any employee who holds Aura (managers included).
+ *  Heads / Operations Managers: their own team only — in their department scope and below them. */
+export function deductEligibility(c: Caller, t: Row | undefined): string | null {
+  if (!t) return "That employee was not found.";
+  if (t.id === c.me.id) return "You can't deduct Aura Points from yourself.";
+  if (t.account_type === "system") return "That account doesn't hold Aura Points.";
+  if (["exited", "inactive"].includes(lc(t.employment_status || "active"))) return "That employee is not active.";
+  if (!holdsAura(t, c.desig)) return "Founders don't hold Aura Points.";
+  if (c.tier === "manager" || c.hrAdmin) return null;
+  if (c.tier === "employee") return "Your role can't deduct Aura Points.";
+  const scope = authorizedDivisions(c.me, c.tier);
+  if (scope === "*") return null;
+  if (!t.division || !scope.includes(String(t.division))) return "You can only deduct from your own team.";
+  if (RANK[tierOf(t, c.desig)] >= RANK[c.tier]) return "You can only deduct from people below your level — ask HR or a founder.";
+  return null;
+}
+
+/** May the caller see this employee's CONFIDENTIAL entries (deductions + their reasons)?
+ *  The employee themself, leadership, the HR manager, and the head of their team. */
+export function seesPrivate(c: Caller, t: Row | undefined): boolean {
+  if (!t) return false;
+  if (t.id === c.me.id || c.tier === "manager" || c.hrAdmin) return true;
+  if (c.tier === "employee") return false;
+  const scope = authorizedDivisions(c.me, c.tier);
+  if (scope === "*") return true;
+  return !!t.division && scope.includes(String(t.division)) && RANK[tierOf(t, c.desig)] < RANK[c.tier];
+}
 
 /** Can the caller reward this employee? Returns a reason when not. */
 export function eligibility(c: Caller, t: Row | undefined): string | null {
   if (!t) return "That employee was not found.";
   if (t.id === c.me.id) return "You can't give Aura Points to yourself.";
   if (t.account_type === "system") return "That account can't receive Aura Points.";
+  if (!holdsAura(t, c.desig)) return "Founders don't hold Aura Points.";
   if (["exited", "inactive"].includes(lc(t.employment_status || "active"))) return "That employee is not active.";
   const scope = authorizedDivisions(c.me, c.tier);
   if (scope === "*") return null;

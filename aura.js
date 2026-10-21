@@ -1,7 +1,8 @@
 /* ════════════════════════════════════════════════════════════════════════════
    BEAura — Aura Points (employee recognition) for every portal.
 
-   Data: aura_point_transactions / best_employee_selections (20261027_aura_points.sql).
+   Data: aura_point_transactions / best_employee_selections (20261027_aura_points.sql) — read via
+   the `aura` function (deductions are confidential, 20261105); awards also arrive by Realtime.
    Reads go straight to the tables (read-only for the browser). EVERY write — award, Best
    Employee selection, reversal — goes through the `aura` edge function, which re-resolves
    the caller from the ERP sign-in and enforces the hierarchy. Totals are always the SUM of
@@ -141,6 +142,28 @@
       '@media(max-width:560px){.au-page .au-pane{min-height:100vh}.aup-acts{order:3;width:100%}.aup-acts .au-give{width:100%;justify-content:center}.aup-h .au-x{order:2}}',
       '@media(max-width:560px){.au-ov{place-items:end stretch;grid-template-columns:minmax(0,1fr);padding:0}.au-ov > .au-dlg{width:100%;box-sizing:border-box;max-height:92vh;border-radius:20px 20px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom));animation:auUp .22s ease-out}.au-sheet{padding:0}.au-sheet > .au-pane{border-radius:0;min-height:100%;padding:16px}.aud-r.wide{grid-template-columns:32px minmax(0,1fr) auto}.aud-r.wide .aud-act{grid-column:2/-1;justify-content:flex-start}}',
       '@keyframes auUp{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}',
+      /* deductions (confidential) */
+      '.au-tx.ded .au-pts{color:#f87171}.au-tx.ded .au-why{color:#fecaca}.au-dtag{display:inline-block;margin-left:6px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fca5a5;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);padding:1px 6px;border-radius:999px;vertical-align:1px}',
+      '.au-tx.focus{background:rgba(255,138,61,.08);box-shadow:inset 3px 0 0 #ff8a3d;border-radius:8px;padding-left:10px;padding-right:10px}',
+      '.au-v.neg,.au-st .au-v.neg{color:#f87171}',
+      '.au-ded-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:10px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5;font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}.au-ded-btn:hover{background:rgba(248,113,113,.16);color:#fff}',
+      '.au-qbtn.neg{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06);color:#fca5a5}.au-qbtn.neg:hover{background:rgba(248,113,113,.14);color:#fff}',
+      '.au-btn.danger{background:linear-gradient(135deg,#dc2626,#f43f5e);border-color:transparent;color:#fff}.au-btn.danger-o{border-color:rgba(248,113,113,.4);color:#fca5a5}',
+      '.au-dlg.au-ded .au-chip.on{background:rgba(248,113,113,.16);border-color:rgba(248,113,113,.55);color:#fff}',
+      '.au-month{width:auto;min-width:170px}',
+      /* leaderboard + public feed */
+      '.aub{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,330px);gap:18px;align-items:start}',
+      '.aub-main{display:flex;flex-direction:column;gap:10px;min-width:0}.aub-list{display:flex;flex-direction:column;gap:4px}',
+      '.aub-r{display:grid;grid-template-columns:34px 36px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;padding:8px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);color:#e6e9f5;font:inherit;text-align:left;cursor:pointer}',
+      '.aub-r:hover{background:rgba(255,255,255,.05)}.aub-r.top{background:radial-gradient(120% 160% at 0% 0%,rgba(255,138,61,.14),rgba(255,255,255,.02) 60%);border-color:rgba(255,138,61,.3)}.aub-r.zero{opacity:.6}',
+      '.aub-r .pos{font-weight:800;color:#8b93b8;text-align:center;font-variant-numeric:tabular-nums}.aub-r.top .pos{color:#ffb37a}',
+      '.aub-who{min-width:0}.aub-who b{display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aub-who small{display:block;font-size:11.5px;color:#8b93b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.aub-net{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;color:#c7cbe0}.aub-net.pos{color:#34d399}.aub-net.neg{color:#f87171}',
+      '.aub-feed{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:14px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}',
+      '.aub-fi{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:#cfd4ea;line-height:1.45}.aub-fi .au-av{flex-shrink:0}.aub-fi b{color:#fff}.aub-fi b.pos{color:#34d399}.aub-fi small{display:block;color:#6b74a0;font-size:11px;margin-top:2px}',
+      '.au-blank{padding:44px 16px;text-align:center;color:#8b93b8;font-size:13px;border:1px dashed rgba(255,255,255,.08);border-radius:14px}.au-blank b{display:block;color:#fff;font-size:15px;margin-bottom:4px}',
+      '@media(max-width:860px){.aub{grid-template-columns:minmax(0,1fr)}}',
+      '@media(max-width:560px){.aub-r{grid-template-columns:26px 32px minmax(0,1fr) auto;padding:8px 10px}.au-month{min-width:0;flex:1}.aup-acts{flex-wrap:wrap}.aup-acts .au-ded-btn{flex:1;justify-content:center}}',
       /* profile: stats row + recent */
       '.au-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:1 1 360px;min-width:0}',
       '.au-st{display:flex;flex-direction:column;gap:3px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);min-width:0}',
@@ -217,26 +240,19 @@
     S.emps = (r.data || []).filter(function (e) { return e.account_type !== 'system' && e.full_name; }); S.empAt = Date.now();
     return S.emps;
   }
-  async function txFor(empId) {
-    var r = await db().from('aura_point_transactions').select('*').eq('recipient_employee_id', empId).order('created_at', { ascending: false }).limit(200);
-    if (r.error) throw r.error;
-    return r.data || [];
+  // Transactions are read through the `aura` function only: deductions are confidential and the
+  // browser key can't see them (RLS, 20261105); the server returns them to permitted viewers.
+  function stmt(empId, month) { return api('statement', { employee_id: empId || null, month: month || 'all' }); }
+  async function txFor(empId) { return (await stmt(empId, 'all')).rows || []; }
+  function monthOpts(sel, withAll) {   // last 12 IST months (+ All time)
+    var t = istToday(), y = +t.slice(0, 4), m = +t.slice(5, 7), out = [];
+    for (var i = 0; i < 12; i++) { var k = y + '-' + String(m).padStart(2, '0'); out.push('<option value="' + k + '"' + (sel === k ? ' selected' : '') + '>' + new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) + '</option>'); m--; if (!m) { m = 12; y--; } }
+    if (withAll) out.push('<option value="all"' + (sel === 'all' ? ' selected' : '') + '>All time</option>');
+    return out.join('');
   }
-  async function allTx() {
-    var out = [], from = 0;
-    for (;;) {
-      var r = await db().from('aura_point_transactions').select('id,recipient_employee_id,points,status,created_at,reason').eq('status', 'active').range(from, from + 999);
-      if (r.error) throw r.error;
-      out = out.concat(r.data || []); if (!r.data || r.data.length < 1000) break; from += 1000;
-    }
-    return out;
-  }
-  async function totals(force) {   // lifetime Aura per employee (active rows), cached briefly
-    if (!force && S.tx && Date.now() - S.txAt < 20000) return S.tx;
-    var rows = await allTx(), m = monthRange(0), out = {};
-    rows.forEach(function (t) { var x = out[t.recipient_employee_id] || (out[t.recipient_employee_id] = { life: 0, month: 0 }); x.life += Number(t.points || 0); var d = istDay(t.created_at); if (d >= m.from && d <= m.to) x.month += Number(t.points || 0); });
-    S.tx = out; S.txAt = Date.now(); return out;
-  }
+  function curMonth() { return istToday().slice(0, 7); }
+  function monthLabel(k) { if (k === 'all') return 'All time'; var p = k.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); }
+  function signed(n) { n = Number(n || 0); return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString('en-IN'); }
   function photoOf(id) {
     var e = (S.emps || []).filter(function (x) { return x.id === id; })[0]; if (!e || !e.photo_url) return '';
     var u = e.photo_url; try { if (typeof hrConvertDriveUrl === 'function') u = hrConvertDriveUrl(u); } catch (_) {}
@@ -271,19 +287,20 @@
   // ════════════════════════════════════════════════════════════════════════
   // Profile: Aura stat near the top + recognition history
   // ════════════════════════════════════════════════════════════════════════
-  function statsHTML(life, month, n, rank) {
+  function statsHTML(life, month, n, rank, ranked, mLabel) {
     return '<div class="au-stats">'
-      + '<div class="au-st"><span class="au-k">' + MARK + 'Aura Points</span><span class="au-v">' + life.toLocaleString('en-IN') + '</span>' + (rank ? '<span class="au-sub">#' + rank + ' this month</span>' : '') + '</div>'
-      + '<div class="au-st"><span class="au-k">This Month</span><span class="au-v' + (month > 0 ? ' pos' : '') + '">' + (month > 0 ? '+' : '') + month.toLocaleString('en-IN') + '</span></div>'
-      + '<div class="au-st"><span class="au-k">Recognition Received</span><span class="au-v">' + n + '</span></div></div>';
+      + '<div class="au-st"><span class="au-k">' + MARK + esc(mLabel || 'This Month') + '</span><span class="au-v' + (month > 0 ? ' pos' : month < 0 ? ' neg' : '') + '">' + signed(month) + '</span><span class="au-sub">net Aura Points</span></div>'
+      + '<div class="au-st"><span class="au-k">Rank</span><span class="au-v">' + (rank ? '#' + rank : '—') + '</span>' + (ranked ? '<span class="au-sub">of ' + ranked + ' this month</span>' : '') + '</div>'
+      + '<div class="au-st"><span class="au-k">' + (life == null ? 'Recognitions' : 'All-time net') + '</span><span class="au-v">' + (life == null ? n : signed(life)) + '</span></div></div>';
   }
   async function mountProfile(el, emp, opts) {
     if (!el || !emp) return; css(); opts = opts || {};
     el.classList.add('au');
-    var rows;
-    try { rows = await txFor(emp.id); }
-    catch (e) { el.innerHTML = /aura_point|relation|schema cache/i.test(e.message || '') ? '' : '<div class="au-empty">Aura Points could not load.</div>'; return; }
-    var life = sum(rows), m = monthRange(0), month = sum(rows, m.from, m.to), active = rows.filter(function (t) { return t.status === 'active'; });
+    var rows, ST;
+    try { ST = await stmt(emp.id, 'all'); rows = ST.rows || []; }
+    catch (e) { el.innerHTML = /aura_point|relation|schema cache|session/i.test(e.message || '') ? '' : '<div class="au-empty">Aura Points could not load.</div>'; return; }
+    if (!ST.earns) { el.innerHTML = '<div class="au-empty">Founders don’t hold Aura Points — they award and review them.</div>'; return; }
+    var month = ST.month_net, active = rows.filter(function (t) { return t.status === 'active' && t.kind === 'award'; }), life = ST.full ? sum(rows) : null;
     var canGive = false, giveFor = null;
     try {
       var sc = await scope();
@@ -291,7 +308,7 @@
       else if ((sc.eligible || []).some(function (x) { return x.id === emp.id; })) { canGive = true; giveFor = emp.id; }
     } catch (_) {}
     var rest = rows.length > 3;
-    el.innerHTML = '<div class="au-stat">' + statsHTML(life, month, active.length, 0)
+    el.innerHTML = '<div class="au-stat">' + statsHTML(life, month, active.length, ST.rank, ST.ranked)
       + (canGive ? '<button type="button" class="au-give" data-au-give>' + MARK + 'Give Aura Points</button>' : '') + '</div>'
       + '<div class="au-rh"><span>Recent Aura</span>' + (opts.self ? '<button type="button" class="au-more" data-au-page style="padding:0;letter-spacing:0;text-transform:none">View Aura Details →</button>' : rest ? '<button type="button" class="au-more" data-au-toggle aria-expanded="false" style="padding:0">View all ' + rows.length + '</button>' : '') + '</div>'
       + '<div class="au-hist" style="margin-top:6px;border-top:0;padding-top:0" data-au-top>' + history(rows.slice(0, 3), { self: opts.self, limit: 3 }) + '</div>'
@@ -304,12 +321,12 @@
     if (!el._auHook) { el._auHook = true; document.addEventListener('be-aura-changed', function (ev) { var id = ev.detail && ev.detail.employeeId; if (el.isConnected && (!id || id === emp.id)) mountProfile(el, emp, opts); }); }
   }
   function history(rows, opts) {
-    if (!rows.length) return '<div class="au-empty">' + (opts.self ? 'No Aura Points yet — recognitions from your Head or Manager will appear here.' : 'No Aura Points yet.') + '</div>';
+    if (!rows.length) return '<div class="au-empty">' + (opts.empty || (opts.self ? 'No Aura Points yet — recognitions from your Head or Manager will appear here.' : 'No Aura Points yet.')) + '</div>';
     var show = rows.slice(0, opts.limit || 12);
     return show.map(function (t) {
-      var rev = t.status === 'reversed', neg = Number(t.points) < 0;
-      return '<div class="au-tx' + (rev ? ' rev' : '') + '"><span class="au-pts' + (neg ? ' neg' : '') + '">' + (neg ? '' : '+') + t.points + '</span><span class="au-why">' + esc(t.reason) + (t.kind === 'adjustment' ? ' <span style="color:#6b74a0;font-weight:500">(adjustment)</span>' : '') + '</span><span class="au-when">' + esc(fDay(istDay(t.created_at))) + '</span>'
-        + '<span class="au-by">Awarded by ' + esc(t.awarded_by_name || '—') + (rev ? ' · reversed' + (t.reversal_reason ? ': ' + esc(t.reversal_reason) : '') : '') + '</span>'
+      var rev = t.status === 'reversed', neg = Number(t.points) < 0, ded = t.kind === 'deduction';
+      return '<div class="au-tx' + (rev ? ' rev' : '') + (ded ? ' ded' : '') + (opts.focus && opts.focus === t.id ? ' focus' : '') + '" data-tx="' + esc(t.id) + '"><span class="au-pts' + (neg ? ' neg' : '') + '">' + signed(t.points) + '</span><span class="au-why">' + esc(t.reason) + (t.kind === 'adjustment' ? ' <span style="color:#6b74a0;font-weight:500">(adjustment)</span>' : '') + (ded ? ' <span class="au-dtag">Deduction · private</span>' : '') + '</span><span class="au-when">' + esc(fDay(istDay(t.created_at), true)) + '</span>'
+        + '<span class="au-by">' + (ded ? 'Deducted by ' : 'Awarded by ') + esc(t.awarded_by_name || '—') + (rev ? ' · reversed' + (t.reversal_reason ? ': ' + esc(t.reversal_reason) : '') : '') + '</span>'
         + (t.note ? '<span class="au-note">“' + esc(t.note) + '”</span>' : '') + '</div>';
     }).join('') + (rows.length > show.length ? '<div class="au-empty">+ ' + (rows.length - show.length) + ' earlier recognitions</div>' : '');
   }
@@ -321,21 +338,32 @@
     css(); opts = opts || {};
     // Opens at once: cached scope (prefetched after sign-in) renders immediately, a fresh copy is
     // fetched in the background; without a cache the list shows a small skeleton meanwhile.
+    // opts.mode 'deduct' = the same dialog for a confidential DEDUCTION: people + point sizes come
+    // from the server scope (deductable / deduct_points); reason required; confirm step; red.
+    var DED = opts.mode === 'deduct';
     var sc = null, tot = {}, depts = [], pre = null;
     var st = { emp: null, pts: null, reason: '', note: '', key: uuid(), busy: false, q: '', dept: '' };
+    function pool(x) { return (DED ? x.deductable : x.eligible) || []; }
+    function ptsOf(x) { return x ? (DED ? x.deduct_points : x.points) : (DED ? [10, 20, 50] : [10, 20, 50]); }
     function setSc(x) {
       sc = x; tot = {}; depts = [];
-      (x.eligible || []).forEach(function (e) { tot[e.id] = { life: e.aura || 0, month: e.month || 0 }; if (e.division && depts.indexOf(e.division) < 0) depts.push(e.division); });
-      if (opts.employeeId) { pre = x.eligible.filter(function (e) { return e.id === opts.employeeId; })[0] || null; if (!st.emp) st.emp = pre; }
-      else if (st.emp) st.emp = x.eligible.filter(function (e) { return e.id === st.emp.id; })[0] || null;
+      (x.eligible || []).forEach(function (e) { tot[e.id] = { life: e.aura || 0, month: e.month || 0 }; });
+      pool(x).forEach(function (e) { if (e.division && depts.indexOf(e.division) < 0) depts.push(e.division); });
+      if (opts.employeeId) { pre = pool(x).filter(function (e) { return e.id === opts.employeeId; })[0] || null; if (!st.emp) st.emp = pre; }
+      else if (st.emp) st.emp = pool(x).filter(function (e) { return e.id === st.emp.id; })[0] || null;
     }
     function allowed() {
+      if (DED) {
+        if (!sc.can_deduct) { close(); toast('error', (sc.deduct_points || []).length ? 'There is no one in your team you can deduct Aura Points from.' : 'Your role can\'t deduct Aura Points.'); return false; }
+        if (opts.employeeId && !pre) { close(); toast('error', 'You can\'t deduct Aura Points from this employee.'); return false; }
+        return true;
+      }
       if (!sc.can_award) { close(); toast('error', sc.tier === 'employee' ? 'Your role can\'t give Aura Points.' : 'There is no one in your team you can give Aura Points to.'); return false; }
       if (opts.employeeId && !pre) { close(); toast('error', 'You can\'t give Aura Points to this employee.'); return false; }
       return true;
     }
     var ov = document.createElement('div'); ov.className = 'au-ov au';
-    ov.innerHTML = '<div class="au-dlg" role="dialog" aria-modal="true" aria-label="Give Aura Points"></div>';
+    ov.innerHTML = '<div class="au-dlg' + (DED ? ' au-ded' : '') + '" role="dialog" aria-modal="true" aria-label="' + (DED ? 'Deduct Aura Points' : 'Give Aura Points') + '"></div>';
     document.body.appendChild(ov);
     var dlg = ov.querySelector('.au-dlg');
     var close = function () { ov.remove(); document.removeEventListener('keydown', key); };
@@ -351,15 +379,16 @@
     function list() {
       if (!sc) return '<div class="au-skel"><i></i><i></i><i></i><i></i></div>';
       var q = st.q.toLowerCase();
-      var l = sc.eligible.filter(function (x) { return (!st.dept || x.division === st.dept) && (!q || (x.name + ' ' + x.department + ' ' + x.designation).toLowerCase().indexOf(q) > -1); });
+      var l = pool(sc).filter(function (x) { return (!st.dept || x.division === st.dept) && (!q || (x.name + ' ' + x.department + ' ' + x.designation).toLowerCase().indexOf(q) > -1); });
       return l.length ? l.slice(0, 80).map(function (x) { return optHTML(x, st.emp && st.emp.id === x.id); }).join('') : '<div class="au-empty">No one matches.</div>';
     }
     function selCard() {
       var x = st.emp, t = tot[x.id] || { life: 0, month: 0 };
       return '<div class="au-sel"><div class="au-sel-hd">' + av(x.id, x.name, x.photo_url).replace('class="au-av"', 'class="au-av lg"')
         + '<div class="au-sel-who"><b>' + esc(x.name) + '</b><small>' + esc([x.designation, x.department].filter(Boolean).join(' · ')) + '</small></div></div>'
-        + '<div class="au-sel-st"><div><span>Current Aura</span><b>' + t.life.toLocaleString('en-IN') + '</b></div><div><span>This month</span><b>' + (t.month ? '+' + t.month : '0') + '</b></div>'
-        + '<div class="au-after"><span>After award</span><b data-after>' + (st.pts ? (t.life + st.pts).toLocaleString('en-IN') : '—') + '</b></div></div>'
+        + (DED ? '<div class="au-sel-st"><div><span>Deduction</span><b data-after style="color:#f87171">' + (st.pts ? '−' + st.pts : '—') + '</b></div><div style="grid-column:span 2"><span>Visible to</span><b style="font-size:12px">' + esc(x.name.split(' ')[0]) + ', their head, HR and founders</b></div></div>'
+          : '<div class="au-sel-st"><div><span>This month</span><b>' + signed(t.month) + '</b></div><div><span>All-time net</span><b>' + signed(t.life) + '</b></div>'
+          + '<div class="au-after"><span>Month after award</span><b data-after>' + (st.pts ? signed(t.month + st.pts) : '—') + '</b></div></div>')
         + (pre ? '' : '<button type="button" class="au-more" data-change>Change employee</button>') + '</div>'
         + '<div class="au-recent" data-recent></div>';
     }
@@ -372,29 +401,39 @@
       }).catch(function () {});
     }
     function form() {
-      var who = !sc ? 'Loading your team…' : (sc.scope === 'organisation' ? 'All departments' : sc.scope) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award';
+      var who = !sc ? 'Loading your team…' : DED ? ((sc.view_all ? 'Any employee' : sc.scope) + ' · up to ' + Math.max.apply(null, ptsOf(sc)) + ' points · private to the employee, their head, HR and founders') : (sc.scope === 'organisation' ? 'All departments' : sc.scope) + ' · up to ' + Math.max.apply(null, sc.points) + ' points per award';
       var org = sc && sc.scope === 'organisation';
       dlg.classList.add('au-wide');
-      dlg.innerHTML = '<div class="au-gh"><div><h3>Give Aura Points</h3><p class="sub">' + esc(who) + '</p></div><button type="button" class="au-x" data-cancel aria-label="Close">×</button></div>'
+      dlg.innerHTML = '<div class="au-gh"><div><h3>' + (DED ? 'Deduct Aura Points' : 'Give Aura Points') + '</h3><p class="sub">' + esc(who) + '</p></div><button type="button" class="au-x" data-cancel aria-label="Close">×</button></div>'
         + '<div class="au-gv"><div class="au-gv-l au-f"><span>Employee <b>*</b></span>' + (st.emp ? selCard()
           : '<input class="au-in" data-q placeholder="' + (org ? 'Search by name, department, designation…' : 'Search employee…') + '" autocomplete="off" value="' + esc(st.q) + '">'
             + (depts.length > 1 ? '<div class="au-dchips"><button type="button" data-dept="" class="' + (!st.dept ? 'on' : '') + '">All departments</button>' + depts.map(function (d) { return '<button type="button" data-dept="' + esc(d) + '" class="' + (st.dept === d ? 'on' : '') + '">' + esc(deptName(d)) + '</button>'; }).join('') + '</div>' : '')
             + '<div class="au-pick" data-list>' + list() + '</div>') + '</div>'
         + '<div class="au-gv-r">'
-        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + (sc ? sc.points : [10, 20, 50]).map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '"' + (sc ? '' : ' disabled') + ' aria-pressed="' + (st.pts === p) + '">' + p + '<small>points</small></button>'; }).join('') + '</div></div>'
-        + '<div class="au-f"><span>Reason <b>*</b></span><input class="au-in" data-reason maxlength="300" placeholder="What is this recognition for?" value="' + esc(st.reason) + '"><div class="au-sugg">' + REASONS.map(function (r) { return '<button type="button" data-sugg="' + esc(r) + '" class="' + (st.reason === r ? 'on' : '') + '">' + esc(r) + '</button>'; }).join('') + '</div></div>'
-        + '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="3" style="height:auto;padding:9px 12px" placeholder="Extra context for the employee">' + esc(st.note) + '</textarea></div>'
+        + '<div class="au-f"><span>Points <b>*</b></span><div class="au-chips">' + ptsOf(sc).map(function (p) { return '<button type="button" class="au-chip' + (st.pts === p ? ' on' : '') + '" data-pts="' + p + '"' + (sc ? '' : ' disabled') + ' aria-pressed="' + (st.pts === p) + '">' + (DED ? '−' : '') + p + '<small>points</small></button>'; }).join('') + '</div></div>'
+        + '<div class="au-f"><span>Reason <b>*</b></span>' + (DED ? '<textarea class="au-in" data-reason maxlength="300" rows="3" style="height:auto;padding:9px 12px" placeholder="Why are points being deducted? (required — the employee will see this)">' + esc(st.reason) + '</textarea>'
+          : '<input class="au-in" data-reason maxlength="300" placeholder="What is this recognition for?" value="' + esc(st.reason) + '"><div class="au-sugg">' + REASONS.map(function (r) { return '<button type="button" data-sugg="' + esc(r) + '" class="' + (st.reason === r ? 'on' : '') + '">' + esc(r) + '</button>'; }).join('') + '</div>') + '</div>'
+        + (DED ? '' : '<div class="au-f"><span>Note (optional)</span><textarea class="au-in" data-note maxlength="600" rows="3" style="height:auto;padding:9px 12px" placeholder="Extra context for the employee">' + esc(st.note) + '</textarea></div>')
         + '<div class="au-err" data-err></div>'
-        + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Cancel</button><button type="button" class="au-btn pri" data-next>Give Aura Points</button></div>'
+        + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Cancel</button><button type="button" class="au-btn ' + (DED ? 'danger' : 'pri') + '" data-next>' + (DED ? 'Review deduction' : 'Give Aura Points') + '</button></div>'
         + '</div></div>';
       var q = dlg.querySelector('[data-q]');
       if (q) { q.addEventListener('input', function () { st.q = q.value; dlg.querySelector('[data-list]').innerHTML = list(); }); if (!('ontouchstart' in window)) setTimeout(function () { q.focus(); }, 30); }
       dlg.querySelector('[data-reason]').addEventListener('input', function () { st.reason = this.value; dlg.querySelectorAll('[data-sugg]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-sugg') === st.reason); }); });
-      dlg.querySelector('[data-note]').addEventListener('input', function () { st.note = this.value; });
+      var nt = dlg.querySelector('[data-note]'); if (nt) nt.addEventListener('input', function () { st.note = this.value; });
       loadRecent();
     }
     function confirmView() {
       dlg.classList.remove('au-wide');
+      if (DED) {
+        dlg.innerHTML = '<h3>Deduct ' + st.pts + ' points from ' + esc(st.emp.name) + '?</h3>'
+          + '<div class="au-confirm"><span>Employee</span><b>' + esc(st.emp.name) + '</b><span>Department</span><b>' + esc(st.emp.department || '—') + '</b>'
+          + '<span>Points</span><b style="color:#f87171">−' + st.pts + '</b><span>Reason</span><b>' + esc(st.reason) + '</b>'
+          + '<span>Visibility</span><b>Private — ' + esc(st.emp.name) + ', their head, HR and founders</b></div>'
+          + '<div class="au-err" data-err></div>'
+          + '<div class="au-acts"><button type="button" class="au-btn" data-back>Cancel</button><button type="button" class="au-btn danger" data-confirm>Confirm Deduction</button></div>';
+        return;
+      }
       var cur = life(st.emp.id);
       dlg.innerHTML = '<h3>Give ' + st.pts + ' Aura Points?</h3>'
         + '<div class="au-confirm"><span>Employee</span><b>' + esc(st.emp.name) + '</b><span>Department</span><b>' + esc(st.emp.department || '—') + '</b>'
@@ -406,6 +445,12 @@
     }
     function done() {
       dlg.classList.remove('au-wide');
+      if (DED) {
+        dlg.innerHTML = '<div class="au-ok" role="status"><span class="halo" style="color:#f87171;background:rgba(248,113,113,.12)">' + MARK + '</span><b style="color:#fca5a5">−' + st.pts + ' Aura Points</b><span>Deducted from ' + esc(st.emp.name) + ' · they were notified privately</span></div>'
+          + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Done</button></div>';
+        setTimeout(function () { if (document.body.contains(ov)) close(); }, 2400);
+        return;
+      }
       dlg.innerHTML = '<div class="au-ok" role="status"><span class="halo">' + MARK + '</span><b>+' + st.pts + ' Aura Points</b><span>Successfully awarded to ' + esc(st.emp.name) + '</span></div>'
         + '<div class="au-acts"><button type="button" class="au-btn" data-cancel>Done</button></div>';
       setTimeout(function () { if (document.body.contains(ov)) close(); }, 2400);
@@ -413,35 +458,36 @@
     dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b || st.busy) return;
       if (b.hasAttribute('data-cancel')) return close();
-      if (b.hasAttribute('data-emp')) { st.emp = sc.eligible.filter(function (x) { return x.id === b.getAttribute('data-emp'); })[0]; return form(); }
+      if (b.hasAttribute('data-emp')) { st.emp = pool(sc).filter(function (x) { return x.id === b.getAttribute('data-emp'); })[0]; return form(); }
       if (b.hasAttribute('data-change')) { st.emp = null; return form(); }
       if (b.hasAttribute('data-dept')) { st.dept = b.getAttribute('data-dept'); return form(); }
       if (b.hasAttribute('data-pts')) {
         st.pts = +b.getAttribute('data-pts'); dlg.querySelectorAll('[data-pts]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
-        var af = dlg.querySelector('[data-after]'); if (af && st.emp) af.textContent = (life(st.emp.id) + st.pts).toLocaleString('en-IN'); return;
+        var af = dlg.querySelector('[data-after]'); if (af && st.emp) af.textContent = DED ? '−' + st.pts : signed(((tot[st.emp.id] || {}).month || 0) + st.pts); return;
       }
       if (b.hasAttribute('data-sugg')) { st.reason = b.getAttribute('data-sugg'); dlg.querySelector('[data-reason]').value = st.reason; dlg.querySelectorAll('[data-sugg]').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
       if (b.hasAttribute('data-back')) return form();
       if (b.hasAttribute('data-next')) {
-        st.reason = dlg.querySelector('[data-reason]').value.trim(); st.note = dlg.querySelector('[data-note]').value.trim();
+        st.reason = dlg.querySelector('[data-reason]').value.trim(); var nte = dlg.querySelector('[data-note]'); st.note = nte ? nte.value.trim() : '';
         var err = !st.emp ? 'Choose an employee.' : !st.pts ? 'Choose the points.' : !st.reason ? 'Add a reason.' : '';
         if (err) { dlg.querySelector('[data-err]').textContent = err; return; }
         return confirmView();
       }
       if (b.hasAttribute('data-confirm')) {
-        st.busy = true; b.disabled = true; b.textContent = 'Giving…';
+        st.busy = true; b.disabled = true; b.textContent = DED ? 'Deducting…' : 'Giving…';
         var back = dlg.querySelector('[data-back]'); if (back) back.disabled = true;
         try {
           // Same key for every retry of THIS dialog → the server never records it twice.
-          await api('award', { recipient_id: st.emp.id, points: st.pts, reason: st.reason, note: st.note || null, idempotency_key: st.key });
+          if (DED) await api('deduct', { recipient_id: st.emp.id, points: st.pts, reason: st.reason, idempotency_key: st.key });
+          else await api('award', { recipient_id: st.emp.id, points: st.pts, reason: st.reason, note: st.note || null, idempotency_key: st.key });
           // Local update first (no list reload), then a silent server sync.
-          var me = (sc.eligible || []).filter(function (x) { return x.id === st.emp.id; })[0];
-          if (me) { me.aura = (me.aura || 0) + st.pts; me.month = (me.month || 0) + st.pts; tot[me.id] = { life: me.aura, month: me.month }; saveScope(); }
+          var me = (sc.eligible || []).filter(function (x) { return x.id === st.emp.id; })[0], dp = DED ? -st.pts : st.pts;
+          if (me) { me.aura = (me.aura || 0) + dp; me.month = (me.month || 0) + dp; tot[me.id] = { life: me.aura, month: me.month }; saveScope(); }
           st.busy = false; S.txAt = 0; done();
           setTimeout(function () { scope(true).then(applyScope).catch(function () {}); }, 1500);
           if (opts.onDone) try { opts.onDone(); } catch (_) {}
           document.dispatchEvent(new CustomEvent('be-aura-changed', { detail: { employeeId: st.emp.id } }));
-        } catch (x) { st.busy = false; b.disabled = false; if (back) back.disabled = false; b.textContent = 'Confirm Award'; dlg.querySelector('[data-err]').textContent = x.message; }
+        } catch (x) { st.busy = false; b.disabled = false; if (back) back.disabled = false; b.textContent = DED ? 'Confirm Deduction' : 'Confirm Award'; dlg.querySelector('[data-err]').textContent = x.message; }
       }
     });
     var cached = scopeCached();
@@ -466,24 +512,21 @@
     var D = el._aura || (el._aura = { tab: 'rank', period: 'this', from: '', to: '', q: '', dept: '', sort: 'period' });
     el.classList.add('au');
     el.innerHTML = '<div class="au-empty">Loading Aura Points…</div>';
-    var emps, rows, sc = null, best = [];
+    var emps, T, sc = null, best = [], P = period(D);
     try {
-      var r = await Promise.all([employees(), allTx(), scope().catch(function () { return null; }), db().from('best_employee_selections').select('*').eq('status', 'active').order('selected_at', { ascending: false }).limit(24)]);
-      emps = r[0]; rows = r[1]; sc = r[2]; best = (r[3] && r[3].data) || [];
+      // Nets come from the server (awards − deductions); the browser can't read deductions.
+      var r = await Promise.all([employees(), api('totals', { from: P.from || null, to: P.to || null }), scope().catch(function () { return null; }), db().from('best_employee_selections').select('*').eq('status', 'active').order('selected_at', { ascending: false }).limit(24)]);
+      emps = r[0]; T = r[1]; sc = r[2]; best = (r[3] && r[3].data) || [];
     } catch (e) {
       el.innerHTML = '<div class="au-empty">' + (/aura_point|relation|schema cache/i.test(e.message || '') ? 'Aura Points needs the database update 20261027_aura_points.sql.' : 'Aura Points could not load.') + '</div>'; return;
     }
     var view = sc && sc.view_departments ? sc.view_departments : (opts.mode === 'manager' || opts.mode === 'hr' ? '*' : []);
     var inView = function (e) { return view === '*' || view.indexOf(e.division) > -1; };
-    var P = period(D), active = emps.filter(function (e) { return inView(e) && !['exited', 'inactive'].includes(String(e.employment_status || 'active').toLowerCase()); });
+    var noAura = {}; (T.no_aura || []).forEach(function (id) { noAura[id] = 1; });   // founders / leadership
+    var active = emps.filter(function (e) { return inView(e) && !noAura[e.id] && !['exited', 'inactive'].includes(String(e.employment_status || 'active').toLowerCase()); });
     var can = {}; ((sc && sc.eligible) || []).forEach(function (x) { can[x.id] = 1; });
-    var by = {};
-    rows.forEach(function (t) {
-      var x = by[t.recipient_employee_id] || (by[t.recipient_employee_id] = { life: 0, per: 0, n: 0, last: '' });
-      x.life += Number(t.points || 0);
-      var d = istDay(t.created_at);
-      if ((!P.from || d >= P.from) && (!P.to || d <= P.to)) { x.per += Number(t.points || 0); x.n++; if (d > x.last) x.last = d; }
-    });
+    S.canD = {}; ((sc && sc.deductable) || []).forEach(function (x) { S.canD[x.id] = 1; });
+    var by = T.by || {};
     var list = active.map(function (e) { var x = by[e.id] || { life: 0, per: 0, n: 0, last: '' }; return { e: e, life: x.life, per: x.per, n: x.n, last: x.last }; })
       .filter(function (r) { return (!D.dept || r.e.division === D.dept) && (!D.q || (r.e.full_name + ' ' + (r.e.designation || '')).toLowerCase().indexOf(D.q.toLowerCase()) > -1); });
     var key = D.sort === 'life' ? 'life' : D.sort === 'name' ? 'name' : 'per';
@@ -493,7 +536,7 @@
 
     el.innerHTML = '<div class="aud">'
       + '<div class="aud-top"><div><h2>' + (view === '*' ? (opts.embedded ? 'Organisation Aura' : 'Aura Points') : esc(view.map(deptName).join(' + ') || 'Team') + ' Aura') + '</h2><p>' + (view === '*' ? 'Recognition across the organisation' : 'Recognition in your department' + (view.length > 1 ? 's' : '')) + ' · ' + esc(P.label) + '</p></div>'
-      + (sc && sc.can_award && !opts.embedded ? '<button type="button" class="au-give" data-au-give style="margin-left:0">' + MARK + 'Give Aura Points</button>' : '') + '</div>'
+      + (!opts.embedded ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (sc && sc.can_award ? '<button type="button" class="au-give" data-au-give style="margin-left:0">' + MARK + 'Give Aura Points</button>' : '') + (sc && sc.can_deduct ? '<button type="button" class="au-ded-btn" data-au-ded>− Deduct points</button>' : '') + '</div>' : '') + '</div>'
       + '<div class="aud-bar"><div class="aud-seg" role="tablist">' + [['this', 'This month'], ['prev', 'Previous month'], ['custom', 'Custom'], ['all', 'All time']].map(function (p) { return '<button type="button" data-per="' + p[0] + '" class="' + (D.period === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div>'
       + (D.period === 'custom' ? '<input type="date" class="au-in" data-from value="' + esc(D.from) + '" aria-label="From"><input type="date" class="au-in" data-to value="' + esc(D.to) + '" aria-label="To">' : '') + '</div>'
       + '<div class="aud-bar"><input class="au-in q" data-q placeholder="Search employee or role" value="' + esc(D.q) + '">' + (depts.length > 1 ? '<select class="au-in" data-dept><option value="">All departments</option>' + depts.map(function (d) { return '<option value="' + d + '"' + (D.dept === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select>' : '')
@@ -517,7 +560,7 @@
     return monthRange(0);
   }
   function rowActs(id, can) {
-    return '<span class="aud-act">' + (can[id] ? '<button type="button" class="au-qbtn" data-au-emp-give="' + id + '">+ Aura</button>' : '') + '<button type="button" class="au-hbtn" data-au-hist="' + id + '">History</button></span>';
+    return '<span class="aud-act">' + (can[id] ? '<button type="button" class="au-qbtn" data-au-emp-give="' + id + '">+ Aura</button>' : '') + (S.canD && S.canD[id] ? '<button type="button" class="au-qbtn neg" data-au-emp-ded="' + id + '">− Aura</button>' : '') + '<button type="button" class="au-hbtn" data-au-hist="' + id + '">Statement</button></span>';
   }
   function rankHTML(list, P, sc, curBest, can) {
     var ranked = list.filter(function (r) { return r.per > 0; }).sort(function (a, b) { return b.per - a.per || a.e.full_name.localeCompare(b.e.full_name); });
@@ -533,18 +576,18 @@
         var isBest = curBest && curBest.employee_id === r.e.id;
         return '<div class="aud-r wide' + (r.pos === 1 ? ' top' : '') + '"><span class="pos">' + r.pos + '</span>'
           + '<span class="aud-who">' + av(r.e.id, r.e.full_name) + '<span><b>' + esc(r.e.full_name) + '</b>' + (tieAt[r.pos] > 1 ? '<span class="aud-tie">TIE</span>' : '') + '<small>' + esc([DIV[r.e.division] || r.e.division, r.e.designation].filter(Boolean).join(' · ')) + '</small></span></span>'
-          + '<span class="pts">' + r.per + '<small>' + r.life + ' lifetime</small></span>'
+          + '<span class="pts">' + signed(r.per) + '<small>' + signed(r.life) + ' all-time</small></span>'
           + (canSel ? (isBest ? '<span class="aud-tie" style="color:#34d399;border-color:rgba(52,211,153,.4)">SELECTED</span>' : '<button type="button" class="aud-sel" data-best="' + r.e.id + '" data-pts="' + r.per + '">Select as Best Employee</button>') : '<span></span>')
           + rowActs(r.e.id, can) + '</div>';
       }).join('') + '</div>';
   }
   function tableHTML(list, can) {
     if (!list.length) return '<div class="au-empty">No employees match.</div>';
-    return '<div class="aud-wrap"><table class="aud-tbl"><thead><tr><th>Employee</th><th>Department</th><th style="text-align:right">In period</th><th style="text-align:right">Total</th><th style="text-align:right">Awards</th><th></th></tr></thead><tbody>'
+    return '<div class="aud-wrap"><table class="aud-tbl"><thead><tr><th>Employee</th><th>Department</th><th style="text-align:right">Net in period</th><th style="text-align:right">All-time net</th><th style="text-align:right">Awards</th><th></th></tr></thead><tbody>'
       + list.map(function (r) {
         return '<tr><td><span class="aud-who">' + av(r.e.id, r.e.full_name) + '<span><b>' + esc(r.e.full_name) + '</b><small>' + esc(r.e.designation || '') + '</small></span></span></td>'
           + '<td data-l="Department">' + esc(deptName(r.e.division) || '—') + '</td>'
-          + '<td class="n" data-l="In period" style="text-align:right">' + (r.per ? '+' + r.per : '0') + '</td><td class="n" data-l="Total" style="text-align:right">' + r.life + '</td>'
+          + '<td class="n" data-l="In period" style="text-align:right' + (r.per < 0 ? ';color:#f87171' : '') + '">' + signed(r.per) + '</td><td class="n" data-l="Total" style="text-align:right">' + signed(r.life) + '</td>'
           + '<td data-l="Awards" style="text-align:right">' + r.n + '</td><td>' + rowActs(r.e.id, can) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
@@ -556,6 +599,8 @@
       if (b.hasAttribute('data-tab')) { D.tab = b.getAttribute('data-tab'); return re(); }
       if (b.hasAttribute('data-au-give')) return give({ onDone: re });
       if (b.hasAttribute('data-au-emp-give')) return give({ employeeId: b.getAttribute('data-au-emp-give'), onDone: re });
+      if (b.hasAttribute('data-au-ded')) return give({ mode: 'deduct', onDone: re });
+      if (b.hasAttribute('data-au-emp-ded')) return give({ mode: 'deduct', employeeId: b.getAttribute('data-au-emp-ded'), onDone: re });
       if (b.hasAttribute('data-au-hist')) return openHistory(b.getAttribute('data-au-hist'));
       if (b.hasAttribute('data-best')) {
         var r = list.filter(function (x) { return x.e.id === b.getAttribute('data-best'); })[0]; if (!r) return;
@@ -589,26 +634,24 @@
   // ════════════════════════════════════════════════════════════════════════
   async function loadMine() {
     if (!S.me) return null;
-    var rows = await txFor(S.me), m = monthRange(0), month = sum(rows, m.from, m.to);
-    var rank = 0;
-    if (month > 0) {   // rank only when it means something (I have points this month)
-      try {
-        var r = await db().from('aura_point_transactions').select('recipient_employee_id,points').eq('status', 'active').gte('created_at', m.from + 'T00:00:00+05:30').lte('created_at', m.to + 'T23:59:59.999+05:30').limit(5000);
-        var by = {}; (r.data || []).forEach(function (t) { by[t.recipient_employee_id] = (by[t.recipient_employee_id] || 0) + Number(t.points || 0); });
-        rank = 1 + Object.keys(by).filter(function (k) { return by[k] > month; }).length;
-      } catch (_) {}
-    }
-    S.mine = { rows: rows, life: sum(rows), month: month, n: rows.filter(function (t) { return t.status === 'active'; }).length, rank: rank };
+    var ST = await stmt(S.me, 'all'), rows = ST.rows || [];
+    S.mine = { rows: rows, life: sum(rows), month: ST.month_net || 0, rank: ST.rank, ranked: ST.ranked, earns: ST.earns !== false,
+      n: rows.filter(function (t) { return t.status === 'active' && t.kind === 'award'; }).length };
     paintHeader();
     return S.mine;
   }
   function menuRow() {
     var M = S.mine; if (!M) return '';
-    return '<button class="am-item au-mrow" data-am-action="aura">' + MARK + '<span>Aura Points</span><span class="au-mv"><b>' + M.life.toLocaleString('en-IN') + '</b>' + (M.month > 0 ? '<small>+' + M.month + ' this month</small>' : '') + '</span></button>';
+    if (!M.earns) return '<button class="am-item au-mrow" data-am-action="aura">' + MARK + '<span>Aura Points</span><span class="au-mv"><small>Leaderboard</small></span></button>';
+    return '<button class="am-item au-mrow" data-am-action="aura">' + MARK + '<span>Aura Points</span><span class="au-mv"><b>' + signed(M.month) + '</b><small>' + (M.rank ? '#' + M.rank + ' · ' : '') + 'this month</small></span></button>';
   }
   function avatars() { return Array.prototype.slice.call(document.querySelectorAll('.bes-account .bes-av')); }
   function paintHeader() {
     if (!S.mine) return; css();
+    if (!S.mine.earns) {   // founders / leadership hold no Aura: no ring, no balance tag
+      document.querySelectorAll('.bes-account .au-tag').forEach(function (t) { t.remove(); });
+      return;
+    }
     avatars().forEach(function (av) {
       var w = av.parentNode;
       if (!w.classList.contains('au-avw')) {
@@ -624,8 +667,9 @@
         tag.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); hideCard(); openMine(); });
         var who = acct.querySelector('.bes-who'); (who || w).insertAdjacentElement('afterend', tag);
       }
-      tag.innerHTML = MARK + 'Aura ' + S.mine.life.toLocaleString('en-IN');
-      acct.setAttribute('aria-label', 'Account menu · ' + S.mine.life + ' Aura Points');
+      tag.innerHTML = MARK + 'Aura ' + signed(S.mine.month);
+      tag.title = 'My Aura · this month' + (S.mine.rank ? ' · #' + S.mine.rank : '');
+      acct.setAttribute('aria-label', 'Account menu · ' + S.mine.month + ' Aura Points this month');
     });
   }
   var HC = { el: null, t: 0 };
@@ -635,17 +679,16 @@
     acct.addEventListener('mouseenter', function () {
       clearTimeout(HC.t);
       HC.t = setTimeout(function () {
-        if (!S.mine || document.querySelector('.am-dropdown.am-open')) return;
+        if (!S.mine || !S.mine.earns || document.querySelector('.am-dropdown.am-open')) return;
         if (!HC.el) {
           HC.el = document.createElement('div'); HC.el.className = 'au-hc au'; HC.el.setAttribute('role', 'tooltip'); document.body.appendChild(HC.el);
           HC.el.addEventListener('mouseenter', function () { clearTimeout(HC.t); });
           HC.el.addEventListener('mouseleave', function () { HC.t = setTimeout(hideCard, 160); });
         }
         var M = S.mine;
-        HC.el.innerHTML = '<span class="au-k">' + MARK + 'Aura Points</span><span class="au-v" style="display:block">' + M.life.toLocaleString('en-IN') + '</span>'
-          + '<div class="row"><div><span class="au-k">This Month</span><div class="au-sm' + (M.month > 0 ? ' pos' : '') + '">' + (M.month > 0 ? '+' : '') + M.month + '</div></div>'
-          + (M.rank ? '<div><span class="au-k">Rank</span><div class="au-sm">#' + M.rank + '</div></div>' : '') + '</div>'
-          + '<button type="button" class="au-link">View Aura History</button>';
+        HC.el.innerHTML = '<span class="au-k">' + MARK + 'Aura Points · this month</span><span class="au-v" style="display:block' + (M.month < 0 ? ';color:#f87171' : '') + '">' + signed(M.month) + '</span>'
+          + '<div class="row">' + (M.rank ? '<div><span class="au-k">Rank</span><div class="au-sm">#' + M.rank + (M.ranked ? ' of ' + M.ranked : '') + '</div></div>' : '') + '<div><span class="au-k">All-time net</span><div class="au-sm">' + signed(M.life) + '</div></div></div>'
+          + '<button type="button" class="au-link">View my statement</button>';
         HC.el.querySelector('.au-link').onclick = function () { hideCard(); openMine(); };
         var r = ringWrap.getBoundingClientRect(), W = 248;
         HC.el.style.top = Math.round(r.bottom + 10) + 'px';
@@ -662,26 +705,75 @@
   function openMine() { return openPage({ tab: 'mine' }); }
 
   // ── any employee's Aura history (dashboard rows) ──────────────────────────
-  async function openHistory(empId) {
+  async function openHistory(empId, month) {
     css();
     var ov = document.createElement('div'); ov.className = 'au-ov au';
-    ov.innerHTML = '<div class="au-dlg au-mine" role="dialog" aria-modal="true" aria-label="Aura history"><h3>Aura History</h3><div class="au-empty">Loading…</div></div>';
+    ov.innerHTML = '<div class="au-dlg au-mine" role="dialog" aria-modal="true" aria-label="Aura statement"><h3>Aura Statement</h3><div class="au-empty">Loading…</div></div>';
     document.body.appendChild(ov);
     var close = function () { ov.remove(); document.removeEventListener('keydown', key); };
     var key = function (e) { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', key);
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
-    var dlg = ov.querySelector('.au-dlg'), emps = [], rows = [];
-    try { emps = await employees(); rows = await txFor(empId); } catch (_) {}
-    var e = emps.filter(function (x) { return x.id === empId; })[0] || { id: empId, full_name: 'Employee' };
-    var m = monthRange(0), act = rows.filter(function (t) { return t.status === 'active'; }).length;
-    var canGive = false; try { canGive = ((await scope()).eligible || []).some(function (x) { return x.id === empId; }); } catch (_) {}
-    dlg.innerHTML = '<div style="display:flex;align-items:center;gap:12px">' + av(e.id, e.full_name) + '<div style="min-width:0"><h3 style="margin:0">' + esc(e.full_name) + '</h3><p class="sub" style="margin:2px 0 0">' + esc([e.designation, deptName(e.division)].filter(Boolean).join(' · ')) + '</p></div></div>'
-      + statsHTML(sum(rows), sum(rows, m.from, m.to), act, 0)
-      + '<div class="au-rh" style="margin-top:4px"><span>Aura History</span></div><div class="au-hist">' + history(rows, { limit: 60 }) + '</div>'
-      + '<div class="au-acts">' + (canGive ? '<button type="button" class="au-btn" data-g>+ Give Aura Points</button>' : '') + '<button type="button" class="au-btn" data-x>Close</button></div>';
-    dlg.querySelector('[data-x]').onclick = close;
-    var g = dlg.querySelector('[data-g]'); if (g) g.onclick = function () { close(); give({ employeeId: empId }); };
+    var dlg = ov.querySelector('.au-dlg');
+    await statementView(dlg, empId, { month: month || curMonth(), dialog: true, onClose: close });
+  }
+  // One person's statement (self or someone the viewer may see). The server decides what is in
+  // it: deductions only for the employee, their head, HR and founders.
+  async function statementView(el, empId, o) {
+    o = o || {}; var month = o.month || curMonth();
+    el.innerHTML = (o.dialog ? '<h3>Aura Statement</h3>' : '') + '<div class="au-empty">Loading…</div>';
+    var ST;
+    try { ST = await stmt(empId, month); } catch (e) { el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Aura Points could not load right now.') + '</div>'; return; }
+    var E = ST.employee || {}, rows = ST.rows || [], sc = null;
+    try { sc = await scope(); } catch (_) {}
+    var canGive = !o.self && sc && (sc.eligible || []).some(function (x) { return x.id === E.id; });
+    var canDed = !o.self && sc && (sc.deductable || []).some(function (x) { return x.id === E.id; });
+    var awards = rows.filter(function (t) { return t.status === 'active' && t.kind === 'award'; }).length;
+    var head = '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' + (o.self ? '' : av(E.id, E.name, E.photo_url)) + '<div style="min-width:0;flex:1">' + (o.self ? '' : '<h3 style="margin:0">' + esc(E.name) + '</h3><p class="sub" style="margin:2px 0 0">' + esc([E.designation, E.department].filter(Boolean).join(' · ')) + '</p>') + '</div>'
+      + '<select class="au-in au-month" data-month aria-label="Month">' + monthOpts(month, true) + '</select></div>';
+    if (!ST.earns) { el.innerHTML = head + '<div class="au-empty">' + (o.self ? 'Founders don’t hold Aura Points — you award, deduct and review them.' : 'Founders don’t hold Aura Points.') + '</div>' + (o.dialog ? '<div class="au-acts"><button type="button" class="au-btn" data-x>Close</button></div>' : ''); wire(); return; }
+    el.innerHTML = head
+      + statsHTML(null, ST.month_net, awards, ST.rank, ST.ranked, monthLabel(ST.month))
+      + '<div class="au-rh" style="margin-top:6px"><span>' + (month === 'all' ? 'All entries' : esc(monthLabel(month))) + '</span><span style="letter-spacing:0;text-transform:none;font-weight:600">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</span></div>'
+      + '<div class="au-hist aup-hist">' + history(rows, { self: o.self, limit: 1000, focus: o.focus, empty: (ST.full ? 'No Aura Points in ' : 'No awards in ') + (month === 'all' ? 'any month' : monthLabel(month)) + '.' }) + '</div>'
+      + (o.dialog || canGive || canDed ? '<div class="au-acts">' + (canGive ? '<button type="button" class="au-btn" data-g>+ Give Aura Points</button>' : '') + (canDed ? '<button type="button" class="au-btn danger-o" data-d>− Deduct points</button>' : '') + (o.dialog ? '<button type="button" class="au-btn" data-x>Close</button>' : '') + '</div>' : '');
+    wire();
+    if (o.focus) { var f = el.querySelector('.au-tx.focus'); if (f) setTimeout(function () { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); }
+    function wire() {
+      var ms = el.querySelector('[data-month]'); if (ms) ms.onchange = function () { statementView(el, empId, Object.assign({}, o, { month: ms.value, focus: null })); };
+      var x = el.querySelector('[data-x]'); if (x) x.onclick = o.onClose;
+      var g = el.querySelector('[data-g]'); if (g) g.onclick = function () { give({ employeeId: E.id, onDone: function () { statementView(el, empId, o); } }); };
+      var d = el.querySelector('[data-d]'); if (d) d.onclick = function () { give({ mode: 'deduct', employeeId: E.id, onDone: function () { statementView(el, empId, o); } }); };
+    }
+  }
+  // Company-wide monthly leaderboard (net = awards − deductions) + public awards feed.
+  async function boardView(el, o) {
+    o = o || {}; var B_ = el._auB || (el._auB = { month: curMonth(), dept: '' });
+    el.innerHTML = '<div class="au-empty">Loading leaderboard…</div>';
+    var L, F;
+    try { var r = await Promise.all([api('leaderboard', { month: B_.month, department: B_.dept || null }), api('feed', { limit: 15 }).catch(function () { return { items: [] }; })]); L = r[0]; F = r[1]; }
+    catch (e) { el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Leaderboard could not load.') + '</div>'; return; }
+    var rows = L.rows || [], tie = {}; rows.forEach(function (x) { tie[x.rank] = (tie[x.rank] || 0) + 1; });
+    var bar = '<div class="aud-bar"><select class="au-in au-month" data-bm aria-label="Month">' + monthOpts(B_.month, false) + '</select>'
+      + ((L.departments || []).length > 1 ? '<select class="au-in" data-bd aria-label="Department"><option value="">All departments</option>' + L.departments.map(function (d) { return '<option value="' + esc(d.code) + '"' + (B_.dept === d.code ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select>' : '') + '</div>';
+    var list = !L.active ? '<div class="au-blank"><b>No Aura activity in ' + esc(monthLabel(B_.month)) + '</b>When points are awarded this month, the ranking appears here.</div>'
+      : !rows.length ? '<div class="au-empty">No one in this department.</div>'
+      : '<div class="aub-list">' + rows.map(function (x) {
+          return '<button type="button" class="aub-r' + (x.rank === 1 && x.net > 0 ? ' top' : '') + (x.net === 0 ? ' zero' : '') + '" data-st="' + esc(x.id) + '"><span class="pos">' + x.rank + '</span>' + av(x.id, x.name, x.photo_url)
+            + '<span class="aub-who"><b>' + esc(x.name) + (tie[x.rank] > 1 ? ' <span class="aud-tie">TIE</span>' : '') + '</b><small>' + esc([x.department, x.designation].filter(Boolean).join(' · ')) + '</small></span>'
+            + '<span class="aub-net' + (x.net < 0 ? ' neg' : x.net > 0 ? ' pos' : '') + '">' + signed(x.net) + '</span></button>';
+        }).join('') + '</div>';
+    var feed = '<div class="aub-feed"><div class="au-rh" style="margin-top:0"><span>Recent recognition</span></div>' + ((F.items || []).length ? F.items.map(function (t) {
+        return '<div class="aub-fi">' + av(t.recipient_employee_id, t.recipient_name) + '<div><b>' + esc(t.recipient_name) + '</b> received <b class="pos">+' + t.points + '</b> for ' + esc(t.reason) + '<small>' + esc(t.awarded_by_name || '') + ' · ' + esc(fDay(istDay(t.created_at), true)) + '</small></div></div>';
+      }).join('') : '<div class="au-empty">No awards yet.</div>') + '</div>';
+    el.innerHTML = '<div class="aub">' + '<div class="aub-main">' + bar + list + '</div>' + feed + '</div>';
+    el.querySelector('[data-bm]').onchange = function () { B_.month = this.value; boardView(el, o); };
+    var bd = el.querySelector('[data-bd]'); if (bd) bd.onchange = function () { B_.dept = bd.value; boardView(el, o); };
+    el.onclick = function (e) {   // a row opens that person's statement (server decides what it shows)
+      var b = e.target.closest('[data-st]'); if (!b) return;
+      if (S.me && b.getAttribute('data-st') === S.me && o.toMine) return o.toMine();
+      openHistory(b.getAttribute('data-st'), B_.month);
+    };
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -707,30 +799,39 @@
     var view = sc && sc.view_departments ? sc.view_departments : [];
     var team = view === '*' || (view && view.length > 0);
     var teamLabel = view === '*' ? 'Organisation' : (view.map(deptName).join(' + ') || 'Team');
-    var tab = opts.tab || (team && !opts.mine ? 'team' : 'mine');
-    if (!team) tab = 'mine';
+    var earns = !sc || sc.earns !== false;   // founders / leadership: no My Aura tab
+    var tab = opts.tab || (earns ? 'mine' : 'board');
+    if (tab === 'mine' && !earns) tab = 'board';
+    if (tab === 'team' && !team) tab = earns ? 'mine' : 'board';
     if (sc && sc.can_award) {
       var g = document.createElement('button'); g.type = 'button'; g.className = 'au-give'; g.style.marginLeft = '0'; g.innerHTML = MARK + 'Give Aura Points';
       g.onclick = function () { give({ onDone: function () { draw(); } }); };
       sh.querySelector('[data-acts]').appendChild(g);
     }
+    if (sc && sc.can_deduct) {
+      var dd = document.createElement('button'); dd.type = 'button'; dd.className = 'au-ded-btn'; dd.textContent = '− Deduct points';
+      dd.onclick = function () { give({ mode: 'deduct', onDone: function () { draw(); } }); };
+      sh.querySelector('[data-acts]').appendChild(dd);
+    }
+    var focus = opts.focus || null;
     function draw() {
-      sh.querySelector('[data-sub]').textContent = tab === 'team' ? (view === '*' ? 'Organisation overview, rankings and history' : teamLabel + ' — your team’s recognition') : 'Your recognition — total, this month and full history';
-      sh.querySelector('[data-tabs]').innerHTML = team ? '<button type="button" data-t="mine" class="' + (tab === 'mine' ? 'on' : '') + '">My Aura</button><button type="button" data-t="team" class="' + (tab === 'team' ? 'on' : '') + '">' + esc(teamLabel) + '</button>' : '';
+      sh.querySelector('[data-sub]').textContent = tab === 'team' ? (view === '*' ? 'Organisation overview, rankings and history' : teamLabel + ' — your team’s recognition') : tab === 'board' ? 'Monthly ranking of net Aura Points · Asia/Kolkata calendar month' : 'Your statement — this month’s net, your rank and every entry';
+      sh.querySelector('[data-tabs]').innerHTML = (earns ? '<button type="button" data-t="mine" class="' + (tab === 'mine' ? 'on' : '') + '">My Aura</button>' : '') + '<button type="button" data-t="board" class="' + (tab === 'board' ? 'on' : '') + '">Leaderboard</button>' + (team ? '<button type="button" data-t="team" class="' + (tab === 'team' ? 'on' : '') + '">' + esc(teamLabel) + '</button>' : '');
       if (tab === 'team') { body.innerHTML = '<div></div>'; dashboard(body.firstChild, { embedded: true }); return; }
-      mineView(body);
+      if (tab === 'board') { body.innerHTML = '<div></div>'; boardView(body.firstChild, { toMine: earns ? function () { tab = 'mine'; draw(); } : null }); return; }
+      mineView(body, focus); focus = null;
     }
     sh.querySelector('[data-tabs]').onclick = function (e) { var b = e.target.closest('[data-t]'); if (!b) return; tab = b.getAttribute('data-t'); draw(); };
     draw();
   }
-  async function mineView(el) {
+  async function mineView(el, focus) {
     el.innerHTML = '<div class="au-empty">Loading…</div>';
     if (!S.me) await meId();
-    var M = null; try { M = await loadMine(); } catch (_) {}
-    if (!M) { el.innerHTML = '<div class="au-empty">Aura Points could not load right now.</div>'; return; }
-    el.innerHTML = statsHTML(M.life, M.month, M.n, M.rank)
-      + '<div class="au-rh"><span>Aura History</span><span style="letter-spacing:0;text-transform:none;font-weight:600">' + M.rows.length + ' recognition' + (M.rows.length === 1 ? '' : 's') + '</span></div>'
-      + '<div class="au-hist aup-hist">' + history(M.rows, { self: true, limit: 1000 }) + '</div>';
+    if (!S.me) { el.innerHTML = '<div class="au-empty">Aura Points could not load right now.</div>'; return; }
+    // A notification for an older entry opens the month it belongs to.
+    var month = curMonth();
+    if (focus && S.mine) { var hit = (S.mine.rows || []).filter(function (t) { return t.id === focus; })[0]; if (hit) month = istDay(hit.created_at).slice(0, 7); }
+    await statementView(el, S.me, { self: true, month: month, focus: focus });
   }
   async function meId() {
     if (S.me) return S.me;
@@ -796,9 +897,28 @@
       });
       document.dispatchEvent(new CustomEvent('be-aura-changed'));
     }, { debounce: 0 });
+    // Deductions never reach the browser through the table (RLS). The server writes a detail-free
+    // notification for the affected employee only; the details are fetched privately here.
+    BELive.on('be-aura-upd', [{ table: 'erp_notifications', filter: 'recipient_email=eq.' + email, event: 'INSERT' }], function (evs) {
+      (evs || []).forEach(function (p) {
+        var n = p && p.new; if (!n || n.type !== 'aura_update') return;
+        var id = String(n.link || '').replace(/^aura:/, '');
+        stmt(S.me, 'all').then(function (ST) {
+          var t = (ST.rows || []).filter(function (x) { return x.id === id; })[0]; if (!t) return;
+          pop(signed(t.points) + ' Aura Points', true, t.reason);
+          document.dispatchEvent(new CustomEvent('be-aura-changed'));
+        }).catch(function () {});
+      });
+    }, { debounce: 0 });
+  }
+  // Notification links: aura:<transaction id> → that entry in my statement · aura:best → leaderboard
+  function openFromLink(link) {
+    var m = String(link || '').match(/^aura:(.+)$/); if (!m) return false;
+    if (m[1] === 'best') openPage({ tab: 'board' }); else openPage({ tab: 'mine', focus: m[1] });
+    return true;
   }
 
-  window.BEAura = { mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard, openPage: openPage };
+  window.BEAura = { openFromLink: openFromLink, deduct: function (o) { return give(Object.assign({}, o || {}, { mode: 'deduct' })); }, statement: openHistory, mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard, openPage: openPage };
   // Auto: start the live toast once someone is signed in (not inside embedded frames).
   var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
   if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); if (++tries < 60) setTimeout(w, 2000); })(); }
