@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
     const s = await db.from("erp_file_shares").select("*").eq("id", (r.data as Row).share_id).maybeSingle();
     return s.data ? { r: r.data as Row, s: s.data as Row } : null;
   }
-  const publicFiles = (files: Row[]) => (files || []).map((f, i) => ({ index: i, name: f.name, kind: f.kind || "file" }));
+  const publicFiles = (files: Row[]) => (files || []).map((f, i) => ({ index: i, name: f.name, kind: f.kind || "file", group: f.group || null }));
 
   try {
     switch (body.action) {
@@ -221,6 +221,26 @@ Deno.serve(async (req) => {
           files = parseDelivery(w.asset_link).map((e) => ({ name: fileName(e), url: e.url, folder: e.folder, kind: kindOf(e) }));
           title = String(w.topic || "Approved work"); itemType = w.type || null; approvedAt = w.approved_at || null;
           sourceType = "assignment"; sourceId = String(w.id);
+        } else if (src.type === "project") {
+          // One multi-person project (work_projects). Its APPROVED deliverables, in assignment
+          // order, each file tagged with the deliverable + person it came from.
+          const pid = String(src.id || "");
+          if (!/^[0-9a-f-]{36}$/i.test(pid)) return out(req, 400, { error: "Unknown project." });
+          const [pr, kr] = await Promise.all([
+            db.from("work_projects").select("id,title").eq("id", pid).maybeSingle(),
+            db.from("assignments").select("id,topic,type,deliverable,employee_email,assigned_to,manager_approved,approved_at,asset_link,status").eq("project_id", pid),
+          ]);
+          const kids = ((kr.data || []) as Row[]).filter((k) => lc(k.status) !== "cancelled").sort((x, y) => Number(x.id) - Number(y.id));
+          const ok = kids.filter((k) => k.manager_approved);
+          if (!ok.length) return out(req, 400, { error: "No deliverable of this project is approved yet." });
+          let allowed = c.full || c.tier !== "employee" || lc(c.me.system_role) === "media_head" || c.auth.role === "media_head";
+          if (!allowed) allowed = ok.some((k) => lc(k.employee_email) === lc(c.auth.email));
+          if (!allowed) return out(req, 403, { error: "You don't have permission to send this project." });
+          const who = (k: Row) => c.emps.find((e) => lc(e.portal_email) === lc(k.employee_email))?.full_name || k.assigned_to || k.employee_email || "";
+          ok.forEach((k) => parseDelivery(k.asset_link).forEach((e) => files.push({ name: fileName(e), url: e.url, folder: e.folder, kind: kindOf(e), group: `${k.type || "Deliverable"} · ${who(k)}`, assignment_id: k.id })));
+          title = String((pr.data as Row | null)?.title || ok[0].topic || "Project"); itemType = "Project";
+          approvedAt = ok.map((k) => k.approved_at).filter(Boolean).sort().pop() || null;
+          sourceType = "project"; sourceId = pid;
         } else if (src.type === "forward") {
           const m = await mine(src.rid);
           if (!m) return out(req, 404, { error: "That shared item is no longer available." });
@@ -248,10 +268,11 @@ Deno.serve(async (req) => {
         if (ids.length > MAX_RECIPIENTS) return out(req, 400, { error: `That's ${ids.length} people — send to at most ${MAX_RECIPIENTS} at once.` });
 
         const message = String(body.message || "").trim().slice(0, 600) || null;
-        const ins = await db.from("erp_file_shares").insert({
-          source_type: sourceType, source_id: sourceId, title, item_type: itemType, approved_at: approvedAt, files: chosen,
-          sender_employee_id: c.me.id, sender_name: myName, sender_division: c.me.division || null, message,
-        }).select("id").single();
+        const row = { source_type: sourceType, source_id: sourceId, title, item_type: itemType, approved_at: approvedAt, files: chosen,
+          sender_employee_id: c.me.id, sender_name: myName, sender_division: c.me.division || null, message };
+        let ins = await db.from("erp_file_shares").insert(row).select("id").single();
+        // 20261104 not run yet → 'project' isn't an allowed source_type; record it as an assignment-type share.
+        if (ins.error && sourceType === "project" && /source_type|check constraint/i.test(ins.error.message)) ins = await db.from("erp_file_shares").insert({ ...row, source_type: "assignment", source_id: "project:" + sourceId }).select("id").single();
         if (ins.error) throw new Error(ins.error.message);
         const shareId = (ins.data as Row).id;
         const fwd = !!body.forward_allowed;
@@ -297,7 +318,7 @@ Deno.serve(async (req) => {
         const now = new Date().toISOString();
         if (!m.r.viewed_at) { await db.from("erp_file_share_recipients").update({ viewed_at: now }).eq("id", m.r.id).is("viewed_at", null); m.r.viewed_at = now; }
         await db.from("erp_notifications").update({ read_at: now }).eq("recipient_email", lc(c.auth.email)).eq("dedupe_key", `share:${m.r.id}`).is("read_at", null).then(() => {}, () => {});
-        const files = ((m.s.files || []) as Row[]).map((f, i) => { const e = { name: f.name, url: f.url, folder: !!f.folder }; return { index: i, name: f.name, kind: f.kind || "file", view: viewHref(e), downloadable: !!downloadHref(e) }; });
+        const files = ((m.s.files || []) as Row[]).map((f, i) => { const e = { name: f.name, url: f.url, folder: !!f.folder }; return { index: i, name: f.name, kind: f.kind || "file", group: f.group || null, view: viewHref(e), downloadable: !!downloadHref(e) }; });
         return out(req, 200, { ok: true, rid: m.r.id, viewed_at: m.r.viewed_at, downloaded_at: m.r.downloaded_at, files });
       }
 

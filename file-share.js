@@ -147,7 +147,13 @@
       '.fs-main .fs-res{flex:1;max-height:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));align-content:start;gap:2px}.fs-res .fs-empty{grid-column:1/-1}',
       '.fs-q input,.fs-q input:focus,.fs-q input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;padding:0!important;height:100%!important;border-radius:0!important}',
       '.fs-work{display:flex;gap:12px;align-items:flex-start}.fs-tile{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;background:linear-gradient(140deg,rgba(255,107,6,.22),rgba(249,24,47,.12));color:#ffb27a;border:1px solid rgba(255,107,6,.3)}',
-      '.fs-side .fs-ta{min-height:96px}',
+      '.fs-side .fs-ta{min-height:96px}.fs-side>*,.fs-main>.fs-lbl,.fs-main>.fs-seg{flex-shrink:0}',
+      '.fs-grp{display:flex;flex-direction:column;gap:4px}.fs-grp+.fs-grp{margin-top:8px}.fs-grp .fs-fr{margin-left:14px;width:calc(100% - 14px)}',
+      '.fs-gh{display:flex;align-items:center;gap:8px;width:100%;padding:4px 2px;border:0;background:none;color:#e6e9f5;font:inherit;text-align:left;cursor:pointer}.fs-gh b{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#ffcfa8}.fs-gh span{font-size:12px;color:var(--fs-mute);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fs-gh em{margin-left:auto;font-style:normal;font-size:11px;color:var(--fs-dim)}',
+      '[aria-checked="mixed"] .fs-cb,.fs-cb.mixed{background:rgba(255,107,6,.35);border-color:var(--fs-acc);color:#fff}',
+      '.fs-files.locked .fs-fr,.fs-files.locked .fs-gh{cursor:default}.fs-files.locked .fs-fr:hover{background:rgba(255,255,255,.02)}.fs-fr:disabled,.fs-gh:disabled{opacity:1;color:#e6e9f5}',
+      '.fs-log{padding:10px 12px;border-radius:12px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);font-size:12px;display:flex;flex-direction:column;gap:4px}.fs-log div{display:flex;gap:7px;align-items:flex-start;color:#cfe9dd}.fs-log svg{color:#34d399;margin-top:2px;flex-shrink:0}',
+      '.fs-done{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:40px 20px}.fs-done b{font-size:17px;color:#fff}.fs-done span:not(.fs-tile){font-size:13px;color:#cfd4ea;max-width:520px}.fs-done small{font-size:12px;color:var(--fs-mute)}.fs-done .fs-tile{color:#34d399;background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.35)}',
       '.fs-ft{align-items:center}.fs-ftsum{margin-right:auto;font-size:12px;color:var(--fs-mute);min-width:0}.fs-ftsum b{color:#e6e9f5;font-weight:700}',
       // panel
       '.fs-sheet{position:fixed;inset:0;z-index:9150;background:rgba(3,5,9,.7);backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:22px 16px;overflow:auto}',
@@ -203,8 +209,14 @@
   // ════════════════════════════════════════════════════════════════════════
   function send(work) {
     css(); work = work || {};
-    var files = (work.files || []).map(function (f, i) { return { index: i, name: f.name || ('File ' + (i + 1)), kind: f.kind || kindOf(f.name) }; });
-    var st = { files: files.map(function (f) { return f.index; }), picked: [], mode: 'person', q: '', msg: '', fwd: false, busy: false, hi: 0 };
+    var files = (work.files || []).map(function (f, i) { return { index: i, name: f.name || ('File ' + (i + 1)), kind: f.kind || kindOf(f.name), group: f.group || '' }; });
+    // Project sends: "Entire Project" (every approved file) or "Select Files" (any subset, by file
+    // or by deliverable group). After a send the dialog offers "Send another set", so graphic
+    // files can go to HR and the video to the Academic Head in one sitting.
+    var isProj = !!work.project, groups = [];
+    files.forEach(function (f) { if (f.group && groups.indexOf(f.group) < 0) groups.push(f.group); });
+    var allIdx = files.map(function (f) { return f.index; });
+    var st = { files: work.select ? work.select.slice() : allIdx.slice(), scope: isProj ? (work.select ? 'select' : 'all') : '', picked: [], mode: 'person', q: '', msg: '', fwd: false, busy: false, hi: 0, log: [], done: null };
     var isFwd = work.source && work.source.type === 'forward';
     var ov = document.createElement('div'); ov.className = 'fs-ov fs';
     ov.innerHTML = '<div class="fs-dlg wide" role="dialog" aria-modal="true" aria-label="' + (isFwd ? 'Forward file' : 'Send approved work') + '"></div>';
@@ -241,16 +253,38 @@
       return '<span class="fs-ftsum">' + (n && nf ? 'Sending <b>' + nf + (nf === 1 ? ' file' : ' files') + '</b> to <b>' + n + (n === 1 ? ' person' : ' people') + '</b> · no re-upload' : nf ? 'Pick who should receive ' + (nf === 1 ? 'this file' : 'these files') : 'Select at least one file') + '</span>'
         + '<button type="button" class="fs-btn" data-cancel>Cancel</button><button type="button" class="fs-btn pri" data-go' + (ok ? '' : ' disabled') + '>' + svg(IC.send, 14) + (st.busy ? 'Sending…' : n ? 'Send to ' + n + (n === 1 ? ' person' : ' people') : 'Send') + '</button>';
     }
+    function fileRow(f) { var on = st.files.indexOf(f.index) > -1; return '<button type="button" class="fs-fr" role="checkbox" aria-checked="' + on + '" data-file="' + f.index + '"' + (st.scope === 'all' ? ' disabled' : '') + '><span class="fs-cb">' + svg(IC.check, 12) + '</span>' + kindIcon(f.kind) + '<span class="fs-fn">' + esc(f.name) + '</span></button>'; }
     function fileRows() {
-      return files.map(function (f) { var on = st.files.indexOf(f.index) > -1; return '<button type="button" class="fs-fr" role="checkbox" aria-checked="' + on + '" data-file="' + f.index + '"><span class="fs-cb">' + svg(IC.check, 12) + '</span>' + kindIcon(f.kind) + '<span class="fs-fn">' + esc(f.name) + '</span></button>'; }).join('');
+      if (!groups.length) return files.map(fileRow).join('');
+      return groups.map(function (g) {
+        var mine = files.filter(function (f) { return f.group === g; }), n = mine.filter(function (f) { return st.files.indexOf(f.index) > -1; }).length;
+        var state = n === mine.length ? 'true' : n ? 'mixed' : 'false', parts = g.split(' · ');
+        return '<div class="fs-grp"><button type="button" class="fs-gh" role="checkbox" aria-checked="' + state + '" data-grp="' + esc(g) + '"' + (st.scope === 'all' ? ' disabled' : '') + '><span class="fs-cb' + (state === 'mixed' ? ' mixed' : '') + '">' + svg(state === 'mixed' ? '<path d="M6 12h12"/>' : IC.check, 12) + '</span><b>' + esc(parts[0]) + '</b>' + (parts[1] ? '<span>' + esc(parts.slice(1).join(' · ')) + '</span>' : '') + '<em>' + n + '/' + mine.length + '</em></button>'
+          + mine.map(fileRow).join('') + '</div>';
+      }).join('');
+    }
+    function scopeSeg() {
+      if (!isProj) return '';
+      return '<div class="fs-seg full o2" style="margin-bottom:0"><button type="button" data-scope="all"' + (st.scope === 'all' ? ' class="on"' : '') + '>Entire Project</button><button type="button" data-scope="select"' + (st.scope === 'select' ? ' class="on"' : '') + '>Select Files</button></div>';
+    }
+    function logHtml() {
+      if (!st.log.length) return '';
+      return '<div class="fs-log o2"><div class="fs-lbl" style="margin-bottom:5px">Sent in this window</div>' + st.log.map(function (l) { return '<div>' + svg(IC.check, 12) + '<span><b>' + l.files + (l.files === 1 ? ' file' : ' files') + '</b> → ' + esc(l.to) + '</span></div>'; }).join('') + '</div>';
+    }
+    function doneView() {
+      var l = st.done;
+      dlg.querySelector('.fs-split').innerHTML = '<div class="fs-done"><span class="fs-tile" style="width:54px;height:54px">' + svg(IC.check, 24) + '</span><b>Sent ' + l.files + (l.files === 1 ? ' file' : ' files') + ' to ' + l.n + (l.n === 1 ? ' person' : ' people') + '</b><span>' + esc(l.to) + '</span><small>Nothing was uploaded again — they get access to the approved files.</small></div>';
+      dlg.querySelector('[data-ft]').innerHTML = '<span class="fs-ftsum">Want different files to go to someone else?</span><button type="button" class="fs-btn" data-cancel>Done</button><button type="button" class="fs-btn pri" data-again>' + svg(IC.send, 14) + 'Send another set</button>';
     }
     function draw() {
       var all = st.files.length === files.length, k0 = (files[0] && files[0].kind) || 'file';
       // Desktop: two panes — WHAT is sent (left) and WHO gets it (right, full height). Phone: one column.
-      dlg.innerHTML = '<div class="fs-hd"><h3>' + (isFwd ? 'Forward File' : 'Send Approved Work') + '</h3><button type="button" class="fs-x" data-cancel aria-label="Close">' + svg(IC.x, 15) + '</button></div>'
+      dlg.innerHTML = '<div class="fs-hd"><h3>' + (isFwd ? 'Forward File' : isProj ? 'Send Project' : 'Send Approved Work') + '</h3><button type="button" class="fs-x" data-cancel aria-label="Close">' + svg(IC.x, 15) + '</button></div>'
         + '<div class="fs-split"><div class="fs-side">'
         + '<div class="fs-work o1"><span class="fs-tile">' + kindIcon(k0) + '</span><div style="min-width:0"><b>' + esc(work.title || 'Untitled') + '</b><div class="fs-meta">' + (work.type ? '<span>Type <b>' + esc(work.type) + '</b></span>' : '') + (work.approved_at ? '<span>Approved <b>' + esc(fDate(work.approved_at)) + '</b></span>' : '') + (isFwd && work.from ? '<span>From <b>' + esc(work.from) + '</b></span>' : '') + '</div></div></div>'
-        + '<div class="o2"><div class="fs-lbl">Files · ' + st.files.length + ' of ' + files.length + (files.length > 1 ? '<button type="button" class="fs-link" data-all>' + (all ? 'Clear all' : 'Select all') + '</button>' : '') + '</div><div class="fs-files" role="group" aria-label="Files to send">' + fileRows() + '</div></div>'
+        + scopeSeg()
+        + '<div class="o2"><div class="fs-lbl">' + (st.scope === 'all' ? 'Entire project · ' + files.length + (files.length === 1 ? ' file' : ' files') : 'Files · ' + st.files.length + ' of ' + files.length + (files.length > 1 ? '<button type="button" class="fs-link" data-all>' + (all ? 'Clear all' : 'Select all') + '</button>' : '')) + '</div><div class="fs-files' + (st.scope === 'all' ? ' locked' : '') + '" role="group" aria-label="Files to send">' + fileRows() + '</div></div>'
+        + logHtml()
         + '<div class="o4"><div class="fs-lbl">Message <span style="font-weight:600;letter-spacing:0;text-transform:none">(optional)</span></div><textarea class="fs-ta" data-msg maxlength="600" placeholder="e.g. Final approved video for tomorrow’s student session.">' + esc(st.msg) + '</textarea><div class="fs-cnt" data-cnt>' + st.msg.length + ' / 600</div></div>'
         + '<button type="button" class="fs-sw o5" role="switch" aria-checked="' + st.fwd + '" data-fwd><span class="fs-tg"></span><div><b>Allow recipients to forward</b><small>Off: only the people you pick can open these files.</small></div></button>'
         + '</div><div class="fs-main o3">'
@@ -266,6 +300,10 @@
     dlg.addEventListener('click', async function (e) {
       var b = e.target.closest('button'); if (!b) return;
       if (b.hasAttribute('data-cancel')) return close();
+      if (b.hasAttribute('data-scope')) { st.scope = b.getAttribute('data-scope'); st.files = st.scope === 'all' ? allIdx.slice() : []; return draw(); }
+      if (b.hasAttribute('data-grp')) { var gi = files.filter(function (f) { return f.group === b.getAttribute('data-grp'); }).map(function (f) { return f.index; }), allOn = gi.every(function (x) { return st.files.indexOf(x) > -1; });
+        st.files = st.files.filter(function (x) { return gi.indexOf(x) < 0; }); if (!allOn) st.files = st.files.concat(gi); return draw(); }
+      if (b.hasAttribute('data-again')) { st.done = null; st.picked = []; st.msg = ''; st.fwd = false; st.q = ''; if (isProj) { st.scope = 'select'; st.files = []; } return draw(); }
       if (b.hasAttribute('data-file')) { var ix = +b.getAttribute('data-file'), p = st.files.indexOf(ix); if (p > -1) st.files.splice(p, 1); else st.files.push(ix); return draw(); }
       if (b.hasAttribute('data-all')) { st.files = st.files.length === files.length ? [] : files.map(function (f) { return f.index; }); return draw(); }
       if (b.hasAttribute('data-mode')) { st.mode = b.getAttribute('data-mode'); st.q = ''; st.hi = 0; draw(); var qi = dlg.querySelector('[data-q]'); if (qi && !isMobile()) qi.focus(); return; }
@@ -276,9 +314,14 @@
         if (st.busy) return; st.busy = true; redrawPicker();
         try {
           var j = await api('send', { source: work.source, files: st.files.slice().sort(function (a, c) { return a - c; }), targets: st.picked, message: st.msg.trim(), forward_allowed: st.fwd });
+          if (S.panel && S.tab === 'sent') renderPanel();
+          if (isProj) {   // stay open: confirm, and allow another set to other people
+            var to = st.picked.map(function (k) { var t = byKey(k); return t ? t.label : ''; }).filter(Boolean).join(', ');
+            st.log.push({ files: j.files, to: to }); st.done = { files: j.files, n: j.recipients, to: to }; st.busy = false;
+            return doneView();
+          }
           close();
           toast('success', 'Sent “' + (work.title || 'file') + '” to ' + j.recipients + (j.recipients === 1 ? ' person' : ' people'));
-          if (S.panel && S.tab === 'sent') renderPanel();
         } catch (err) { st.busy = false; redrawPicker(); toast('error', err.message); }
       }
     });
@@ -361,8 +404,9 @@
       det.innerHTML = '<div class="fs-det">'
         + '<div class="fs-kv"><div><small>From</small><span>' + esc(i.from.name) + '</span></div><div><small>Department</small><span>' + esc(i.from.department || '—') + '</span></div><div><small>Sent</small><span>' + esc(fDate(i.sent_at, true)) + '</span></div>' + (i.item_type ? '<div><small>Type</small><span>' + esc(i.item_type) + '</span></div>' : '') + '</div>'
         + (i.message ? '<div class="fs-msg">' + esc(i.message) + '</div>' : '')
-        + '<div style="display:flex;flex-direction:column;gap:6px">' + j.files.map(function (f) {
-          return '<div class="fs-fl">' + kindIcon(f.kind) + '<span class="fs-fn" title="' + esc(f.name) + '">' + esc(f.name) + '</span><span class="fs-a"><a class="fs-btn sm" href="' + esc(f.view) + '" target="_blank" rel="noopener noreferrer">' + svg(IC.eye, 13) + 'View</a>'
+        + '<div style="display:flex;flex-direction:column;gap:6px">' + j.files.map(function (f, k) {
+          var gh = f.group && (k === 0 || j.files[k - 1].group !== f.group) ? '<div class="fs-lbl" style="margin:' + (k ? '6px' : '0') + ' 0 0">' + esc(f.group) + '</div>' : '';
+          return gh + '<div class="fs-fl">' + kindIcon(f.kind) + '<span class="fs-fn" title="' + esc(f.name) + '">' + esc(f.name) + '</span><span class="fs-a"><a class="fs-btn sm" href="' + esc(f.view) + '" target="_blank" rel="noopener noreferrer">' + svg(IC.eye, 13) + 'View</a>'
             + '<button type="button" class="fs-btn sm" data-dl="' + f.index + '" data-r="' + esc(i.rid) + '">' + svg(IC.dl, 13) + (f.downloadable ? 'Download' : 'Open') + '</button></span></div>'; }).join('') + '</div>'
         + (i.forward_allowed ? '<div><button type="button" class="fs-btn sm" data-fwd-rid="' + esc(i.rid) + '">' + svg(IC.fwd, 13) + 'Forward</button></div>' : '')
         + '</div>';
