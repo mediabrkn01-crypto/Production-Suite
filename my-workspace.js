@@ -277,20 +277,30 @@
   async function renderLeave(root) {
     var e = await me(true); if (!e) { root.innerHTML = noLink('My Leave'); return; }
     if (e.account_type === 'system') { root.innerHTML = notTracked('My Leave'); return; }
+    // Layout: balances strip · request form (type chips, dates + live duration, reason, documents,
+    // emergency switch) · my requests (filter tabs). The native selects stay as the source of
+    // truth (hidden) so the leave rules below read exactly what they always did.
+    var TI = { 'Casual Leave': ['sun', 'Personal / planned', '#60a5fa'], 'Sick Leave': ['heart', 'Illness · medical', '#34d399'], 'Half Day': ['half', 'Morning or afternoon off', '#fbbf24'], 'Exceptional WFH': ['home', 'Medical only · needs proof', '#a78bfa'], 'Maternity Leave': ['baby', 'As per company policy', '#f472b6'] };
+    var LIC = { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>', heart: '<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/><path d="M3.2 12h4l2-3 3 6 2-3h6.6"/>', half: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" stroke="none" opacity=".35"/>', home: '<path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>', baby: '<path d="M9 12h.01M15 12h.01"/><path d="M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5"/><path d="M19 6.3a9 9 0 0 1 1.8 3.9 2 2 0 0 1 0 3.6 9 9 0 0 1-17.6 0 2 2 0 0 1 0-3.6A9 9 0 0 1 12 3c2 0 3.5 1.1 3.5 2.5s-.9 2.5-2 2.5c-.8 0-1.5-.4-1.5-1"/>' };
+    var lsvg = function (k, n) { return '<svg width="' + (n || 16) + '" height="' + (n || 16) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + LIC[k] + '</svg>'; };
+    var chips = function (field, opts) { return '<div class="lv-chips" role="radiogroup" data-chips="' + field + '">' + opts.map(function (o, k) { return '<button type="button" role="radio" class="lv-chip' + (k ? '' : ' on') + '" aria-checked="' + (!k) + '" data-v="' + esc(o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>'; };
     root.innerHTML = header('My Leave', 'Request leave and track your balance — reviewed by HR.')
-      + '<div class="mw-grid2"><div class="mw-card"><div class="mw-card-t">Request leave</div>'
-      + '<div class="mw-form">'
-      + '<label class="mw-f"><span>Leave type</span><select data-f="type">' + LEAVE_TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></label>'
-      + '<label class="mw-f" data-w="half" style="display:none"><span>Half type</span><select data-f="half"><option value="morning">Morning Half (off first half, work second)</option><option value="afternoon">Afternoon Half (work first half, off second)</option></select></label>'
-      + '<label class="mw-f" data-w="halfpay" style="display:none"><span>Use for the half day</span><select data-f="halfpay"><option value="Casual Leave">Casual Leave balance (0.5 day)</option><option value="Sick Leave">Sick Leave balance (0.5 day)</option><option value="Half Day">Unpaid — 0.5 day LOP</option></select></label>'
-      + '<div class="mw-f2"><label class="mw-f"><span>Start date</span><input type="date" data-f="start"></label><label class="mw-f" data-w="end"><span>End date</span><input type="date" data-f="end"></label></div>'
-      + '<label class="mw-f"><span>Reason</span><textarea rows="2" data-f="reason" placeholder="Optional"></textarea></label>'
-      + '<div class="mw-f"><span>Supporting document / medical certificate</span><div data-ld-host></div></div>'
-      + '<label class="mw-check mw-emg"><input type="checkbox" data-f="emergency"><span><b>Emergency request</b><small>Last-minute leave — HR is notified right away. Emergency Sick Leave needs a document.</small></span></label>'
-      + '<div class="mw-note">Leave is reviewed by HR. Max 2 consecutive days; leave adjacent to a weekly-off/holiday may be LOP unless an exception is granted; WFH is exceptional (medical) only.</div>'
-      + '<div><button class="mw-btn mw-btn-primary" data-submit>Submit request</button></div></div></div>'
-      + '<div class="mw-card"><div class="mw-card-t">My balances</div><div data-bal>' + loading() + '</div></div></div>'
-      + '<div class="mw-card"><div class="mw-card-t">My requests</div><div data-list>' + loading() + '</div></div>';
+      + '<div class="lv">'
+      + '<div class="lv-bals" data-bal>' + loading() + '</div>'
+      + '<div class="lv-main"><div class="mw-card lv-form">'
+      + '<div class="lv-h"><div><div class="mw-card-t" style="margin:0">Request leave</div><div class="lv-hs">HR reviews every request — you’ll see the decision under My requests.</div></div></div>'
+      + '<select data-f="type" hidden data-native>' + LEAVE_TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select>'
+      + '<div class="lv-sec"><div class="lv-l">Leave type</div><div class="lv-types" role="radiogroup" aria-label="Leave type">' + LEAVE_TYPES.map(function (t, k) { var m = TI[t] || ['sun', '', '#94a3b8']; return '<button type="button" role="radio" class="lv-type' + (k ? '' : ' on') + '" aria-checked="' + (!k) + '" data-type="' + esc(t) + '" style="--c:' + m[2] + '"><span class="lv-ti">' + lsvg(m[0], 17) + '</span><span class="lv-tt"><b>' + esc(t) + '</b><small>' + esc(m[1]) + '</small></span></button>'; }).join('') + '</div></div>'
+      + '<div class="lv-sec lv-half" data-w="half" style="display:none"><div class="lv-l">Which half is off?</div><select data-f="half" hidden data-native><option value="morning">Morning</option><option value="afternoon">Afternoon</option></select>' + chips('half', [['morning', 'Morning off · work 2nd half'], ['afternoon', 'Afternoon off · work 1st half']]) + '</div>'
+      + '<div class="lv-sec lv-half" data-w="halfpay" style="display:none"><div class="lv-l">Pay the half day from</div><select data-f="halfpay" hidden data-native><option value="Casual Leave">Casual</option><option value="Sick Leave">Sick</option><option value="Half Day">LOP</option></select>' + chips('halfpay', [['Casual Leave', 'Casual balance · 0.5'], ['Sick Leave', 'Sick balance · 0.5'], ['Half Day', 'Unpaid · 0.5 LOP']]) + '</div>'
+      + '<div class="lv-sec"><div class="mw-f2"><label class="mw-f"><span>Start date</span><input type="date" data-f="start"></label><label class="mw-f" data-w="end"><span>End date</span><input type="date" data-f="end"></label></div><div class="lv-dur" data-dur>Pick your dates</div></div>'
+      + '<div class="lv-sec"><label class="mw-f"><span>Reason <em class="lv-opt">optional</em></span><textarea rows="2" data-f="reason" placeholder="A short note for HR"></textarea></label></div>'
+      + '<div class="lv-sec"><div class="lv-l">Supporting document / medical certificate</div><div data-ld-host></div></div>'
+      + '<label class="lv-sw"><input type="checkbox" data-f="emergency" class="lv-sw-in"><span class="lv-sw-tr" aria-hidden="true"></span><span class="lv-sw-t"><b>Emergency request</b><small>Last-minute leave — HR is notified right away. Emergency Sick Leave needs a document.</small></span></label>'
+      + '<div class="lv-foot"><div class="lv-pol"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span>Max 2 consecutive days · leave next to a weekly-off / holiday may be LOP unless HR grants an exception · WFH is exceptional (medical) only.</span></div><button class="mw-btn mw-btn-primary lv-submit" data-submit>Submit request</button></div>'
+      + '</div>'
+      + '<div class="mw-card lv-reqs"><div class="lv-h"><div class="mw-card-t" style="margin:0">My requests</div></div><div class="lv-tabs" role="tablist" data-tabs><button type="button" class="on" data-t="all">All</button><button type="button" data-t="pending">Pending</button><button type="button" data-t="approved">Approved</button><button type="button" data-t="closed">Rejected · Cancelled</button></div><div data-list>' + loading() + '</div></div>'
+      + '</div></div>';
     var q = function (s) { return root.querySelector('[data-f="' + s + '"]'); };
     // Supporting documents: uploaded straight into private storage (leave-docs.js). Required for
     // Exceptional WFH and for an emergency Sick Leave; optional otherwise.
@@ -300,6 +310,24 @@
     var syncReq = function () { if (root._ld) root._ld.setRequired(proofRequired(q)); };
     q('type').onchange = function () { var h = q('type').value === 'Half Day'; root.querySelector('[data-w="half"]').style.display = h ? '' : 'none'; root.querySelector('[data-w="halfpay"]').style.display = h ? '' : 'none'; root.querySelector('[data-w="end"]').style.display = h ? 'none' : ''; syncReq(); };
     q('emergency').onchange = syncReq; syncReq();
+    root.querySelectorAll('[data-type]').forEach(function (b) { b.onclick = function () {
+      root.querySelectorAll('[data-type]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+      q('type').value = b.getAttribute('data-type'); q('type').onchange(); dur();
+    }; });
+    root.querySelectorAll('[data-chips]').forEach(function (g) { g.onclick = function (ev) {
+      var b = ev.target.closest('.lv-chip'); if (!b) return;
+      g.querySelectorAll('.lv-chip').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+      q(g.getAttribute('data-chips')).value = b.getAttribute('data-v');
+    }; });
+    var dur = function () {
+      var half = q('type').value === 'Half Day', a = q('start').value, b = half ? a : q('end').value, el = root.querySelector('[data-dur]');
+      if (!a || !b) { el.className = 'lv-dur'; el.textContent = half ? 'Pick the date' : 'Pick your dates'; return; }
+      var n = half ? 0.5 : Math.round((new Date(b) - new Date(a)) / 86400000) + 1;
+      if (n < 0.5) { el.className = 'lv-dur bad'; el.textContent = 'End date is before the start date'; return; }
+      el.className = 'lv-dur ok' + (n > 2 ? ' warn' : '');
+      el.innerHTML = '<b>' + n + ' day' + (n === 1 ? '' : 's') + '</b> · ' + esc(fRange(a, b)) + (n > 2 ? ' · more than 2 consecutive days needs HR approval' : '');
+    };
+    ['start', 'end'].forEach(function (k) { q(k).addEventListener('change', dur); q(k).addEventListener('input', dur); });
     root.querySelector('[data-submit]').onclick = function () { submitLeave(root, e, q); };
     // balances
     (async function () {
@@ -312,9 +340,11 @@
         var sl = bal.sick.remaining, cl = bal.casual.remaining, slNo = why(bal.sick.unavailable), clNo = why(bal.casual.unavailable);
         var slT = +bal.sick.entitlement || 1, clT = (+bal.casual.currentCredit || 0) + (+bal.casual.carriedForward || 0);
         var card = function (c, t2, n, sub, pct) { return '<div class="mw-bal" style="--c:' + c + '"><div class="mw-bal-t">' + t2 + '</div><div class="mw-bal-n">' + n + '<small>' + sub + '</small></div>' + (pct != null ? '<div class="mw-bar"><span style="width:' + Math.max(0, Math.min(100, pct)) + '%"></span></div>' : '') + '</div>'; };
-        box.innerHTML = '<div class="mw-bals">' + card('#10b981', 'Sick Leave', sl, slNo || 'this month', sl / slT * 100)
+        var pendHTML = root._nPend == null ? '<b>—</b><small>with HR</small>' : '<b>' + root._nPend + '</b><small>with HR</small>';
+        box.innerHTML = '<div class="mw-bals lv-strip">' + card('#10b981', 'Sick Leave', sl, slNo || 'this month', sl / slT * 100)
           + card('#3b82f6', 'Casual Leave', cl, clNo || (bal.casual.carriedForward ? 'incl. ' + bal.casual.carriedForward + ' carried' : 'remaining'), clT ? cl / clT * 100 : 0)
-          + card('#f87171', 'LOP days', pay.totalDeductionDays, 'this month', null) + '</div>'
+          + card('#f87171', 'LOP days', pay.totalDeductionDays, 'this month', null)
+          + '<div class="mw-bal" style="--c:#fbbf24"><div class="mw-bal-t">Pending</div><div class="mw-bal-n lv-pend" data-pend>' + pendHTML + '</div></div></div>'
           + (st.onProbation ? '<div class="mw-note mw-note-warn">Probation until ' + esc(fDate(st.confirmationDate, true)) + ' — ' + ([slNo ? 'no sick leave' : '', clNo ? 'no casual leave' : ''].filter(Boolean).join(', ') || 'leave allowed') + '; unpaid leave counts as LOP.</div>' : '')
           + (st.onNotice ? '<div class="mw-note mw-note-bad">Notice period — ' + (slNo || clNo ? 'paid leave not available; absence is LOP.' : 'leave allowed.') + '</div>' : '')
           + (LP.isPrePolicy && LP.isPrePolicy(t) ? '<div class="mw-note">New leave policy starts ' + esc(fDate(LP.P.LEAVE_SYSTEM_START, true)) + '.</div>' : '');
@@ -325,11 +355,32 @@
     var rows = reqs.data || [], today = todayStr(), list = root.querySelector('[data-list]');
     // cancelled by someone other than the employee (HR cancelled an approved leave)
     var byHR = function (r) { return !!(r.cancelled_by_email ? String(r.cancelled_by_email).toLowerCase() !== String(email() || '').toLowerCase() : (r.hr_status === 'approved' && r.cancelled_by && r.cancelled_by !== (e.full_name || ''))); };
-    list.innerHTML = rows.length ? '<div class="mw-list">' + rows.map(function (r) {
+    var bucket = function (r) { return r.status === 'approved' ? 'approved' : (r.status === 'rejected' || r.status === 'cancelled') ? 'closed' : 'pending'; };
+    var nPend = rows.filter(function (r) { return bucket(r) === 'pending'; }).length;
+    root._nPend = nPend;
+    var pt = root.querySelector('[data-pend]'); if (pt) pt.innerHTML = '<b>' + nPend + '</b><small>with HR</small>';
+    var rowHTML = function (r) {
       var k = r.status === 'approved' ? 'ok' : (r.status === 'rejected' || r.status === 'cancelled') ? 'bad' : 'warn';
       var can = r.status !== 'cancelled' && r.status !== 'rejected' && r.start_date > today;
-      return '<div class="mw-item mw-edge-' + k + '"><span class="mw-ic">' + ic('calendar') + '</span><div class="mw-item-main"><div class="mw-row"><b>' + esc(r.leave_type || 'Leave') + '</b>' + (r.emergency ? pill('Emergency', 'warn') : '') + (r.half_day_type ? pill(r.half_day_type === 'morning' ? 'Morning half' : 'Afternoon half', 'mute') : '') + '</div><div class="mw-sub">' + esc(fRange(r.start_date, r.end_date)) + (r.days ? ' · ' + Number(r.days) + ' day' + (Number(r.days) <= 1 ? '' : 's') : '') + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' + (window.BELeaveDocs ? '<div style="margin-top:6px">' + BELeaveDocs.chip(r) + '</div>' : '') + (r.policy_warning && r.status !== 'cancelled' ? '<div class="mw-note mw-note-warn" style="margin-top:6px">' + esc(r.policy_warning) + '</div>' : '') + (r.status === 'cancelled' && byHR(r) ? '<div class="mw-note" style="margin-top:6px">Cancelled by HR' + (r.cancelled_at ? ' · ' + esc(new Date(r.cancelled_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })) : '') + (r.cancellation_reason ? '<br>Reason: ' + esc(r.cancellation_reason) : '') + '</div>' : '') + '</div><div class="mw-row mw-item-end">' + pill(r.status === 'cancelled' && byHR(r) ? 'Cancelled by HR' : statusLabel(r), k) + (can ? '<button class="mw-btn mw-btn-danger mw-btn-sm" data-cancel="' + esc(r.id) + '">Cancel</button>' : '') + '</div></div>';
-    }).join('') + '</div>' : empty('calendar', 'No leave requests yet', 'Requests you submit will appear here with their HR status.');
+      var d = new Date(String(r.start_date) + 'T00:00:00');
+      return '<div class="lv-req lv-' + k + '" data-b="' + bucket(r) + '"><div class="lv-date"><b>' + (isNaN(d) ? '—' : d.getDate()) + '</b><span>' + (isNaN(d) ? '' : esc(d.toLocaleDateString('en-IN', { month: 'short' }))) + '</span></div>'
+        + '<div class="lv-rm"><div class="lv-rt"><b>' + esc(r.leave_type || 'Leave') + '</b>' + pill(r.status === 'cancelled' && byHR(r) ? 'Cancelled by HR' : statusLabel(r), k) + '</div>'
+        + '<div class="lv-rs">' + esc(fRange(r.start_date, r.end_date)) + (r.days ? ' · ' + Number(r.days) + ' day' + (Number(r.days) <= 1 ? '' : 's') : '') + (r.half_day_type ? ' · ' + (r.half_day_type === 'morning' ? 'morning off' : 'afternoon off') : '') + (r.emergency ? ' · <span class="lv-emg">Emergency</span>' : '') + '</div>'
+        + (r.reason ? '<div class="lv-rr">“' + esc(r.reason) + '”</div>' : '')
+        + (r.policy_warning && r.status !== 'cancelled' ? '<div class="lv-rw">' + esc(r.policy_warning) + '</div>' : '')
+        + (r.status === 'cancelled' && byHR(r) ? '<div class="lv-rw">Cancelled by HR' + (r.cancelled_at ? ' · ' + esc(new Date(r.cancelled_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })) : '') + (r.cancellation_reason ? ' — ' + esc(r.cancellation_reason) : '') + '</div>' : '')
+        + ((window.BELeaveDocs && BELeaveDocs.docs(r).length) || can ? '<div class="lv-ra">' + (window.BELeaveDocs ? BELeaveDocs.chip(r) : '') + (can ? '<button class="mw-btn mw-btn-danger mw-btn-sm" data-cancel="' + esc(r.id) + '">Cancel request</button>' : '') + '</div>' : '')
+        + '</div></div>';
+    };
+    list.innerHTML = rows.length ? '<div class="lv-list">' + rows.map(rowHTML).join('') + '</div><div class="lv-none" data-none hidden>Nothing here.</div>' : empty('calendar', 'No leave requests yet', 'Requests you submit will appear here with their HR status.');
+    var tabs = root.querySelector('[data-tabs]');
+    if (tabs) tabs.onclick = function (ev) {
+      var b = ev.target.closest('button[data-t]'); if (!b) return;
+      tabs.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      var t = b.getAttribute('data-t'), shown = 0;
+      list.querySelectorAll('.lv-req').forEach(function (el) { var on = t === 'all' || el.getAttribute('data-b') === t; el.hidden = !on; if (on) shown++; });
+      var nn = list.querySelector('[data-none]'); if (nn) nn.hidden = shown > 0;
+    };
     list.querySelectorAll('[data-ld-open]').forEach(function (b) { b.onclick = function () { var r = rows.find(function (x) { return String(x.id) === b.getAttribute('data-ld-open'); }); if (r) BELeaveDocs.open(r, (r.leave_type || 'Leave') + ' · ' + fRange(r.start_date, r.end_date)); }; });
     list.querySelectorAll('[data-cancel]').forEach(function (b) { b.onclick = function () { var r = rows.find(function (x) { return String(x.id) === b.getAttribute('data-cancel'); }); if (r) cancelLeave(root, e, r); }; });
   }
@@ -538,6 +589,54 @@
     '.mw-f input:focus,.mw-f select:focus,.mw-f textarea:focus{border-color:rgba(255,107,6,.6)}',
     '.mw-f2{display:flex;gap:12px;flex-wrap:wrap}',
     '.mw-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#c7cbe0;cursor:pointer}',
+    /* ── My Leave layout ── */
+    '.lv{display:flex;flex-direction:column;gap:16px}',
+    '.lv-strip{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.lv-strip .mw-bal{margin:0}',
+    '.lv-pend b{font-size:inherit}.lv-pend small{margin-left:6px}',
+    '.lv-main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:16px;align-items:start}',
+    '.lv-form{display:flex;flex-direction:column;gap:16px}',
+    '.lv-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.lv-hs{font-size:12px;color:#8b93b8;margin-top:4px}',
+    '.lv-sec{display:flex;flex-direction:column;gap:8px}',
+    '.lv-l{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b74a0}',
+    '.lv-opt{font-style:normal;font-weight:600;letter-spacing:0;text-transform:none;color:#5b6390;margin-left:4px}',
+    '.lv-types{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}',
+    '.lv-type{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);color:#e6e9f5;font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}',
+    '.lv-type:hover{border-color:rgba(255,255,255,.16)}.lv-type.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 12%,transparent)}',
+    '.lv-type:focus-visible,.lv-chip:focus-visible{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
+    '.lv-ti{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}',
+    '.lv-tt{min-width:0}.lv-tt b{display:block;font-size:12.5px;font-weight:700}.lv-tt small{display:block;font-size:10.5px;color:#8b93b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.lv-chips{display:flex;flex-wrap:wrap;gap:6px}',
+    '.lv-chip{height:34px;padding:0 13px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02);color:#c7cbe0;font:inherit;font-size:12px;font-weight:600;cursor:pointer}',
+    '.lv-chip.on{border-color:rgba(251,191,36,.6);background:rgba(251,191,36,.1);color:#fff}',
+    '.lv-dur{font-size:12px;color:#6b74a0;padding:8px 11px;border-radius:10px;background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08)}',
+    '.lv-dur.ok{color:#c7cbe0;border-style:solid;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.05)}.lv-dur.ok b{color:#34d399}',
+    '.lv-dur.warn{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}.lv-dur.warn b{color:#fbbf24}.lv-dur.bad{color:#fca5a5;border-color:rgba(248,113,113,.35)}',
+    '.lv-sw{position:relative;display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);cursor:pointer;transition:.15s}',
+    '.lv-sw-in{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}',
+    '.lv-sw-tr{position:relative;width:38px;height:22px;border-radius:999px;background:rgba(255,255,255,.12);flex-shrink:0;transition:.18s;margin-top:1px}',
+    '.lv-sw-tr::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.4)}',
+    '.lv-sw-in:checked + .lv-sw-tr{background:#ef4444}.lv-sw-in:checked + .lv-sw-tr::after{left:19px}',
+    '.lv-sw-in:focus-visible + .lv-sw-tr{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
+    '.lv-sw-t b{display:block;font-size:13px;color:#fff;font-weight:700}.lv-sw-t small{display:block;font-size:11.5px;color:#8b93b8;margin-top:2px}',
+    '.lv-sw:has(.lv-sw-in:checked){border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.06)}.lv-sw:has(.lv-sw-in:checked) .lv-sw-t b{color:#fca5a5}',
+    '.lv-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(255,255,255,.06)}',
+    '.lv-pol{flex:1;min-width:220px;display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#8b93b8;line-height:1.5}.lv-pol svg{flex-shrink:0;margin-top:2px;color:#60a5fa}',
+    '.lv-submit{min-width:170px;height:42px}',
+    '.lv-reqs{position:sticky;top:12px}',
+    '.lv-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 12px}.lv-tabs button{height:30px;padding:0 12px;border-radius:999px;border:1px solid transparent;background:none;color:#8b93b8;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.lv-tabs button.on{color:#fff;background:rgba(255,107,6,.14);border-color:rgba(255,107,6,.4)}',
+    '.lv-list{display:flex;flex-direction:column;gap:8px;max-height:720px;overflow-y:auto;padding-right:2px}',
+    '.lv-req{display:flex;gap:12px;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}',
+    '.lv-date{width:46px;flex-shrink:0;border-radius:10px;text-align:center;padding:6px 0;background:rgba(255,255,255,.04);border-top:3px solid var(--k,#94a3b8)}.lv-date b{display:block;font-size:17px;color:#fff;line-height:1.1}.lv-date span{font-size:10px;font-weight:700;text-transform:uppercase;color:#8b93b8;letter-spacing:.05em}',
+    '.lv-ok{--k:#34d399}.lv-warn{--k:#fbbf24}.lv-bad{--k:#f87171}',
+    '.lv-rm{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}',
+    '.lv-rt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between}.lv-rt b{font-size:13.5px;color:#fff}',
+    '.lv-rs{font-size:12px;color:#8b93b8}.lv-emg{color:#fca5a5;font-weight:700}',
+    '.lv-rr{font-size:12px;color:#c7cbe0;font-style:italic}',
+    '.lv-rw{font-size:11.5px;line-height:1.5;color:#fde68a;padding:7px 9px;border-radius:8px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2)}',
+    '.lv-ra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px}',
+    '.lv-none{padding:20px;text-align:center;color:#6b74a0;font-size:12.5px}',
+    '@media(max-width:1100px){.lv-main{grid-template-columns:1fr}.lv-reqs{position:static}.lv-list{max-height:none}}',
+    '@media(max-width:640px){.lv-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.lv-types{grid-template-columns:1fr 1fr}.lv-tt small{white-space:normal}.lv-submit{width:100%}.lv-foot{flex-direction:column;align-items:stretch}}',
     '.mw-check input[type=checkbox]{appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;flex-shrink:0;border-radius:5px;border:1.5px solid rgba(255,255,255,.28);background:rgba(255,255,255,.03);cursor:pointer;display:grid;place-items:center;transition:.15s}',
     '.mw-check input[type=checkbox]:checked{background:#ff6b06 url("data:image/svg+xml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%273.2%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Cpath d=%27m5 12 5 5 9-10%27/%3E%3C/svg%3E") center/12px no-repeat;border-color:#ff6b06}',
     '.mw-check input[type=checkbox]:focus-visible{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
