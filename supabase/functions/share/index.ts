@@ -101,12 +101,15 @@ async function context(req: Request): Promise<Ctx> {
     if (r.error) throw new Error(r.error.message);
     return (r.data || []) as unknown as Row[];
   };
-  const [emps, desR] = await Promise.all([loadEmps(), db.from("hr_designations").select("name,access_role,active")]);
+  const [emps, desR, rosR] = await Promise.all([loadEmps(), db.from("hr_designations").select("name,access_role,active"), db.from("user_roster").select("email,role")]);
+  // HR admin = system role hr_admin OR roster role 'admin' (same rule as the ERP / Jarvis auth).
+  const rosterAdmin = new Set(((rosR.data || []) as Row[]).filter((r) => lc(r.role) === "admin").map((r) => lc(r.email)));
+  emps.forEach((e) => { e._hr = lc(e.system_role) === "hr_admin" || (rosterAdmin.has(lc(e.portal_email)) && e.account_type !== "system"); });
   const me = emps.find((e) => e.id === auth.employeeId);
   if (!me) throw new JarvisAuthError(403, "FORBIDDEN", "Your sign-in is not linked to an employee record.");
   const desig = (desR.data || []) as Row[];
   const tier = tierOf(me, desig);
-  const hrAdmin = lc(me.system_role) === "hr_admin" || auth.role === "hr_admin";
+  const hrAdmin = !!me._hr || auth.role === "hr_admin";
   const full = tier === "manager" || hrAdmin;
   const ad = authorizedDivisions(me, tier);
   const manage = ad === "*" ? Object.keys(DIV) : [...new Set([me.division, ...ad].filter(Boolean) as string[])];
@@ -116,21 +119,25 @@ async function context(req: Request): Promise<Ctx> {
 // ── recipient targets ────────────────────────────────────────────────────────────
 interface Target { key: string; kind: "person" | "dept" | "role"; label: string; sub: string; ids: string[]; division?: string | null }
 function deptName(code: string) { return DIV[code] || code.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
-function isLead(c: Ctx, e: Row) { const t = tierOf(e, c.desig); return t === "manager" || t === "head" || t === "operational_manager"; }
+const TITLE_HEAD = /\b(head|manager|lead|director|supervisor)\b/i;
+function isLead(c: Ctx, e: Row) { const t = tierOf(e, c.desig); return t === "manager" || t === "head" || t === "operational_manager" || !!e._hr; }
 /** Current effective head(s) of a department — from access roles, never names. */
 function headsOf(c: Ctx, code: string): Row[] {
   const live = c.emps.filter(active);
   if (code === "management") return live.filter((e) => tierOf(e, c.desig) === "manager");
   const direct = live.filter((e) => { const t = tierOf(e, c.desig); return (t === "head" || t === "operational_manager") && e.division === code; });
-  if (code === "hr") { const hr = live.filter((e) => lc(e.system_role) === "hr_admin"); hr.forEach((e) => { if (!direct.includes(e)) direct.push(e); }); }
+  if (code === "hr") { const hr = live.filter((e) => e._hr && (e.division === "hr" || !e.division || e.division === "other")); hr.forEach((e) => { if (!direct.includes(e)) direct.push(e); }); }
   if (direct.length) return direct;
-  // No head inside the department → the Operations Manager(s) assigned to it.
-  return live.filter((e) => tierOf(e, c.desig) === "operational_manager" && managedDivisions(e).includes(code));
+  // No head inside the department → the Operations Manager(s) assigned to it …
+  const ops = live.filter((e) => tierOf(e, c.desig) === "operational_manager" && managedDivisions(e).includes(code));
+  if (ops.length) return ops;
+  // … else whoever carries a head / manager / lead title in it.
+  return live.filter((e) => e.division === code && TITLE_HEAD.test(`${clean(e.designation)} ${e.department || ""}`));
 }
 function roleLabel(c: Ctx, e: Row): string {
   const t = tierOf(e, c.desig);
   if (t === "manager") return "Management";
-  if (lc(e.system_role) === "hr_admin") return "HR Head";
+  if (e._hr) return "HR Head";
   if (t === "operational_manager") return "Operations Manager";
   if (t === "head") return deptName(e.division || "") + " Head";
   return "";
@@ -147,10 +154,14 @@ function targets(c: Ctx): Target[] {
   for (const code of codes) {
     const members = live.filter((e) => e.division === code).map((e) => e.id);
     const heads = headsOf(c, code).filter((e) => e.id !== c.me.id).map((e) => e.id);
-    if (heads.length) res.push({ key: `d:${code}:head`, kind: "dept", label: (code === "hr" ? "HR" : deptName(code)) + " Head" + (heads.length > 1 ? "s" : ""), sub: heads.map((id) => c.emps.find((e) => e.id === id)?.full_name).filter(Boolean).join(", "), ids: heads, division: code });
-    if (members.length && (c.full || c.manage.includes(code))) res.push({ key: `d:${code}:all`, kind: "dept", label: "All " + deptName(code), sub: members.length + " active " + (members.length === 1 ? "person" : "people"), ids: members, division: code });
+    const nm = code === "hr" ? "HR" : deptName(code), ppl = (n: number) => n + " active " + (n === 1 ? "person" : "people");
+    if (heads.length) res.push({ key: `d:${code}:head`, kind: "dept", label: code === "management" ? "Management" : nm + " Head" + (heads.length > 1 ? "s" : ""), sub: heads.map((id) => c.emps.find((e) => e.id === id)?.full_name).filter(Boolean).join(", "), ids: heads, division: code });
+    const all = members.length && (c.full || c.manage.includes(code));
+    if (all) res.push({ key: `d:${code}:all`, kind: "dept", label: "All " + deptName(code), sub: ppl(members.length), ids: members, division: code });
+    // A department with no head set is still reachable as a team (its current active members).
+    else if (!heads.length && members.length && code !== "other" && code !== "management") res.push({ key: `d:${code}:team`, kind: "dept", label: nm + " team", sub: "No head set · " + ppl(members.length), ids: members, division: code });
   }
-  const leads = live.filter((e) => { const t = tierOf(e, c.desig); return t === "head" || t === "operational_manager"; }).map((e) => e.id);
+  const leads = live.filter((e) => { const t = tierOf(e, c.desig); return t === "head" || t === "operational_manager" || (!!e._hr && t !== "manager"); }).map((e) => e.id);
   const ops = live.filter((e) => tierOf(e, c.desig) === "operational_manager").map((e) => e.id);
   const mgmt = live.filter((e) => tierOf(e, c.desig) === "manager").map((e) => e.id);
   if (leads.length) res.push({ key: "r:heads", kind: "role", label: "All Department Heads", sub: leads.length + " people", ids: leads });
