@@ -502,6 +502,11 @@
       // assignment type cards
       '.bw-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}',
       '.bw-projb{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;color:#c4b5fd;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.35);vertical-align:2px}',
+      '.bw-noout{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;border:1px solid var(--bw-b);background:var(--bw-s);cursor:pointer}',
+      '.bw-noout input{position:absolute;opacity:0;width:1px!important;height:1px!important;min-height:0!important;pointer-events:none}',
+      '.bw-sw{position:relative;width:38px;height:22px;border-radius:999px;background:rgba(255,255,255,.12);flex-shrink:0;transition:.18s}.bw-sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.18s}',
+      '.bw-noout input:checked+.bw-sw{background:#22c55e}.bw-noout input:checked+.bw-sw::after{left:19px}.bw-noout input:focus-visible+.bw-sw{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
+      '.bw-noout b{display:block;font-size:13px}.bw-noout small{display:block;font-size:11.5px;color:var(--bw-m);margin-top:2px}.bw-noout:has(input:checked){border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.06)}',
       '.bw-drs{display:flex;flex-direction:column;gap:8px}',
       '.bw-dr{border:1px solid var(--bw-b);border-radius:14px;background:rgba(0,0,0,.16);padding:10px;display:flex;flex-direction:column;gap:8px}',
       '.bw-dr-top{display:grid;grid-template-columns:minmax(170px,230px) minmax(0,1fr) auto;gap:8px;align-items:center}',
@@ -674,6 +679,9 @@
               o.map(function (f) { return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + (KIND_ICON[f.kind] || '📎') + ' ' + esc(f.name) + '</a>'; }).join('') + (h.output.note ? '<em>“' + esc(h.output.note) + '”</em>' : '') + '</div>' : '') + '</div>'; }).join('') + '</div></div>' : '') +
       '</div></div>';
   }
+  // "No output" — chosen by the employee at completion time (column, or history before 20261107)
+  function noOutput(t) { if (t.no_output === true) return true; return (Array.isArray(t.history) ? t.history : []).some(function (h) { return h && h.action === 'submitted' && h.no_output; }) && !parseOutput(t.asset_link).length; }
+  function noOutputProof(t) { if (t.completion_proof) return t.completion_proof; var h = (Array.isArray(t.history) ? t.history : []).filter(function (x) { return x && x.no_output; }).pop(); return (h && h.proof) || ''; }
   function outputHTML(t) {
     var files = parseOutput(t.asset_link), done = t.status === 'Completed', note = outputNote(t);
     var when = t.submitted_at || t.completed_at;
@@ -682,7 +690,7 @@
     return '<div class="bw-out"><div class="bw-out-h"><b>' + (done ? 'Completed output' : 'Latest submission') + '</b>' + (vers ? '<span>Version ' + (vers + 1) + '</span>' : '') + '</div>' +
       '<div class="bw-out-m"><div><small>' + (isTeam(t) ? 'Final submitted by' : 'Submitted by') + '</small><b>' + esc(t.final_submitted_by || t.assigned_to || '—') + (isTeam(t) ? ' <em style="color:#8b93b8;font-style:normal">· credited to the whole team</em>' : '') + '</b></div><div><small>Submitted</small><b>' + esc(when ? fmtFull(when) : '—') + '</b></div>' +
         (t.manager_approved ? '<div><small>Review</small><b style="color:#6ee7b7">Approved' + (t.approved_by ? ' · ' + esc(t.approved_by) : '') + '</b></div>' : '') + '</div>' +
-      (files.length ? filesHTML(files) : '<div class="bw-empty" style="padding:14px">No file or link was attached to this submission.</div>') +
+      (files.length ? filesHTML(files) : noOutput(t) ? '<div class="bw-note" style="border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.06)"><b style="color:#86efac">No output</b> — completed outside the ERP; nothing to download.' + (parseOutput(noOutputProof(t)).length ? '<div style="margin-top:8px">' + filesHTML(parseOutput(noOutputProof(t))) + '</div>' : '') + '</div>' : '<div class="bw-empty" style="padding:14px">No file or link was attached to this submission.</div>') +
       (note ? '<div class="bw-out-note"><small>Employee note</small>“' + esc(note) + '”</div>' : '') + '</div>';
   }
   function histLabel(h) {
@@ -808,7 +816,9 @@
       else if (k === 'progress' || k === 'rework') acts = '<button class="bw-btn" data-a="update">Add progress update</button>' + (canSubmit ? '<button class="bw-btn green" data-a="submit">' + (team ? 'Submit final team output' : 'Mark completed') + '</button>' : '');
       if (team && !canSubmit && (k === 'progress' || k === 'rework')) teamBlock += '<div class="bw-note">' + esc(lead.employee_name) + ' (team lead) submits the final output for the team.</div>';
       var extra = (k === 'progress' || k === 'rework') ? '<div class="bw-f" id="bw-upd" hidden><span class="bw-l">Progress update</span><input type="range" class="bw-rng" min="0" max="100" step="5" value="' + (t.progress || 0) + '" id="bw-pg"><span class="bw-l" id="bw-pgt">' + (t.progress || 0) + '% done</span><textarea id="bw-note" placeholder="What did you do? Anything blocking you?"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="saveupd">Save update</button></div></div>' +
-        '<div class="bw-f" id="bw-sub" hidden><span class="bw-l">Submit your work</span><div class="bw-files" id="bw-sfl"></div><label class="bw-drop"><input type="file" multiple hidden id="bw-sf">📎 Attach finished files (image, video, PDF, document, ZIP…)</label><input id="bw-out" type="url" placeholder="Or a link — Google Drive, Docs, YouTube…"><textarea id="bw-subnote" placeholder="Short note for your manager (optional)"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn green" data-a="dosubmit">Submit as completed</button></div></div>' : '';
+        '<div class="bw-f" id="bw-sub" hidden><span class="bw-l">Submit your work</span>' +
+          '<label class="bw-noout"><input type="checkbox" id="bw-noout"><span class="bw-sw" aria-hidden="true"></span><span><b>No output</b><small>Nothing to upload or link — the work was done outside the ERP.</small></span></label>' +
+          '<div class="bw-files" id="bw-sfl"></div><label class="bw-drop" id="bw-sfl-lbl"><input type="file" multiple hidden id="bw-sf"><span data-sflt>📎 Attach finished files (image, video, PDF, document, ZIP…)</span></label><input id="bw-out" type="url" placeholder="Or a link — Google Drive, Docs, YouTube…"><textarea id="bw-subnote" placeholder="Short note for your manager (optional)"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn green" data-a="dosubmit">Submit as completed</button></div></div>' : '';
       if (media && (k === 'progress' || k === 'rework')) extra += '<div class="bw-note">This is Media work — you can also submit it from the Media Suite as usual.</div>';
       modal(detailHTML(t, { extra: extra, members: mem, teamBlock: teamBlock }) + '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
         var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
@@ -817,6 +827,14 @@
         var subFiles = [], sf = ov.querySelector('#bw-sf');
         function paintSub() { var box = ov.querySelector('#bw-sfl'); if (!box) return; box.innerHTML = subFiles.map(function (f, i) { return '<div class="bw-file">' + (KIND_ICON[kindOf(f.name, '')] || '📎') + '<span>' + esc(f.name) + '</span><a href="#" data-rms="' + i + '">Remove</a></div>'; }).join('');
           box.querySelectorAll('[data-rms]').forEach(function (a) { a.onclick = function (e) { e.preventDefault(); subFiles.splice(+a.dataset.rms, 1); paintSub(); }; }); }
+        var nob = ov.querySelector('#bw-noout');
+        if (nob) nob.onchange = function () {
+          var on = nob.checked, out = ov.querySelector('#bw-out'), lt = ov.querySelector('[data-sflt]'), nt = ov.querySelector('#bw-subnote'), go = ov.querySelector('[data-a="dosubmit"]');
+          if (out) out.hidden = on;
+          if (lt) lt.textContent = on ? '📎 Attach proof (optional · screenshot, image, file)' : '📎 Attach finished files (image, video, PDF, document, ZIP…)';
+          if (nt) nt.placeholder = on ? 'Completion note (optional) — e.g. Sent to Afzal via WhatsApp' : 'Short note for your manager (optional)';
+          if (go) go.textContent = on ? 'Mark completed' : 'Submit as completed';
+        };
         if (sf) sf.onchange = function () { Array.prototype.forEach.call(sf.files, function (f) { if (f.size > 50 * 1024 * 1024) toast('warning', f.name + ' is over 50 MB — share it as a Drive link instead.'); else subFiles.push(f); }); sf.value = ''; paintSub(); };
         ov.querySelectorAll('[data-a]').forEach(function (b) {
           b.onclick = async function () {
@@ -829,19 +847,23 @@
             if (a === 'saveupd') { var pg = +ov.querySelector('#bw-pg').value, note = ov.querySelector('#bw-note').value.trim();
               if (!note && pg === (t.progress || 0)) { toast('warning', 'Move the slider or write a short update.'); b.disabled = false; return; }
               patch = { progress: pg, history: histAdd(t, name, 'update', { progress: pg, note: note || undefined }) }; if (t.status === 'Pending') patch.status = 'In Progress'; msg = 'Update saved.'; }
-            if (a === 'dosubmit') { var out = ov.querySelector('#bw-out').value.trim(), sn = ov.querySelector('#bw-subnote').value.trim();
+            if (a === 'dosubmit') { var noOut = !!(ov.querySelector('#bw-noout') || {}).checked, out = noOut ? '' : ov.querySelector('#bw-out').value.trim(), sn = ov.querySelector('#bw-subnote').value.trim();
               if (out && !/^https?:\/\//i.test(out)) { toast('warning', 'The work link must start with https://'); b.disabled = false; return; }
               var parts = [];
               if (subFiles.length) { b.textContent = 'Uploading…'; try { (await uploadFiles(db, subFiles, function (p) { b.textContent = 'Uploading ' + p + '%…'; })).forEach(function (u) { parts.push(u.name + '|' + u.url); }); }
                 catch (err) { toast('error', 'Upload failed: ' + (err.message || err)); b.disabled = false; b.textContent = 'Submit as completed'; return; } }
               if (out) parts.push('Link|' + out);
               var nowIso = new Date().toISOString(), asset = parts.join(';;');
-              patch = { status: 'Completed', progress: 100, completed_at: nowIso, submitted_at: nowIso, explanation: sn || 'None',
-                history: histAdd(t, name, 'submitted', { note: sn || undefined, team: team || undefined }) };
+              patch = { status: 'Completed', progress: 100, completed_at: nowIso, submitted_at: nowIso, explanation: sn || (noOut ? 'Completed — no output' : 'None'),
+                history: histAdd(t, name, 'submitted', { note: sn || undefined, team: team || undefined, no_output: noOut || undefined, proof: noOut && asset ? asset : undefined }) };
               if (team) patch.final_submitted_by = name;
-              if (asset) patch.asset_link = asset;
+              // No output: files attached are PROOF, never the deliverable (nothing lands in Approved Works as downloadable)
+              if (noOut) Object.assign(patch, { asset_link: '', no_output: true, completion_note: sn || null, completion_proof: asset || null });
+              else if (asset) patch.asset_link = asset;
               msg = team ? 'Final team output submitted — your manager and team have been updated.' : 'Marked completed — your manager has been updated.'; }
             var r = await saveRow(db, t.id, patch);
+            if (r.error && /no_output|completion_/i.test(r.error.message || '')) {   // 20261107 not run yet → history + note only
+              delete patch.no_output; delete patch.completion_note; delete patch.completion_proof; r = await saveRow(db, t.id, patch); }
             if (r.error) { toast('error', 'Could not save: ' + r.error.message); b.disabled = false; return; }
             toast('success', msg); close(); load();
           };
