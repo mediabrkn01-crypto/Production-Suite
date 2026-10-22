@@ -15,6 +15,7 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { adminClient } from "./auth.ts";
 import { addDays, dow, fmtMinutes, isIsoDate, toWallClock, tsDay, tzDate, tzMinutes, wallNow, type DateRange } from "./time.ts";
 import "./vendor/leave-policy.js";
+import { loadLeaveIndex, type LeaveIndex } from "../trainer-availability.ts";
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -80,6 +81,7 @@ interface ScheduleData {
   oto: Row[];
   studentName: Record<string, string>;
   batchById: Record<string, Row>;
+  leave: LeaveIndex;
 }
 
 async function loadSchedule(from: string, to: string, trainerId?: string | null): Promise<ScheduleData> {
@@ -89,7 +91,7 @@ async function loadSchedule(from: string, to: string, trainerId?: string | null)
     .gte("session_date", from).lte("session_date", to);
   if (trainerId) oq = oq.eq("trainer_id", trainerId);
   const [bR, cR, tR, hR, oR] = await Promise.all([
-    bq, db().from("courses").select("id,name,default_days"), db().from("trainers").select("id,name"),
+    bq, db().from("courses").select("id,name,default_days"), db().from("trainers").select("id,name,hr_employee_id"),
     db().from("hr_holidays").select("*"), oq,
   ]);
   for (const r of [bR, cR, tR, hR, oR]) if (r.error) throw new Error(r.error.message);
@@ -132,7 +134,9 @@ async function loadSchedule(from: string, to: string, trainerId?: string | null)
     const { data } = await db().from("students").select("id,name").in("id", sIds);
     (data || []).forEach((s: Row) => { studentName[s.id] = s.name; });
   }
-  return { batches, trainerName, holidays, markedByBatchDate: marked, oto, studentName, batchById };
+  // Approved trainer leave over the window (shared rule, one query) — see getClasses.
+  const leave = await loadLeaveIndex(db(), from, to, tR.data || []).catch(() => ({ leaveFor: () => null }) as LeaveIndex);
+  return { batches, trainerName, holidays, markedByBatchDate: marked, oto, studentName, batchById, leave };
 }
 
 function batchOccurrences(b: Row, from: string, to: string, holidays: Record<string, string>): string[] {
@@ -166,6 +170,8 @@ export const academicService = {
       if (one ? o.includeOneToOne === false : o.includeGroup === false) continue;
       const st = timeLabelToMinutes(b.time_slot), dur = Number(b.class_duration_minutes) || 60;
       for (const date of batchOccurrences(b, o.from, o.to, S.holidays)) {
+        // Trainer on approved leave → not an active class (a class already marked stays history).
+        if (!S.markedByBatchDate.has(b.name + "|" + date) && S.leave.leaveFor(b.trainer_id, date, st, st != null ? st + dur : null)) continue;
         const status = statusOf(date, st, dur);
         const due = status === "completed_window" || status === "finished" || status === "in_progress";
         items.push({
@@ -183,6 +189,7 @@ export const academicService = {
         const st = hhmmToMinutes(s.start_time), en = hhmmToMinutes(s.end_time);
         const dur = st != null && en != null && en > st ? en - st : (Number(s.duration_minutes) || 30);
         const date = String(s.session_date).slice(0, 10);
+        if (!/^(completed|absent)$/i.test(String(s.status || "")) && S.leave.leaveFor(s.trainer_id || b.trainer_id, date, st, st != null ? st + dur : null)) continue;
         items.push({
           date, start: fmtMinutes(st), end: st != null ? fmtMinutes(st + dur) : "", start_minutes: st,
           trainer: S.trainerName[s.trainer_id || b.trainer_id] || b.trainer_name || "Unassigned", trainer_id: s.trainer_id || b.trainer_id || null,

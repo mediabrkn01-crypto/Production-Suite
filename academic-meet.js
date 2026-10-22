@@ -91,7 +91,7 @@
     if (!org) bq = bq.eq('trainer_id', myTid);
     var oq = sbc.from('oto_sessions').select('id,batch_id,student_id,trainer_id,session_number,session_date,start_time,end_time,duration_minutes,status').gte('session_date', from).lte('session_date', to);
     if (!org) oq = oq.eq('trainer_id', myTid);
-    var res = await Promise.all([bq, oq.then(function (r) { return r; }, function () { return { data: [] }; }), sbc.from('trainers').select('id,name')]);
+    var res = await Promise.all([bq, oq.then(function (r) { return r; }, function () { return { data: [] }; }), sbc.from('trainers').select('id,name,hr_employee_id')]);
     var batches = (res[0].data || []).filter(function (b) { return !isDel(b); });
     var otos = res[1].data || [];
     var trName = {}; (res[2].data || []).forEach(function (t) { trName[t.id] = t.name; });
@@ -112,11 +112,12 @@
     S.issues = issues;
     // SESSION COMPLETION RULE (same as Classes / My Calendar): a batch that has reached its session
     // total no longer generates classes.
-    var fetchAll = g('_acadFetchAllRows'), done = {};
+    var fetchAll = g('_acadFetchAllRows'), done = {}, marked = {};
     if (batches.length && typeof fetchAll === 'function') {
       var names = batches.map(function (b) { return b.name; }).filter(Boolean);
       try {
         var att = await fetchAll('attendance', 'batch_name,session_date,session_num,status', function (q) { return q.in('batch_name', names); });
+        (att || []).forEach(function (a) { if (a.session_date) marked[a.batch_name + '|' + String(a.session_date).slice(0, 10)] = true; });
         // the SAME "sessions done" rule as every other Academic screen (academics.html)
         done = (g('_acadDoneKeysByBatch') || function () { return {}; })((att || []).filter(function (a) { return a.status === 'present'; }));
       } catch (e) {}
@@ -157,6 +158,18 @@
       var s = stuById[o.student_id];
       out.push(build({ kind: 'oto', date: String(o.session_date).slice(0, 10), startMin: st, dur: (en != null && en > st) ? en - st : (Number(o.duration_minutes) || 30), batch: b, oto: o, student: s || null, trainerId: o.trainer_id || b.trainer_id }, trName, studentsBy));
     });
+    // Approved trainer leave (trainer-availability.js, one query): the occurrence is not an active
+    // live class — no Join / attendance, and never an auto-created or re-synced Meet. Existing
+    // academic_live_classes rows are left untouched; a held (marked / completed) class stays.
+    if (out.length && window.TrainerAvailability) {
+      try {
+        var lv = await TrainerAvailability.load(sbc, { from: from, to: to, trainers: res[2].data || [] });
+        out = out.filter(function (o) {
+          var held = o.kind === 'oto' ? /^(completed|absent)$/i.test(String(o.oto && o.oto.status || '')) : !!marked[o.batch.name + '|' + o.date];
+          return !lv.suppress(o.trainerId, o.date, o.startMin, o.endMin, held);
+        });
+      } catch (e) {}
+    }
     out.sort(function (a, b) { return a.date === b.date ? (a.startMin - b.startMin) : a.date.localeCompare(b.date); });
     return out;
   }

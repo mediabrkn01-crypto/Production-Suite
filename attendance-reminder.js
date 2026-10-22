@@ -17,7 +17,8 @@
      done          attendance rows for (batch_name, session_date) — any status, so an all-absent
                    "class not held" save also counts · oto_sessions.status ≠ pending/scheduled
      not held      academic_live_classes.class_status = 'cancelled' · approved trainer leave
-                   (hr_leave_requests; a half day only covers its own half) · HR holidays
+                   (TrainerAvailability — trainer-availability.js; a half day only covers its own
+                   half; cancelled / edited leave recalculates on the next check) · HR holidays
      clock         erp_now() (database time) — never the device clock
      state         public.erp_notifications: ONE row per class (dedupe_key att:<class key>);
                    snooze_until = server time + 5 min; resolved_at when attendance is saved.
@@ -64,18 +65,12 @@
       db().from('batches').select('*').eq('status', 'active').eq('trainer_id', tr.id),
       db().from('oto_sessions').select('id,batch_id,student_id,trainer_id,session_number,session_date,start_time,end_time,duration_minutes,status')
         .eq('trainer_id', tr.id).gte('session_date', from).lte('session_date', today).in('status', ['pending', 'scheduled']).then(function (r) { return r; }, function () { return { data: [] }; }),
-      tr.hr_employee_id ? db().from('hr_leave_requests').select('start_date,end_date,leave_type,half_day_type,status').eq('employee_id', tr.hr_employee_id).eq('status', 'approved').lte('start_date', today).gte('end_date', from).then(function (r) { return r; }, function () { return { data: [] }; }) : { data: [] }
+      // approved trainer leave — the shared rule (trainer-availability.js), one query
+      tr.hr_employee_id && window.TrainerAvailability ? TrainerAvailability.load(db(), { from: from, to: today, trainers: [tr] }).then(function (r) { return r; }, function () { return null; }) : null
     ]);
     var batches = (res[0].data || []).filter(function (b) { return !b.deleted_at; });
-    var leaves = (res[2].data || []).filter(function (l) { return !/work from home/i.test(l.leave_type || ''); });
-    function onLeave(date, startMin) {
-      return leaves.some(function (l) {
-        var s = String(l.start_date).slice(0, 10), e = String(l.end_date || l.start_date).slice(0, 10);
-        if (date < s || date > e) return false;
-        if (!l.half_day_type) return true;
-        return l.half_day_type === 'HD-M' ? (startMin == null || startMin < 13 * 60) : (startMin == null || startMin >= 13 * 60);
-      });
-    }
+    var lvIdx = res[2];
+    function onLeave(date, startMin, endMin) { return !!(lvIdx && lvIdx.leaveFor(tr, date, startMin, endMin)); }
 
     var out = [];
     if (batches.length && typeof generateBatchOccurrences === 'function') {
@@ -90,7 +85,7 @@
         if (typeof _acadCapToRemaining === 'function') occ = _acadCapToRemaining(occ, b, doneBy[b.name], today);
         occ.forEach(function (o) {
           var dur = Number(b.class_duration_minutes) || 60, end = o.startTime != null ? o.startTime + dur : null;
-          if (o.date > today || !due(o.date, end) || marked.has(b.name + '|' + o.date) || onLeave(o.date, o.startTime)) return;
+          if (o.date > today || !due(o.date, end) || marked.has(b.name + '|' + o.date) || onLeave(o.date, o.startTime, end)) return;
           out.push({ key: 'att:class:' + b.id + ':' + o.date, liveKey: 'class:' + b.id + ':' + (o.postponed ? o.postponed.original_date : o.date),
             kind: 'class', batchId: b.id, batchName: b.name, title: b.name, date: o.date, start: o.startTime, end: end, postponed: !!o.postponed });
         });
@@ -112,7 +107,7 @@
         var date = String(o.session_date).slice(0, 10);
         // Academics holiday (all-department or Academics-scoped — same _acadHolidayFor the class
         // generator uses) → no 1:1 reminder either.
-        if (!due(date, en) || onLeave(date, st) || (typeof _acadHolidayFor === 'function' && _acadHolidayFor(date))) return;
+        if (!due(date, en) || onLeave(date, st, en) || (typeof _acadHolidayFor === 'function' && _acadHolidayFor(date))) return;
         out.push({ key: 'att:oto:' + o.id, liveKey: 'oto:' + o.id, kind: 'oto', otoId: o.id, batchId: o.batch_id, studentId: o.student_id, sessionNum: o.session_number,
           batchName: b.name, title: b.name + ' · 1:1 with ' + (sm[o.student_id] || 'student'), date: date, start: st, end: en });
       });

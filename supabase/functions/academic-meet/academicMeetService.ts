@@ -20,6 +20,7 @@ import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth
 import { GoogleApiError, loadOrganizer, googleConfig, runAs, currentActor } from "../_shared/google/googleAuthService.ts";
 import { ORG, actorForEmployee, actorForRow, actorForTrainer, employeeOfTrainer } from "./owners.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
+import { loadLeaveIndex } from "../_shared/trainer-availability.ts";
 import { addMember, conferenceFor, createSpace, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
 import { classify, calendarPause, pauseCalendar, clearPause, takeQueueLock, releaseQueueLock, RETRY, LIMIT_MSG, RATE_MSG, sleep } from "./syncGuard.ts";
 
@@ -449,6 +450,13 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
   const info = await resolveClass(key, hint);
   const existing = await getRow(key);
   if (existing?.class_status === "cancelled") throw new MeetError(409, "CANCELLED", "This class is cancelled.");
+  // Approved trainer leave covering this class → it is not expected to happen: no Meet is made.
+  // (Existing rows / historical Meet records are never touched here.)
+  if (info.trainerId) {
+    const { data: t } = await adminClient().from("trainers").select("id,hr_employee_id").eq("id", info.trainerId).maybeSingle();
+    const lv = t ? (await loadLeaveIndex(adminClient(), info.date, info.date, [t])).leaveFor(t.id, info.date, info.startMin, info.endMin) : null;
+    if (lv) throw new MeetError(409, "TRAINER_LEAVE", `The trainer is on approved leave for this class (${lv.start_date}${lv.end_date && lv.end_date !== lv.start_date ? " to " + lv.end_date : ""}) — no Meet link is created.`);
+  }
   if (!opts.fresh && existing?.google_calendar_event_id && existing.google_meet_url && existing.google_sync_status === "synced") {
     return { row: existing, already: true, notInvited: existing.not_invited || [] };
   }
