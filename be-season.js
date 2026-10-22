@@ -924,6 +924,9 @@
     var s = document.createElement('style'); s.id = 'bst-admin-css';
     s.textContent = [
       '.bsa{color:#e6e9f5;font-family:inherit;display:flex;flex-direction:column;gap:16px}',
+      // The admin mounts INTO the HR panel (#hr-sub-themes): HR hides panels with .hidden, which
+      // this display:flex would otherwise override — so the gallery leaked onto every HR tab.
+      '.bsa.hidden{display:none!important}',
       '.bsa *{box-sizing:border-box}',
       '.bsa-top{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}.bsa-top h2{margin:0;font-size:22px;font-weight:800;color:#fff}.bsa-top p{margin:4px 0 0;color:#8b93b8;font-size:12.5px}',
       '.bsa-btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e6e9f5;font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}',
