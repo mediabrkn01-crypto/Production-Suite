@@ -43,6 +43,9 @@ function doPost(e) {
       result = handleListFolder(data);
     } else if (action === 'uploadFolder') {
       result = handleFolderUpload(data);
+    } else if (String(action || '').indexOf('archive') === 0) {
+      // Monthly Work Archive — only the work-archive edge function holds ARCHIVE_KEY.
+      result = handleArchive_(action, data);
     } else {
       result = handleFileUpload(data);
     }
@@ -591,6 +594,113 @@ function handleListFolder(data) {
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// ============================================================
+// MONTHLY COMPLETED WORK ARCHIVE
+// Called only by the ERP's work-archive edge function (ERP sign-in + role checked there),
+// authorised here by the ARCHIVE_KEY Script Property. Builds:
+//   Broken English Work Archive / <Year> / <Month> / <Project> / deliverables
+// Drive deliverables → SHORTCUTS (originals are never moved, renamed or modified);
+// ERP-storage files → COPIES; an index Google Sheet in the month folder.
+// The archive folder is private — shared only with the people the ERP sends.
+// ============================================================
+const ARCHIVE_ROOT_NAME = 'Broken English Work Archive';
+
+function handleArchive_(action, data) {
+  const key = PropertiesService.getScriptProperties().getProperty('ARCHIVE_KEY');
+  if (!key || data.key !== key) return { success: false, error: 'Archive is not authorised on this script (ARCHIVE_KEY).' };
+  if (action === 'archivePing') return { success: true, account: Session.getEffectiveUser().getEmail() };
+  if (action === 'archiveFolders') return archiveFolders_(data);
+  if (action === 'archiveItems') return archiveItems_(data);
+  if (action === 'archiveIndex') return archiveIndex_(data);
+  if (action === 'archiveShare') return archiveShare_(data);
+  return { success: false, error: 'Unknown archive action.' };
+}
+function archFolder_(id) { try { const f = id ? DriveApp.getFolderById(id) : null; return f && !f.isTrashed() ? f : null; } catch (e) { return null; } }
+function archChild_(parent, name) { const it = parent.getFoldersByName(name); while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) return f; } return parent.createFolder(name); }
+function archName_(s) { return String(s || 'Untitled').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 180) || 'Untitled'; }
+
+// { ids:{root,year,month}, year:'2026', monthName:'10 - October' } → folder ids (created or reused)
+function archiveFolders_(data) {
+  const ids = data.ids || {};
+  let root = archFolder_(ids.root);
+  if (!root) { const it = DriveApp.getRootFolder().getFoldersByName(ARCHIVE_ROOT_NAME); root = null; while (it.hasNext() && !root) { const f = it.next(); if (!f.isTrashed()) root = f; } if (!root) root = DriveApp.createFolder(ARCHIVE_ROOT_NAME); }
+  const year = archFolder_(ids.year) || archChild_(root, String(data.year));
+  const month = archFolder_(ids.month) || archChild_(year, archName_(data.monthName));
+  return { success: true, root: root.getId(), year: year.getId(), month: month.getId(), url: month.getUrl() };
+}
+
+// { monthFolderId, projects:{key:{folderId,name}}, items:[{id,projectKey,kind,name,driveId,url}] }
+// Re-sent items are never duplicated: an existing file / shortcut of the same name in the
+// project folder is reused (covers a lost response after Drive already made it).
+function archiveItems_(data) {
+  const started = Date.now(), BUDGET = Math.min(Number(data.budgetMs) || 240000, 300000);
+  const month = DriveApp.getFolderById(data.monthFolderId);
+  const folders = {}, projects = {}, results = [];
+  const items = data.items || [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (Date.now() - started > BUDGET) break;          // rest stays pending — next call continues
+    try {
+      let pf = folders[it.projectKey];
+      if (!pf) {
+        const p = (data.projects || {})[it.projectKey] || {};
+        pf = archFolder_(p.folderId) || archChild_(month, archName_(p.name || it.projectKey));
+        folders[it.projectKey] = pf; projects[it.projectKey] = { folderId: pf.getId(), url: pf.getUrl() };
+      }
+      const name = archName_(it.name);
+      const ex = pf.getFilesByName(name);
+      let f = null;
+      while (ex.hasNext() && !f) { const x = ex.next(); if (!x.isTrashed()) f = x; }
+      if (!f) {
+        if (it.kind === 'drive_file' || it.kind === 'drive_folder') {
+          f = pf.createShortcut(it.driveId);   // a shortcut only — the original stays where it is
+          f.setName(name);                     // renames the shortcut, never the original
+        } else if (it.kind === 'storage') {
+          const resp = UrlFetchApp.fetch(it.url, { muteHttpExceptions: true, followRedirects: true });
+          if (resp.getResponseCode() >= 300) throw new Error('Could not download the file (HTTP ' + resp.getResponseCode() + ').');
+          f = pf.createFile(resp.getBlob().setName(name));
+        } else throw new Error('Nothing to archive for this item.');
+      }
+      results.push({ id: it.id, ok: true, driveId: f.getId(), url: f.getUrl() });
+    } catch (err) {
+      results.push({ id: it.id, ok: false, error: String(err && err.message || err).slice(0, 400) });
+    }
+  }
+  return { success: true, results: results, projects: projects };
+}
+
+// { monthFolderId, sheetId?, title, header:[...], rows:[[cell|{text,url}]] } → index Google Sheet
+function archiveIndex_(data) {
+  const folder = DriveApp.getFolderById(data.monthFolderId);
+  let ss = null;
+  if (data.sheetId) { try { if (!DriveApp.getFileById(data.sheetId).isTrashed()) ss = SpreadsheetApp.openById(data.sheetId); } catch (e) { ss = null; } }
+  if (!ss) { ss = SpreadsheetApp.create(data.title || 'Work Archive Index'); DriveApp.getFileById(ss.getId()).moveTo(folder); }
+  const sh = ss.getSheets()[0];
+  sh.clear(); sh.setName('Index');
+  const safe = function (v) { const t = v == null ? '' : String(v); return /^[=+\-@]/.test(t) ? "'" + t : t; };
+  const cell = function (c) {
+    if (c && typeof c === 'object') return c.url ? '=HYPERLINK("' + String(c.url).replace(/"/g, '%22') + '","' + String(c.text || c.url).replace(/"/g, '""') + '")' : safe(c.text);
+    return safe(c);
+  };
+  const values = [data.header].concat((data.rows || []).map(function (r) { return r.map(cell); }));
+  sh.getRange(1, 1, values.length, data.header.length).setValues(values);
+  sh.getRange(1, 1, 1, data.header.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  try { sh.autoResizeColumns(1, data.header.length); } catch (e) {}
+  return { success: true, sheetId: ss.getId(), url: ss.getUrl() };
+}
+
+// { folderId, emails:[...] } → viewers (no public link)
+function archiveShare_(data) {
+  const folder = DriveApp.getFolderById(data.folderId);
+  const out = [];
+  (data.emails || []).forEach(function (e) {
+    try { folder.addViewer(String(e).trim()); out.push({ email: e, ok: true }); }
+    catch (err) { out.push({ email: e, ok: false, error: String(err && err.message || err).slice(0, 200) }); }
+  });
+  return { success: true, results: out, url: folder.getUrl() };
 }
 
 // ── TEMP TEST — run manually to check folder access ─────────
