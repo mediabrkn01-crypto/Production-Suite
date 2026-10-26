@@ -8,14 +8,18 @@
    (ERP session + role checked there); Drive work is done by the existing Apps Script account.
    Nothing is shown as created unless the server returned the real folder.
 
-   BEArchive.mount(buttonHost)   adds the button when the signed-in person is allowed
+   BEArchive.mount(buttonHost)   adds the button — "Create Monthly Archive" for leadership / Department
+                                 Heads (their scope), "My Monthly Work" for every other employee
    BEArchive.open()
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
   if (window.BEArchive) return;
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  var S = { scope: null, month: null, preview: null, archive: null, running: false, ov: null, stop: false };
+  var S = { scope: null, scopeKey: null, month: null, preview: null, archive: null, running: false, ov: null, stop: false };
+  var DIVL = { education: 'Academics', production: 'Media / Production', sales: 'Sales', hr: 'HR', accounts: 'Accounts', management: 'Management', other: 'Administration' };
+  function viewOnly() { return !(S.scope && S.scope.can_create); }
+  function scopeName(k) { var x = ((S.scope && S.scope.scopes) || []).find(function (z) { return z.key === k; }); return x ? x.label : (k === 'org' ? 'Whole organisation' : k); }
 
   function B() { return window.BESession || {}; }
   function esc(s) { return String(s == null ? '' : s).replace(/[<>&"']/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -84,7 +88,7 @@
     if (S.ov && document.body.contains(S.ov)) return S.ov;
     css();
     var ov = document.createElement('div'); ov.className = 'bea-ov';
-    ov.innerHTML = '<div class="bea-m" role="dialog" aria-modal="true" aria-label="Monthly Work Archive"><div class="bea-h"><div><h3>Monthly Work Archive</h3><p>All completed Media work of a month in one private Google Drive folder, with an index Sheet.</p></div><button class="bea-x" data-x aria-label="Close">✕</button></div><div class="bea-b" data-body></div><div class="bea-f" data-foot></div></div>';
+    ov.innerHTML = '<div class="bea-m" role="dialog" aria-modal="true" aria-label="Monthly Work Archive"><div class="bea-h"><div><h3>' + (viewOnly() ? 'My Monthly Work' : 'Monthly Work Archive') + '</h3><p>' + (viewOnly() ? 'Your completed work of a month, with archive links once it has been archived.' : 'Completed work of a month, from every department in your scope, in one private Google Drive folder with an index Sheet.') + '</p></div><button class="bea-x" data-x aria-label="Close">✕</button></div><div class="bea-b" data-body></div><div class="bea-f" data-foot></div></div>';
     ov.addEventListener('mousedown', function (e) { if (e.target === ov && !S.running) close(); });
     ov.querySelector('[data-x]').onclick = function () { close(); };
     document.body.appendChild(ov); S.ov = ov;
@@ -105,19 +109,20 @@
     var years = []; for (var k = thisY; k >= Math.min(2025, y); k--) years.push(k);
     var ov = paint(
       '<div class="bea-row"><span class="bea-l">Month</span><select class="bea-sel" data-m>' + MONTHS.map(function (n, i) { var v = String(i + 1).padStart(2, '0'); return '<option value="' + v + '"' + (cur.slice(5) === v ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
-        '<span class="bea-l">Year</span><select class="bea-sel" data-y>' + years.map(function (v) { return '<option' + (v === y ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' +
+        '<span class="bea-l">Year</span><select class="bea-sel" data-y>' + years.map(function (v) { return '<option' + (v === y ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select>' +
+        (!viewOnly() && S.scope.scopes.length > 1 ? '<span class="bea-l">Scope</span><select class="bea-sel" data-s>' + S.scope.scopes.map(function (z) { return '<option value="' + esc(z.key) + '"' + (z.key === S.scopeKey ? ' selected' : '') + '>' + esc(z.label) + '</option>'; }).join('') + '</select>' : '') + '</div>' +
         '<div data-hist class="bea-note" style="margin-top:16px">Loading earlier archives…</div>',
-      '<button class="bea-btn ghost" data-x2>Cancel</button><button class="bea-btn pri" data-go>Preview archive</button>');
+      '<button class="bea-btn ghost" data-x2>Cancel</button><button class="bea-btn pri" data-go>' + (viewOnly() ? 'Show my work' : 'Preview archive') + '</button>');
     ov.querySelector('[data-x2]').onclick = close;
-    ov.querySelector('[data-go]').onclick = function () { S.month = ov.querySelector('[data-y]').value + '-' + ov.querySelector('[data-m]').value; previewStep(); };
+    ov.querySelector('[data-go]').onclick = function () { var sc = ov.querySelector('[data-s]'); if (sc) S.scopeKey = sc.value; S.month = ov.querySelector('[data-y]').value + '-' + ov.querySelector('[data-m]').value; previewStep(); };
     try {
       var l = await api('list'), h = ov.querySelector('[data-hist]'); if (!h) return;
       h.innerHTML = (l.archives || []).length ? '<div class="bea-l" style="margin-bottom:4px">Earlier archives</div>' + l.archives.map(function (a) {
         var st = { completed: ['Completed', '#22c55e'], partial: ['Some files failed', '#fbbf24'], running: ['In progress', '#38bdf8'], draft: ['Not started', '#a5adcf'], failed: ['Failed', '#f87171'] }[a.status] || [a.status, '#a5adcf'];
-        return '<div class="bea-hist"><span><b style="color:#fff">' + esc(mLabel(a.month)) + '</b> <small style="color:#6b74a0">· ' + esc(a.created_by || '') + ' · ' + esc(fmtTs(a.updated_at || a.created_at)) + '</small></span><span style="display:flex;gap:8px;align-items:center"><span class="bea-chip" style="color:' + st[1] + ';border-color:' + st[1] + '55">' + st[0] + '</span>' +
-          (a.folder_url ? '<a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" class="bea-btn sm ghost">Open folder</a>' : '') + '<button class="bea-btn sm" data-open="' + esc(a.month) + '">View</button></span></div>';
-      }).join('') : 'No archives yet. The first one creates the “Broken English Work Archive” folder in Google Drive.';
-      h.querySelectorAll('[data-open]').forEach(function (b) { b.onclick = function () { S.month = b.dataset.open; previewStep(); }; });
+        return '<div class="bea-hist"><span><b style="color:#fff">' + esc(mLabel(a.month)) + '</b> <small style="color:#c7cbe0">· ' + esc(a.scope_label || 'Whole organisation') + '</small> <small style="color:#6b74a0">· ' + esc(a.created_by || '') + ' · ' + esc(fmtTs(a.updated_at || a.created_at)) + '</small></span><span style="display:flex;gap:8px;align-items:center"><span class="bea-chip" style="color:' + st[1] + ';border-color:' + st[1] + '55">' + st[0] + '</span>' +
+          (a.folder_url ? '<a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" class="bea-btn sm ghost">Open folder</a>' : '') + (viewOnly() ? '' : '<button class="bea-btn sm" data-open="' + esc(a.month) + '" data-sk="' + esc(a.scope_key || 'org') + '">View</button>') + '</span></div>';
+      }).join('') : (viewOnly() ? 'None of your work has been archived yet.' : 'No archives yet. The first one creates the “Broken English Work Archive” folder in Google Drive.');
+      h.querySelectorAll('[data-open]').forEach(function (b) { b.onclick = function () { S.month = b.dataset.open; S.scopeKey = b.dataset.sk; previewStep(); }; });
     } catch (e) { var hh = ov.querySelector('[data-hist]'); if (hh) { hh.className = 'bea-note bea-err'; hh.textContent = e.message; } }
   }
 
@@ -125,12 +130,12 @@
   async function previewStep() {
     paint('<div class="bea-note">Collecting completed work for ' + esc(mLabel(S.month)) + '…</div>', '');
     var p;
-    try { p = await api('preview', { month: S.month }); } catch (e) { paint('<div class="bea-note bea-err">' + esc(e.message) + '</div>', '<button class="bea-btn ghost" data-back>Back</button>'); return bindBack(); }
+    try { p = await api('preview', { month: S.month, scope: S.scopeKey }); } catch (e) { paint('<div class="bea-note bea-err">' + esc(e.message) + '</div>', '<button class="bea-btn ghost" data-back>Back</button>'); return bindBack(); }
     S.preview = p; S.archive = p.archive;
     var t = p.totals, a = p.archive;
     var exists = a && a.month_folder_id;
-    var head = '<div class="bea-row" style="justify-content:space-between"><div><div class="bea-l">Preview</div><div style="font-size:18px;font-weight:800;color:#fff">' + esc(mLabel(S.month)) + '</div></div>' +
-      (exists ? '<div class="bea-note" style="margin:0">Archive exists (' + esc(a.status) + ') — files already archived are kept and <b>not</b> sent again; only new or failed work is added.' + (a.folder_url ? ' <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:#ffb37a">Open folder</a>' : '') + '</div>' : '') + '</div>';
+    var head = '<div class="bea-row" style="justify-content:space-between"><div><div class="bea-l">' + (viewOnly() ? 'My completed work' : 'Preview · ' + esc(scopeName(S.scopeKey))) + '</div><div style="font-size:18px;font-weight:800;color:#fff">' + esc(mLabel(S.month)) + '</div></div>' +
+      (viewOnly() ? (a && a.folder_url ? '<div class="bea-note" style="margin:0">Archived in Google Drive. <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:#ffb37a">Open folder</a> — opens if the folder has been shared with you.</div>' : '') : exists ? '<div class="bea-note" style="margin:0">Archive exists (' + esc(a.status) + ') — files already archived are kept and <b>not</b> sent again; only new or failed work is added.' + (a.folder_url ? ' <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:#ffb37a">Open folder</a>' : '') + '</div>' : '') + '</div>';
     var kpis = '<div class="bea-kpis"><div class="bea-kpi"><b>' + t.projects + '</b><span>Completed projects</span></div><div class="bea-kpi"><b>' + t.files + '</b><span>Output files</span></div>' +
       '<div class="bea-kpi' + (t.projects_missing ? ' bad' : '') + '"><b>' + t.projects_missing + '</b><span>Projects with missing files</span></div>' +
       (t.no_output ? '<div class="bea-kpi"><b>' + t.no_output + '</b><span>No-output work (listed only)</span></div>' : '') +
@@ -139,14 +144,17 @@
     var list = p.projects.length ? p.projects.map(function (pr) {
       var cats = Array.from(new Set(pr.deliverables.map(function (d) { return d.category; }))).join(', ');
       var who = Array.from(new Set(pr.deliverables.map(function (d) { return d.creator; }))).join(', ');
+      var deps = Array.from(new Set(pr.deliverables.map(function (d) { return DIVL[d.department] || d.department; }).filter(Boolean)));
       return '<div class="bea-p' + (pr.missing ? ' miss' : '') + '"><div class="bea-pt">' + esc(pr.title) + (pr.is_project ? ' <span class="bea-chip" style="color:#c4b5fd;border-color:#c4b5fd55">PROJECT</span>' : '') +
+        deps.map(function (d) { return ' <span class="bea-chip" style="color:#7dd3fc;border-color:#7dd3fc55">' + esc(d) + '</span>'; }).join('') +
         (pr.missing ? ' <span class="bea-chip" style="color:#f87171;border-color:#f8717155">' + pr.missing + ' MISSING</span>' : '') + '</div>' +
         '<div class="bea-ps">' + esc(cats) + ' · ' + esc(who) + ' · completed ' + esc(fmtD(pr.completed_on)) + ' · ' + pr.deliverables.length + ' deliverable' + (pr.deliverables.length === 1 ? '' : 's') + '</div><div style="margin-top:6px">' +
         pr.deliverables.map(function (d) {
-          return '<div class="bea-d"><div class="bea-dn">' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener" style="color:#d5d9ee">' + esc(d.name) + '</a>' : esc(d.name)) + '<small>' + esc(KIND[d.kind] || d.kind) + ' · ' + esc(d.category) + ' · ' + esc(d.creator) + ' · ' + esc(fmtD(d.completed_on)) + (d.approved ? '' : ' · awaiting approval') + '</small></div>' + chip(d) + '</div>';
+          return '<div class="bea-d"><div class="bea-dn">' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener" style="color:#d5d9ee">' + esc(d.name) + '</a>' : esc(d.name)) + '<small>' + esc(KIND[d.kind] || d.kind) + ' · ' + esc(d.category) + ' · ' + esc(d.creator) + ' · ' + esc(fmtD(d.completed_on)) + (d.approved ? '' : ' · awaiting approval') + '</small></div><span style="display:flex;gap:6px;align-items:center">' + (d.drive_url ? '<a class="bea-btn sm ghost" href="' + esc(d.drive_url) + '" target="_blank" rel="noopener">Archive link</a>' : '') + (viewOnly() && d.status === 'pending' ? '<span class="bea-chip" style="color:#a5adcf;border-color:#a5adcf55">Not archived yet</span>' : chip(d)) + '</span></div>';
         }).join('') + '</div></div>';
     }).join('') : '<div class="bea-note">No completed work in ' + esc(mLabel(S.month)) + '.</div>';
     var toDo = t.pending + t.failed;
+    if (viewOnly()) { paint(head + kpis + list, '<button class="bea-btn ghost" data-back>Change month</button>'); return bindBack(); }
     var ov = paint(head + kpis + miss + list,
       '<button class="bea-btn ghost" data-back>Change month</button>' +
       (exists && a.folder_url && !toDo ? '<button class="bea-btn" data-res>Folder &amp; sharing</button>' : '') +
@@ -171,7 +179,7 @@
     };
     try {
       prog({}, 'Preparing Google Drive folders…');
-      var c = await api('create', { month: S.month });
+      var c = await api('create', { month: S.month, scope: S.scopeKey });
       S.archive = c.archive;
       var t = c.totals;
       prog(t, 'Archiving files…');
@@ -195,7 +203,7 @@
 
   // ── step 4: result + share ───────────────────────────────────────────────
   async function resultStep(a, data) {
-    if (!data) { try { data = await api('get', { month: a.month }); a = data.archive || a; } catch (e) { data = { totals: a.totals || {}, projects: [] }; } }
+    if (!data) { try { data = await api('get', { month: a.month, scope: a.scope_key || S.scopeKey }); a = data.archive || a; } catch (e) { data = { totals: a.totals || {}, projects: [] }; } }
     var t = data.totals || {}, ok = a.status === 'completed', failedItems = [];
     (data.projects || []).forEach(function (p) { p.deliverables.forEach(function (d) { if (d.status === 'failed') failedItems.push({ p: p.title, d: d }); }); });
     var rec = (S.scope && S.scope.recipients) || [];
@@ -203,7 +211,7 @@
     var sharedOk = {}; shared.forEach(function (s) { if (s.ok) sharedOk[String(s.email).toLowerCase()] = s; });
     var ov = paint(
       '<div class="bea-note" style="' + (ok ? 'border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.06)' : 'border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)') + '"><b style="color:' + (ok ? '#86efac' : '#fde68a') + '">' +
-        (ok ? 'Archive created for ' + esc(mLabel(a.month)) : 'Archive created for ' + esc(mLabel(a.month)) + ' — ' + failedItems.length + ' file(s) failed') + '</b><br>' +
+        (ok ? 'Archive created for ' + esc(mLabel(a.month)) : 'Archive created for ' + esc(mLabel(a.month)) + ' — ' + failedItems.length + ' file(s) failed') + ' · ' + esc(scopeName(a.scope_key || S.scopeKey)) + '</b><br>' +
         (t.done || 0) + ' file' + ((t.done || 0) === 1 ? '' : 's') + ' archived across ' + (t.projects || 0) + ' project' + ((t.projects || 0) === 1 ? '' : 's') + (t.missing ? ' · ' + t.missing + ' missing (listed in the index)' : '') + (t.links ? ' · ' + t.links + ' link(s) listed' : '') + '.</div>' +
       '<div class="bea-l" style="margin-top:16px">Google Drive folder</div><div class="bea-link"><input readonly value="' + esc(a.folder_url || '') + '" data-url><button class="bea-btn sm" data-copy>Copy link</button><a class="bea-btn sm ghost" href="' + esc(a.folder_url || '#') + '" target="_blank" rel="noopener">Open</a>' +
         (a.sheet_url ? '<a class="bea-btn sm ghost" href="' + esc(a.sheet_url) + '" target="_blank" rel="noopener">Index Sheet</a>' : '') + '</div>' +
@@ -240,8 +248,8 @@
 
   async function open() {
     try { if (!S.scope) S.scope = await api('scope'); } catch (e) { toast('error', e.message); return; }
-    if (!S.scope.allowed) { toast('error', 'Only Co-Founders, management or the Media Head can create the monthly archive.'); return; }
-    if (!S.scope.configured) { paint('<div class="bea-note bea-err"><b>Monthly archive is not set up yet.</b><br>The server key (WORK_ARCHIVE_KEY) is missing.</div>', '<button class="bea-btn ghost" data-close>Close</button>'); S.ov.querySelector('[data-close]').onclick = close; return; }
+    if (!S.scopeKey) S.scopeKey = (S.scope.scopes[0] || {}).key || 'self';
+    if (!viewOnly() && !S.scope.configured) { paint('<div class="bea-note bea-err"><b>Monthly archive is not set up yet.</b><br>The server key (WORK_ARCHIVE_KEY) is missing.</div>', '<button class="bea-btn ghost" data-close>Close</button>'); S.ov.querySelector('[data-close]').onclick = close; return; }
     S.month = S.month || istMonth();
     if (S.running) return;   // a running archive keeps its own window
     pickStep();
@@ -251,12 +259,12 @@
   async function mount(host) {
     if (!host || host.querySelector('.bea-btn') || S.mounting) return;
     S.mounting = true;
-    try { S.scope = await api('scope'); } catch (_) { setTimeout(function () { S.mounting = false; }, 30000); return; }
+    try { if (!S.scope) S.scope = await api('scope'); } catch (_) { setTimeout(function () { S.mounting = false; }, 30000); return; }
     S.mounting = false;
-    if (!S.scope.allowed || host.querySelector('.bea-btn')) return;
+    if (host.querySelector('.bea-btn')) return;
     css();
     var b = document.createElement('button'); b.type = 'button'; b.className = 'bea-btn';
-    b.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Create Monthly Archive';
+    b.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>' + (viewOnly() ? 'My Monthly Work' : 'Create Monthly Archive');
     b.onclick = open;
     host.appendChild(b);
   }

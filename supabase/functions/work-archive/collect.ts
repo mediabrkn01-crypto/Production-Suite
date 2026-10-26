@@ -45,22 +45,34 @@ export async function keyOf(url: string): Promise<string> {
   return Array.from(new Uint8Array(d)).slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const lc = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
 export interface ArchiveItem {
   assignment_id: number; project_key: string; project_title: string; category: string; creator: string;
+  department: string; departments: string[]; emails: string[];
   completed_on: string | null; deliverable_name: string; source_url: string | null; file_key: string;
   kind: string; status: string; drive_id?: string; topic: string; approved: boolean;
 }
 
-/** Completed media work of `month`, one entry per deliverable, grouped by project id. */
-export async function collect(rows: Row[], projects: Record<string, Row>, month: string) {
+/** Completed work of `month` from EVERY department (Media pipeline + central Work Assignment),
+ *  one entry per deliverable, grouped by project id. `members` = active team members per
+ *  assignment id (team work belongs to every member's department and shows every name). */
+export async function collect(rows: Row[], projects: Record<string, Row>, month: string, members: Record<string, Row[]> = {}) {
   const items: ArchiveItem[] = [];
   for (const t of rows) {
-    if (t.status !== "Completed" || t.scope === "org") continue;
+    if (t.status !== "Completed") continue;
     const day = completedOn(t);
     if (!day || day.slice(0, 7) !== month) continue;
     const pkey = t.project_id ? String(t.project_id) : "task-" + t.id;
     const ptitle = (t.project_id && projects[t.project_id]?.title) || t.topic || "Untitled work";
-    const base = { assignment_id: Number(t.id), project_key: pkey, project_title: String(ptitle), category: t.type || "—", creator: t.assigned_to || t.employee_email || "—", completed_on: day, topic: t.topic || "", approved: !!t.manager_approved };
+    const mem = (members[String(t.id)] || []).filter((m) => !m.removed_at);
+    const team = t.assignment_type === "team" && mem.length > 0;
+    // Media pipeline rows (scope media) without a department are Media / Production work.
+    const department = String(t.department || (t.scope === "org" ? "other" : "production"));
+    const departments = [...new Set([department, ...mem.map((m) => String(m.department || "")).filter(Boolean)])];
+    const emails = [...new Set([lc(t.employee_email), ...mem.map((m) => lc(m.employee_email))].filter(Boolean))];
+    const creator = team ? mem.map((m) => m.employee_name || m.employee_email).join(", ") : (t.assigned_to || t.employee_email || "—");
+    const base = { assignment_id: Number(t.id), project_key: pkey, project_title: String(ptitle), category: t.type || "—", creator, department, departments, emails, completed_on: day, topic: t.topic || "", approved: !!t.manager_approved };
     const assets = parseAssets(t.asset_link);
     const files = assets.filter((a) => a.name !== "__folder__");
     // A folder delivery lists its files too — archive the files; the folder only when it's all there is.
@@ -86,7 +98,7 @@ export function summarize(items: Row[]) {
   const by: Record<string, Row> = {};
   for (const it of items) {
     const p = by[it.project_key] || (by[it.project_key] = { key: it.project_key, title: it.project_title, is_project: !String(it.project_key).startsWith("task-"), deliverables: [], missing: 0, files: 0, completed_on: it.completed_on });
-    p.deliverables.push({ id: it.id || null, assignment_id: it.assignment_id, name: it.deliverable_name, category: it.category, creator: it.creator, completed_on: it.completed_on,
+    p.deliverables.push({ id: it.id || null, assignment_id: it.assignment_id, name: it.deliverable_name, category: it.category, creator: it.creator, department: it.department || null, completed_on: it.completed_on,
       kind: it.kind, status: it.status, url: it.source_url, drive_url: it.drive_url || null, error: it.error || null, approved: it.approved });
     if (it.kind === "missing") p.missing++;
     if (["drive_file", "drive_folder", "storage"].includes(it.kind)) p.files++;

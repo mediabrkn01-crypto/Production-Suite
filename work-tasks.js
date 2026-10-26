@@ -787,7 +787,7 @@
         ? function (a, b) { return String(b.rejected_at || b.id).localeCompare(String(a.rejected_at || a.id)); }
         : function (a, b) { return (isOverdue(b) - isOverdue(a)) || String(a.date || '9').localeCompare(String(b.date || '9')); });
       var tabs = [['open', 'To do'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['all', 'All'], ['rejected', 'Rejected Works']];
-      el.innerHTML = '<div class="bw-head"><div><h2>' + esc(o.title || 'My Assigned Tasks') + '</h2><p>Work assigned to you by your manager or department head. Updates appear here instantly.</p></div></div>' +
+      el.innerHTML = '<div class="bw-head"><div><h2>' + esc(o.title || 'My Assigned Tasks') + '</h2><p>Work assigned to you by your manager or department head. Updates appear here instantly.</p></div><span data-archive-host></span></div>' +
         '<div class="bw-bar"><div class="bw-tabs" role="tablist">' + tabs.map(function (x) { return '<button type="button" data-f="' + x[0] + '" class="' + (S.f === x[0] ? 'on' : '') + '">' + x[1] + '<i>' + (c[x[0]] || 0) + '</i></button>'; }).join('') + '</div></div>' +
         (list.length ? '<div class="bw-cards">' + list.map(function (t) {
           var isNew = isOpen(t) && !S.known.has(String(t.id));
@@ -803,6 +803,7 @@
         }).join('') + '</div>'
         : '<div class="bw-empty"><b>' + (S.f === 'open' ? 'Nothing to do right now' : S.f === 'rejected' ? 'No rejected works' : 'No tasks here') + '</b>' + (S.f === 'open' ? 'New work from your manager shows up here instantly.' : S.f === 'rejected' ? 'Nothing you submitted has been rejected.' : '') + '</div>');
       el.querySelectorAll('[data-f]').forEach(function (b) { b.onclick = function () { S.f = b.dataset.f; render(); }; });
+      if (window.BEArchive) BEArchive.mount(el.querySelector('[data-archive-host]'));   // My Monthly Work / Monthly Archive
       el.querySelectorAll('.bw-card').forEach(function (b) { b.onclick = function () { openTask(S.rows.find(function (t) { return String(t.id) === b.dataset.id; })); }; });
     }
     window.BEWork.openTask = async function (id) {
@@ -960,7 +961,7 @@
       var tabs = [['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled / Rejected'], ['all', 'All']];
       el.innerHTML =
         '<div class="bw-head"><div><h2>' + esc(o.title || 'Work Assignment') + '</h2><p>' + esc(deps ? 'Assign and track work for ' + deps.map(function (d) { return DIV[d]; }).join(', ') + '.' : 'Assign and track work for every department — Media, Academics, Sales, HR and Management.') + '</p></div>' +
-          '<button type="button" class="bw-new" data-new><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Assign work</button></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span data-archive-host></span><button type="button" class="bw-new" data-new><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Assign work</button></div></div>' +
         (S.cols ? '' : '<div class="bw-note">Run <b>20261010_work_assignments.sql</b> in Supabase to enable departments, history and progress. Assigning still works.</div>') +
         stuckList.map(function (x) { return '<div class="bw-warn">⚠️ <span><b>' + esc(x.e.full_name) + '</b> is ' + esc(x.e.employment_status) + ' and has ' + x.n + ' active task' + (x.n === 1 ? '' : 's') + '.</span><button class="bw-btn" data-bulk="' + esc(x.e.id) + '">Reassign tasks</button></div>'; }).join('') +
         '<div class="bw-kpis">' +
@@ -1006,6 +1007,7 @@
           : '<div class="bw-list"><div class="bw-empty"><b>No tasks match</b>Try another tab or filter, or assign new work.</div></div>');
       // wire
       el.querySelector('[data-new]').onclick = function () { openForm(null); };
+      if (window.BEArchive) BEArchive.mount(el.querySelector('[data-archive-host]'));   // Monthly Work Archive (scope from the server)
       el.querySelectorAll('[data-tab]').forEach(function (b) { b.onclick = function () { S.tab = b.dataset.tab; render(); }; });
       var qi = el.querySelector('[data-q]'); qi.oninput = function () { S.q = qi.value; var pos = qi.selectionStart; render(); var n = el.querySelector('[data-q]'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (_) {} };
       [['dep', 'dep'], ['emp', 'emp'], ['pri', 'pri'], ['month', 'month'], ['from', 'from'], ['to', 'to']].forEach(function (p) { var s = el.querySelector('[data-' + p[0] + ']'); if (s) s.onchange = function () { S[p[1]] = s.value; render(); }; });
