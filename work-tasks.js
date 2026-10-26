@@ -665,6 +665,7 @@
         (typeof t.progress === 'number' && t.progress > 0 && t.status !== 'Completed' ? '<div class="bw-f"><span class="bw-l">Progress · ' + t.progress + '%</span><div class="bw-prog"><i style="width:' + t.progress + '%"></i></div></div>' : '') +
         '<div class="bw-f"><span class="bw-l">Instructions</span><div class="bw-desc">' + (t.description ? esc(t.description) : '<span style="color:#5b638a">No instructions added.</span>') + '</div></div>' +
         (t.rework_reason && t.status === 'Rework Required' ? '<div class="bw-warn"><b>Rework needed:</b> ' + esc(t.rework_reason) + '</div>' : '') +
+        (t.status === 'Rejected' ? '<div class="bw-warn" style="border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)"><b style="color:#fca5a5">Rejected</b>' + (t.rejected_by ? ' by ' + esc(t.rejected_by) : '') + (t.rejected_at ? ' · ' + esc(fmtTs(t.rejected_at)) : '') + '<br>' + esc(t.rejection_reason || 'No reason recorded') + '</div>' : '') +
         ((refs.length || t.reference_link) ? '<div class="bw-f"><span class="bw-l">Reference files &amp; links</span><div class="bw-files">' +
           refs.map(function (r) { return '<div class="bw-file"><span class="bw-fic">' + IC_FILE + '</span><span>' + esc(r.name) + '</span><a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open</a></div>'; }).join('') +
           (t.reference_link ? '<div class="bw-file"><span class="bw-fic ln">' + IC_LINK + '</span><span>' + esc(t.reference_link) + '</span><a href="' + esc(t.reference_link) + '" target="_blank" rel="noopener">Open</a></div>' : '') + '</div></div>' : '') +
@@ -704,6 +705,7 @@
       case 'update': return 'Progress update' + (h.progress != null ? ' · ' + h.progress + '%' : '');
       case 'submitted': return h.team ? 'Final team output submitted' : 'Marked completed';
       case 'rework': return 'Sent back for rework' + (h.output && parseOutput(h.output.asset_link).length ? ' — previous delivery kept' : '');
+      case 'rejected': return 'Rejected' + (h.output && parseOutput(h.output.asset_link).length ? ' — submission kept' : '');
       case 'cancelled': return 'Cancelled';
       default: return h.action || 'Update';
     }
@@ -771,17 +773,20 @@
       render();
     }
     function counts() {
-      var c = { open: 0, pending: 0, progress: 0, rework: 0, overdue: 0, completed: 0, all: S.rows.length };
-      S.rows.forEach(function (t) { var k = state(t); if (isOpen(t)) c.open++; if (c[k] != null) c[k]++; if (isOverdue(t)) c.overdue++; });
+      var c = { open: 0, pending: 0, progress: 0, rework: 0, overdue: 0, completed: 0, rejected: 0, all: 0 };
+      S.rows.forEach(function (t) { var k = state(t); if (isOpen(t)) c.open++; if (c[k] != null) c[k]++; if (isOverdue(t)) c.overdue++; if (k !== 'rejected') c.all++; });
       return c;
     }
     function render() {
       var c = counts();
       var list = S.rows.filter(function (t) {
         var k = state(t);
-        return S.f === 'all' || (S.f === 'open' && isOpen(t)) || (S.f === 'overdue' && isOverdue(t)) || S.f === k;
-      }).sort(function (a, b) { return (isOverdue(b) - isOverdue(a)) || String(a.date || '9').localeCompare(String(b.date || '9')); });
-      var tabs = [['open', 'To do'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['all', 'All']];
+        // Rejected submissions only ever show under Rejected Works (reference, read-only).
+        return (S.f === 'all' && k !== 'rejected') || (S.f === 'open' && isOpen(t)) || (S.f === 'overdue' && isOverdue(t)) || S.f === k;
+      }).sort(S.f === 'rejected'
+        ? function (a, b) { return String(b.rejected_at || b.id).localeCompare(String(a.rejected_at || a.id)); }
+        : function (a, b) { return (isOverdue(b) - isOverdue(a)) || String(a.date || '9').localeCompare(String(b.date || '9')); });
+      var tabs = [['open', 'To do'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['all', 'All'], ['rejected', 'Rejected Works']];
       el.innerHTML = '<div class="bw-head"><div><h2>' + esc(o.title || 'My Assigned Tasks') + '</h2><p>Work assigned to you by your manager or department head. Updates appear here instantly.</p></div></div>' +
         '<div class="bw-bar"><div class="bw-tabs" role="tablist">' + tabs.map(function (x) { return '<button type="button" data-f="' + x[0] + '" class="' + (S.f === x[0] ? 'on' : '') + '">' + x[1] + '<i>' + (c[x[0]] || 0) + '</i></button>'; }).join('') + '</div></div>' +
         (list.length ? '<div class="bw-cards">' + list.map(function (t) {
@@ -791,9 +796,12 @@
             (isTeam(t) ? '<div class="bw-tm">With ' + esc(joinNames(teamNames(S.mem[String(t.id)], me)) || 'your team') + '</div>' : '') +
             '<div class="bw-card-m">' + stPill(t) + priPill(t.priority) + (t.type ? '<span class="bw-pri">' + esc(t.type) + '</span>' : '') + '</div>' +
             (t.progress > 0 && isOpen(t) ? '<div class="bw-prog"><i style="width:' + t.progress + '%"></i></div>' : '') +
-            '<div class="bw-card-f"><span class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</span><span>From ' + esc(t.assigned_by || '—') + '</span></div></button>';
+            (state(t) === 'rejected' ? '<p style="color:#fca5a5">' + esc(t.rejection_reason || 'No reason recorded') + '</p>' : '') +
+            '<div class="bw-card-f">' + (state(t) === 'rejected'
+              ? '<span>Rejected ' + esc(t.rejected_at ? fmtD(fmtIso(t.rejected_at)) : '') + '</span><span>By ' + esc(t.rejected_by || '—') + '</span>'
+              : '<span class="' + (isOverdue(t) ? 'bw-due od' : '') + '">' + esc(dueText(t)) + '</span><span>From ' + esc(t.assigned_by || '—') + '</span>') + '</div></button>';
         }).join('') + '</div>'
-        : '<div class="bw-empty"><b>' + (S.f === 'open' ? 'Nothing to do right now' : 'No tasks here') + '</b>' + (S.f === 'open' ? 'New work from your manager shows up here instantly.' : '') + '</div>');
+        : '<div class="bw-empty"><b>' + (S.f === 'open' ? 'Nothing to do right now' : S.f === 'rejected' ? 'No rejected works' : 'No tasks here') + '</b>' + (S.f === 'open' ? 'New work from your manager shows up here instantly.' : S.f === 'rejected' ? 'Nothing you submitted has been rejected.' : '') + '</div>');
       el.querySelectorAll('[data-f]').forEach(function (b) { b.onclick = function () { S.f = b.dataset.f; render(); }; });
       el.querySelectorAll('.bw-card').forEach(function (b) { b.onclick = function () { openTask(S.rows.find(function (t) { return String(t.id) === b.dataset.id; })); }; });
     }
@@ -949,7 +957,7 @@
       var empOpts = {}; S.rows.forEach(function (t) { if (t.employee_email) empOpts[lc(t.employee_email)] = t.assigned_to || t.employee_email;
         if (isTeam(t)) activeMembers(S.mem[String(t.id)]).forEach(function (m) { empOpts[lc(m.employee_email)] = m.employee_name || m.employee_email; }); });
       var months = {}; S.rows.forEach(function (t) { var m = String(t.assigned_date || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) months[m] = 1; });
-      var tabs = [['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled'], ['all', 'All']];
+      var tabs = [['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled / Rejected'], ['all', 'All']];
       el.innerHTML =
         '<div class="bw-head"><div><h2>' + esc(o.title || 'Work Assignment') + '</h2><p>' + esc(deps ? 'Assign and track work for ' + deps.map(function (d) { return DIV[d]; }).join(', ') + '.' : 'Assign and track work for every department — Media, Academics, Sales, HR and Management.') + '</p></div>' +
           '<button type="button" class="bw-new" data-new><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Assign work</button></div>' +
@@ -1016,12 +1024,15 @@
     }
     async function view(id) {
       var t = rowById(id); if (!t) return;
-      var open = isOpen(t), done = t.status === 'Completed', team = isTeam(t), mem = S.mem[String(t.id)] || [];
+      // A rejected submission can be reopened through the same authorised rework action — the
+      // rejected delivery is kept as a version in history and the task returns to Rework Required.
+      var rej = t.status === 'Rejected';
+      var open = isOpen(t), done = t.status === 'Completed' || rej, team = isTeam(t), mem = S.mem[String(t.id)] || [];
       var actorEmail = lc((o.actor && o.actor.email) || '');
       var teamOpts = { manage: open, canPost: true, me: actorEmail, db: db };
       var teamBlock = team ? teamHTML(t, mem, await loadActivity(db, t.id), teamOpts) : '';
       var acts = (open ? '<button class="bw-btn red" data-a="cancel">Cancel task</button>' + (team ? '' : '<button class="bw-btn" data-a="re">Reassign</button>') + '<button class="bw-btn pri" data-a="edit">Edit</button>' : '') +
-        (done ? '<button class="bw-btn" data-a="rework">Send back for rework</button>' : '');
+        (done ? '<button class="bw-btn" data-a="rework">' + (rej ? 'Reopen for rework' : 'Send back for rework') + '</button>' : '');
       modal(detailHTML(t, { members: mem, teamBlock: teamBlock, extra: done ? '<div class="bw-f" id="bw-rw" hidden><span class="bw-l">What needs to change?' + (team ? ' <em>— every team member is notified</em>' : '') + '</span><textarea id="bw-rwn" placeholder="Explain what to fix"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="dorework">Send back</button></div></div>' : '' }) +
         '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
         var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
