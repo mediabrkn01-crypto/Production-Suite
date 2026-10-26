@@ -120,7 +120,7 @@
       h.innerHTML = (l.archives || []).length ? '<div class="bea-l" style="margin-bottom:4px">Earlier archives</div>' + l.archives.map(function (a) {
         var st = { completed: ['Completed', '#22c55e'], partial: ['Some files failed', '#fbbf24'], running: ['In progress', '#38bdf8'], draft: ['Not started', '#a5adcf'], failed: ['Failed', '#f87171'] }[a.status] || [a.status, '#a5adcf'];
         return '<div class="bea-hist"><span><b style="color:#fff">' + esc(mLabel(a.month)) + '</b> <small style="color:#c7cbe0">· ' + esc(a.scope_label || 'Whole organisation') + '</small> <small style="color:#6b74a0">· ' + esc(a.created_by || '') + ' · ' + esc(fmtTs(a.updated_at || a.created_at)) + '</small></span><span style="display:flex;gap:8px;align-items:center"><span class="bea-chip" style="color:' + st[1] + ';border-color:' + st[1] + '55">' + st[0] + '</span>' +
-          (a.folder_url ? '<a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" class="bea-btn sm ghost">Open folder</a>' : '') + (viewOnly() ? '' : '<button class="bea-btn sm" data-open="' + esc(a.month) + '" data-sk="' + esc(a.scope_key || 'org') + '">View</button>') + '</span></div>';
+          (a.folder_url ? '<a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" class="bea-btn sm ghost">Open folder</a>' : '') + (viewOnly() || a.can_manage === false ? '' : '<button class="bea-btn sm" data-open="' + esc(a.month) + '" data-sk="' + esc(a.scope_key || 'org') + '">View</button>') + '</span></div>';
       }).join('') : (viewOnly() ? 'None of your work has been archived yet.' : 'No archives yet. The first one creates the “Broken English Work Archive” folder in Google Drive.');
       h.querySelectorAll('[data-open]').forEach(function (b) { b.onclick = function () { S.month = b.dataset.open; S.scopeKey = b.dataset.sk; previewStep(); }; });
     } catch (e) { var hh = ov.querySelector('[data-hist]'); if (hh) { hh.className = 'bea-note bea-err'; hh.textContent = e.message; } }
@@ -217,8 +217,11 @@
         (a.sheet_url ? '<a class="bea-btn sm ghost" href="' + esc(a.sheet_url) + '" target="_blank" rel="noopener">Index Sheet</a>' : '') + '</div>' +
       '<div class="bea-note">The folder is private. Only the people you share it with below can open it.</div>' +
       (failedItems.length ? '<div class="bea-note bea-err"><b>Failed files</b>' + failedItems.slice(0, 30).map(function (x) { return '<div style="margin-top:4px">' + esc(x.p) + ' — ' + esc(x.d.name) + ': <span style="color:#fecaca">' + esc(x.d.error || 'Failed') + '</span></div>'; }).join('') + '</div>' : '') +
-      '<div class="bea-l" style="margin-top:16px">Share with Co-Founders</div>' +
-      (rec.length ? rec.map(function (r) { var done = sharedOk[r.email]; return '<label class="bea-rc"><input type="checkbox" data-rc value="' + esc(r.email) + '"' + (done ? '' : ' checked') + '><span><b>' + esc(r.name) + '</b> <small style="color:#6b74a0">' + esc(r.role) + ' · ' + esc(r.email) + '</small></span>' + (done ? '<span class="bea-chip" style="margin-left:auto;color:#86efac;border-color:#86efac55">Shared</span>' : '') + '</label>'; }).join('')
+      '<div class="bea-l" style="margin-top:16px">Share the folder</div>' +
+      (rec.length ? rec.map(function (r) { var done = sharedOk[r.email], mine = String(a.scope_key || S.scopeKey || '').indexOf('self:') === 0;
+        // personal archive → share with yourself by default; organisation / department → Co-Founders
+        var pre = !done && (mine ? r.role === 'You' : r.role !== 'You');
+        return '<label class="bea-rc"><input type="checkbox" data-rc value="' + esc(r.email) + '"' + (pre ? ' checked' : '') + '><span><b>' + esc(r.name) + '</b> <small style="color:#6b74a0">' + esc(r.role) + ' · ' + esc(r.email) + '</small></span>' + (done ? '<span class="bea-chip" style="margin-left:auto;color:#86efac;border-color:#86efac55">Shared</span>' : '') + '</label>'; }).join('')
         : '<div class="bea-note">No Co-Founder email is on file in HR — add the email below or copy the link.</div>') +
       '<div class="bea-link"><input type="text" placeholder="Other email(s), comma separated" data-more></div>' +
       '<div data-shareres></div>',

@@ -48,7 +48,8 @@ const out = (req: Request, status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors(req), "Content-Type": "application/json" } });
 const lc = (s: unknown) => String(s ?? "").trim().toLowerCase();
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-const scopeLabel = (k: string) => k === "org" ? "Whole organisation" : (DIV[k.slice(5)] || k.slice(5));
+let selfNames: Record<string, string> = {};
+const scopeLabel = (k: string) => k === "org" ? "Whole organisation" : k.startsWith("self:") ? "My work — " + (selfNames[k.slice(5)] || "employee") : (DIV[k.slice(5)] || k.slice(5));
 
 async function script(action: string, payload: Row, timeoutMs = 140000): Promise<Row> {
   if (!KEY) throw new Error("Monthly archive is not set up yet — WORK_ARCHIVE_KEY is missing.");
@@ -121,17 +122,22 @@ Deno.serve(async (req) => {
     const mode: "org" | "dept" | "self" = ad === "*" ? "org" : ad.length ? "dept" : "self";
     const myEmail = lc(auth.email);
     const actor = me.full_name || auth.name;
-    const scopes: string[] = mode === "org" ? ["org", ...Object.keys(DIV).map((d) => "dept:" + d)] : mode === "dept" ? (ad as string[]).map((d) => "dept:" + d) : [];
+    selfNames = {}; emps.forEach((e) => { selfNames[e.id] = e.full_name; });
+    // Every employee may archive their OWN work ('self:<id>'); heads add their departments,
+    // leadership adds the whole organisation.
+    const own = "self:" + me.id;
+    const scopes: string[] = mode === "org" ? ["org", ...Object.keys(DIV).map((d) => "dept:" + d), own] : mode === "dept" ? [...(ad as string[]).map((d) => "dept:" + d), own] : [own];
     const canCreate = (k: string) => scopes.includes(k);
     /** Item visibility for a scope key ('self' = my own work). */
-    const inScope = (k: string) => (it: Row) => k === "org" ? true : k.startsWith("dept:") ? (it.departments || [it.department]).includes(k.slice(5)) : (it.emails || []).includes(myEmail);
+    const inScope = (k: string) => (it: Row) => k === "org" ? true : k.startsWith("dept:") ? (it.departments || [it.department]).includes(k.slice(5)) : (it.emails || []).includes(myEmail);   // 'self' / own self:<id> = my own work
     const recipients = emps.filter((e) => ["founder", "co_founder"].includes(lc(e.system_role)) && !["exited", "inactive"].includes(lc(e.employment_status || "active")) && e.portal_email)
-      .map((e) => ({ name: e.full_name, email: lc(e.portal_email), role: lc(e.system_role) === "founder" ? "Founder" : "Co-Founder" }));
+      .map((e) => ({ name: e.full_name, email: lc(e.portal_email), role: lc(e.system_role) === "founder" ? "Founder" : "Co-Founder" }))
+      .filter((r) => r.email !== myEmail);
+    if (myEmail) recipients.unshift({ name: actor + " (you)", email: myEmail, role: "You" });
 
     if (body.action === "scope") {
-      return out(req, 200, { mode, can_create: scopes.length > 0, configured: !!KEY,
-        scopes: (scopes.length ? scopes : ["self"]).map((k) => ({ key: k, label: k === "self" ? "My completed work" : scopeLabel(k) })),
-        recipients: scopes.length ? recipients : [] });
+      return out(req, 200, { mode, can_create: true, configured: !!KEY,
+        scopes: scopes.map((k) => ({ key: k, label: k === own ? "My work" : scopeLabel(k) })), recipients });
     }
 
     const itemsOf = async (id: string) => fetchAll(db, "work_archive_items", "*", (q) => q.eq("archive_id", id).order("created_at"));
@@ -146,24 +152,23 @@ Deno.serve(async (req) => {
       const { data } = await db.from("work_archives").select("id,month,scope_key,status,folder_url,sheet_url,totals,shared_with,created_by,created_at,updated_at,completed_at").order("month", { ascending: false }).limit(60);
       let rows = (data || []) as Row[];
       if (mode !== "org") {
-        if (mode === "dept") rows = rows.filter((a) => canCreate(a.scope_key || "org"));
-        else {
-          // employees: only archives that hold their own work
+        {
+          // my own / my departments' archives, plus any archive that holds my work (view only)
           const ids = rows.map((a) => a.id);
           const mine = ids.length ? await fetchAll(db, "work_archive_items", "archive_id,assignment_id", (q) => q.in("archive_id", ids)) : [];
           const own = new Set((await fetchAll(db, "assignments", "id", (q) => q.ilike("employee_email", myEmail))).map((r) => Number(r.id)));
           const { data: tm } = await db.from("assignment_members").select("assignment_id").ilike("employee_email", myEmail).is("removed_at", null);
           (tm || []).forEach((m: Row) => own.add(Number(m.assignment_id)));
           const keep = new Set(mine.filter((m) => own.has(Number(m.assignment_id))).map((m) => m.archive_id));
-          rows = rows.filter((a) => keep.has(a.id)).map((a) => ({ ...a, shared_with: [] }));
+          rows = rows.filter((a) => canCreate(a.scope_key || "org") || keep.has(a.id)).map((a) => canCreate(a.scope_key || "org") ? a : ({ ...a, shared_with: [], view_only: true }));
         }
       }
-      return out(req, 200, { archives: rows.map((a) => ({ ...a, scope_label: scopeLabel(a.scope_key || "org") })) });
+      return out(req, 200, { archives: rows.map((a) => ({ ...a, scope_label: a.scope_key === own ? "My work" : scopeLabel(a.scope_key || "org"), can_manage: canCreate(a.scope_key || "org") })) });
     }
 
     if (body.action === "preview" || body.action === "get") {
       if (!isMonth(body.month)) return out(req, 400, { error: "Pick a month." });
-      const key = mode === "self" ? "self" : String(body.scope || scopes[0]);
+      const key = String(body.scope || scopes[0]);
       if (key !== "self" && !canCreate(key)) return out(req, 403, { error: "You can't view that scope." });
       const items = (await monthItems(db, body.month)).filter(inScope(key)) as Row[];
       let archive: Row | null = null;
@@ -185,6 +190,14 @@ Deno.serve(async (req) => {
         const st: Record<string, Row> = {}; have.forEach((h) => { st[h.assignment_id + "|" + h.file_key] = h; });
         items.forEach((it) => { const h = st[it.assignment_id + "|" + it.file_key]; if (h) { it.status = h.status; it.drive_url = h.drive_url; it.error = h.error; } });
       }
+      if (key.startsWith("self:")) {
+        // Own work not in my personal archive yet → still show its link from any archive of the month.
+        const { data: arcs } = await db.from("work_archives").select("id").eq("month", body.month);
+        const ids = (arcs || []).map((x: Row) => x.id).filter((x: string) => !a || x !== a.id), mine = new Set(items.map((x) => x.assignment_id));
+        const have = ids.length ? (await fetchAll(db, "work_archive_items", "assignment_id,file_key,drive_url", (q) => q.in("archive_id", ids).eq("status", "done"))).filter((h) => mine.has(Number(h.assignment_id))) : [];
+        const link: Record<string, string> = {}; have.forEach((h) => { link[h.assignment_id + "|" + h.file_key] = h.drive_url; });
+        items.forEach((it) => { if (!it.drive_url && link[it.assignment_id + "|" + it.file_key]) it.drive_url = link[it.assignment_id + "|" + it.file_key]; });
+      }
       if (body.action === "get") return out(req, 200, a ? { archive: a, ...summarize(await itemsOf(a.id)) } : { archive: null });
       return out(req, 200, { archive: a || null, scope: key, scope_label: scopeLabel(key), ...summarize(items) });
     }
@@ -192,7 +205,7 @@ Deno.serve(async (req) => {
     if (body.action === "create") {
       if (!isMonth(body.month)) return out(req, 400, { error: "Pick a month." });
       const key = String(body.scope || scopes[0] || "");
-      if (!canCreate(key)) return out(req, 403, { error: "Only Founders, Co-Founders, management or the Department Head can create this archive." });
+      if (!canCreate(key)) return out(req, 403, { error: "You can only archive your own work" + (mode === "self" ? "." : " or the scopes your role covers.") });
       const month = body.month as string;
       const items = (await monthItems(db, month)).filter(inScope(key));
       if (!items.length) return out(req, 400, { error: "No completed work in this month for " + scopeLabel(key) + "." });
@@ -202,12 +215,12 @@ Deno.serve(async (req) => {
         const ins = await db.from("work_archives").insert({ month, scope_key: key, status: "draft", created_by: actor, created_by_email: auth.email }).select("*").single();
         if (ins.error) {
           const again = await db.from("work_archives").select("*").eq("month", month).eq("scope_key", key).maybeSingle();
-          if (!again.data) throw new Error(/scope_key/.test(ins.error.message) ? "Run the 20261109_work_archives_scope.sql migration first." : ins.error.message);
+          if (!again.data) throw new Error(/scope_key/.test(ins.error.message) ? (/self/.test(key) ? "Run the 20261110_work_archives_self.sql migration first." : "Run the 20261109_work_archives_scope.sql migration first.") : ins.error.message);
           a = again.data;
         } else a = ins.data;
       }
       const [y, m] = month.split("-");
-      const monthName = m + " - " + MONTHS[Number(m) - 1] + (key === "org" ? "" : " · " + scopeLabel(key));
+      const monthName = m + " - " + MONTHS[Number(m) - 1] + (key === "org" ? "" : " · " + (key.startsWith("self:") ? (selfNames[key.slice(5)] || "Employee") : scopeLabel(key)));
       const f = await script("archiveFolders", { year: y, monthName, ids: { root: a.root_folder_id, year: a.year_folder_id, month: a.month_folder_id } });
       const rows = items.map((it) => ({ archive_id: a.id, assignment_id: it.assignment_id, project_key: it.project_key, project_title: it.project_title, category: it.category, creator: it.creator,
         department: it.department, completed_on: it.completed_on, deliverable_name: it.deliverable_name, source_url: it.source_url, file_key: it.file_key, kind: it.kind, status: it.status }));
