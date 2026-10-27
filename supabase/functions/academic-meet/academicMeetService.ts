@@ -21,6 +21,7 @@ import { GoogleApiError, loadOrganizer, googleConfig, runAs, currentActor } from
 import { ORG, actorForEmployee, actorForRow, actorForTrainer, employeeOfTrainer } from "./owners.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
 import { loadLeaveIndex } from "../_shared/trainer-availability.ts";
+import { sessionLabel, sessionNumberForClass } from "../_shared/session-number.ts";
 import { addMember, conferenceFor, createSpace, getSpaceByMeetingCode, listConferenceRecords, listMembers, listParticipants, listParticipantSessions, removeMember } from "../_shared/google/googleMeetService.ts";
 import { classify, calendarPause, pauseCalendar, clearPause, takeQueueLock, releaseQueueLock, RETRY, LIMIT_MSG, RATE_MSG, sleep } from "./syncGuard.ts";
 
@@ -56,6 +57,7 @@ export interface ClassInfo {
   date: string; startMin: number; endMin: number;
   trainerId: string | null; trainer: Person | null; students: Person[];
   batchName: string; course: string; typeLabel: string; isOne: boolean; title: string; description: string;
+  sessionNo: number | null;
   reviewEmail: string | null;
 }
 
@@ -69,12 +71,12 @@ export function parseKey(key: string): { kind: "class"; batchId: string; date: s
 
 export async function resolveClass(key: string, hint: { start?: string } = {}): Promise<ClassInfo> {
   const sb = adminClient(), k = parseKey(key);
-  const BCOLS = "id,name,programme,trainer_id,trainer_name,capacity,class_duration_minutes,time_slot,status,deleted_at";
+  const BCOLS = "id,name,programme,trainer_id,trainer_name,capacity,class_duration_minutes,time_slot,status,deleted_at,day_pattern,course_id,start_date,expected_completion_date,group_classes_completed_at";
   let batch: any, date: string, startMin: number | null, endMin: number | null, trainerId: string | null, originalDate: string;
-  let students: Person[] = [];
+  let students: Person[] = [], sessionNo: number | null = null;
 
   if (k.kind === "oto") {
-    const { data: o } = await sb.from("oto_sessions").select("id,batch_id,student_id,trainer_id,session_date,start_time,end_time,duration_minutes,status").eq("id", k.otoId).maybeSingle();
+    const { data: o } = await sb.from("oto_sessions").select("id,batch_id,student_id,trainer_id,session_number,session_date,start_time,end_time,duration_minutes,status").eq("id", k.otoId).maybeSingle();
     if (!o) throw new MeetError(404, "NOT_FOUND", "This 1:1 session no longer exists.");
     ({ data: batch } = await sb.from("batches").select(BCOLS).eq("id", o.batch_id).maybeSingle());
     date = String(o.session_date).slice(0, 10); originalDate = date;
@@ -82,6 +84,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     if (startMin == null) throw new MeetError(409, "NO_TIME", "This 1:1 session has no time set yet.");
     if (endMin == null || endMin <= startMin) endMin = startMin + (Number(o.duration_minutes) || 30);
     trainerId = o.trainer_id || batch?.trainer_id || null;
+    sessionNo = Number(o.session_number) || null;
     if (o.student_id) {
       const { data: s } = await sb.from("students").select("id,name,email").eq("id", o.student_id).maybeSingle();
       if (s) students = [{ role: "student", id: s.id, name: s.name || "Student", email: isEmail(s.email) ? String(s.email).trim().toLowerCase() : null }];
@@ -99,6 +102,8 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     if (startMin == null) throw new MeetError(409, "NO_TIME", "This batch has no class time set.");
     endMin = startMin + dur;
     trainerId = batch.trainer_id || null;
+    // Which session of this batch (shared rule — session-number.js / _shared/session-number.ts).
+    sessionNo = await sessionNumberForClass(sb, batch, date, labelMin(batch.time_slot) ?? startMin, dur).catch(() => null);
     const { data: ss } = await sb.from("students").select("id,name,email,status").eq("batch_id", batch.id);
     students = (ss || []).filter((s: any) => String(s.status || "").toLowerCase() !== "dropped")
       .map((s: any) => ({ role: "student" as const, id: s.id, name: s.name || "Student", email: isEmail(s.email) ? String(s.email).trim().toLowerCase() : null }));
@@ -122,7 +127,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
   const typeLabel = k.kind === "oto" ? "Group 1:1" : isOne ? "1:1" : "Group";
   const title = isOne && students[0] ? `Broken English | ${course} – ${who}` : `Broken English | ${batchName}`;
   const description = [
-    "Broken English Online Class", "",
+    "Broken English Online Class", ...(sessionNo ? [`Session No.: ${sessionLabel(sessionNo)}`] : []), "",
     `Course:\n${course}`, "",
     `Trainer:\n${trainer?.name || "To be assigned"}`, "",
     `${isOne ? "Student" : "Batch"}:\n${who}${!isOne && students.length ? ` (${students.length} students)` : ""}`, "",
@@ -133,7 +138,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
 
   const org = await loadOrganizer();
   return { key, kind: k.kind, batchId: batch?.id || null, otoId: k.kind === "oto" ? k.otoId : null, originalDate, date, startMin: startMin!, endMin: endMin!,
-    trainerId, trainer, students, batchName, course, typeLabel, isOne, title, description, reviewEmail: isEmail(org.reviewEmail) ? String(org.reviewEmail).trim().toLowerCase() : null };
+    trainerId, trainer, students, batchName, course, typeLabel, isOne, title, description, sessionNo, reviewEmail: isEmail(org.reviewEmail) ? String(org.reviewEmail).trim().toLowerCase() : null };
 }
 
 const trainerOwns = () => currentActor().kind === "trainer";

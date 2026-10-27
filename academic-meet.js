@@ -112,12 +112,12 @@
     S.issues = issues;
     // SESSION COMPLETION RULE (same as Classes / My Calendar): a batch that has reached its session
     // total no longer generates classes.
-    var fetchAll = g('_acadFetchAllRows'), done = {}, marked = {};
+    var fetchAll = g('_acadFetchAllRows'), done = {}, marked = {}, attBy = {};
     if (batches.length && typeof fetchAll === 'function') {
       var names = batches.map(function (b) { return b.name; }).filter(Boolean);
       try {
         var att = await fetchAll('attendance', 'batch_name,session_date,session_num,status', function (q) { return q.in('batch_name', names); });
-        (att || []).forEach(function (a) { if (a.session_date) marked[a.batch_name + '|' + String(a.session_date).slice(0, 10)] = true; });
+        (att || []).forEach(function (a) { (attBy[a.batch_name] = attBy[a.batch_name] || []).push(a); if (a.session_date) marked[a.batch_name + '|' + String(a.session_date).slice(0, 10)] = true; });
         // the SAME "sessions done" rule as every other Academic screen (academics.html)
         done = (g('_acadDoneKeysByBatch') || function () { return {}; })((att || []).filter(function (a) { return a.status === 'present'; }));
       } catch (e) {}
@@ -140,15 +140,19 @@
     var missingStu = otos.map(function (o) { return o.student_id; }).filter(function (id) { return id && !stuById[id]; });
     if (missingStu.length) { var ms = await sbc.from('students').select('id,name,email,batch_id,status').in('id', Array.from(new Set(missingStu))); (ms.data || []).forEach(function (s) { stuById[s.id] = s; }); }
 
-    var out = [];
+    var out = [], sched = {};
     batches.forEach(function (b) {
       if (b.group_classes_completed_at || typeof gen !== 'function') return;
       // only as many upcoming classes as the batch has sessions left (same rule as Classes) —
       // counted from today, so a later day/week view can't show classes beyond the last one
-      var cap = g('_acadCapToRemaining'), t0 = istToday(), occ;
+      var cap = g('_acadCapToRemaining'), t0 = istToday(), occ, all = null;
       if (cap && to >= t0) {
-        occ = cap(gen(b, from < t0 ? from : t0, to), b, done[b.name], t0).filter(function (o) { return o.date >= from && o.date <= to; });
+        all = cap(gen(b, from < t0 ? from : t0, to), b, done[b.name], t0);
+        occ = all.filter(function (o) { return o.date >= from && o.date <= to; });
       } else occ = gen(b, from, to);
+      // this batch's classes from today on (also before `from`) — numbers the sessions after them
+      if (to >= t0) sched[b.id] = (all || gen(b, t0, to)).filter(function (o) { return o.date >= t0; })
+        .map(function (o) { return { date: o.date, startMin: o.startTime, orig: o.postponed ? o.postponed.original_date : o.date }; });
       occ.forEach(function (o) { out.push(build({ kind: 'class', date: o.date, startMin: o.startTime, batch: b, postponed: o.postponed || null }, trName, studentsBy)); });
     });
     otos.forEach(function (o) {
@@ -161,17 +165,42 @@
     // Approved trainer leave (trainer-availability.js, one query): the occurrence is not an active
     // live class — no Join / attendance, and never an auto-created or re-synced Meet. Existing
     // academic_live_classes rows are left untouched; a held (marked / completed) class stays.
+    var lv = null, t0 = istToday();
     if (out.length && window.TrainerAvailability) {
       try {
-        var lv = await TrainerAvailability.load(sbc, { from: from, to: to, trainers: res[2].data || [] });
+        lv = await TrainerAvailability.load(sbc, { from: from < t0 ? from : t0, to: to, trainers: res[2].data || [] });
         out = out.filter(function (o) {
           var held = o.kind === 'oto' ? /^(completed|absent)$/i.test(String(o.oto && o.oto.status || '')) : !!marked[o.batch.name + '|' + o.date];
           return !lv.suppress(o.trainerId, o.date, o.startMin, o.endMin, held);
         });
       } catch (e) {}
     }
+    await numberSessions(out, sched, attBy, lv, t0, to);
     out.sort(function (a, b) { return a.date === b.date ? (a.startMin - b.startMin) : a.date.localeCompare(b.date); });
     return out;
+  }
+
+  // Session No. (session-number.js): 1:1 sessions carry their own number; a batch class is
+  // numbered within its batch from attendance + the batch's still-to-come classes (cancelled
+  // classes and approved trainer leave don't count).
+  async function numberSessions(out, sched, attBy, lv, t0, to) {
+    var SN = window.SessionNumber; if (!SN) return;
+    var cancelled = {};
+    if (to >= t0) {
+      try {
+        var cr = await db().from('academic_live_classes').select('occurrence_key').eq('class_kind', 'class').eq('class_status', 'cancelled').gte('class_date', t0).lte('class_date', to);
+        (cr.data || []).forEach(function (r) { cancelled[r.occurrence_key] = true; });
+      } catch (e) {}
+    }
+    var upBy = {};
+    out.forEach(function (o) {
+      if (o.kind === 'oto') { o.sessionNo = Number(o.oto && o.oto.session_number) || null; return; }
+      var b = o.batch, up = upBy[b.id];
+      if (!up) up = upBy[b.id] = (sched[b.id] || []).filter(function (x) {
+        return !cancelled['class:' + b.id + ':' + x.orig] && !(lv && lv.suppress(b.trainer_id, x.date, x.startMin, x.startMin + o.dur, false));
+      }).map(function (x) { return x.date; });
+      o.sessionNo = SN.compute({ date: o.date, attendance: attBy[b.name] || [], upcoming: up, today: t0 });
+    });
   }
 
   function build(o, trName, studentsBy) {
@@ -810,7 +839,9 @@
   /** WhatsApp-ready class message (also used by Share and Email). No internal ids. */
   function detailsText(o, l) {
     var d = o.date.split('-').map(Number);
-    var lines = ['BROKEN ENGLISH – LIVE CLASS', '', 'Class: ' + o.title];
+    var lines = ['BROKEN ENGLISH – LIVE CLASS'];
+    if (o.sessionNo && window.SessionNumber) lines.push('Session No.: ' + SessionNumber.label(o.sessionNo));
+    lines.push('', 'Class: ' + o.title);
     if (o.course && o.title.toLowerCase().indexOf(o.course.toLowerCase()) < 0) lines.push('Course: ' + o.course);
     lines.push('Date: ' + DOW_LONG[dowOf(o.date)] + ', ' + d[2] + ' ' + MON_LONG[d[1] - 1] + ' ' + d[0]);
     lines.push('Time: ' + fmt(o.startMin) + ' – ' + fmt(o.endMin));
