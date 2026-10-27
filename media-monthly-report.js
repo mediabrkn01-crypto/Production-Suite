@@ -128,7 +128,7 @@
   }
   function renderShell() {
     var root = el('mwr-root'); if (!root) return;
-    if (!allowed()) { root.innerHTML = '<div class="card glass-card rounded-2xl" style="padding:24px;color:#6b74a0;font-size:13px">Not authorized.</div>'; return; }
+    if (!allowed()) { root.innerHTML = '<div class="card glass-card rounded-2xl" style="padding:24px;color:var(--tx-6, #6b74a0);font-size:13px">Not authorized.</div>'; return; }
     var now = new Date(); if (S.y == null) { S.y = now.getFullYear(); S.m = now.getMonth() + 1; }
     var years = []; for (var yy = now.getFullYear(); yy >= 2026; yy--) years.push([yy, yy]);
     if (years.every(function (o) { return o[0] !== S.y; })) years.push([S.y, S.y]);
@@ -160,7 +160,7 @@
       S.data = await loadData();
       S.report = build(S.data, S.y, S.m, S.mode === 'individual' ? S.emp : '');
       renderReport(S.report);
-    } catch (e) { out.innerHTML = '<div class="card glass-card rounded-2xl mwr-empty" style="color:#f87171">Could not build the report. ' + esc(e.message || '') + '</div>'; }
+    } catch (e) { out.innerHTML = '<div class="card glass-card rounded-2xl mwr-empty" style="color:var(--fg-red, #f87171)">Could not build the report. ' + esc(e.message || '') + '</div>'; }
   }
   function tile(n, l, c, sub) { return '<div class="mwr-tile"><div class="mwr-tile-n"' + (c ? ' style="color:' + c + '"' : '') + '>' + n + '</div><div class="mwr-tile-l">' + l + '</div>' + (sub ? '<div class="mwr-tile-s">' + sub + '</div>' : '') + '</div>'; }
   function hbars(rows, max) {
@@ -171,9 +171,9 @@
   }
   function colsSVG(vals, color, labels) {
     var w = 560, h = 150, n = vals.length, max = Math.max.apply(null, vals.concat([1])), bw = w / n;
-    var bars = vals.map(function (v, i) { var bh = v / max * (h - 36); return '<rect x="' + (i * bw + bw * .18) + '" y="' + (h - 18 - bh) + '" width="' + (bw * .64) + '" height="' + Math.max(v ? 2 : 0, bh) + '" rx="2" fill="' + color + '"/>' + (v ? '<text x="' + (i * bw + bw / 2) + '" y="' + (h - 22 - bh) + '" text-anchor="middle" font-size="9" fill="#c7cbe0">' + v + '</text>' : ''); }).join('');
-    var lab = labels.map(function (t, i) { return t ? '<text x="' + (i * bw + bw / 2) + '" y="' + (h - 4) + '" text-anchor="middle" font-size="9" fill="#6b74a0">' + esc(t) + '</text>' : ''; }).join('');
-    return '<svg viewBox="0 0 ' + w + ' ' + h + '" class="mwr-svg" role="img"><line x1="0" y1="' + (h - 18) + '" x2="' + w + '" y2="' + (h - 18) + '" stroke="rgba(255,255,255,.1)"/>' + bars + lab + '</svg>';
+    var bars = vals.map(function (v, i) { var bh = v / max * (h - 36); return '<rect x="' + (i * bw + bw * .18) + '" y="' + (h - 18 - bh) + '" width="' + (bw * .64) + '" height="' + Math.max(v ? 2 : 0, bh) + '" rx="2" fill="' + color + '"/>' + (v ? '<text x="' + (i * bw + bw / 2) + '" y="' + (h - 22 - bh) + '" text-anchor="middle" font-size="9" fill="var(--tx-2, #c7cbe0)">' + v + '</text>' : ''); }).join('');
+    var lab = labels.map(function (t, i) { return t ? '<text x="' + (i * bw + bw / 2) + '" y="' + (h - 4) + '" text-anchor="middle" font-size="9" fill="var(--tx-6, #6b74a0)">' + esc(t) + '</text>' : ''; }).join('');
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" class="mwr-svg" role="img"><line x1="0" y1="' + (h - 18) + '" x2="' + w + '" y2="' + (h - 18) + '" stroke="rgba(var(--ink, 255,255,255), 0.1)"/>' + bars + lab + '</svg>';
   }
   function table(head, rows) {
     if (!rows.length) return '<div class="mwr-none">Nothing to show.</div>';
@@ -202,7 +202,7 @@
       (R.mode === 'team' && R.people.length > 1 ? '<div class="mwr-chart"><div class="mwr-ct">Completed by team member</div>' + hbars(R.people.map(function (p) { return { l: p.name, v: p.completed, c: '#ff8a3c' }; }), Math.max.apply(null, R.people.map(function (p) { return p.completed; }))) + '</div>' : '') +
       (R.trend.filter(function (t) { return t.total; }).length >= 3 ? '<div class="mwr-chart"><div class="mwr-ct">Completed work — last 6 months</div>' + colsSVG(R.trend.map(function (t) { return t.completed; }), '#60a5fa', R.trend.map(function (t) { return t.label; })) + '</div>' : '') +
       '</div>';
-    var workRows = function (list) { return list.map(function (i) { return [esc(i.topic) + (i.reworked ? ' <span class="mwr-tag">Rework</span>' : ''), esc(i.type), esc(i.assignee) + (i.reassigned ? '<div class="mwr-sub">from ' + esc(i.original) + '</div>' : ''), fmtD(i.assigned), fmtD(i.target) + (i.overdue ? '<div class="mwr-sub" style="color:#f87171">Overdue</div>' : ''), i.done ? fmtD(i.done) : '—', chip(i.b), esc(i.priority)]; }); };
+    var workRows = function (list) { return list.map(function (i) { return [esc(i.topic) + (i.reworked ? ' <span class="mwr-tag">Rework</span>' : ''), esc(i.type), esc(i.assignee) + (i.reassigned ? '<div class="mwr-sub">from ' + esc(i.original) + '</div>' : ''), fmtD(i.assigned), fmtD(i.target) + (i.overdue ? '<div class="mwr-sub" style="color:var(--fg-red, #f87171)">Overdue</div>' : ''), i.done ? fmtD(i.done) : '—', chip(i.b), esc(i.priority)]; }); };
     var H = ['Work', 'Type', 'Assignee', 'Assigned', 'Target', 'Completed', 'Status', 'Priority'];
     var people = R.mode === 'team' ? '<div class="mwr-sec">Employee breakdown</div>' + table(['Employee', 'Total', 'Completed', 'In progress', 'Pending', 'Rework', 'Overdue', 'Completion'],
       R.people.map(function (p) { return [esc(p.name), p.total, p.completed, p.inprogress, p.pending, p.rework, p.overdue, p.pct + '%']; })) : '';
@@ -324,7 +324,7 @@
   // ---------------------------------------------------------------- entry
   window.mhRenderMonthlyReport = async function () {
     var root = el('mwr-root'); if (!root) return;
-    if (!allowed()) { root.innerHTML = '<div class="card glass-card rounded-2xl" style="padding:24px;color:#6b74a0;font-size:13px">Not authorized.</div>'; return; }
+    if (!allowed()) { root.innerHTML = '<div class="card glass-card rounded-2xl" style="padding:24px;color:var(--tx-6, #6b74a0);font-size:13px">Not authorized.</div>'; return; }
     if (!S.team.length) {
       try { var d = db(); var r = await d.from('hr_employees').select('full_name,portal_email,employment_status,account_type,division').eq('division', 'production');
         S.team = (r.data || []).filter(function (e) { return e.portal_email && (e.account_type || 'employee') === 'employee'; }).sort(function (a, b) { return a.full_name.localeCompare(b.full_name); });

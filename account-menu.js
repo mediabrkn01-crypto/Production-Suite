@@ -98,7 +98,7 @@
         '<div class="am-divider"></div>' +
         '<button class="am-item am-danger" data-am-action="logout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg> Logout</button>' +
         // Subtle build stamp for debugging (be-update.js reads it from <meta name="be-version">).
-        (window.BEUpdate && BEUpdate.version ? '<div style="padding:8px 14px 4px;font-size:10.5px;color:#4a5182;letter-spacing:.02em" title="Running version">Broken English · Version ' + escapeHtml(BEUpdate.version) + '</div>' : '');
+        (window.BEUpdate && BEUpdate.version ? '<div style="padding:8px 14px 4px;font-size:10.5px;color:var(--tx-7, #4a5182);letter-spacing:.02em" title="Running version">Broken English · Version ' + escapeHtml(BEUpdate.version) + '</div>' : '');
       wireClicks();
     }
 
@@ -117,7 +117,7 @@
               (isCurrent ? '' : '<button class="am-remove" title="Remove saved account" data-am-remove="' + escapeHtml(acc.email) + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>') +
             '</div>';
           }).join('')
-        : '<div style="padding:12px 14px;font-size:11.5px;color:#4a5182">No saved accounts yet.</div>';
+        : '<div style="padding:12px 14px;font-size:11.5px;color:var(--tx-7, #4a5182)">No saved accounts yet.</div>';
       dropdown.innerHTML =
         '<div class="am-switch-header"><button class="am-back" data-am-action="back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button> Switch Account</div>' +
         rowsHTML +

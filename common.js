@@ -36,7 +36,7 @@ function beConfirm(opts) {
         if (existing) existing.remove();
         var overlay = document.createElement('div');
         overlay.id = 'be-confirm-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:beConfFadeIn .15s ease';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(var(--scrim, 0,0,0), calc(0.6 * var(--scrim-k, 1)));backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:beConfFadeIn .15s ease';
         var title = opts.title || 'Confirm';
         var message = opts.message || 'Are you sure?';
         var detail = opts.detail || '';
@@ -44,14 +44,14 @@ function beConfirm(opts) {
         var cancelLabel = opts.cancelLabel || 'Cancel';
         var confirmColor = opts.confirmColor || '#f87171';
         overlay.innerHTML =
-            '<div style="background:#0d111c;border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:beConfSlideUp .2s ease">' +
-            '<div style="padding:20px 22px 0"><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px">' + esc(title) + '</div>' +
-            '<div style="font-size:13px;color:#a5adcf;line-height:1.5">' + esc(message) + '</div>' +
-            (detail ? '<div style="margin-top:10px;font-size:12px;color:#8890b5;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px">' + detail + '</div>' : '') +
+            '<div style="background:var(--sf-2, #0d111c);border:1px solid rgba(var(--ink, 255,255,255), 0.1);border-radius:14px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(var(--shade, 0,0,0), calc(0.7 * var(--shade-k, 1)));animation:beConfSlideUp .2s ease">' +
+            '<div style="padding:20px 22px 0"><div style="font-size:15px;font-weight:700;color:var(--tx-0, #fff);margin-bottom:8px">' + esc(title) + '</div>' +
+            '<div style="font-size:13px;color:var(--tx-3, #a5adcf);line-height:1.5">' + esc(message) + '</div>' +
+            (detail ? '<div style="margin-top:10px;font-size:12px;color:var(--tx-4, #8890b5);background:rgba(var(--ink, 255,255,255), 0.04);border:1px solid rgba(var(--ink, 255,255,255), 0.06);border-radius:8px;padding:8px 10px">' + detail + '</div>' : '') +
             '</div>' +
             '<div style="display:flex;gap:10px;padding:18px 22px;justify-content:flex-end">' +
-            '<button id="be-confirm-no" style="padding:8px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#a5adcf;font-size:13px;font-weight:600;cursor:pointer">' + esc(cancelLabel) + '</button>' +
-            '<button id="be-confirm-yes" style="padding:8px 18px;border-radius:8px;border:none;background:' + confirmColor + ';color:#fff;font-size:13px;font-weight:600;cursor:pointer;min-width:120px">' + esc(confirmLabel) + '</button>' +
+            '<button id="be-confirm-no" style="padding:8px 18px;border-radius:8px;border:1px solid rgba(var(--ink, 255,255,255), 0.12);background:transparent;color:var(--tx-3, #a5adcf);font-size:13px;font-weight:600;cursor:pointer">' + esc(cancelLabel) + '</button>' +
+            '<button id="be-confirm-yes" style="padding:8px 18px;border-radius:8px;border:none;background:' + confirmColor + ';color:var(--tx-0, #fff);font-size:13px;font-weight:600;cursor:pointer;min-width:120px">' + esc(confirmLabel) + '</button>' +
             '</div></div>';
         document.body.appendChild(overlay);
         if (!document.getElementById('be-confirm-style')) {
@@ -297,7 +297,7 @@ async function renderDeptOnLeaveWidget(containerId) {
         return;
     }
     const row = ({ employee, leave }, isWfh) => `
-        <div class="flex items-center gap-3 p-3 rounded-xl" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+        <div class="flex items-center gap-3 p-3 rounded-xl" style="background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.06)">
             ${hrAvatarHTML(employee, 36)}
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-bold text-white truncate">${employee.full_name}</div>
@@ -967,14 +967,14 @@ async function loadMyHRData() {
             if (document.getElementById('announcement-detail-modal')) return;
             document.body.insertAdjacentHTML('beforeend', `
                 <div id="announcement-detail-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div class="w-full max-w-md rounded-2xl p-5" style="background:#12162a;border:1px solid rgba(255,255,255,.1)">
+                    <div class="w-full max-w-md rounded-2xl p-5" style="background:var(--sf-3, #12162a);border:1px solid rgba(var(--ink, 255,255,255), 0.1)">
                         <div class="flex items-start justify-between gap-3 mb-3">
                             <div class="min-w-0">
                                 <span id="announcement-detail-category" class="hidden text-[9px] font-bold uppercase tracking-wide text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded px-1.5 py-0.5"></span>
                                 <h2 id="announcement-detail-title" class="text-lg font-bold text-white mt-1 break-words"></h2>
                                 <p id="announcement-detail-meta" class="text-[11px] text-[#a5adcf] mt-1"></p>
                             </div>
-                            <button onclick="closeAnnouncementDetail()" style="background:none;border:none;cursor:pointer;color:#a5adcf;font-size:16px;line-height:1">✕</button>
+                            <button onclick="closeAnnouncementDetail()" style="background:none;border:none;cursor:pointer;color:var(--tx-3, #a5adcf);font-size:16px;line-height:1">✕</button>
                         </div>
                         <p id="announcement-detail-body" class="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words"></p>
                     </div>
@@ -1578,7 +1578,7 @@ async function acadSyncTrainersFromHR(){
 
 // ── hrProfileField (orig line 9456) ──
         function hrProfileField(label, value, block = false) {
-            return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+            return `<div style="padding:8px 0;border-bottom:1px solid rgba(var(--ink, 255,255,255), 0.05)">
                 <div class="hr-field-label" style="margin-bottom:2px">${label}</div>
                 <div class="text-sm ${block?'whitespace-pre-wrap':''} text-[#e6e9f5]">${value || '—'}</div>
             </div>`;
@@ -2798,9 +2798,9 @@ function hrOfficialEventFor(employee, dateStr) {
                 + '<div><b>Leave type:</b> ' + esc(req.leave_type || 'Leave') + (req.half_day_type ? ' (' + (req.half_day_type === 'morning' ? 'morning' : 'afternoon') + ' half)' : '') + '</div>'
                 + '<div><b>Date:</b> ' + esc(dateLabel) + '</div>'
                 + (days ? '<div><b>Duration:</b> ' + days + ' day' + (days === 1 ? '' : 's') + '</div>' : '')
-                + (wasApproved ? '<div style="margin-top:8px;color:#fbbf24">This leave was already approved. Cancelling it restores the leave balance and updates attendance' + (finalized.length ? '' : ' and payroll') + '.</div>' : '')
-                + (finalized.length ? '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:#fecaca">This leave affects a finalized payroll/payslip (' + esc(finalized.join(', ')) + '). Review payroll before making changes — the issued payslip is not changed automatically.<label style="display:flex;gap:8px;margin-top:6px;align-items:center;cursor:pointer"><input type="checkbox" id="lc-payroll-ack"> I will review payroll for this month</label></div>' : '')
-                + (opts.hr || wasApproved ? '<label style="display:block;margin-top:10px"><b>Reason for cancellation</b> <span style="color:#94a3b8">(shown to the employee)</span><textarea id="lc-reason" rows="2" style="width:100%;margin-top:4px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.25);color:inherit;padding:8px;font:inherit" placeholder="e.g. Employee requested cancellation"></textarea></label>' : '')
+                + (wasApproved ? '<div style="margin-top:8px;color:var(--fg-amber, #fbbf24)">This leave was already approved. Cancelling it restores the leave balance and updates attendance' + (finalized.length ? '' : ' and payroll') + '.</div>' : '')
+                + (finalized.length ? '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:var(--fg-red, #fecaca)">This leave affects a finalized payroll/payslip (' + esc(finalized.join(', ')) + '). Review payroll before making changes — the issued payslip is not changed automatically.<label style="display:flex;gap:8px;margin-top:6px;align-items:center;cursor:pointer"><input type="checkbox" id="lc-payroll-ack"> I will review payroll for this month</label></div>' : '')
+                + (opts.hr || wasApproved ? '<label style="display:block;margin-top:10px"><b>Reason for cancellation</b> <span style="color:var(--tx-4, #94a3b8)">(shown to the employee)</span><textarea id="lc-reason" rows="2" style="width:100%;margin-top:4px;border-radius:8px;border:1px solid rgba(var(--ink, 255,255,255), 0.15);background:rgba(var(--well, 0,0,0), calc(0.25 * var(--well-k, 1)));color:inherit;padding:8px;font:inherit" placeholder="e.g. Employee requested cancellation"></textarea></label>' : '')
                 + '</div>';
             const confirmed = await beConfirm({
                 title: wasApproved ? 'Cancel Approved Leave?' : 'Cancel Leave Request',
@@ -3470,22 +3470,22 @@ function hrOfficialEventFor(employee, dateStr) {
             // inside each page's own #celebration-banner-slot — part of the dashboard content
             // area, not a floating toast (spec item 16).
             style.textContent = `
-                .be-celeb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:95;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+                .be-celeb-overlay{position:fixed;inset:0;background:rgba(var(--scrim, 0,0,0), calc(0.8 * var(--scrim-k, 1)));z-index:95;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
                 .be-celeb-overlay.hidden{display:none}
                 .be-celeb-imgwrap{position:relative;max-width:90vw;max-height:85vh;line-height:0}
-                .be-celeb-imgwrap img{display:block;max-width:90vw;max-height:85vh;width:auto;height:auto;object-fit:contain;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
-                .be-celeb-close{position:absolute;top:8px;right:8px;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;backdrop-filter:blur(3px)}
-                .be-celeb-close:hover{background:rgba(10,12,20,.85)}
-                .be-celeb-caption{text-align:center;color:#fff;font-weight:700;font-size:14px;margin-top:10px;text-shadow:0 2px 8px rgba(0,0,0,.6)}
-                .be-celeb-loading{width:90vw;max-width:340px;aspect-ratio:4/5;border-radius:14px;background:#12162a;display:flex;align-items:center;justify-content:center}
-                .be-celeb-spinner{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:#ff6b06;animation:be-celeb-spin .8s linear infinite}
+                .be-celeb-imgwrap img{display:block;max-width:90vw;max-height:85vh;width:auto;height:auto;object-fit:contain;border-radius:14px;box-shadow:0 24px 60px rgba(var(--shade, 0,0,0), calc(0.6 * var(--shade-k, 1)))}
+                .be-celeb-close{position:absolute;top:8px;right:8px;background:rgba(var(--sf-1-rgb, 10,12,20), 0.65);border:none;color:var(--tx-0, #fff);cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;backdrop-filter:blur(3px)}
+                .be-celeb-close:hover{background:rgba(var(--sf-1-rgb, 10,12,20), 0.85)}
+                .be-celeb-caption{text-align:center;color:var(--tx-0, #fff);font-weight:700;font-size:14px;margin-top:10px;text-shadow:0 2px 8px rgba(var(--shade, 0,0,0), calc(0.6 * var(--shade-k, 1)))}
+                .be-celeb-loading{width:90vw;max-width:340px;aspect-ratio:4/5;border-radius:14px;background:var(--sf-3, #12162a);display:flex;align-items:center;justify-content:center}
+                .be-celeb-spinner{width:28px;height:28px;border-radius:50%;border:3px solid rgba(var(--ink, 255,255,255), 0.15);border-top-color:#ff6b06;animation:be-celeb-spin .8s linear infinite}
                 @keyframes be-celeb-spin{to{transform:rotate(360deg)}}
                 .be-celeb-banner-slot{width:100%;position:relative}
-                .be-celeb-banner-item{position:relative;width:100%;height:130px;margin-bottom:10px;border-radius:12px;overflow:hidden;background:#12162a}
+                .be-celeb-banner-item{position:relative;width:100%;height:130px;margin-bottom:10px;border-radius:12px;overflow:hidden;background:var(--sf-3, #12162a)}
                 .be-celeb-banner-item:last-child{margin-bottom:0}
                 .be-celeb-banner-item img{display:block;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none}
-                .be-celeb-banner-close{position:absolute;top:8px;right:8px;z-index:5;background:rgba(10,12,20,.65);border:none;color:#fff;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;pointer-events:auto}
-                .be-celeb-banner-close:hover{background:rgba(10,12,20,.9)}
+                .be-celeb-banner-close{position:absolute;top:8px;right:8px;z-index:5;background:rgba(var(--sf-1-rgb, 10,12,20), 0.65);border:none;color:var(--tx-0, #fff);cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;pointer-events:auto}
+                .be-celeb-banner-close:hover{background:rgba(var(--sf-1-rgb, 10,12,20), 0.9)}
                 @media (max-width:480px){.be-celeb-banner-item{height:90px}}
             `;
             document.head.appendChild(style);
@@ -3651,7 +3651,7 @@ function hrOfficialEventFor(employee, dateStr) {
     const host = beEnsureToastHost();
     const accent = BE_COLORS[type];
     const el = document.createElement('div');
-    el.style.cssText = `pointer-events:auto;display:flex;align-items:flex-start;gap:10px;background:${BE_COLORS.bg};border:1px solid ${BE_COLORS.border};border-left:3px solid ${accent};border-radius:10px;padding:12px 14px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:13px;color:${BE_COLORS.text};opacity:0;transform:translateX(16px);transition:opacity .25s ease,transform .25s ease`;
+    el.style.cssText = `pointer-events:auto;display:flex;align-items:flex-start;gap:10px;background:${BE_COLORS.bg};border:1px solid ${BE_COLORS.border};border-left:3px solid ${accent};border-radius:10px;padding:12px 14px;box-shadow:0 12px 32px rgba(var(--shade, 0,0,0), calc(0.5 * var(--shade-k, 1)));font-size:13px;color:${BE_COLORS.text};opacity:0;transform:translateX(16px);transition:opacity .25s ease,transform .25s ease`;
     el.innerHTML = `<span style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:${accent}22;color:${accent};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${BE_ICONS[type]}</span>`
       + `<span style="flex:1;line-height:1.45;padding-top:1px;white-space:pre-line;word-break:break-word">${message}</span>`
       + `<span data-be-toast-close style="cursor:pointer;color:${BE_COLORS.muted};font-size:15px;line-height:1;padding:1px 2px" title="Dismiss">&times;</span>`;
@@ -3679,8 +3679,8 @@ function hrOfficialEventFor(employee, dateStr) {
   }
   function beOverlayShell(innerHtml){
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(4,6,12,.72);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .18s ease;font-family:inherit';
-    overlay.innerHTML = `<div style="width:100%;max-width:400px;max-height:85vh;overflow-y:auto;background:${BE_COLORS.panelBg};border:1px solid ${BE_COLORS.border};border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(8px);transition:transform .18s ease;box-sizing:border-box">${innerHtml}</div>`;
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(var(--sf-0-rgb, 4,6,12), 0.72);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .18s ease;font-family:inherit';
+    overlay.innerHTML = `<div style="width:100%;max-width:400px;max-height:85vh;overflow-y:auto;background:${BE_COLORS.panelBg};border:1px solid ${BE_COLORS.border};border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(var(--shade, 0,0,0), calc(0.6 * var(--shade-k, 1)));transform:translateY(8px);transition:transform .18s ease;box-sizing:border-box">${innerHtml}</div>`;
     return overlay;
   }
 
@@ -3696,8 +3696,8 @@ function hrOfficialEventFor(employee, dateStr) {
         <div style="font-size:16px;font-weight:800;color:${BE_COLORS.text};margin-bottom:10px">${opts.title || (opts.danger ? 'Are you sure?' : 'Confirm')}</div>
         <div style="font-size:13px;color:${BE_COLORS.muted};line-height:1.55;white-space:pre-line;margin-bottom:20px">${message}</div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button data-be-cancel style="padding:10px 16px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1;font-weight:600;font-size:13px;cursor:pointer">${opts.cancelLabel || 'Cancel'}</button>
-          <button data-be-confirm style="padding:10px 16px;border-radius:9px;border:none;background:${confirmBg};color:#fff;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 18px rgba(237,31,81,.35)">${opts.confirmLabel || 'Confirm'}</button>
+          <button data-be-cancel style="padding:10px 16px;border-radius:9px;border:1px solid rgba(var(--ink, 255,255,255), 0.12);background:rgba(var(--ink, 255,255,255), 0.05);color:var(--tx-2, #cbd5e1);font-weight:600;font-size:13px;cursor:pointer">${opts.cancelLabel || 'Cancel'}</button>
+          <button data-be-confirm style="padding:10px 16px;border-radius:9px;border:none;background:${confirmBg};color:var(--tx-0, #fff);font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 18px rgba(237,31,81,.35)">${opts.confirmLabel || 'Confirm'}</button>
         </div>`);
       host.appendChild(overlay);
       requestAnimationFrame(() => { overlay.style.opacity = '1'; overlay.firstElementChild.style.transform = 'translateY(0)'; overlay.querySelector('[data-be-confirm]')?.focus(); });
@@ -3721,10 +3721,10 @@ function hrOfficialEventFor(employee, dateStr) {
       const overlay = beOverlayShell(`
         <div style="font-size:16px;font-weight:800;color:${BE_COLORS.text};margin-bottom:10px">${opts.title || 'Confirm'}</div>
         <div style="font-size:13px;color:${BE_COLORS.muted};line-height:1.55;white-space:pre-line;margin-bottom:14px">${message}</div>
-        <input data-be-input type="text" placeholder="${opts.placeholder || ''}" value="${opts.defaultValue || ''}" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:10px 12px;color:${BE_COLORS.text};font-size:13px;outline:none;margin-bottom:20px">
+        <input data-be-input type="text" placeholder="${opts.placeholder || ''}" value="${opts.defaultValue || ''}" style="width:100%;box-sizing:border-box;background:rgba(var(--ink, 255,255,255), 0.05);border:1px solid rgba(var(--ink, 255,255,255), 0.12);border-radius:9px;padding:10px 12px;color:${BE_COLORS.text};font-size:13px;outline:none;margin-bottom:20px">
         <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button data-be-cancel style="padding:10px 16px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cbd5e1;font-weight:600;font-size:13px;cursor:pointer">Cancel</button>
-          <button data-be-confirm style="padding:10px 16px;border-radius:9px;border:none;background:${BE_COLORS.dangerGradient};color:#fff;font-weight:700;font-size:13px;cursor:pointer" ${opts.requireExact ? 'disabled' : ''}>${opts.confirmLabel || 'OK'}</button>
+          <button data-be-cancel style="padding:10px 16px;border-radius:9px;border:1px solid rgba(var(--ink, 255,255,255), 0.12);background:rgba(var(--ink, 255,255,255), 0.05);color:var(--tx-2, #cbd5e1);font-weight:600;font-size:13px;cursor:pointer">Cancel</button>
+          <button data-be-confirm style="padding:10px 16px;border-radius:9px;border:none;background:${BE_COLORS.dangerGradient};color:var(--tx-0, #fff);font-weight:700;font-size:13px;cursor:pointer" ${opts.requireExact ? 'disabled' : ''}>${opts.confirmLabel || 'OK'}</button>
         </div>`);
       host.appendChild(overlay);
       const input = overlay.querySelector('[data-be-input]');

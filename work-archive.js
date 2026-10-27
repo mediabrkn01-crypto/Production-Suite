@@ -48,31 +48,31 @@
     if (document.getElementById('bea-css')) return;
     var st = document.createElement('style'); st.id = 'bea-css';
     st.textContent = [
-      '.bea-btn{text-decoration:none;display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,107,6,.35);background:rgba(255,107,6,.1);color:#ffb37a;font-size:12.5px;font-weight:700;cursor:pointer;transition:background .15s}',
-      '.bea-btn:hover{background:rgba(255,107,6,.18)}.bea-btn.pri{background:linear-gradient(135deg,#ff6b06,#ff0552);border-color:transparent;color:#fff}.bea-btn.ghost{background:transparent;border-color:rgba(255,255,255,.12);color:#c7cbe0}',
+      '.bea-btn{text-decoration:none;display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,107,6,.35);background:rgba(255,107,6,.1);color:var(--fg-orange, #ffb37a);font-size:12.5px;font-weight:700;cursor:pointer;transition:background .15s}',
+      '.bea-btn:hover{background:rgba(255,107,6,.18)}.bea-btn.pri{background:linear-gradient(135deg,#ff6b06,#ff0552);border-color:transparent;color:#fff}.bea-btn.ghost{background:transparent;border-color:rgba(var(--ink, 255,255,255), 0.12);color:var(--tx-2, #c7cbe0)}',
       '.bea-btn:disabled{opacity:.45;cursor:not-allowed}.bea-btn.sm{padding:6px 10px;font-size:11.5px;border-radius:9px}',
-      '.bea-ov{position:fixed;inset:0;z-index:9100;background:rgba(3,5,10,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}',
-      '.bea-m{width:100%;max-width:980px;max-height:92vh;display:flex;flex-direction:column;background:linear-gradient(180deg,#12141c,#0b0c12);border:1px solid rgba(255,255,255,.09);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.55);color:#e6e9f5}',
-      '.bea-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px 12px;border-bottom:1px solid rgba(255,255,255,.06)}',
-      '.bea-h h3{margin:0;font-size:17px;font-weight:800;color:#fff}.bea-h p{margin:3px 0 0;font-size:12px;color:#7d86ad}',
-      '.bea-x{background:none;border:0;color:#7d86ad;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:8px}.bea-x:hover{color:#fff;background:rgba(255,255,255,.06)}',
-      '.bea-b{padding:16px 20px;overflow:auto;flex:1}.bea-f{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px 16px;border-top:1px solid rgba(255,255,255,.06)}',
-      '.bea-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.bea-l{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#6b74a0}',
-      '.bea-sel{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#e6e9f5;padding:8px 10px;font-size:13px;font-weight:600}',
+      '.bea-ov{position:fixed;inset:0;z-index:9100;background:rgba(var(--scrim, 3,5,10), calc(0.72 * var(--scrim-k, 1)));backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}',
+      '.bea-m{width:100%;max-width:980px;max-height:92vh;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--sf-2, #12141c),var(--sf-1, #0b0c12));border:1px solid rgba(var(--ink, 255,255,255), 0.09);border-radius:18px;box-shadow:0 30px 80px rgba(var(--shade, 0,0,0), calc(0.55 * var(--shade-k, 1)));color:var(--tx-1, #e6e9f5)}',
+      '.bea-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px 12px;border-bottom:1px solid rgba(var(--ink, 255,255,255), 0.06)}',
+      '.bea-h h3{margin:0;font-size:17px;font-weight:800;color:var(--tx-0, #fff)}.bea-h p{margin:3px 0 0;font-size:12px;color:var(--tx-5, #7d86ad)}',
+      '.bea-x{background:none;border:0;color:var(--tx-5, #7d86ad);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:8px}.bea-x:hover{color:var(--tx-0, #fff);background:rgba(var(--ink, 255,255,255), 0.06)}',
+      '.bea-b{padding:16px 20px;overflow:auto;flex:1}.bea-f{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px 16px;border-top:1px solid rgba(var(--ink, 255,255,255), 0.06)}',
+      '.bea-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.bea-l{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-6, #6b74a0)}',
+      '.bea-sel{background:rgba(var(--ink, 255,255,255), 0.04);border:1px solid rgba(var(--ink, 255,255,255), 0.12);border-radius:10px;color:var(--tx-1, #e6e9f5);padding:8px 10px;font-size:13px;font-weight:600}',
       '.bea-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0}',
-      '.bea-kpi{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}.bea-kpi b{display:block;font-size:22px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums}.bea-kpi span{font-size:11px;color:#8b93b8}',
-      '.bea-kpi.bad{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)}.bea-kpi.bad b{color:#f87171}',
-      '.bea-p{border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:12px 14px;margin-top:10px;background:rgba(255,255,255,.02)}.bea-p.miss{border-color:rgba(248,113,113,.35)}',
-      '.bea-pt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-weight:700;font-size:14px;color:#fff}.bea-ps{font-size:11.5px;color:#8b93b8;margin-top:3px}',
+      '.bea-kpi{padding:12px 14px;border-radius:12px;background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.07)}.bea-kpi b{display:block;font-size:22px;font-weight:800;color:var(--tx-0, #fff);font-variant-numeric:tabular-nums}.bea-kpi span{font-size:11px;color:var(--tx-4, #8b93b8)}',
+      '.bea-kpi.bad{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)}.bea-kpi.bad b{color:var(--fg-red, #f87171)}',
+      '.bea-p{border:1px solid rgba(var(--ink, 255,255,255), 0.07);border-radius:13px;padding:12px 14px;margin-top:10px;background:rgba(var(--ink, 255,255,255), 0.02)}.bea-p.miss{border-color:rgba(248,113,113,.35)}',
+      '.bea-pt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--tx-0, #fff)}.bea-ps{font-size:11.5px;color:var(--tx-4, #8b93b8);margin-top:3px}',
       '.bea-chip{font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}',
-      '.bea-d{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}',
-      '.bea-d:first-of-type{border-top:0}.bea-dn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d5d9ee}.bea-dn small{color:#6b74a0;margin-left:6px}',
-      '.bea-prog{height:10px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}.bea-prog>i{display:block;height:100%;background:linear-gradient(90deg,#ff6b06,#ff0552);transition:width .3s}',
-      '.bea-note{font-size:12px;color:#a5adcf;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);margin-top:10px}',
-      '.bea-err{color:#fca5a5;border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)}',
-      '.bea-link{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.bea-link input{flex:1;min-width:220px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#e6e9f5;padding:9px 11px;font-size:12.5px}',
-      '.bea-rc{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.07);margin-top:6px;cursor:pointer;font-size:13px}.bea-rc input{accent-color:#ff6b06;width:15px;height:15px}',
-      '.bea-hist{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}',
+      '.bea-d{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid rgba(var(--ink, 255,255,255), 0.05);font-size:12.5px}',
+      '.bea-d:first-of-type{border-top:0}.bea-dn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-2, #d5d9ee)}.bea-dn small{color:var(--tx-6, #6b74a0);margin-left:6px}',
+      '.bea-prog{height:10px;border-radius:999px;background:rgba(var(--ink, 255,255,255), 0.06);overflow:hidden}.bea-prog>i{display:block;height:100%;background:linear-gradient(90deg,#ff6b06,#ff0552);transition:width .3s}',
+      '.bea-note{font-size:12px;color:var(--tx-3, #a5adcf);padding:10px 12px;border-radius:10px;background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.07);margin-top:10px}',
+      '.bea-err{color:var(--fg-red, #fca5a5);border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)}',
+      '.bea-link{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.bea-link input{flex:1;min-width:220px;background:rgba(var(--ink, 255,255,255), 0.04);border:1px solid rgba(var(--ink, 255,255,255), 0.12);border-radius:10px;color:var(--tx-1, #e6e9f5);padding:9px 11px;font-size:12.5px}',
+      '.bea-rc{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;border:1px solid rgba(var(--ink, 255,255,255), 0.07);margin-top:6px;cursor:pointer;font-size:13px}.bea-rc input{accent-color:#ff6b06;width:15px;height:15px}',
+      '.bea-hist{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid rgba(var(--ink, 255,255,255), 0.05);font-size:12.5px}',
       '@media(max-width:640px){.bea-m{max-height:96vh;border-radius:14px}.bea-b,.bea-h,.bea-f{padding-left:14px;padding-right:14px}.bea-f .bea-btn{flex:1;justify-content:center}}'
     ].join('');
     document.head.appendChild(st);
@@ -119,7 +119,7 @@
       var l = await api('list'), h = ov.querySelector('[data-hist]'); if (!h) return;
       h.innerHTML = (l.archives || []).length ? '<div class="bea-l" style="margin-bottom:4px">Earlier archives</div>' + l.archives.map(function (a) {
         var st = { completed: ['Completed', '#22c55e'], partial: ['Some files failed', '#fbbf24'], running: ['In progress', '#38bdf8'], draft: ['Not started', '#a5adcf'], failed: ['Failed', '#f87171'] }[a.status] || [a.status, '#a5adcf'];
-        return '<div class="bea-hist"><span><b style="color:#fff">' + esc(mLabel(a.month)) + '</b> <small style="color:#c7cbe0">· ' + esc(a.scope_label || 'Whole organisation') + '</small> <small style="color:#6b74a0">· ' + esc(a.created_by || '') + ' · ' + esc(fmtTs(a.updated_at || a.created_at)) + '</small></span><span style="display:flex;gap:8px;align-items:center"><span class="bea-chip" style="color:' + st[1] + ';border-color:' + st[1] + '55">' + st[0] + '</span>' +
+        return '<div class="bea-hist"><span><b style="color:var(--tx-0, #fff)">' + esc(mLabel(a.month)) + '</b> <small style="color:var(--tx-2, #c7cbe0)">· ' + esc(a.scope_label || 'Whole organisation') + '</small> <small style="color:var(--tx-6, #6b74a0)">· ' + esc(a.created_by || '') + ' · ' + esc(fmtTs(a.updated_at || a.created_at)) + '</small></span><span style="display:flex;gap:8px;align-items:center"><span class="bea-chip" style="color:' + st[1] + ';border-color:' + st[1] + '55">' + st[0] + '</span>' +
           (a.folder_url ? '<a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" class="bea-btn sm ghost">Open folder</a>' : '') + (viewOnly() || a.can_manage === false ? '' : '<button class="bea-btn sm" data-open="' + esc(a.month) + '" data-sk="' + esc(a.scope_key || 'org') + '">View</button>') + '</span></div>';
       }).join('') : (viewOnly() ? 'None of your work has been archived yet.' : 'No archives yet. The first one creates the “Broken English Work Archive” folder in Google Drive.');
       h.querySelectorAll('[data-open]').forEach(function (b) { b.onclick = function () { S.month = b.dataset.open; S.scopeKey = b.dataset.sk; previewStep(); }; });
@@ -134,8 +134,8 @@
     S.preview = p; S.archive = p.archive;
     var t = p.totals, a = p.archive;
     var exists = a && a.month_folder_id;
-    var head = '<div class="bea-row" style="justify-content:space-between"><div><div class="bea-l">' + (viewOnly() ? 'My completed work' : 'Preview · ' + esc(scopeName(S.scopeKey))) + '</div><div style="font-size:18px;font-weight:800;color:#fff">' + esc(mLabel(S.month)) + '</div></div>' +
-      (viewOnly() ? (a && a.folder_url ? '<div class="bea-note" style="margin:0">Archived in Google Drive. <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:#ffb37a">Open folder</a> — opens if the folder has been shared with you.</div>' : '') : exists ? '<div class="bea-note" style="margin:0">Archive exists (' + esc(a.status) + ') — files already archived are kept and <b>not</b> sent again; only new or failed work is added.' + (a.folder_url ? ' <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:#ffb37a">Open folder</a>' : '') + '</div>' : '') + '</div>';
+    var head = '<div class="bea-row" style="justify-content:space-between"><div><div class="bea-l">' + (viewOnly() ? 'My completed work' : 'Preview · ' + esc(scopeName(S.scopeKey))) + '</div><div style="font-size:18px;font-weight:800;color:var(--tx-0, #fff)">' + esc(mLabel(S.month)) + '</div></div>' +
+      (viewOnly() ? (a && a.folder_url ? '<div class="bea-note" style="margin:0">Archived in Google Drive. <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:var(--fg-orange, #ffb37a)">Open folder</a> — opens if the folder has been shared with you.</div>' : '') : exists ? '<div class="bea-note" style="margin:0">Archive exists (' + esc(a.status) + ') — files already archived are kept and <b>not</b> sent again; only new or failed work is added.' + (a.folder_url ? ' <a href="' + esc(a.folder_url) + '" target="_blank" rel="noopener" style="color:var(--fg-orange, #ffb37a)">Open folder</a>' : '') + '</div>' : '') + '</div>';
     var kpis = '<div class="bea-kpis"><div class="bea-kpi"><b>' + t.projects + '</b><span>Completed projects</span></div><div class="bea-kpi"><b>' + t.files + '</b><span>Output files</span></div>' +
       '<div class="bea-kpi' + (t.projects_missing ? ' bad' : '') + '"><b>' + t.projects_missing + '</b><span>Projects with missing files</span></div>' +
       (t.no_output ? '<div class="bea-kpi"><b>' + t.no_output + '</b><span>No-output work (listed only)</span></div>' : '') +
@@ -145,12 +145,12 @@
       var cats = Array.from(new Set(pr.deliverables.map(function (d) { return d.category; }))).join(', ');
       var who = Array.from(new Set(pr.deliverables.map(function (d) { return d.creator; }))).join(', ');
       var deps = Array.from(new Set(pr.deliverables.map(function (d) { return DIVL[d.department] || d.department; }).filter(Boolean)));
-      return '<div class="bea-p' + (pr.missing ? ' miss' : '') + '"><div class="bea-pt">' + esc(pr.title) + (pr.is_project ? ' <span class="bea-chip" style="color:#c4b5fd;border-color:#c4b5fd55">PROJECT</span>' : '') +
-        deps.map(function (d) { return ' <span class="bea-chip" style="color:#7dd3fc;border-color:#7dd3fc55">' + esc(d) + '</span>'; }).join('') +
-        (pr.missing ? ' <span class="bea-chip" style="color:#f87171;border-color:#f8717155">' + pr.missing + ' MISSING</span>' : '') + '</div>' +
+      return '<div class="bea-p' + (pr.missing ? ' miss' : '') + '"><div class="bea-pt">' + esc(pr.title) + (pr.is_project ? ' <span class="bea-chip" style="color:var(--fg-violet, #c4b5fd);border-color:#c4b5fd55">PROJECT</span>' : '') +
+        deps.map(function (d) { return ' <span class="bea-chip" style="color:var(--fg-sky, #7dd3fc);border-color:#7dd3fc55">' + esc(d) + '</span>'; }).join('') +
+        (pr.missing ? ' <span class="bea-chip" style="color:var(--fg-red, #f87171);border-color:#f8717155">' + pr.missing + ' MISSING</span>' : '') + '</div>' +
         '<div class="bea-ps">' + esc(cats) + ' · ' + esc(who) + ' · completed ' + esc(fmtD(pr.completed_on)) + ' · ' + pr.deliverables.length + ' deliverable' + (pr.deliverables.length === 1 ? '' : 's') + '</div><div style="margin-top:6px">' +
         pr.deliverables.map(function (d) {
-          return '<div class="bea-d"><div class="bea-dn">' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener" style="color:#d5d9ee">' + esc(d.name) + '</a>' : esc(d.name)) + '<small>' + esc(KIND[d.kind] || d.kind) + ' · ' + esc(d.category) + ' · ' + esc(d.creator) + ' · ' + esc(fmtD(d.completed_on)) + (d.approved ? '' : ' · awaiting approval') + '</small></div><span style="display:flex;gap:6px;align-items:center">' + (d.drive_url ? '<a class="bea-btn sm ghost" href="' + esc(d.drive_url) + '" target="_blank" rel="noopener">Archive link</a>' : '') + (viewOnly() && d.status === 'pending' ? '<span class="bea-chip" style="color:#a5adcf;border-color:#a5adcf55">Not archived yet</span>' : chip(d)) + '</span></div>';
+          return '<div class="bea-d"><div class="bea-dn">' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener" style="color:var(--tx-2, #d5d9ee)">' + esc(d.name) + '</a>' : esc(d.name)) + '<small>' + esc(KIND[d.kind] || d.kind) + ' · ' + esc(d.category) + ' · ' + esc(d.creator) + ' · ' + esc(fmtD(d.completed_on)) + (d.approved ? '' : ' · awaiting approval') + '</small></div><span style="display:flex;gap:6px;align-items:center">' + (d.drive_url ? '<a class="bea-btn sm ghost" href="' + esc(d.drive_url) + '" target="_blank" rel="noopener">Archive link</a>' : '') + (viewOnly() && d.status === 'pending' ? '<span class="bea-chip" style="color:var(--tx-3, #a5adcf);border-color:#a5adcf55">Not archived yet</span>' : chip(d)) + '</span></div>';
         }).join('') + '</div></div>';
     }).join('') : '<div class="bea-note">No completed work in ' + esc(mLabel(S.month)) + '.</div>';
     var toDo = t.pending + t.failed;
@@ -171,8 +171,8 @@
     S.running = true; S.stop = false;
     var prog = function (t, msg) {
       var total = (t.done || 0) + (t.failed || 0) + (t.pending || 0), done = (t.done || 0) + (t.failed || 0), pct = total ? Math.round(done / total * 100) : 100;
-      paint('<div class="bea-l">Archiving ' + esc(mLabel(S.month)) + '</div><div style="font-size:15px;font-weight:700;color:#fff;margin:6px 0 10px">' + esc(msg) + '</div>' +
-        '<div class="bea-prog"><i style="width:' + pct + '%"></i></div><div class="bea-row" style="justify-content:space-between;margin-top:8px;font-size:12px;color:#8b93b8"><span>' + (t.done || 0) + ' archived · ' + (t.failed || 0) + ' failed · ' + (t.pending || 0) + ' to go</span><span>' + pct + '%</span></div>' +
+      paint('<div class="bea-l">Archiving ' + esc(mLabel(S.month)) + '</div><div style="font-size:15px;font-weight:700;color:var(--tx-0, #fff);margin:6px 0 10px">' + esc(msg) + '</div>' +
+        '<div class="bea-prog"><i style="width:' + pct + '%"></i></div><div class="bea-row" style="justify-content:space-between;margin-top:8px;font-size:12px;color:var(--tx-4, #8b93b8)"><span>' + (t.done || 0) + ' archived · ' + (t.failed || 0) + ' failed · ' + (t.pending || 0) + ' to go</span><span>' + pct + '%</span></div>' +
         '<div class="bea-note">You can keep working in other tabs — the archive continues while this window is open. Original deliverables are never moved or changed.</div>',
         '<button class="bea-btn ghost" data-stop>Pause</button>');
       var sb = S.ov.querySelector('[data-stop]'); if (sb) sb.onclick = function () { S.stop = true; sb.disabled = true; sb.textContent = 'Pausing after this batch…'; };
@@ -216,12 +216,12 @@
       '<div class="bea-l" style="margin-top:16px">Google Drive folder</div><div class="bea-link"><input readonly value="' + esc(a.folder_url || '') + '" data-url><button class="bea-btn sm" data-copy>Copy link</button><a class="bea-btn sm ghost" href="' + esc(a.folder_url || '#') + '" target="_blank" rel="noopener">Open</a>' +
         (a.sheet_url ? '<a class="bea-btn sm ghost" href="' + esc(a.sheet_url) + '" target="_blank" rel="noopener">Index Sheet</a>' : '') + '</div>' +
       '<div class="bea-note">The folder is private. Only the people you share it with below can open it.</div>' +
-      (failedItems.length ? '<div class="bea-note bea-err"><b>Failed files</b>' + failedItems.slice(0, 30).map(function (x) { return '<div style="margin-top:4px">' + esc(x.p) + ' — ' + esc(x.d.name) + ': <span style="color:#fecaca">' + esc(x.d.error || 'Failed') + '</span></div>'; }).join('') + '</div>' : '') +
+      (failedItems.length ? '<div class="bea-note bea-err"><b>Failed files</b>' + failedItems.slice(0, 30).map(function (x) { return '<div style="margin-top:4px">' + esc(x.p) + ' — ' + esc(x.d.name) + ': <span style="color:var(--fg-red, #fecaca)">' + esc(x.d.error || 'Failed') + '</span></div>'; }).join('') + '</div>' : '') +
       '<div class="bea-l" style="margin-top:16px">Share the folder</div>' +
       (rec.length ? rec.map(function (r) { var done = sharedOk[r.email], mine = String(a.scope_key || S.scopeKey || '').indexOf('self:') === 0;
         // personal archive → share with yourself by default; organisation / department → Co-Founders
         var pre = !done && (mine ? r.role === 'You' : r.role !== 'You');
-        return '<label class="bea-rc"><input type="checkbox" data-rc value="' + esc(r.email) + '"' + (pre ? ' checked' : '') + '><span><b>' + esc(r.name) + '</b> <small style="color:#6b74a0">' + esc(r.role) + ' · ' + esc(r.email) + '</small></span>' + (done ? '<span class="bea-chip" style="margin-left:auto;color:#86efac;border-color:#86efac55">Shared</span>' : '') + '</label>'; }).join('')
+        return '<label class="bea-rc"><input type="checkbox" data-rc value="' + esc(r.email) + '"' + (pre ? ' checked' : '') + '><span><b>' + esc(r.name) + '</b> <small style="color:var(--tx-6, #6b74a0)">' + esc(r.role) + ' · ' + esc(r.email) + '</small></span>' + (done ? '<span class="bea-chip" style="margin-left:auto;color:var(--fg-green, #86efac);border-color:#86efac55">Shared</span>' : '') + '</label>'; }).join('')
         : '<div class="bea-note">No Co-Founder email is on file in HR — add the email below or copy the link.</div>') +
       '<div class="bea-link"><input type="text" placeholder="Other email(s), comma separated" data-more></div>' +
       '<div data-shareres></div>',

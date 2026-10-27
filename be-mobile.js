@@ -14,7 +14,7 @@
   var BP = 820;
 
   var CSS = [
-    ':root{--bem-bg:#0a0e17;--bem-border:rgba(255,255,255,.09);--bem-text:#c7cbe0;--bem-muted:#6b7488;--bem-accent:#ff3b6b;}',
+    ':root{--bem-bg:var(--sf-1, #0a0e17);--bem-border:rgba(var(--ink, 255,255,255), 0.09);--bem-text:var(--tx-2, #c7cbe0);--bem-muted:var(--tx-6, #6b7488);--bem-accent:#ff3b6b;}',
     '.be-mnav,.be-msheet-bg{display:none;}',
     '@media (max-width:' + BP + 'px){',
     /* bottom clearance now lives on each page's own scroll container (below), not on <body> too */
@@ -22,23 +22,23 @@
     /* FLOATING PILL bottom nav (OLINEX-style): detached from the screen edges, rounded,
        elevated, dark glass. Active item gets an accent pill instead of a flat underline. */
     '.be-mnav{display:flex;position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:150;',
-    'background:rgba(14,18,28,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);',
-    'border-radius:22px;padding:6px;gap:2px;box-shadow:0 12px 30px rgba(0,0,0,.55);}',
+    'background:rgba(var(--sf-2-rgb, 14,18,28), 0.92);backdrop-filter:blur(14px);border:1px solid rgba(var(--ink, 255,255,255), 0.08);',
+    'border-radius:22px;padding:6px;gap:2px;box-shadow:0 12px 30px rgba(var(--shade, 0,0,0), calc(0.55 * var(--shade-k, 1)));}',
     '.be-mnav-item{flex:1;min-width:0;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;',
     'height:52px;background:none;border:none;border-radius:16px;color:var(--bem-muted);font-size:9.5px;font-weight:600;cursor:pointer;padding:0 2px;-webkit-tap-highlight-color:transparent;transition:color .15s,background .15s;}',
     '.be-mnav-item svg{width:20px;height:20px;}',
     '.be-mnav-item[data-active]{color:#fff;background:linear-gradient(135deg,var(--bem-accent),#ff6b06);box-shadow:0 6px 16px rgba(255,59,107,.35);}',
     '.be-mnav-item span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    '.be-msheet-bg{display:none;position:fixed;inset:0;z-index:180;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);}',
+    '.be-msheet-bg{display:none;position:fixed;inset:0;z-index:180;background:rgba(var(--scrim, 0,0,0), calc(0.6 * var(--scrim-k, 1)));backdrop-filter:blur(3px);}',
     '.be-msheet-bg[data-open]{display:block;}',
     '.be-msheet{position:fixed;left:0;right:0;bottom:0;z-index:181;background:var(--bem-bg);border-top:1px solid var(--bem-border);',
     'border-radius:16px 16px 0 0;max-height:76vh;overflow-y:auto;padding:8px 10px calc(16px + env(safe-area-inset-bottom,0px));transform:translateY(100%);transition:transform .2s;}',
     '.be-msheet-bg[data-open] .be-msheet{transform:translateY(0);}',
-    '.be-msheet-grab{width:40px;height:4px;border-radius:99px;background:rgba(255,255,255,.2);margin:8px auto 12px;}',
+    '.be-msheet-grab{width:40px;height:4px;border-radius:99px;background:rgba(var(--ink, 255,255,255), 0.2);margin:8px auto 12px;}',
     '.be-msheet-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;',
     'color:var(--bem-text);font-size:15px;font-weight:600;padding:14px 12px;border-radius:11px;cursor:pointer;}',
-    '.be-msheet-item:hover,.be-msheet-item[data-active]{background:rgba(255,255,255,.05);}',
-    '.be-msheet-item[data-active]{color:var(--bem-accent);}',
+    '.be-msheet-item:hover,.be-msheet-item[data-active]{background:rgba(var(--ink, 255,255,255), 0.05);}',
+    '.be-msheet-item[data-active]{color:color-mix(in srgb, var(--bem-accent) var(--acc-k, 100%), var(--acc-mix, #000));}',
     '.be-msheet-item svg{width:20px;height:20px;flex:0 0 20px;}',
     /* comfortable tap targets for the page's own interactive bits on mobile */
     '.act-btn,.btn-ghost,.btn-sm{min-height:34px;}',
@@ -76,15 +76,15 @@
        mobile card feed — tighter gutters, elevated rounded cards, mobile type rhythm,
        full-width primary actions. Visual only; no page logic/markup touched. ---- */
     '@media (max-width:560px){',
-    'body{background:#05070d!important;}',
+    'body{background:var(--sf-0, #05070d)!important;}',
     '.main,main,.acadx-shell,#app>main{padding:12px 12px calc(140px + env(safe-area-inset-bottom,0px))!important}',
     'h1{font-size:21px!important;line-height:1.12!important;margin:2px 0 2px!important}',
     'h2{font-size:14.5px!important}',
     /* card skin — covers the section/card primitives across all four pages */
     '.section,.card,.glass-card,.acadx-card,.acadx-section,.hr-card,.acadx-dash-card{',
-    'border-radius:16px!important;border:1px solid rgba(255,255,255,.07)!important;',
-    'background:linear-gradient(180deg,rgba(20,26,40,.55),rgba(13,17,28,.55))!important;',
-    'box-shadow:0 6px 18px rgba(0,0,0,.35)!important;margin-bottom:12px!important;}',
+    'border-radius:16px!important;border:1px solid rgba(var(--ink, 255,255,255), 0.07)!important;',
+    'background:linear-gradient(180deg,rgba(var(--sf-3-rgb, 20,26,40), 0.55),rgba(var(--sf-2-rgb, 13,17,28), 0.55))!important;',
+    'box-shadow:0 6px 18px rgba(var(--shade, 0,0,0), calc(0.35 * var(--shade-k, 1)))!important;margin-bottom:12px!important;}',
     '.section{padding:15px!important}',
     '.qrow{border-radius:14px!important;padding:13px 14px!important}',
     '.tile{padding:13px!important;border-radius:14px!important}',

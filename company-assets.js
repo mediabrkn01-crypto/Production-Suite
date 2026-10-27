@@ -52,35 +52,35 @@
     st.textContent = [
       '.ca-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}',
       '.ca-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}',
-      '.ca-kpi{padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}',
-      '.ca-kpi b{display:block;font-size:20px;color:#fff;font-variant-numeric:tabular-nums}.ca-kpi span{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b74a0}',
+      '.ca-kpi{padding:12px 14px;border-radius:14px;background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.07)}',
+      '.ca-kpi b{display:block;font-size:20px;color:var(--tx-0, #fff);font-variant-numeric:tabular-nums}.ca-kpi span{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-6, #6b74a0)}',
       '.ca-filters{display:grid;grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr));gap:8px;margin:14px 0 10px}',
       '.ca-filters input,.ca-filters select{width:100%;min-width:0}',
-      '.ca-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);white-space:nowrap}',
+      '.ca-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;color:color-mix(in srgb, var(--c) var(--acc-k, 100%), var(--acc-mix, #000));background:color-mix(in srgb,var(--c) 13%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);white-space:nowrap}',
       '.ca-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c)}',
-      '.ca-name b{display:block;color:#fff;font-weight:700}.ca-name small{display:block;color:#6b74a0;font-size:11.5px}',
+      '.ca-name b{display:block;color:var(--tx-0, #fff);font-weight:700}.ca-name small{display:block;color:var(--tx-6, #6b74a0);font-size:11.5px}',
       '.ca-acts{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}.ca-acts button{white-space:nowrap}',
-      '.ca-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#cbd5e1}',
-      '.ca-empty{padding:34px 16px;text-align:center;color:#6b74a0;font-size:13px}',
+      '.ca-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--tx-2, #cbd5e1)}',
+      '.ca-empty{padding:34px 16px;text-align:center;color:var(--tx-6, #6b74a0);font-size:13px}',
       '.ca-list{display:flex;flex-direction:column;gap:8px}',
-      '.ca-item{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}',
-      '.ca-item>div{flex:1;min-width:0}.ca-item b{display:block;color:#fff;font-size:13.5px}.ca-item span{display:block;color:#8b93b8;font-size:12px}',
-      '.ca-ic{width:34px;height:34px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;color:#60a5fa;background:rgba(96,165,250,.12)}',
-      '.ca-tl{display:flex;flex-direction:column;gap:0;border-left:2px solid rgba(255,255,255,.08);margin-left:6px}',
-      '.ca-tl div{position:relative;padding:0 0 12px 16px;font-size:12.5px;color:#a5adcf}.ca-tl div::before{content:"";position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;background:#ff6b06;box-shadow:0 0 0 3px #0d1120}',
-      '.ca-tl b{color:#fff}.ca-tl em{display:block;font-style:normal;color:#5b638a;font-size:11px;margin-top:1px}',
-      '.ca-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}.ca-facts div span{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b74a0}.ca-facts div b{color:#fff;font-size:13px;font-weight:600;overflow-wrap:anywhere}',
+      '.ca-item{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.07)}',
+      '.ca-item>div{flex:1;min-width:0}.ca-item b{display:block;color:var(--tx-0, #fff);font-size:13.5px}.ca-item span{display:block;color:var(--tx-4, #8b93b8);font-size:12px}',
+      '.ca-ic{width:34px;height:34px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;color:var(--fg-blue, #60a5fa);background:rgba(96,165,250,.12)}',
+      '.ca-tl{display:flex;flex-direction:column;gap:0;border-left:2px solid rgba(var(--ink, 255,255,255), 0.08);margin-left:6px}',
+      '.ca-tl div{position:relative;padding:0 0 12px 16px;font-size:12.5px;color:var(--tx-3, #a5adcf)}.ca-tl div::before{content:"";position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;background:#ff6b06;box-shadow:0 0 0 3px #0d1120}',
+      '.ca-tl b{color:var(--tx-0, #fff)}.ca-tl em{display:block;font-style:normal;color:var(--tx-6, #5b638a);font-size:11px;margin-top:1px}',
+      '.ca-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}.ca-facts div span{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-6, #6b74a0)}.ca-facts div b{color:var(--tx-0, #fff);font-size:13px;font-weight:600;overflow-wrap:anywhere}',
       '.ca-cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:22px;align-items:start}',
       '.ca-col{display:flex;flex-direction:column;gap:14px;min-width:0}',
-      '.ca-side{padding:16px;border-radius:16px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07)}',
-      '.ca-sec{margin:4px 0 -4px;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ff8a3d}.ca-sec em{font-style:normal;color:#5b638a;letter-spacing:.04em;text-transform:none;font-weight:600;margin-left:6px}',
+      '.ca-side{padding:16px;border-radius:16px;background:rgba(var(--ink, 255,255,255), 0.025);border:1px solid rgba(var(--ink, 255,255,255), 0.07)}',
+      '.ca-sec{margin:4px 0 -4px;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-orange, #ff8a3d)}.ca-sec em{font-style:normal;color:var(--tx-6, #5b638a);letter-spacing:.04em;text-transform:none;font-weight:600;margin-left:6px}',
       '.ca-box{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;background:rgba(96,165,250,.05);border:1px solid rgba(96,165,250,.18)}',
-      '.ca-hint{margin:-4px 0 0;font-size:11.5px;color:#6b74a0}',
-      '.ca-prev{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,rgba(255,107,6,.1),rgba(255,255,255,.02));border:1px solid rgba(255,107,6,.22)}',
-      '.ca-prev>div{flex:1;min-width:0}.ca-prev b{display:block;color:#fff;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-prev span:not(.ca-pill):not(.ca-ic){display:block;color:#8b93b8;font-size:12px}',
-      '.ca-prev-who{flex-basis:100%;font-style:normal;font-size:12px;color:#93c5fd}',
-      '.ca-seg{display:flex;flex-wrap:wrap;gap:6px}.ca-seg button{min-height:34px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#a5adcf;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}',
-      '.ca-seg button.on{color:#fff;background:rgba(255,107,6,.16);border-color:rgba(255,107,6,.5)}.ca-seg button:focus-visible{outline:2px solid #ff8a3c;outline-offset:2px}',
+      '.ca-hint{margin:-4px 0 0;font-size:11.5px;color:var(--tx-6, #6b74a0)}',
+      '.ca-prev{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,rgba(255,107,6,.1),rgba(var(--ink, 255,255,255), 0.02));border:1px solid rgba(255,107,6,.22)}',
+      '.ca-prev>div{flex:1;min-width:0}.ca-prev b{display:block;color:var(--tx-0, #fff);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-prev span:not(.ca-pill):not(.ca-ic){display:block;color:var(--tx-4, #8b93b8);font-size:12px}',
+      '.ca-prev-who{flex-basis:100%;font-style:normal;font-size:12px;color:var(--fg-blue, #93c5fd)}',
+      '.ca-seg{display:flex;flex-wrap:wrap;gap:6px}.ca-seg button{min-height:34px;padding:0 12px;border-radius:10px;border:1px solid rgba(var(--ink, 255,255,255), 0.1);background:rgba(var(--ink, 255,255,255), 0.03);color:var(--tx-3, #a5adcf);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}',
+      '.ca-seg button.on{color:var(--tx-0, #fff);background:rgba(255,107,6,.16);border-color:rgba(255,107,6,.5)}.ca-seg button:focus-visible{outline:2px solid #ff8a3c;outline-offset:2px}',
       '@media(max-width:760px){.ca-cols{grid-template-columns:1fr;gap:16px}.ca-side{padding:12px}}',
       '.ca-newtype{display:flex;gap:6px;margin-top:6px}.ca-newtype[hidden]{display:none}.ca-newtype input{flex:1;min-width:0}',
       '@media(max-width:767px){.ca-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ca-filters{grid-template-columns:1fr 1fr}.ca-filters .ca-q{grid-column:1/-1}.ca-acts{justify-content:flex-start}}',
@@ -229,7 +229,7 @@
   }
   function openAssign(asset, transfer) {
     var cur = asset.current_employee_id;
-    var body = (transfer ? '<p style="margin:0;color:#a5adcf;font-size:13px">Currently with <b style="color:#fff">' + esc(empName(cur)) + '</b>. Their assignment is closed first, then a new one starts — both stay in the history.</p>' : '')
+    var body = (transfer ? '<p style="margin:0;color:var(--tx-3, #a5adcf);font-size:13px">Currently with <b style="color:var(--tx-0, #fff)">' + esc(empName(cur)) + '</b>. Their assignment is closed first, then a new one starts — both stay in the history.</p>' : '')
       + fld(transfer ? 'Transfer to' : 'Assign to', '<select id="ca-to" class="hr-select w-full">' + empOptions('', transfer ? cur : '') + '</select>', true)
       + '<div class="hfm-g2">' + fld(transfer ? 'Transfer date' : 'Assigned date', '<input id="ca-d" type="date" class="hr-input" value="' + today() + '">', true)
       + fld('Condition', '<select id="ca-c" class="hr-select w-full">' + condOptions(asset.condition) + '</select>') + '</div>'
@@ -250,7 +250,7 @@
       });
   }
   function openReturn(asset, after) {
-    var body = '<p style="margin:0;color:#a5adcf;font-size:13px">Returning from <b style="color:#fff">' + esc(empName(asset.current_employee_id)) + '</b>. Their assignment stays in the history.</p>'
+    var body = '<p style="margin:0;color:var(--tx-3, #a5adcf);font-size:13px">Returning from <b style="color:var(--tx-0, #fff)">' + esc(empName(asset.current_employee_id)) + '</b>. Their assignment stays in the history.</p>'
       + '<div class="hfm-g2">' + fld('Return date', '<input id="ca-d" type="date" class="hr-input" value="' + today() + '">', true)
       + fld('Return condition', '<select id="ca-c" class="hr-select w-full">' + condOptions(asset.condition) + '</select>') + '</div>'
       + fld('Asset status after return', '<select id="ca-s" class="hr-select w-full"><option value="available">Available</option><option value="returned">Returned</option><option value="repair">Repair / Maintenance</option><option value="retired">Retired</option></select>', true)
@@ -288,12 +288,12 @@
     ]);
     var evs = r[0].data || [], asg = r[1].data || [];
     var fact = function (k, val) { return '<div><span>' + k + '</span><b>' + (val || '—') + '</b></div>'; };
-    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + pill(asset.status) + (asset.current_employee_id ? '<span style="color:#a5adcf;font-size:13px">with <b style="color:#fff">' + esc(empName(asset.current_employee_id)) + '</b></span>' : '') + '</div>'
+    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + pill(asset.status) + (asset.current_employee_id ? '<span style="color:var(--tx-3, #a5adcf);font-size:13px">with <b style="color:var(--tx-0, #fff)">' + esc(empName(asset.current_employee_id)) + '</b></span>' : '') + '</div>'
       + '<div class="ca-facts">' + fact('Type', esc(typeName(asset.type_id))) + fact('Asset ID', esc(asset.asset_code)) + fact('Brand / model', esc([asset.brand, asset.model].filter(Boolean).join(' '))) + fact('Serial number', esc(asset.serial_number))
       + fact('Condition', esc(asset.condition)) + fact('Purchase date', fmtD(asset.purchase_date))
-      + fact('Document', asset.document_url ? '<a href="' + esc(asset.document_url) + '" target="_blank" rel="noopener" style="color:#60a5fa">Open link</a>' : '') + fact('Notes', esc(asset.notes)) + '</div>'
+      + fact('Document', asset.document_url ? '<a href="' + esc(asset.document_url) + '" target="_blank" rel="noopener" style="color:var(--fg-blue, #60a5fa)">Open link</a>' : '') + fact('Notes', esc(asset.notes)) + '</div>'
       + '<div><p class="hfm-l" style="margin:4px 0 8px">Holders</p>' + (asg.length ? '<div class="ca-list">' + asg.map(function (x) {
-          return '<div class="ca-item"><div><b>' + esc(empName(x.employee_id)) + '</b><span>' + fmtD(x.assigned_date) + ' → ' + (x.returned_date ? fmtD(x.returned_date) + ' · ' + (x.end_reason === 'transferred' ? 'transferred' : 'returned') + (x.return_condition ? ' (' + esc(x.return_condition) + ')' : '') : '<b style="display:inline;color:#34d399">current</b>') + '</span></div></div>';
+          return '<div class="ca-item"><div><b>' + esc(empName(x.employee_id)) + '</b><span>' + fmtD(x.assigned_date) + ' → ' + (x.returned_date ? fmtD(x.returned_date) + ' · ' + (x.end_reason === 'transferred' ? 'transferred' : 'returned') + (x.return_condition ? ' (' + esc(x.return_condition) + ')' : '') : '<b style="display:inline;color:var(--fg-emerald, #34d399)">current</b>') + '</span></div></div>';
         }).join('') + '</div>' : '<p class="hrp-empty" style="margin:0">Never assigned.</p>') + '</div>'
       + '<div><p class="hfm-l" style="margin:4px 0 10px">History</p><div class="ca-tl">' + evs.map(function (e) {
           var who = e.employee_id ? ' — ' + esc(empName(e.employee_id)) : '', from = e.from_employee_id ? ' (from ' + esc(empName(e.from_employee_id)) + ')' : '';
@@ -305,7 +305,7 @@
       + (asset.status !== 'assigned' && asset.status !== 'retired' ? '<button type="button" class="hfm-btn hfm-pri brand-gradient" data-a="assign">Assign</button>' : '')
       + (asset.status !== 'repair' && asset.status !== 'retired' && asset.status !== 'assigned' ? '<button type="button" class="hfm-btn" data-a="repair">Send for repair</button>' : '')
       + (asset.status === 'repair' || asset.status === 'returned' || asset.status === 'retired' ? '<button type="button" class="hfm-btn" data-a="available">Mark available</button>' : '')
-      + (asset.status !== 'retired' && asset.status !== 'assigned' ? '<button type="button" class="hfm-btn" data-a="retired" style="color:#f87171">Retire</button>' : '');
+      + (asset.status !== 'retired' && asset.status !== 'assigned' ? '<button type="button" class="hfm-btn" data-a="retired" style="color:var(--fg-red, #f87171)">Retire</button>' : '');
     modal(asset.name || 'Asset', asset.asset_code || typeName(asset.type_id), body, '<span></span><div class="hfm-btns" style="flex-wrap:wrap">' + btns + '</div>', function (ov, close) {
       ov.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function () { var a = b.dataset.a; close(); act(a, asset); }; });
     }, true);
@@ -338,12 +338,12 @@
       var acts = '<button class="hr-icon-btn" data-a="view" data-id="' + a.id + '">View</button>'
         + (a.status !== 'retired' ? '<button class="hr-icon-btn" data-a="edit" data-id="' + a.id + '">Edit</button>' : '')
         + (a.status === 'assigned' ? '<button class="hr-icon-btn" data-a="return" data-id="' + a.id + '">Return</button><button class="hr-icon-btn" data-a="transfer" data-id="' + a.id + '">Transfer</button>'
-          : a.status !== 'retired' ? '<button class="hr-icon-btn" data-a="assign" data-id="' + a.id + '" style="color:#60a5fa">Assign</button>' : '');
+          : a.status !== 'retired' ? '<button class="hr-icon-btn" data-a="assign" data-id="' + a.id + '" style="color:var(--fg-blue, #60a5fa)">Assign</button>' : '');
       return '<tr class="hover:bg-white/[0.02]">'
         + '<td data-label="Asset" class="py-2.5 px-4"><div class="ca-name"><b>' + esc(a.name) + '</b><small>' + esc([a.brand, a.model].filter(Boolean).join(' ')) + '</small></div></td>'
         + '<td data-label="Type" class="py-2.5 px-4">' + esc(typeName(a.type_id)) + '</td>'
         + '<td data-label="Asset ID" class="py-2.5 px-4"><span class="ca-code">' + esc(a.asset_code || '—') + '</span></td>'
-        + '<td data-label="Assigned To" class="py-2.5 px-4">' + (a.current_employee_id ? '<span style="display:flex;align-items:center;gap:8px">' + (typeof hrAvatarForEmployeeId === 'function' ? hrAvatarForEmployeeId(a.current_employee_id, 24) : '') + esc(empName(a.current_employee_id)) + '</span>' : '<span style="color:#6b74a0">—</span>') + '</td>'
+        + '<td data-label="Assigned To" class="py-2.5 px-4">' + (a.current_employee_id ? '<span style="display:flex;align-items:center;gap:8px">' + (typeof hrAvatarForEmployeeId === 'function' ? hrAvatarForEmployeeId(a.current_employee_id, 24) : '') + esc(empName(a.current_employee_id)) + '</span>' : '<span style="color:var(--tx-6, #6b74a0)">—</span>') + '</td>'
         + '<td data-label="Condition" class="py-2.5 px-4">' + esc(a.condition || '—') + '</td>'
         + '<td data-label="Status" class="py-2.5 px-4">' + pill(a.status) + '</td>'
         + '<td data-label="Assigned Date" class="py-2.5 px-4">' + (open ? fmtD(open.assigned_date) : '—') + '</td>'
@@ -396,7 +396,7 @@
         + (current && a.id ? '<button class="hr-icon-btn" data-er="' + a.id + '">Return</button>' : '') + '</div>';
     };
     el.innerHTML = (cur.length ? '<div class="ca-list">' + cur.map(function (x) { return item(x, true); }).join('') + '</div>' : '<p class="hrp-empty">No company assets assigned.</p>')
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="hr-icon-btn" data-ea style="color:#60a5fa">+ Assign an asset</button></div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="hr-icon-btn" data-ea style="color:var(--fg-blue, #60a5fa)">+ Assign an asset</button></div>'
       + (past.length ? '<p class="hfm-l" style="margin:16px 0 8px">Previously held</p><div class="ca-list" style="opacity:.75">' + past.map(function (x) { return item(x, false); }).join('') + '</div>' : '');
     el.onclick = function (e) {
       var rb = e.target.closest('[data-er]'); if (rb) { var a = S.assets.find(function (x) { return String(x.id) === rb.dataset.er; }); if (a) openReturn(a); return; }
@@ -429,9 +429,9 @@
       var list = function () {
         var still = S.assets.filter(function (a) { return String(a.current_employee_id) === String(emp.id); });
         return still.length ? '<div class="ca-list">' + still.map(function (a) { return '<div class="ca-item"><div><b>' + esc(a.name) + '</b><span>' + esc(a.asset_code || typeName(a.type_id)) + '</span></div><button class="hr-icon-btn" data-ret="' + a.id + '">Return</button></div>'; }).join('') + '</div>'
-          : '<p style="margin:0;color:#34d399;font-weight:700">All assets returned.</p>';
+          : '<p style="margin:0;color:var(--fg-emerald, #34d399);font-weight:700">All assets returned.</p>';
       };
-      var m = modal('Company assets are still assigned to this employee.', emp.full_name, '<p style="margin:0;color:#a5adcf;font-size:13px">Return them now, or continue and keep them on record as still held by ' + esc(emp.full_name) + '.</p><div id="ca-exit-list">' + list() + '</div>',
+      var m = modal('Company assets are still assigned to this employee.', emp.full_name, '<p style="margin:0;color:var(--tx-3, #a5adcf);font-size:13px">Return them now, or continue and keep them on record as still held by ' + esc(emp.full_name) + '.</p><div id="ca-exit-list">' + list() + '</div>',
         '<span></span><div class="hfm-btns"><button type="button" class="hfm-btn" data-cancel>Cancel</button><button type="button" class="hfm-btn hfm-pri brand-gradient" data-go>Continue</button></div>', function (ov, close) {
           ov.querySelector('[data-cancel]').onclick = function () { fin(false, close); };
           ov.querySelector('[data-go]').onclick = function () { fin(true, close); };

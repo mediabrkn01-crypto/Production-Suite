@@ -368,7 +368,7 @@
     var c = occ.filter(cancelled).length;
     el.innerHTML = '<div class="am-stat"><b>' + occ.length + '</b> classes</div><div class="am-stat"><b>' + withMeet + '</b> with Meet</div>'
       + (need ? '<div class="am-stat"><b>' + need + '</b> need a Meet</div>' : '')
-      + (failed ? '<div class="am-stat" style="border-color:rgba(248,113,113,.35)"><b style="color:#f87171">' + failed + '</b> sync failed</div>' : '')
+      + (failed ? '<div class="am-stat" style="border-color:rgba(248,113,113,.35)"><b style="color:var(--fg-red, #f87171)">' + failed + '</b> sync failed</div>' : '')
       + (c ? '<div class="am-stat"><b>' + c + '</b> cancelled</div>' : '');
   }
 

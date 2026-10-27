@@ -75,7 +75,7 @@
       // Section header
       var header = document.createElement('div');
       header.className = 'nav-section-title';
-      header.style.cssText = 'font-size:9px;text-transform:uppercase;color:#808a9d;letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600';
+      header.style.cssText = 'font-size:9px;text-transform:uppercase;color:var(--tx-5, #808a9d);letter-spacing:1px;margin:10px 0 6px;padding-left:8px;font-weight:600';
       header.textContent = 'COMPANY';
       header.setAttribute('data-dynamic-tabs', 'true');
 
@@ -136,7 +136,7 @@
           div.id = 'tab-acad-custom-' + t.slug;
           div.className = 'acad-tab';
         }
-        div.innerHTML = '<div style="padding:20px 0"><h1 style="font-size:18px;font-weight:700;color:#f1f5f9;margin:0 0 16px">' + esc(t.name) + '</h1><div id="dyntab-content-' + t.id.replace(/-/g, '') + '"></div></div>';
+        div.innerHTML = '<div style="padding:20px 0"><h1 style="font-size:18px;font-weight:700;color:var(--tx-1, #f1f5f9);margin:0 0 16px">' + esc(t.name) + '</h1><div id="dyntab-content-' + t.id.replace(/-/g, '') + '"></div></div>';
         mainArea.appendChild(div);
       });
     },
@@ -184,7 +184,7 @@
       if (_loaded[tab.id]) return;
       _loaded[tab.id] = true;
 
-      el.innerHTML = '<div style="text-align:center;padding:30px;color:#808a9d">Loading...</div>';
+      el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--tx-5, #808a9d)">Loading...</div>';
 
       var { data: sections, error } = await _sb.from('hr_custom_tab_sections')
         .select('*')
@@ -193,13 +193,13 @@
         .order('sort_order');
 
       if (error) {
-        el.innerHTML = '<div style="color:#f87171;padding:20px">Error loading tab content.</div>';
+        el.innerHTML = '<div style="color:var(--fg-red, #f87171);padding:20px">Error loading tab content.</div>';
         _loaded[tab.id] = false;
         return;
       }
 
       if (!sections || sections.length === 0) {
-        el.innerHTML = '<div style="text-align:center;padding:40px;color:#808a9d;font-size:13px">No content published yet.</div>';
+        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--tx-5, #808a9d);font-size:13px">No content published yet.</div>';
         return;
       }
 
@@ -212,18 +212,18 @@
     },
 
     _renderSection: function (sec, tabId) {
-      var html = '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:14px">';
-      if (sec.title) html += '<h2 style="font-size:14px;font-weight:700;color:#f1f5f9;margin:0 0 12px">' + esc(sec.title) + '</h2>';
+      var html = '<div style="background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.08);border-radius:12px;padding:20px;margin-bottom:14px">';
+      if (sec.title) html += '<h2 style="font-size:14px;font-weight:700;color:var(--tx-1, #f1f5f9);margin:0 0 12px">' + esc(sec.title) + '</h2>';
 
       if (sec.section_type === 'text') {
-        html += '<div style="font-size:13px;color:#c7cbe0;line-height:1.6">' + ((sec.content && sec.content.html) || '') + '</div>';
+        html += '<div style="font-size:13px;color:var(--tx-2, #c7cbe0);line-height:1.6">' + ((sec.content && sec.content.html) || '') + '</div>';
       } else if (sec.section_type === 'info') {
         var cards = (sec.content && sec.content.cards) || [];
         html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
         cards.forEach(function (c) {
-          html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:12px">';
-          html += '<div style="font-size:10px;color:#808a9d;text-transform:uppercase;letter-spacing:0.5px">' + esc(c.title) + '</div>';
-          html += '<div style="font-size:16px;font-weight:700;color:#f1f5f9;margin-top:4px">' + esc(c.value) + '</div>';
+          html += '<div style="background:rgba(var(--ink, 255,255,255), 0.03);border:1px solid rgba(var(--ink, 255,255,255), 0.06);border-radius:8px;padding:12px">';
+          html += '<div style="font-size:10px;color:var(--tx-5, #808a9d);text-transform:uppercase;letter-spacing:0.5px">' + esc(c.title) + '</div>';
+          html += '<div style="font-size:16px;font-weight:700;color:var(--tx-1, #f1f5f9);margin-top:4px">' + esc(c.value) + '</div>';
           html += '</div>';
         });
         html += '</div>';
@@ -232,17 +232,17 @@
       } else if (sec.section_type === 'document') {
         var files = (sec.content && sec.content.files) || [];
         if (files.length === 0) {
-          html += '<div style="font-size:12px;color:#808a9d">No documents uploaded yet.</div>';
+          html += '<div style="font-size:12px;color:var(--tx-5, #808a9d)">No documents uploaded yet.</div>';
         } else {
           files.forEach(function (f) {
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
-            html += '<i data-lucide="file" style="width:14px;height:14px;color:#808a9d"></i>';
-            html += '<a href="' + esc(f.url || '#') + '" target="_blank" style="color:#3b82f6;font-size:12px;text-decoration:none">' + esc(f.name) + '</a>';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(var(--ink, 255,255,255), 0.04)">';
+            html += '<i data-lucide="file" style="width:14px;height:14px;color:var(--tx-5, #808a9d)"></i>';
+            html += '<a href="' + esc(f.url || '#') + '" target="_blank" style="color:var(--fg-blue, #3b82f6);font-size:12px;text-decoration:none">' + esc(f.name) + '</a>';
             html += '</div>';
           });
         }
       } else if (sec.section_type === 'table') {
-        html += '<div id="dyntab-table-' + sec.id.replace(/-/g, '') + '" style="font-size:12px;color:#808a9d">Loading table data...</div>';
+        html += '<div id="dyntab-table-' + sec.id.replace(/-/g, '') + '" style="font-size:12px;color:var(--tx-5, #808a9d)">Loading table data...</div>';
         DynamicTabs._loadTableData(sec);
       }
 
@@ -252,16 +252,16 @@
 
     _renderForm: function (sec, tabId) {
       var fields = (sec.content && sec.content.fields) || [];
-      if (fields.length === 0) return '<div style="font-size:12px;color:#808a9d">Form has no fields.</div>';
+      if (fields.length === 0) return '<div style="font-size:12px;color:var(--tx-5, #808a9d)">Form has no fields.</div>';
 
       var formId = 'dynform-' + sec.id.replace(/-/g, '');
-      var inputStyle = 'width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:7px 10px;color:#f1f5f9;font-size:12px';
+      var inputStyle = 'width:100%;background:rgba(var(--ink, 255,255,255), 0.05);border:1px solid rgba(var(--ink, 255,255,255), 0.12);border-radius:6px;padding:7px 10px;color:var(--tx-1, #f1f5f9);font-size:12px';
 
       var html = '<form id="' + formId + '" onsubmit="DynamicTabs._submitForm(event,\'' + tabId + '\',\'' + sec.id + '\')">';
       html += '<div style="display:grid;gap:10px">';
       fields.forEach(function (f) {
         html += '<div>';
-        html += '<label style="display:block;font-size:10px;color:#808a9d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
+        html += '<label style="display:block;font-size:10px;color:var(--tx-5, #808a9d);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
         if (f.type === 'textarea') {
           html += '<textarea name="' + esc(f.name) + '" ' + (f.required ? 'required' : '') + ' style="' + inputStyle + ';min-height:60px" placeholder="' + esc(f.label) + '"></textarea>';
         } else if (f.type === 'select') {
@@ -272,7 +272,7 @@
           });
           html += '</select>';
         } else if (f.type === 'checkbox') {
-          html += '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#f1f5f9;cursor:pointer"><input type="checkbox" name="' + esc(f.name) + '"> ' + esc(f.label) + '</label>';
+          html += '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx-1, #f1f5f9);cursor:pointer"><input type="checkbox" name="' + esc(f.name) + '"> ' + esc(f.label) + '</label>';
         } else {
           html += '<input type="' + (f.type === 'date' ? 'date' : 'text') + '" name="' + esc(f.name) + '" ' + (f.required ? 'required' : '') + ' style="' + inputStyle + '" placeholder="' + esc(f.label) + '">';
         }
@@ -320,7 +320,7 @@
         if (msgEl) {
           msgEl.style.display = 'block';
           msgEl.style.background = 'rgba(248,113,113,0.1)';
-          msgEl.style.color = '#f87171';
+          msgEl.style.color = 'var(--fg-red, #f87171)';
           msgEl.textContent = 'Error: ' + error.message;
         }
         if (btn) { btn.disabled = false; btn.textContent = 'Submit'; }
@@ -351,7 +351,7 @@
 
       subs = subs || [];
       if (subs.length === 0) {
-        el.innerHTML = '<div style="color:#808a9d;font-size:12px">No data yet.</div>';
+        el.innerHTML = '<div style="color:var(--tx-5, #808a9d);font-size:12px">No data yet.</div>';
         return;
       }
 
@@ -362,16 +362,16 @@
       }
 
       var html = '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">';
-      html += '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.08)">';
+      html += '<thead><tr style="border-bottom:1px solid rgba(var(--ink, 255,255,255), 0.08)">';
       cols.forEach(function (c) {
-        html += '<th style="text-align:left;padding:6px 8px;color:#808a9d;font-weight:600">' + esc(c.label) + '</th>';
+        html += '<th style="text-align:left;padding:6px 8px;color:var(--tx-5, #808a9d);font-weight:600">' + esc(c.label) + '</th>';
       });
       html += '</tr></thead><tbody>';
       subs.forEach(function (s) {
-        html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">';
+        html += '<tr style="border-bottom:1px solid rgba(var(--ink, 255,255,255), 0.04)">';
         cols.forEach(function (c) {
           var v = s.data && s.data[c.key] !== undefined ? s.data[c.key] : '';
-          html += '<td style="padding:6px 8px;color:#f1f5f9">' + esc(String(v)) + '</td>';
+          html += '<td style="padding:6px 8px;color:var(--tx-1, #f1f5f9)">' + esc(String(v)) + '</td>';
         });
         html += '</tr>';
       });

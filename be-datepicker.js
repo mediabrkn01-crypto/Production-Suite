@@ -129,7 +129,7 @@
     var startYear=centerYear-50;
     var endYear=centerYear+20;
     var h='<div class="be-dp-header">';
-    h+='<div class="be-dp-title" style="justify-content:flex-start"><button data-act="show-days" style="font-size:12px;color:rgba(255,255,255,.5)">← Back</button></div>';
+    h+='<div class="be-dp-title" style="justify-content:flex-start"><button data-act="show-days" style="font-size:12px;color:rgba(var(--ink, 255,255,255), calc(0.5 * var(--ink-tx-k, 1) + var(--ink-tx-b, 0)))">← Back</button></div>';
     h+='</div>';
     h+='<div class="be-dp-ysearch"><input type="text" placeholder="Search year…" data-act="year-search" autocomplete="off"/></div>';
     h+='<div class="be-dp-ylist"><div class="be-dp-grid" id="be-dp-year-grid">';

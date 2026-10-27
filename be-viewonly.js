@@ -81,7 +81,7 @@
     if (document.getElementById('be-viewonly-bar')) return;
     var b = document.createElement('div'); b.id = 'be-viewonly-bar';
     b.textContent = 'View only · Company Suite';
-    b.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:9999;padding:4px 12px;border-radius:999px;font:700 10.5px Inter,system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#c4b5fd;background:rgba(20,16,32,.92);border:1px solid rgba(167,139,250,.4);pointer-events:none';
+    b.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:9999;padding:4px 12px;border-radius:999px;font:700 10.5px Inter,system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-violet, #c4b5fd);background:rgba(var(--sf-2-rgb, 20,16,32), 0.92);border:1px solid rgba(167,139,250,.4);pointer-events:none';
     document.body.appendChild(b);
     document.documentElement.classList.add('be-viewonly');
   }

@@ -57,7 +57,7 @@
       if (state === 'connected' || state === 'connecting') return;
       if (!pillEl) {
         var st = document.createElement('style'); st.textContent =
-          '.bel-pill{position:fixed;left:50%;bottom:18px;transform:translate(-50%,12px);z-index:2147482990;display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:#11162a;border:1px solid rgba(255,255,255,.12);color:#cbd5e1;font:600 12px Inter,system-ui,sans-serif;box-shadow:0 12px 30px -10px rgba(0,0,0,.7);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}' +
+          '.bel-pill{position:fixed;left:50%;bottom:18px;transform:translate(-50%,12px);z-index:2147482990;display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:var(--sf-3, #11162a);border:1px solid rgba(var(--ink, 255,255,255), 0.12);color:var(--tx-2, #cbd5e1);font:600 12px Inter,system-ui,sans-serif;box-shadow:0 12px 30px -10px rgba(var(--shade, 0,0,0), calc(0.7 * var(--shade-k, 1)));opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}' +
           '.bel-pill.on{opacity:1;transform:translate(-50%,0)}.bel-pill i{width:8px;height:8px;border-radius:50%;background:#fbbf24;animation:belP 1.2s ease-in-out infinite}' +
           '.bel-pill[data-s=offline] i{background:#f87171;animation:none}@keyframes belP{50%{opacity:.35}}' +
           '@media (max-width:640px){.bel-pill{bottom:calc(18px + 76px)}}@media (prefers-reduced-motion:reduce){.bel-pill i{animation:none}}';

@@ -1,0 +1,407 @@
+/* ============================================================================
+   BETheme — Light / Dark theme tokens for every ERP page (be-theme.js applies + persists).
+
+   <html data-theme="dark|light">  is set by be-theme.js before the page paints.
+
+   How the two palettes work
+   • DARK is the ERP's original palette. Page/component CSS writes each neutral as
+       var(--tx-3, #a5adcf)   rgba(var(--ink, 255,255,255), .06)   var(--sf-2, #0d1120)
+     The level tokens below are NOT defined for dark, so every fallback renders the exact
+     original colour — dark mode is pixel-identical to before.
+   • LIGHT defines those same level tokens, so every page switches with no per-page CSS:
+       --sf-0…4      surfaces: page → base (sidebar/header) → card/modal → nested → hover/selected
+       --tx-0…7      text ramp: headings → body → secondary → muted → hints (dark: white → dim)
+       --ink         rgb base of hairline borders, dividers, hover tints, glass (dark: white)
+       --fg-<hue>    status/accent TEXT colours (dark 300/400 shades → readable 700 shades)
+       --tint-<hue>  deep tinted surfaces (dark green/red/indigo panels → soft tints)
+       --shade/-k, --scrim/-k, --well/-k   shadows, modal backdrops, inset wells
+   • --be-*  semantic tokens defined for BOTH themes — use these in new components.
+   Status colours keep their meaning in both themes (green ok, amber warn, red error, blue info).
+   ============================================================================ */
+
+/* ── Semantic tokens: dark (default). A .be-dark-island (and the seasonal header scene band,
+      .bst-scene — night artwork) stays dark inside a light page. ── */
+:root,
+html[data-theme="light"] :is(.be-dark-island, .bst-scene) {
+  --scheme: dark;
+  --be-bg: #030509;
+  --be-bg-2: #0a0e17;
+  --be-nav: rgba(10, 14, 23, .9);
+  --be-surface: #0d1120;
+  --be-surface-2: #121628;
+  --be-elevated: #11162a;
+  --be-overlay: rgba(0, 0, 0, .6);
+  --be-border: rgba(255, 255, 255, .08);
+  --be-border-strong: rgba(255, 255, 255, .16);
+  --be-divider: rgba(255, 255, 255, .06);
+  --be-hover: rgba(255, 255, 255, .05);
+  --be-selected: rgba(255, 107, 6, .12);
+  --be-text: #f1f5f9;
+  --be-heading: #ffffff;
+  --be-text-2: #a5adcf;
+  --be-muted: #6b74a0;
+  --be-faint: #4a5182;
+  --be-icon: #bbbbbb;
+  --be-accent: #ff6b06;
+  --be-accent-2: #f9182f;
+  --be-accent-text: #ff8a3c;
+  --be-on-accent: #ffffff;
+  --be-focus: rgba(255, 107, 6, .55);
+  --be-input-bg: rgba(255, 255, 255, .04);
+  --be-input-border: rgba(255, 255, 255, .1);
+  --be-success: #34d399;
+  --be-warning: #fbbf24;
+  --be-danger: #f87171;
+  --be-info: #60a5fa;
+  --be-success-bg: rgba(16, 185, 129, .12);
+  --be-warning-bg: rgba(245, 158, 11, .12);
+  --be-danger-bg: rgba(239, 68, 68, .12);
+  --be-info-bg: rgba(59, 130, 246, .12);
+  --be-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  --be-tooltip-bg: #1a1f35;
+  --be-tooltip-text: #f1f5f9;
+  --be-skeleton: rgba(255, 255, 255, .06);
+  --be-chart-grid: #1e2238;
+  --be-chart-axis: #4b5563;
+  --be-chart-label: #9ca3af;
+  --be-chart-value: #f3f4f6;
+  --be-chart-track: #1a1e36;
+  --be-chart-cutout: #121424;
+}
+
+/* ── Light ── */
+html[data-theme="light"] {
+  color-scheme: light;
+  --scheme: light;
+
+  /* surfaces (page → base → card/modal → nested → hover/selected) */
+  --sf-0: #eef1f6;  --sf-0-rgb: 238, 241, 246;
+  --sf-1: #f6f7fb;  --sf-1-rgb: 246, 247, 251;
+  --sf-2: #fdfdfe;  --sf-2-rgb: 253, 253, 254;
+  --sf-3: #f1f3f8;  --sf-3-rgb: 241, 243, 248;
+  --sf-4: #e5e9f2;  --sf-4-rgb: 229, 233, 242;
+
+  /* overlay base for borders / dividers / hover tints / glass */
+  --ink: 22, 30, 52;
+  --ink-tx-k: .62;  --ink-tx-b: .34;   /* ink-alpha text keeps a readable floor (.28 → .51) */
+
+  /* text ramp */
+  --tx-0: #0f1526;  --tx-0-rgb: 15, 21, 38;
+  --tx-1: #1a2236;  --tx-1-rgb: 26, 34, 54;
+  --tx-2: #2e3852;  --tx-2-rgb: 46, 56, 82;
+  --tx-3: #414c6b;  --tx-3-rgb: 65, 76, 107;
+  --tx-4: #4b5677;  --tx-4-rgb: 75, 86, 119;
+  --tx-5: #56607f;  --tx-5-rgb: 86, 96, 127;
+  --tx-6: #5f6889;  --tx-6-rgb: 95, 104, 137;
+  --tx-7: #747c9a;  --tx-7-rgb: 116, 124, 154;
+
+  /* status / accent text — same hue, readable on light surfaces */
+  --fg-red: #c81e1e;      --fg-red-rgb: 200, 30, 30;
+  --fg-rose: #be123c;     --fg-rose-rgb: 190, 18, 60;
+  --fg-pink: #be185d;     --fg-pink-rgb: 190, 24, 93;
+  --fg-fuchsia: #a21caf;  --fg-fuchsia-rgb: 162, 28, 175;
+  --fg-purple: #7e22ce;   --fg-purple-rgb: 126, 34, 206;
+  --fg-violet: #6d28d9;   --fg-violet-rgb: 109, 40, 217;
+  --fg-indigo: #4338ca;   --fg-indigo-rgb: 67, 56, 202;
+  --fg-blue: #1d4ed8;     --fg-blue-rgb: 29, 78, 216;
+  --fg-sky: #0369a1;      --fg-sky-rgb: 3, 105, 161;
+  --fg-cyan: #0e7490;     --fg-cyan-rgb: 14, 116, 144;
+  --fg-teal: #0f766e;     --fg-teal-rgb: 15, 118, 110;
+  --fg-emerald: #047857;  --fg-emerald-rgb: 4, 120, 87;
+  --fg-green: #15803d;    --fg-green-rgb: 21, 128, 61;
+  --fg-lime: #4d7c0f;     --fg-lime-rgb: 77, 124, 15;
+  --fg-yellow: #a16207;   --fg-yellow-rgb: 161, 98, 7;
+  --fg-amber: #b45309;    --fg-amber-rgb: 180, 83, 9;
+  --fg-orange: #c2410c;   --fg-orange-rgb: 194, 65, 12;
+
+  /* deep tinted surfaces → soft tints */
+  --tint-red: #fdeeee;     --tint-red-rgb: 253, 238, 238;
+  --tint-rose: #fdedf1;    --tint-rose-rgb: 253, 237, 241;
+  --tint-pink: #fcedf5;    --tint-pink-rgb: 252, 237, 245;
+  --tint-purple: #f4ecfd;  --tint-purple-rgb: 244, 236, 253;
+  --tint-violet: #f0edfd;  --tint-violet-rgb: 240, 237, 253;
+  --tint-indigo: #eceefd;  --tint-indigo-rgb: 236, 238, 253;
+  --tint-blue: #ebf2fe;    --tint-blue-rgb: 235, 242, 254;
+  --tint-cyan: #e8f6f9;    --tint-cyan-rgb: 232, 246, 249;
+  --tint-green: #e9f6ee;   --tint-green-rgb: 233, 246, 238;
+  --tint-emerald: #e7f6ef; --tint-emerald-rgb: 231, 246, 239;
+  --tint-amber: #fdf3e3;   --tint-amber-rgb: 253, 243, 227;
+  --tint-orange: #fdf0e8;  --tint-orange-rgb: 253, 240, 232;
+
+  /* accent colours fed through component vars (color: var(--c)) are deepened for contrast */
+  --acc-k: 70%;  --acc-mix: #0f1526;
+
+  /* shadows soften, backdrops / wells turn navy-tinted and lighter */
+  --shade: 30, 40, 70;   --shade-k: .32;
+  --scrim: 18, 24, 40;   --scrim-k: .62;
+  --well: 30, 40, 70;    --well-k: .22;
+
+  /* semantic */
+  --be-bg: #eef1f6;
+  --be-bg-2: #f6f7fb;
+  --be-nav: rgba(246, 247, 251, .92);
+  --be-surface: #fdfdfe;
+  --be-surface-2: #f1f3f8;
+  --be-elevated: #ffffff;
+  --be-overlay: rgba(18, 24, 40, .38);
+  --be-border: rgba(22, 30, 52, .1);
+  --be-border-strong: rgba(22, 30, 52, .2);
+  --be-divider: rgba(22, 30, 52, .08);
+  --be-hover: rgba(22, 30, 52, .05);
+  --be-selected: rgba(255, 107, 6, .1);
+  --be-text: #1a2236;
+  --be-heading: #0f1526;
+  --be-text-2: #414c6b;
+  --be-muted: #5f6889;
+  --be-faint: #747c9a;
+  --be-icon: #5b6382;
+  --be-accent: #ea5a00;
+  --be-accent-2: #e0122a;
+  --be-accent-text: #c2410c;
+  --be-on-accent: #ffffff;
+  --be-focus: rgba(234, 90, 0, .45);
+  --be-input-bg: #ffffff;
+  --be-input-border: rgba(22, 30, 52, .16);
+  --be-success: #047857;
+  --be-warning: #b45309;
+  --be-danger: #c81e1e;
+  --be-info: #1d4ed8;
+  --be-success-bg: rgba(16, 185, 129, .12);
+  --be-warning-bg: rgba(245, 158, 11, .14);
+  --be-danger-bg: rgba(239, 68, 68, .1);
+  --be-info-bg: rgba(59, 130, 246, .1);
+  --be-shadow: 0 10px 28px rgba(30, 40, 70, .12);
+  --be-tooltip-bg: #1a2236;
+  --be-tooltip-text: #f6f7fb;
+  --be-skeleton: rgba(22, 30, 52, .07);
+  --be-chart-grid: #e2e6ef;
+  --be-chart-axis: #8a92ab;
+  --be-chart-label: #5f6889;
+  --be-chart-value: #1a2236;
+  --be-chart-track: #e8ebf3;
+  --be-chart-cutout: #fdfdfe;
+}
+
+html[data-theme="light"] :is(.be-dark-island, .bst-scene) {
+  --sf-0: initial; --sf-0-rgb: initial; --sf-1: initial; --sf-1-rgb: initial; --sf-2: initial; --sf-2-rgb: initial;
+  --sf-3: initial; --sf-3-rgb: initial; --sf-4: initial; --sf-4-rgb: initial;
+  --ink: initial; --ink-tx-k: initial; --ink-tx-b: initial;
+  --tx-0: initial; --tx-0-rgb: initial; --tx-1: initial; --tx-1-rgb: initial; --tx-2: initial; --tx-2-rgb: initial;
+  --tx-3: initial; --tx-3-rgb: initial; --tx-4: initial; --tx-4-rgb: initial; --tx-5: initial; --tx-5-rgb: initial;
+  --tx-6: initial; --tx-6-rgb: initial; --tx-7: initial; --tx-7-rgb: initial;
+  --fg-red: initial; --fg-red-rgb: initial; --fg-rose: initial; --fg-rose-rgb: initial; --fg-pink: initial; --fg-pink-rgb: initial; --fg-fuchsia: initial; --fg-fuchsia-rgb: initial; --fg-purple: initial; --fg-purple-rgb: initial; --fg-violet: initial; --fg-violet-rgb: initial; --fg-indigo: initial; --fg-indigo-rgb: initial; --fg-blue: initial; --fg-blue-rgb: initial; --fg-sky: initial; --fg-sky-rgb: initial; --fg-cyan: initial; --fg-cyan-rgb: initial; --fg-teal: initial; --fg-teal-rgb: initial; --fg-emerald: initial; --fg-emerald-rgb: initial; --fg-green: initial; --fg-green-rgb: initial; --fg-lime: initial; --fg-lime-rgb: initial; --fg-yellow: initial; --fg-yellow-rgb: initial; --fg-amber: initial; --fg-amber-rgb: initial; --fg-orange: initial; --fg-orange-rgb: initial;
+  --tint-red: initial; --tint-red-rgb: initial; --tint-rose: initial; --tint-rose-rgb: initial; --tint-pink: initial; --tint-pink-rgb: initial; --tint-purple: initial; --tint-purple-rgb: initial; --tint-violet: initial; --tint-violet-rgb: initial; --tint-indigo: initial; --tint-indigo-rgb: initial; --tint-blue: initial; --tint-blue-rgb: initial; --tint-cyan: initial; --tint-cyan-rgb: initial; --tint-green: initial; --tint-green-rgb: initial; --tint-emerald: initial; --tint-emerald-rgb: initial; --tint-amber: initial; --tint-amber-rgb: initial; --tint-orange: initial; --tint-orange-rgb: initial;
+  --shade: initial; --shade-k: initial; --scrim: initial; --scrim-k: initial; --well: initial; --well-k: initial;
+  --acc-k: initial; --acc-mix: initial;
+  color-scheme: dark;
+}
+html[data-theme="light"] .bst-scene img[src*="Final Logo-03"] { filter: none; }
+
+/* Smooth switch: only while a switch is happening (be-theme.js adds the class ~350 ms). */
+html.be-theming,
+html.be-theming *,
+html.be-theming *::before,
+html.be-theming *::after {
+  transition: background-color .28s ease, border-color .28s ease, color .2s ease, fill .2s ease,
+              stroke .2s ease, box-shadow .28s ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.be-theming, html.be-theming *, html.be-theming *::before, html.be-theming *::after { transition: none !important; }
+}
+
+/* ── Theme toggle (sun / moon — after Uiverse.io by Type-Delta, a joshwcomeau.com clone) ──
+   Checked = light theme (sun), unchecked = dark theme (moon). */
+.be-tt {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--ink, 255,255,255), .03);
+  border: 1px solid rgba(var(--ink, 255,255,255), .07);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .15s, background .15s;
+}
+.be-tt:hover { border-color: rgba(255, 107, 6, .35); background: rgba(var(--ink, 255,255,255), .05); }
+.be-tt:hover .themeToggle { color: var(--be-heading); }
+.be-tt:has(.themeToggleInput:focus-visible) { outline: 2px solid var(--be-focus); outline-offset: 2px; }
+/* phone top bar: matches .be-mtb-icon-btn */
+.be-tt.be-tt-bare { width: 34px; height: 34px; border-radius: 50%; background: rgba(var(--ink, 255,255,255), .05); border-color: rgba(var(--ink, 255,255,255), .08); }
+.be-tt.be-tt-bare .themeToggle { width: 18px; height: 18px; color: var(--tx-0, #fff); }
+
+.themeToggle {
+  color: var(--be-icon);
+  width: 20px;
+  transition: color .15s;
+}
+.be-tt .themeToggle { height: 20px; }
+.st-sunMoonThemeToggleBtn { position: relative; cursor: pointer; display: block; }
+.st-sunMoonThemeToggleBtn .themeToggleInput {
+  opacity: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  margin: 0;
+  cursor: pointer;
+}
+/* the whole 40 px box is the hit area */
+.be-tt .themeToggleInput { position: absolute; inset: -10px; width: auto; aspect-ratio: auto; z-index: 1; }
+.st-sunMoonThemeToggleBtn svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform .4s ease;
+  transform: rotate(40deg);
+  pointer-events: none;
+}
+.st-sunMoonThemeToggleBtn svg .sunMoon { transform-origin: center center; transition: inherit; transform: scale(1); }
+.st-sunMoonThemeToggleBtn svg .sunRay { transform-origin: center center; transform: scale(0); }
+.st-sunMoonThemeToggleBtn svg mask > circle {
+  transition: transform .64s cubic-bezier(.41, .64, .32, 1.575);
+  transform: translate(0px, 0px);
+}
+.st-sunMoonThemeToggleBtn svg .sunRay2 { animation-delay: .05s !important; }
+.st-sunMoonThemeToggleBtn svg .sunRay3 { animation-delay: .1s !important; }
+.st-sunMoonThemeToggleBtn svg .sunRay4 { animation-delay: .17s !important; }
+.st-sunMoonThemeToggleBtn svg .sunRay5 { animation-delay: .25s !important; }
+.st-sunMoonThemeToggleBtn svg .sunRay6 { animation-delay: .29s !important; }
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg { transform: rotate(90deg); }
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg mask > circle { transform: translate(16px, -3px); }
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg .sunMoon { transform: scale(.55); }
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg .sunRay { animation: showRay1832 .4s ease 0s 1 forwards; }
+/* first paint in light: show the sun without replaying the ray animation */
+.be-tt.be-tt-still .themeToggleInput:checked + svg .sunRay { animation: none; transform: scale(1); }
+.be-tt.be-tt-still svg, .be-tt.be-tt-still svg * { transition: none !important; }
+@keyframes showRay1832 { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .st-sunMoonThemeToggleBtn svg, .st-sunMoonThemeToggleBtn svg * { transition: none !important; }
+  .st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg .sunRay { animation: none; transform: scale(1); }
+}
+/* login screen: floating, top-right */
+.be-tt.be-tt-float { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; z-index: 60; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   LIGHT — Tailwind utility classes used in markup (cdn.tailwindcss.com) that hard-code
+   dark-theme neutrals / 400-shade status text. Status hues keep their meaning.
+   ════════════════════════════════════════════════════════════════════════════ */
+html[data-theme="light"] body { color: var(--tx-1); }
+
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .hover\:text-white:hover,
+html[data-theme="light"] .text-gray-200 { color: var(--tx-0); }
+html[data-theme="light"] .text-white\/90 { color: rgba(var(--ink), .9); }
+html[data-theme="light"] .text-white\/70,
+html[data-theme="light"] .hover\:text-white\/70:hover { color: rgba(var(--ink), .74); }
+html[data-theme="light"] .text-white\/50 { color: rgba(var(--ink), .6); }
+html[data-theme="light"] .text-gray-300 { color: var(--tx-2); }
+html[data-theme="light"] .text-gray-400 { color: var(--tx-4); }
+html[data-theme="light"] .text-gray-500 { color: var(--tx-6); }
+html[data-theme="light"] .text-gray-600,
+html[data-theme="light"] .text-gray-700 { color: var(--tx-7); }
+html[data-theme="light"] .placeholder-gray-500::placeholder { color: var(--tx-7); }
+html[data-theme="light"] .text-\[\#e6e9f5\] { color: var(--tx-1); }
+html[data-theme="light"] .text-\[\#c7cbe0\],
+html[data-theme="light"] .text-\[\#cbd5e1\] { color: var(--tx-2); }
+html[data-theme="light"] .text-\[\#a5adcf\] { color: var(--tx-3); }
+html[data-theme="light"] .text-\[\#8890b5\] { color: var(--tx-4); }
+html[data-theme="light"] .text-\[\#6b74a0\] { color: var(--tx-6); }
+html[data-theme="light"] .text-\[\#4a5182\] { color: var(--tx-7); }
+html[data-theme="light"] .text-\[\#ff8a3c\],
+html[data-theme="light"] .text-orange-300,
+html[data-theme="light"] .text-orange-400,
+html[data-theme="light"] .hover\:text-orange-300:hover,
+html[data-theme="light"] .text-orange-500 { color: var(--fg-orange); }
+html[data-theme="light"] .text-\[\#fbbf24\],
+html[data-theme="light"] .text-amber-300 { color: var(--fg-amber); }
+html[data-theme="light"] .text-yellow-400,
+html[data-theme="light"] .text-yellow-500 { color: var(--fg-yellow); }
+html[data-theme="light"] .text-\[\#f87171\],
+html[data-theme="light"] .text-\[\#fca5a5\],
+html[data-theme="light"] .text-red-300,
+html[data-theme="light"] .text-red-400,
+html[data-theme="light"] .text-red-500,
+html[data-theme="light"] .hover\:text-red-400:hover,
+html[data-theme="light"] .hover\:text-red-500:hover { color: var(--fg-red); }
+html[data-theme="light"] .text-emerald-400,
+html[data-theme="light"] .hover\:text-emerald-400:hover,
+html[data-theme="light"] .hover\:text-emerald-500:hover { color: var(--fg-emerald); }
+html[data-theme="light"] .text-green-300,
+html[data-theme="light"] .text-green-400 { color: var(--fg-green); }
+html[data-theme="light"] .text-blue-300,
+html[data-theme="light"] .text-blue-400,
+html[data-theme="light"] .hover\:text-blue-500:hover { color: var(--fg-blue); }
+html[data-theme="light"] .text-purple-300,
+html[data-theme="light"] .text-purple-400 { color: var(--fg-purple); }
+
+/* white / gray text that sits on a solid accent fill stays white */
+html[data-theme="light"] :is(.brand-gradient, [class*="bg-gradient-"], .bg-red-600, .bg-orange-500, .bg-green-400, .bg-\[\#128C7E\], [style*="linear-gradient(135deg, var(--brand"], [style*="linear-gradient(135deg,var(--brand"], [style*="background:#ef4444"], [style*="background:#10b981"]):is(.text-white, .text-white\/90, .text-white\/70),
+html[data-theme="light"] :is(.brand-gradient, [class*="bg-gradient-"], .bg-red-600, .bg-orange-500, .bg-\[\#128C7E\]) :is(.text-white, .text-white\/90, .text-white\/70) { color: #fff; }
+
+html[data-theme="light"] [class*="border-white\/"],
+html[data-theme="light"] [class*="divide-white\/"] > * + * { border-color: rgba(var(--ink), .1); }
+html[data-theme="light"] .bg-white\/\[0\.02\],
+html[data-theme="light"] .bg-white\/\[0\.03\] { background-color: rgba(var(--ink), .03); }
+html[data-theme="light"] .bg-white\/\[0\.05\],
+html[data-theme="light"] .bg-white\/\[0\.06\] { background-color: rgba(var(--ink), .05); }
+html[data-theme="light"] [class*="hover:bg-white/"]:hover { background-color: rgba(var(--ink), .05); }
+html[data-theme="light"] .bg-\[\#0b0d19\],
+html[data-theme="light"] .bg-\[\#05060e\] { background-color: var(--sf-1); }
+html[data-theme="light"] .bg-\[\#181b30\] { background-color: var(--sf-3); }
+html[data-theme="light"] .hover\:bg-\[\#2a2f4a\]:hover { background-color: var(--sf-4); }
+html[data-theme="light"] .bg-black\/60,
+html[data-theme="light"] .bg-black\/70,
+html[data-theme="light"] .bg-black\/80 { background-color: var(--be-overlay); }
+html[data-theme="light"] .bg-blue-900\/40 { background-color: rgba(59, 130, 246, .12); }
+html[data-theme="light"] .shadow-black\/60 { --tw-shadow-color: rgba(30, 40, 70, .18); }
+
+/* native form controls + scrollbars follow the theme */
+html[data-theme="light"] ::placeholder { color: var(--tx-7); opacity: 1; }
+html[data-theme="light"] input:-webkit-autofill,
+html[data-theme="light"] textarea:-webkit-autofill {
+  -webkit-text-fill-color: var(--tx-1) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--sf-2) inset !important;
+}
+html[data-theme="light"] input[type="checkbox"],
+html[data-theme="light"] input[type="radio"],
+html[data-theme="light"] input[type="range"],
+html[data-theme="light"] progress { accent-color: var(--be-accent); }
+html[data-theme="light"] option { background: var(--sf-2); color: var(--tx-1); }
+html[data-theme="light"] * { scrollbar-color: rgba(var(--ink), .22) transparent; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background-color: rgba(var(--ink), .2); }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background-color: rgba(var(--ink), .32); }
+html[data-theme="light"] ::selection { background: rgba(255, 107, 6, .22); color: var(--tx-0); }
+
+/* The white wordmark (Final Logo-03) turns ink-dark in light; its red K keeps its hue. */
+html[data-theme="light"] img[src*="Final Logo-03"],
+html[data-theme="light"] img.be-logo-invert { filter: invert(1) hue-rotate(180deg) saturate(1.4); }
+
+/* Light: text colours chosen at runtime in JS strings (e.g. 'color:' + (ok ? '#10b981' : '#f87171')).
+   Generated from the hex values used in the page scripts; background/border colours are untouched. */
+html[data-theme="light"] :is([style^="color:#f87171"], [style*=";color:#f87171"], [style*="; color:#f87171"], [style^="color: #f87171"], [style^="color:#ef4444"], [style*=";color:#ef4444"], [style*="; color:#ef4444"], [style^="color: #ef4444"], [style^="color:#f9182f"], [style*=";color:#f9182f"], [style*="; color:#f9182f"], [style^="color: #f9182f"], [style^="color:#ff0000"], [style*=";color:#ff0000"], [style*="; color:#ff0000"], [style^="color: #ff0000"], [style^="color:#fca5a5"], [style*=";color:#fca5a5"], [style*="; color:#fca5a5"], [style^="color: #fca5a5"], [style^="color:#ff4d5e"], [style*=";color:#ff4d5e"], [style*="; color:#ff4d5e"], [style^="color: #ff4d5e"], [style^="color:#fecaca"], [style*=";color:#fecaca"], [style*="; color:#fecaca"], [style^="color: #fecaca"]) { color: var(--fg-red) !important; }
+html[data-theme="light"] :is([style^="color:#f59e0b"], [style*=";color:#f59e0b"], [style*="; color:#f59e0b"], [style^="color: #f59e0b"], [style^="color:#fbbf24"], [style*=";color:#fbbf24"], [style*="; color:#fbbf24"], [style^="color: #fbbf24"], [style^="color:#ffc24b"], [style*=";color:#ffc24b"], [style*="; color:#ffc24b"], [style^="color: #ffc24b"], [style^="color:#eab308"], [style*=";color:#eab308"], [style*="; color:#eab308"], [style^="color: #eab308"], [style^="color:#fcd34d"], [style*=";color:#fcd34d"], [style*="; color:#fcd34d"], [style^="color: #fcd34d"], [style^="color:#c99a3e"], [style*=";color:#c99a3e"], [style*="; color:#c99a3e"], [style^="color: #c99a3e"]) { color: var(--fg-amber) !important; }
+html[data-theme="light"] :is([style^="color:#94a3b8"], [style*=";color:#94a3b8"], [style*="; color:#94a3b8"], [style^="color: #94a3b8"], [style^="color:#8890b5"], [style*=";color:#8890b5"], [style*="; color:#8890b5"], [style^="color: #8890b5"], [style^="color:#9ca3af"], [style*=";color:#9ca3af"], [style*="; color:#9ca3af"], [style^="color: #9ca3af"], [style^="color:#8b93b8"], [style*=";color:#8b93b8"], [style*="; color:#8b93b8"], [style^="color: #8b93b8"]) { color: var(--tx-4) !important; }
+html[data-theme="light"] :is([style^="color:#3b82f6"], [style*=";color:#3b82f6"], [style*="; color:#3b82f6"], [style^="color: #3b82f6"], [style^="color:#60a5fa"], [style*=";color:#60a5fa"], [style*="; color:#60a5fa"], [style^="color: #60a5fa"], [style^="color:#818cf8"], [style*=";color:#818cf8"], [style*="; color:#818cf8"], [style^="color: #818cf8"], [style^="color:#bfdbfe"], [style*=";color:#bfdbfe"], [style*="; color:#bfdbfe"], [style^="color: #bfdbfe"], [style^="color:#a5b4fc"], [style*=";color:#a5b4fc"], [style*="; color:#a5b4fc"], [style^="color: #a5b4fc"], [style^="color:#cfe6ff"], [style*=";color:#cfe6ff"], [style*="; color:#cfe6ff"], [style^="color: #cfe6ff"], [style^="color:#cfe0f3"], [style*=";color:#cfe0f3"], [style*="; color:#cfe0f3"], [style^="color: #cfe0f3"], [style^="color:#c9d9ee"], [style*=";color:#c9d9ee"], [style*="; color:#c9d9ee"], [style^="color: #c9d9ee"], [style^="color:#b9cbe4"], [style*=";color:#b9cbe4"], [style*="; color:#b9cbe4"], [style^="color: #b9cbe4"]) { color: var(--fg-blue) !important; }
+html[data-theme="light"] :is([style^="color:#a5adcf"], [style*=";color:#a5adcf"], [style*="; color:#a5adcf"], [style^="color: #a5adcf"], [style^="color:#9aa3c7"], [style*=";color:#9aa3c7"], [style*="; color:#9aa3c7"], [style^="color: #9aa3c7"]) { color: var(--tx-3) !important; }
+html[data-theme="light"] :is([style^="color:#a78bfa"], [style*=";color:#a78bfa"], [style*="; color:#a78bfa"], [style^="color: #a78bfa"], [style^="color:#7c3aed"], [style*=";color:#7c3aed"], [style*="; color:#7c3aed"], [style^="color: #7c3aed"], [style^="color:#8b5cf6"], [style*=";color:#8b5cf6"], [style*="; color:#8b5cf6"], [style^="color: #8b5cf6"]) { color: var(--fg-violet) !important; }
+html[data-theme="light"] :is([style^="color:#22c55e"], [style*=";color:#22c55e"], [style*="; color:#22c55e"], [style^="color: #22c55e"], [style^="color:#4ade80"], [style*=";color:#4ade80"], [style*="; color:#4ade80"], [style^="color: #4ade80"], [style^="color:#bbf7d0"], [style*=";color:#bbf7d0"], [style*="; color:#bbf7d0"], [style^="color: #bbf7d0"], [style^="color:#86efac"], [style*=";color:#86efac"], [style*="; color:#86efac"], [style^="color: #86efac"]) { color: var(--fg-green) !important; }
+html[data-theme="light"] :is([style^="color:#fb923c"], [style*=";color:#fb923c"], [style*="; color:#fb923c"], [style^="color: #fb923c"], [style^="color:#ff8a3d"], [style*=";color:#ff8a3d"], [style*="; color:#ff8a3d"], [style^="color: #ff8a3d"], [style^="color:#ff6b06"], [style*=";color:#ff6b06"], [style*="; color:#ff6b06"], [style^="color: #ff6b06"], [style^="color:#f97316"], [style*=";color:#f97316"], [style*="; color:#f97316"], [style^="color: #f97316"], [style^="color:#ff9933"], [style*=";color:#ff9933"], [style*="; color:#ff9933"], [style^="color: #ff9933"], [style^="color:#fd6d05"], [style*=";color:#fd6d05"], [style*="; color:#fd6d05"], [style^="color: #fd6d05"], [style^="color:#f05825"], [style*=";color:#f05825"], [style*="; color:#f05825"], [style^="color: #f05825"], [style^="color:#ff9a4d"], [style*=";color:#ff9a4d"], [style*="; color:#ff9a4d"], [style^="color: #ff9a4d"], [style^="color:#ff8a3c"], [style*=";color:#ff8a3c"], [style*="; color:#ff8a3c"], [style^="color: #ff8a3c"]) { color: var(--fg-orange) !important; }
+html[data-theme="light"] :is([style^="color:#38bdf8"], [style*=";color:#38bdf8"], [style*="; color:#38bdf8"], [style^="color: #38bdf8"], [style^="color:#7dd3fc"], [style*=";color:#7dd3fc"], [style*="; color:#7dd3fc"], [style^="color: #7dd3fc"]) { color: var(--fg-sky) !important; }
+html[data-theme="light"] :is([style^="color:#34d399"], [style*=";color:#34d399"], [style*="; color:#34d399"], [style^="color: #34d399"], [style^="color:#2fe08c"], [style*=";color:#2fe08c"], [style*="; color:#2fe08c"], [style^="color: #2fe08c"]) { color: var(--fg-emerald) !important; }
+html[data-theme="light"] :is([style^="color:#06b6d4"], [style*=";color:#06b6d4"], [style*="; color:#06b6d4"], [style^="color: #06b6d4"], [style^="color:#22d3ee"], [style*=";color:#22d3ee"], [style*="; color:#22d3ee"], [style^="color: #22d3ee"], [style^="color:#a5f3fc"], [style*=";color:#a5f3fc"], [style*="; color:#a5f3fc"], [style^="color: #a5f3fc"]) { color: var(--fg-cyan) !important; }
+html[data-theme="light"] :is([style^="color:#facc15"], [style*=";color:#facc15"], [style*="; color:#facc15"], [style^="color: #facc15"], [style^="color:#fde68a"], [style*=";color:#fde68a"], [style*="; color:#fde68a"], [style^="color: #fde68a"], [style^="color:#fde047"], [style*=";color:#fde047"], [style*="; color:#fde047"], [style^="color: #fde047"]) { color: var(--fg-yellow) !important; }
+html[data-theme="light"] :is([style^="color:#ff0552"], [style*=";color:#ff0552"], [style*="; color:#ff0552"], [style^="color: #ff0552"], [style^="color:#ed1f51"], [style*=";color:#ed1f51"], [style*="; color:#ed1f51"], [style^="color: #ed1f51"], [style^="color:#e11d48"], [style*=";color:#e11d48"], [style*="; color:#e11d48"], [style^="color: #e11d48"]) { color: var(--fg-rose) !important; }
+html[data-theme="light"] :is([style^="color:#ec4899"], [style*=";color:#ec4899"], [style*="; color:#ec4899"], [style^="color: #ec4899"], [style^="color:#f472b6"], [style*=";color:#f472b6"], [style*="; color:#f472b6"], [style^="color: #f472b6"], [style^="color:#fbcfe8"], [style*=";color:#fbcfe8"], [style*="; color:#fbcfe8"], [style^="color: #fbcfe8"], [style^="color:#f43f7e"], [style*=";color:#f43f7e"], [style*="; color:#f43f7e"], [style^="color: #f43f7e"]) { color: var(--fg-pink) !important; }
+html[data-theme="light"] :is([style^="color:#2dd4bf"], [style*=";color:#2dd4bf"], [style*="; color:#2dd4bf"], [style^="color: #2dd4bf"]) { color: var(--fg-teal) !important; }
+html[data-theme="light"] :is([style^="color:#f1f5f9"], [style*=";color:#f1f5f9"], [style*="; color:#f1f5f9"], [style^="color: #f1f5f9"], [style^="color:#f3f4f6"], [style*=";color:#f3f4f6"], [style*="; color:#f3f4f6"], [style^="color: #f3f4f6"], [style^="color:#e6e9f5"], [style*=";color:#e6e9f5"], [style*="; color:#e6e9f5"], [style^="color: #e6e9f5"], [style^="color:#f6f7f2"], [style*=";color:#f6f7f2"], [style*="; color:#f6f7f2"], [style^="color: #f6f7f2"], [style^="color:#eef4fd"], [style*=";color:#eef4fd"], [style*="; color:#eef4fd"], [style^="color: #eef4fd"], [style^="color:#e6effa"], [style*=";color:#e6effa"], [style*="; color:#e6effa"], [style^="color: #e6effa"], [style^="color:#e5e7eb"], [style*=";color:#e5e7eb"], [style*="; color:#e5e7eb"], [style^="color: #e5e7eb"]) { color: var(--tx-1) !important; }
+html[data-theme="light"] :is([style^="color:#c084fc"], [style*=";color:#c084fc"], [style*="; color:#c084fc"], [style^="color: #c084fc"], [style^="color:#e9d5ff"], [style*=";color:#e9d5ff"], [style*="; color:#e9d5ff"], [style^="color: #e9d5ff"], [style^="color:#a855f7"], [style*=";color:#a855f7"], [style*="; color:#a855f7"], [style^="color: #a855f7"]) { color: var(--fg-purple) !important; }
+html[data-theme="light"] :is([style^="color:#f8fafc"], [style*=";color:#f8fafc"], [style*="; color:#f8fafc"], [style^="color: #f8fafc"], [style^="color:#fafaf9"], [style*=";color:#fafaf9"], [style*="; color:#fafaf9"], [style^="color: #fafaf9"], [style^="color:#f6f7fb"], [style*=";color:#f6f7fb"], [style*="; color:#f6f7fb"], [style^="color: #f6f7fb"], [style^="color:#f4f8ff"], [style*=";color:#f4f8ff"], [style*="; color:#f4f8ff"], [style^="color: #f4f8ff"]) { color: var(--tx-0) !important; }
+html[data-theme="light"] :is([style^="color:#cbd5e1"], [style*=";color:#cbd5e1"], [style*="; color:#cbd5e1"], [style^="color: #cbd5e1"]) { color: var(--tx-2) !important; }
+html[data-theme="light"] :is([style^="color:#c026d3"], [style*=";color:#c026d3"], [style*="; color:#c026d3"], [style^="color: #c026d3"]) { color: var(--fg-fuchsia) !important; }
+html[data-theme="light"] :is([style^="color:#6366f1"], [style*=";color:#6366f1"], [style*="; color:#6366f1"], [style^="color: #6366f1"]) { color: var(--fg-indigo) !important; }
+html[data-theme="light"] :is([style^="color:#a3e635"], [style*=";color:#a3e635"], [style*="; color:#a3e635"], [style^="color: #a3e635"]) { color: var(--fg-lime) !important; }

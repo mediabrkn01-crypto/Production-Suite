@@ -158,11 +158,11 @@
   function css() {
     if (document.getElementById('jw-css')) return;
     var st = document.createElement('style'); st.id = 'jw-css';
-    st.textContent = '.jw-chip{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(10,8,14,.7);color:rgba(255,255,255,.6);font:600 10px Inter,system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;white-space:nowrap}'
-      + '.jw-chip[data-state="on"]{color:#2fe08c;border-color:rgba(47,224,140,.35)}.jw-chip[data-state="paused"]{color:#ffc24b;border-color:rgba(255,194,75,.35)}'
-      + '.jw-chip[data-state="blocked"],.jw-chip[data-state="error"]{color:#ff8a8a;border-color:rgba(255,77,94,.35)}.jw-chip:focus-visible{outline:2px solid #fff;outline-offset:2px}'
-      + '.jw-offer p{font-size:14px;line-height:1.7;margin:0 0 6px}.jw-offer small{display:block;font-size:12px;color:rgba(255,255,255,.55);margin:0 0 14px;line-height:1.6}'
-      + '.jw-offer .jw-row{display:flex;flex-direction:column;gap:8px}.jw-offer .jw-later{background:none;border:none;color:rgba(255,255,255,.55);font:600 12px Inter,system-ui,sans-serif;cursor:pointer;padding:8px}';
+    st.textContent = '.jw-chip{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:4px 10px;border-radius:999px;border:1px solid rgba(var(--ink, 255,255,255), 0.12);background:rgba(var(--sf-0-rgb, 10,8,14), 0.7);color:rgba(var(--ink, 255,255,255), calc(0.6 * var(--ink-tx-k, 1) + var(--ink-tx-b, 0)));font:600 10px Inter,system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;white-space:nowrap}'
+      + '.jw-chip[data-state="on"]{color:var(--fg-emerald, #2fe08c);border-color:rgba(47,224,140,.35)}.jw-chip[data-state="paused"]{color:var(--fg-amber, #ffc24b);border-color:rgba(255,194,75,.35)}'
+      + '.jw-chip[data-state="blocked"],.jw-chip[data-state="error"]{color:var(--fg-red, #ff8a8a);border-color:rgba(255,77,94,.35)}.jw-chip:focus-visible{outline:2px solid #fff;outline-offset:2px}'
+      + '.jw-offer p{font-size:14px;line-height:1.7;margin:0 0 6px}.jw-offer small{display:block;font-size:12px;color:rgba(var(--ink, 255,255,255), calc(0.55 * var(--ink-tx-k, 1) + var(--ink-tx-b, 0)));margin:0 0 14px;line-height:1.6}'
+      + '.jw-offer .jw-row{display:flex;flex-direction:column;gap:8px}.jw-offer .jw-later{background:none;border:none;color:rgba(var(--ink, 255,255,255), calc(0.55 * var(--ink-tx-k, 1) + var(--ink-tx-b, 0)));font:600 12px Inter,system-ui,sans-serif;cursor:pointer;padding:8px}';
     document.head.appendChild(st);
   }
   function mountChip(host) {
