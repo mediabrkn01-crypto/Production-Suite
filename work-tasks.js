@@ -809,7 +809,10 @@
     window.BEWork.openTask = async function (id) {
       var t = S.rows.find(function (x) { return String(x.id) === String(id); });
       if (!t) { await load(); t = S.rows.find(function (x) { return String(x.id) === String(id); }); }
-      if (t) openTask(t); else toast('info', 'That work is no longer assigned to you.');
+      if (t) return openTask(t);
+      // A review notification (work:<id>) belongs to a Work Assignment board on this page.
+      for (var bi = 0; bi < BOARDS.length; bi++) { try { if (await BOARDS[bi].open(id)) return; } catch (_) {} }
+      toast('info', 'That work is no longer assigned to you.');
     };
     function markSeen(id) { S.known.add(String(id)); try { localStorage.setItem('bw_seen_' + me, JSON.stringify([].concat(Array.from(S.known)).slice(-400))); } catch (_) {} }
     async function openTask(t) {
@@ -922,6 +925,19 @@
     }
     async function load() {
       S.cols = await hasCols(db);
+      // Server boards: the work function returns only the work this person owns (created by them,
+      // or theirs to review; HR = HR's work; leadership = everything) — never a whole department.
+      if (o.server) {
+        try {
+          var lr = await workApi('list', {});
+          S.teams = await hasTeams(db);
+          S.me = lr.me || null;
+          var memBy = {}; (lr.members || []).forEach(function (m) { (memBy[String(m.assignment_id)] = memBy[String(m.assignment_id)] || []).push(m); });
+          S.mem = memBy;
+          S.rows = (lr.rows || []).map(function (t) { if (!t.department) t.department = 'production'; return t; });
+          S.ready = true; render(); return;
+        } catch (e) { if (!/created_by_id|reviewer_id|review_route|schema cache|column/i.test(e.message || '')) console.warn('[BEWork] list:', e.message); }
+      }
       var q = db.from('assignments').select('*').order('id', { ascending: false });
       if (deps && S.cols) {
         var who = myNames().map(function (n) { return '"' + n.replace(/["\\]/g, '') + '"'; }).join(',');
@@ -945,7 +961,7 @@
       var q = lc(S.q);
       return S.rows.filter(function (t) {
         var k = state(t);
-        var tabOk = S.tab === 'all' || (S.tab === 'active' && isOpen(t)) || (S.tab === 'overdue' && isOverdue(t)) || (S.tab === k) || (S.tab === 'closed' && (k === 'cancelled' || k === 'rejected'));
+        var tabOk = S.tab === 'all' || (S.tab === 'review' && needsReview(t)) || (S.tab === 'active' && isOpen(t)) || (S.tab === 'overdue' && isOverdue(t)) || (S.tab === k) || (S.tab === 'closed' && (k === 'cancelled' || k === 'rejected'));
         if (!tabOk) return false;
         if (S.dep && t.department !== S.dep) return false;
         if (S.emp && lc(t.employee_email) !== lc(S.emp) && !(isTeam(t) && activeMembers(S.mem[String(t.id)]).some(function (m) { return lc(m.employee_email) === lc(S.emp); }))) return false;
@@ -960,8 +976,8 @@
     function render() {
       if (!S.ready) return;
       var month = today().slice(0, 7);
-      var c = { active: 0, pending: 0, progress: 0, rework: 0, overdue: 0, completed: 0, monthDone: 0, closed: 0, all: S.rows.length };
-      S.rows.forEach(function (t) { var k = state(t); if (isOpen(t)) c.active++; if (c[k] != null) c[k]++; if (isOverdue(t)) c.overdue++; if (k === 'cancelled' || k === 'rejected') c.closed++;
+      var c = { active: 0, pending: 0, progress: 0, rework: 0, overdue: 0, completed: 0, monthDone: 0, closed: 0, review: 0, all: S.rows.length };
+      S.rows.forEach(function (t) { var k = state(t); if (needsReview(t)) c.review++; if (isOpen(t)) c.active++; if (c[k] != null) c[k]++; if (isOverdue(t)) c.overdue++; if (k === 'cancelled' || k === 'rejected') c.closed++;
         if (k === 'completed' && String(t.completed_at || t.submitted_at || t.date || '').slice(0, 7) === month) c.monthDone++; });
       // employees who left / paused with unfinished work
       var stuck = {};
@@ -972,7 +988,7 @@
       var empOpts = {}; S.rows.forEach(function (t) { if (t.employee_email) empOpts[lc(t.employee_email)] = t.assigned_to || t.employee_email;
         if (isTeam(t)) activeMembers(S.mem[String(t.id)]).forEach(function (m) { empOpts[lc(m.employee_email)] = m.employee_name || m.employee_email; }); });
       var months = {}; S.rows.forEach(function (t) { var m = String(t.assigned_date || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) months[m] = 1; });
-      var tabs = [['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled / Rejected'], ['all', 'All']];
+      var tabs = (S.me ? [['review', 'Awaiting review']] : []).concat([['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled / Rejected'], ['all', 'All']]);
       el.innerHTML =
         '<div class="bw-head"><div><h2>' + esc(o.title || 'Work Assignment') + '</h2><p>' + esc(deps ? (deps.length ? 'Track work for ' + deps.map(function (d) { return DIV[d]; }).join(', ') + ' and the work you assigned.' : 'Track the work you assigned.') + (S.assign ? '' : ' You can assign work to anyone in the organisation.') : 'Assign and track work for every department — Media, Academics, Sales, HR and Management.') + '</p></div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span data-archive-host></span><button type="button" class="bw-new" data-new><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Assign work</button></div></div>' +
@@ -1032,6 +1048,9 @@
       el.querySelectorAll('[data-view]').forEach(function (b) { b.onclick = function () { view(b.dataset.view); }; });
       el.querySelectorAll('[data-bulk]').forEach(function (b) { b.onclick = function () { var e = empById(b.dataset.bulk); reassign(S.rows.filter(function (t) { return isOpen(t) && empForTask(t) === e; }).map(function (t) { return String(t.id); }), e); }; });
     }
+    // Assigner-owned review (review_route 'assigner'): waiting = submitted, not yet decided, and
+    // the server says this person may review it (the assigner, or leadership).
+    function needsReview(t) { return t.review_route === 'assigner' && !!t.can_review && t.status === 'Completed' && !t.manager_approved; }
     function rowById(id) { return S.rows.find(function (t) { return String(t.id) === String(id); }); }
     function whoCell(t) {
       if (!isTeam(t)) { var ie = empForTask(t); return '<div class="bw-who bw-c-who">' + ava(ie && ie.id, t.assigned_to, t.department, 'sm') + '<div><b>' + esc(t.assigned_to || '—') + '</b>' + depChip(t.department) + '</div></div>'; }
@@ -1047,9 +1066,15 @@
       var actorEmail = lc((o.actor && o.actor.email) || '');
       var teamOpts = { manage: open, canPost: true, me: actorEmail, db: db };
       var teamBlock = team ? teamHTML(t, mem, await loadActivity(db, t.id), teamOpts) : '';
+      // Assigner-reviewed work: decisions go through the work function (the DB refuses browser
+      // writes to its review fields). Legacy / Media rows keep the existing rework action.
+      var srv = t.review_route === 'assigner', waitRv = needsReview(t), canRv = srv && !!t.can_review;
       var acts = (open ? '<button class="bw-btn red" data-a="cancel">Cancel task</button>' + (team ? '' : '<button class="bw-btn" data-a="re">Reassign</button>') + '<button class="bw-btn pri" data-a="edit">Edit</button>' : '') +
-        (done ? '<button class="bw-btn" data-a="rework">' + (rej ? 'Reopen for rework' : 'Send back for rework') + '</button>' : '');
-      modal(detailHTML(t, { members: mem, teamBlock: teamBlock, extra: done ? '<div class="bw-f" id="bw-rw" hidden><span class="bw-l">What needs to change?' + (team ? ' <em>— every team member is notified</em>' : '') + '</span><textarea id="bw-rwn" placeholder="Explain what to fix"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="dorework">Send back</button></div></div>' : '' }) +
+        (srv ? (waitRv ? '<button class="bw-btn red" data-a="reject">Reject</button><button class="bw-btn" data-a="rework">Send back for rework</button><button class="bw-btn green" data-a="approve">Approve</button>'
+                       : (rej && canRv ? '<button class="bw-btn" data-a="rework">Reopen for rework</button>' : ''))
+             : (done ? '<button class="bw-btn" data-a="rework">' + (rej ? 'Reopen for rework' : 'Send back for rework') + '</button>' : ''));
+      var rvInfo = srv ? '<div class="bw-note">Assigned by <b>' + esc(t.assigned_by || t.created_by || '—') + '</b> — reviewed by the assigner' + (t.manager_approved ? ' · approved by <b>' + esc(t.approved_by || '—') + '</b>' : '') + '.</div>' : '';
+      modal(detailHTML(t, { members: mem, teamBlock: teamBlock, extra: done ? '<div class="bw-f" id="bw-rw" hidden><span class="bw-l">What needs to change?' + (team ? ' <em>— every team member is notified</em>' : '') + '</span><textarea id="bw-rwn" placeholder="Explain what to fix"></textarea><div style="display:flex;justify-content:flex-end"><button class="bw-btn pri" data-a="dorework">Send back</button></div></div>' + rvInfo : rvInfo }) +
         '<div class="bw-mf"><button class="bw-btn ghost" data-bw-close>Close</button>' + acts + '</div>', function (ov, close) {
         var ob = ov.querySelector('.bw-out'); if (ob) wirePreviews(ob, parseOutput(t.asset_link));
         if (team) { wireTeam(ov, db, t, { email: actorEmail, name: actor }, null, teamOpts); wireManage(ov, t); }
@@ -1058,7 +1083,19 @@
             var a = b.dataset.a;
             if (a === 'edit') { close(); openForm(t.id); return; }
             if (a === 're') { close(); reassign([t.id]); return; }
-            if (a === 'rework') { ov.querySelector('#bw-rw').hidden = false; ov.querySelector('#bw-rwn').focus(); return; }
+            if (a === 'rework' || a === 'reject') { var rw = ov.querySelector('#bw-rw'); rw.hidden = false; rw.dataset.mode = a;
+              rw.querySelector('.bw-l').firstChild.textContent = a === 'reject' ? 'Why is it rejected? ' : 'What needs to change? ';
+              rw.querySelector('[data-a="dorework"]').textContent = a === 'reject' ? 'Reject work' : 'Send back'; ov.querySelector('#bw-rwn').focus(); return; }
+            if (srv && (a === 'approve' || a === 'dorework')) {
+              var mode = a === 'approve' ? 'approve' : (ov.querySelector('#bw-rw').dataset.mode === 'reject' ? 'reject' : 'rework');
+              var why = mode === 'approve' ? '' : ov.querySelector('#bw-rwn').value.trim();
+              if (mode !== 'approve' && !why) { toast('warning', mode === 'reject' ? 'Add the reason for rejecting.' : 'Explain what needs to change.'); return; }
+              b.disabled = true;
+              try { await workApi('review', { id: t.id, decision: mode, reason: why });
+                toast('success', mode === 'approve' ? 'Work approved — ' + (t.assigned_to || 'the employee') + ' has been notified.' : mode === 'reject' ? 'Work rejected.' : 'Sent back for rework.');
+                close(); load(); }
+              catch (err) { b.disabled = false; toast('error', err.message || String(err)); load(); }
+              return; }
             if (a === 'dorework') { var n = ov.querySelector('#bw-rwn').value.trim(); if (!n) { toast('warning', 'Explain what needs to change.'); return; }
               var vno = (Array.isArray(t.history) ? t.history : []).filter(function (h) { return h.output && parseOutput(h.output.asset_link).length; }).length + 1;
               var r = await saveRow(db, t.id, { status: 'Rework Required', rework_reason: n, reviewed_by: actor, reviewed_at: new Date().toISOString(), completed_at: null, manager_approved: false,
@@ -1259,9 +1296,15 @@
           var btn = this, title = ov.querySelector('#bw-title').value.trim(), due = ov.querySelector('#bw-due').value, ad = ov.querySelector('#bw-ad').value || today();
           var link = ov.querySelector('#bw-link').value.trim(), cat = ov.querySelector('#bw-cat').value.trim(), desc = ov.querySelector('#bw-desc').value.trim();
           if (!title) { toast('warning', 'Add a task title.'); ov.querySelector('#bw-title').focus(); return; }
-          if (!t && o.server && (type === 'project' || type === 'individual')) {
-            var items = [];
-            if (type === 'project') {
+          if (!t && o.server && (type === 'project' || type === 'individual' || (type === 'team' && S.me))) {
+            var items = [], leadSel = '';
+            if (type === 'team') {
+              var tids = picked();
+              if (tids.length < 2) { toast('warning', 'Choose at least 2 team members.'); return; }
+              if (!due) { toast('warning', 'Set a due date.'); ov.querySelector('#bw-due').focus(); return; }
+              leadSel = (ov.querySelector('#bw-lead') || {}).value || '';
+              tids.forEach(function (id) { items.push({ employee_id: id, type: cat, due: due, instructions: '' }); });
+            } else if (type === 'project') {
               var bad = '';
               rowsEl().querySelectorAll('.bw-dr').forEach(function (d) { if (bad) return;
                 var x = empById(d.dataset.emp), del = d.querySelector('[data-del]').value.trim(), rdue = d.querySelector('[data-rdue]').value || due;
@@ -1280,8 +1323,8 @@
               var sharedUp = files.length ? await uploadFiles(db, files, function (pc) { btn.textContent = 'Uploading shared files ' + pc + '%…'; }) : [];
               for (var ii = 0; ii < items.length; ii++) { var fk = items[ii]._k, ff = fk ? (rowFiles[fk] || []) : []; items[ii].files = ff.length ? await uploadFiles(db, ff, function (pc) { btn.textContent = 'Uploading files ' + pc + '%…'; }) : []; delete items[ii]._k; }
               btn.textContent = 'Assigning…';
-              var res = await workApi('create', { title: title, brief: desc, priority: pri, assigned_date: ad, link: link || null, project: type === 'project', shared_files: sharedUp, items: items });
-              toast('success', type === 'project' ? '“' + title + '” assigned to ' + res.assignments.length + (res.assignments.length === 1 ? ' person' : ' people') + ' — each has been notified.' : 'Work assigned to ' + res.assignments[0].employee + ' — they have been notified.');
+              var res = await workApi('create', { title: title, brief: desc, priority: pri, assigned_date: ad, link: link || null, project: type === 'project', team: type === 'team', lead_id: leadSel || null, shared_files: sharedUp, items: items });
+              toast('success', type === 'team' ? 'Team work assigned to ' + items.length + ' people — each of them has been notified.' : type === 'project' ? '“' + title + '” assigned to ' + res.assignments.length + (res.assignments.length === 1 ? ' person' : ' people') + ' — each has been notified.' : 'Work assigned to ' + res.assignments[0].employee + ' — they have been notified.');
               close(); load();
             } catch (err) { toast('error', err.message || String(err)); btn.disabled = false; btn.textContent = type === 'project' ? 'Assign project' : 'Assign work'; }
             return;
@@ -1366,10 +1409,19 @@
     if (window.BELive) BELive.on('bework-mgr' + (deps ? '-' + deps.join('_') : ''), ['assignments', 'hr_employees', 'assignment_members'], function (evs, info) {
       if (info.resync || (evs || []).some(function (e) { return e.table === 'hr_employees'; })) loadEmps().then(load); else load();
     }, { debounce: 400 });
-    return { reload: load, assign: function () { openForm(null); },
+    var api = { reload: load, assign: function () { openForm(null); },
       // Deep link (Notification Center → "Review Work"): open the exact record in this board.
       open: async function (id) { if (!rowById(id)) await load(); if (rowById(id)) view(id); return !!rowById(id); } };
+    BOARDS.push(api);
+    return api;
   }
 
+  var BOARDS = [];
   window.BEWork = { mountMyTasks: mountMyTasks, mountManager: mountManager, DIV: DIV, isOpen: isOpen, isOverdue: isOverdue };
+  // Pages with a board but no My Tasks list (e.g. the Media Head's "Work for other departments"):
+  // a work:<id> notification opens the task in the board. mountMyTasks replaces this.
+  window.BEWork.openTask = async function (id) {
+    for (var bi = 0; bi < BOARDS.length; bi++) { try { if (await BOARDS[bi].open(id)) return; } catch (_) {} }
+    if (typeof window.switchTab === 'function') { try { window.switchTab('pipeline'); } catch (_) {} }
+  };
 })();
