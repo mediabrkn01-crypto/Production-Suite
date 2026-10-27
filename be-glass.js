@@ -138,7 +138,7 @@
     if (anc === 'scrim') { tag(el, 'lg-dialog', inline); return true; }
     if (solid && floating && !anc) { tag(el, 'lg-pop', inline); return true; }
     if (anc) { tag(el, 'lg-nested', inline); return true; }
-    tag(el, solid ? 'lg-panel' : 'lg-nested', inline);
+    tag(el, 'lg-panel', inline);   // top-level tint cards (e.g. Work projects) get full panel glass too
     return true;
   }
 
