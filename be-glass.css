@@ -1,0 +1,494 @@
+/* ============================================================================
+   BEGlass — the ERP-wide Liquid Glass design system (Media, HR, Academic, Sales, Manager).
+
+   Two halves:
+     be-glass.css  materials + tokens (this file, loaded LAST in <head> on every portal)
+     be-glass.js   adoption: classifies every rendered surface / control by its real computed
+                   style and role, including JS-injected modules, inline-styled templates and
+                   components appended to <body> (menus, dialogs, toasts), and tags it with a
+                   material class. New nodes and newly shown dialogs are tagged as they appear.
+
+   Materials (the same recipe everywhere, intensity by role):
+     .lg-chrome   sidebar, top header         refined translucent glass
+     .lg-panel    cards, sections, panels     layered glass
+     .lg-nested   a panel inside a panel      tint + rim, no second blur
+     .lg-pop      menus, popovers, toasts     strong separation, defined edge
+     .lg-dialog   modals, sheets, drawers     strongest blur + edge, sits on a dim-only scrim
+     .lg-scrim    modal backdrop              dims only — a blurred backdrop would become the
+                                              dialog's backdrop root and flatten its glass
+     .lg-btn / .lg-btn-solid / .lg-btn-ghost  compact glass controls / gel rim on filled buttons
+     .lg-seg      tab & segmented groups      recessed track + raised glass active pill
+   A glass surface = translucent tint + backdrop blur/saturate + light layers (top sheen,
+   specular corner, faint warm/cool shift) + rim light (inset edge highlights) + depth shadow.
+   No pseudo-elements are used for the material, so nothing can block clicks or selection.
+
+   Selectors are `html body .x` / `html :is(...)` so they outrank a component's base rule wherever
+   it was injected, while its state variants (`.x.active`, `.x.sel` …) still win.
+   Dark is the default; html[data-theme="light"] (be-theme.js) switches every token.
+   ============================================================================ */
+
+/* ── 1. Tokens ─────────────────────────────────────────────────────────────── */
+:root {
+  --r-xs: 8px;  --r-sm: 10px;  --r-md: 14px;  --r-lg: 18px;  --r-xl: 22px;  --r-pill: 999px;
+  --dur-1: .15s;  --dur-2: .24s;  --ease: cubic-bezier(.2, .7, .2, 1);
+
+  --lg-blur-chrome: 22px;  --lg-blur-panel: 18px;  --lg-blur-pop: 28px;  --lg-blur-dialog: 34px;
+  --lg-sat: 165%;
+
+  /* dark — layered, tinted glass */
+  --gl-base: #070a13;
+  --lg-scene: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000' preserveAspectRatio='none'%3E%3Cdefs%3E%3CradialGradient id='a'%3E%3Cstop offset='0' stop-color='%235047d6' stop-opacity='.62'/%3E%3Cstop offset='.55' stop-color='%234338ca' stop-opacity='.38'/%3E%3Cstop offset='1' stop-color='%234338ca' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='b'%3E%3Cstop offset='0' stop-color='%23ff6b06' stop-opacity='.42'/%3E%3Cstop offset='.5' stop-color='%23ff6b06' stop-opacity='.2'/%3E%3Cstop offset='1' stop-color='%23ff6b06' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='c'%3E%3Cstop offset='0' stop-color='%23ff0552' stop-opacity='.36'/%3E%3Cstop offset='.55' stop-color='%23e11d48' stop-opacity='.16'/%3E%3Cstop offset='1' stop-color='%23e11d48' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='d'%3E%3Cstop offset='0' stop-color='%231f7ad1' stop-opacity='.4'/%3E%3Cstop offset='.55' stop-color='%230e5aa8' stop-opacity='.18'/%3E%3Cstop offset='1' stop-color='%230e5aa8' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='e'%3E%3Cstop offset='0' stop-color='%23a855f7' stop-opacity='.34'/%3E%3Cstop offset='1' stop-color='%23a855f7' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='s' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.5' stop-color='%23fff' stop-opacity='.035'/%3E%3Cstop offset='1' stop-color='%23fff' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1600' height='1000' fill='%23070a13'/%3E%3Ccircle cx='230' cy='110' r='430' fill='url(%23a)'/%3E%3Ccircle cx='1420' cy='170' r='360' fill='url(%23b)'/%3E%3Cellipse cx='1180' cy='880' rx='560' ry='330' fill='url(%23c)'/%3E%3Ccircle cx='260' cy='900' r='380' fill='url(%23d)'/%3E%3Ccircle cx='860' cy='470' r='240' fill='url(%23e)'/%3E%3Crect x='-200' y='380' width='2000' height='120' fill='url(%23s)' transform='rotate(-14 800 440)'/%3E%3Crect x='-200' y='640' width='2000' height='60' fill='url(%23s)' transform='rotate(-14 800 670)'/%3E%3C/svg%3E");
+
+  --lg-chrome: rgba(17, 21, 37, .46);
+  --lg-panel: rgba(22, 27, 46, .44);
+  --lg-nested: rgba(255, 255, 255, .04);
+  --lg-pop: rgba(20, 24, 41, .74);
+  --lg-dialog: rgba(19, 23, 40, .72);
+  --lg-dense: rgba(15, 19, 33, .9);
+  --lg-solid-fallback: rgba(18, 22, 37, .96);
+
+  /* light layers: top sheen, specular corner, warm/cool colour shift */
+  --lg-sheen:
+    linear-gradient(180deg, rgba(255, 255, 255, .075) 0%, rgba(255, 255, 255, .02) 38%, rgba(255, 255, 255, 0) 62%),
+    radial-gradient(120% 80% at 0% 0%, rgba(150, 165, 255, .10) 0%, rgba(150, 165, 255, 0) 55%),
+    radial-gradient(110% 80% at 100% 100%, rgba(255, 120, 60, .06) 0%, rgba(255, 120, 60, 0) 60%);
+  --lg-sheen-strong:
+    linear-gradient(180deg, rgba(255, 255, 255, .10) 0%, rgba(255, 255, 255, .03) 30%, rgba(255, 255, 255, 0) 55%),
+    radial-gradient(90% 60% at 12% 0%, rgba(170, 180, 255, .14) 0%, rgba(170, 180, 255, 0) 60%),
+    radial-gradient(100% 70% at 100% 100%, rgba(255, 110, 60, .07) 0%, rgba(255, 110, 60, 0) 60%);
+  --lg-border: rgba(255, 255, 255, .10);
+  --lg-border-strong: rgba(255, 255, 255, .17);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, .13), inset 1px 0 0 rgba(255, 255, 255, .035),
+            inset 0 -1px 0 rgba(0, 0, 0, .28);
+  --lg-rim-strong: inset 0 1px 0 rgba(255, 255, 255, .18), inset 1px 0 0 rgba(255, 255, 255, .05),
+                   inset 0 -1px 0 rgba(0, 0, 0, .32), inset 0 0 0 1px rgba(255, 255, 255, .03);
+  --lg-shadow-1: 0 1px 2px rgba(0, 0, 0, .28), 0 10px 30px rgba(0, 0, 0, .30);
+  --lg-shadow-2: 0 2px 8px rgba(0, 0, 0, .32), 0 22px 50px rgba(0, 0, 0, .46);
+  --lg-shadow-3: 0 4px 14px rgba(0, 0, 0, .36), 0 36px 90px rgba(0, 0, 0, .58);
+  --lg-scrim: rgba(4, 6, 12, .52);
+
+  /* controls */
+  --lg-ctl: rgba(255, 255, 255, .055);
+  --lg-ctl-hover: rgba(255, 255, 255, .09);
+  --lg-ctl-press: rgba(255, 255, 255, .035);
+  --lg-ctl-border: rgba(255, 255, 255, .11);
+  --lg-ctl-sheen: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, 0) 60%);
+  --lg-ctl-rim: inset 0 1px 0 rgba(255, 255, 255, .10), inset 0 -1px 0 rgba(0, 0, 0, .22);
+  --lg-gel-rim: inset 0 1px 0 rgba(255, 255, 255, .32), inset 0 -1px 0 rgba(0, 0, 0, .22),
+                inset 0 0 0 1px rgba(255, 255, 255, .06);
+  --lg-track: rgba(0, 0, 0, .22);
+  --lg-track-rim: inset 0 1px 2px rgba(0, 0, 0, .35), 0 1px 0 rgba(255, 255, 255, .05);
+  --lg-pill: rgba(255, 255, 255, .12);
+  --lg-pill-text: #ffffff;
+  --lg-field: rgba(255, 255, 255, .045);
+  --lg-field-border: rgba(255, 255, 255, .12);
+  --lg-field-hover: rgba(255, 255, 255, .22);
+  --lg-field-rim: inset 0 1px 2px rgba(0, 0, 0, .28), 0 1px 0 rgba(255, 255, 255, .04);
+  --lg-row-hover: rgba(255, 255, 255, .04);
+  --lg-nav-hover: rgba(255, 255, 255, .05);
+  --lg-scroll: rgba(255, 255, 255, .14);
+  --lg-scroll-hover: rgba(255, 255, 255, .26);
+}
+
+/* light — luminous glass */
+html[data-theme="light"] {
+  /* warmer page neutrals (be-theme.css holds the cool set) */
+  --sf-0: #f1ece7;  --sf-0-rgb: 241, 236, 231;
+  --sf-1: #f8f5f2;  --sf-1-rgb: 248, 245, 242;
+  --sf-2: #ffffff;  --sf-2-rgb: 255, 255, 255;
+  --sf-3: #f5f1ed;  --sf-3-rgb: 245, 241, 237;
+  --sf-4: #ebe5df;  --sf-4-rgb: 235, 229, 223;
+  --be-bg: #f1ece7;  --be-bg-2: #f8f5f2;  --be-surface: #ffffff;  --be-surface-2: #f5f1ed;
+  --be-chart-cutout: #ffffff;
+
+  --gl-base: #efe8e1;
+  --lg-scene: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f6f1ec'/%3E%3Cstop offset='1' stop-color='%23ebe3da'/%3E%3C/linearGradient%3E%3CradialGradient id='a'%3E%3Cstop offset='0' stop-color='%23ffb184' stop-opacity='.85'/%3E%3Cstop offset='.55' stop-color='%23ffc29e' stop-opacity='.55'/%3E%3Cstop offset='1' stop-color='%23ffc29e' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='b'%3E%3Cstop offset='0' stop-color='%23ff8fab' stop-opacity='.62'/%3E%3Cstop offset='.55' stop-color='%23ffadc2' stop-opacity='.36'/%3E%3Cstop offset='1' stop-color='%23ffadc2' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='c'%3E%3Cstop offset='0' stop-color='%23f1b56f' stop-opacity='.7'/%3E%3Cstop offset='.55' stop-color='%23f6cd98' stop-opacity='.42'/%3E%3Cstop offset='1' stop-color='%23f6cd98' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='d'%3E%3Cstop offset='0' stop-color='%2399a9ec' stop-opacity='.62'/%3E%3Cstop offset='.55' stop-color='%23b8c4f2' stop-opacity='.36'/%3E%3Cstop offset='1' stop-color='%23b8c4f2' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='e'%3E%3Cstop offset='0' stop-color='%23ff7a3d' stop-opacity='.42'/%3E%3Cstop offset='1' stop-color='%23ff7a3d' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='s' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.5' stop-color='%23fff' stop-opacity='.22'/%3E%3Cstop offset='1' stop-color='%23fff' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1600' height='1000' fill='url(%23g)'/%3E%3Ccircle cx='230' cy='110' r='420' fill='url(%23a)'/%3E%3Ccircle cx='1420' cy='160' r='350' fill='url(%23b)'/%3E%3Cellipse cx='1160' cy='880' rx='560' ry='330' fill='url(%23c)'/%3E%3Ccircle cx='250' cy='910' r='370' fill='url(%23d)'/%3E%3Ccircle cx='860' cy='470' r='230' fill='url(%23e)'/%3E%3Crect x='-200' y='380' width='2000' height='130' fill='url(%23s)' transform='rotate(-14 800 440)'/%3E%3Crect x='-200' y='650' width='2000' height='60' fill='url(%23s)' transform='rotate(-14 800 680)'/%3E%3C/svg%3E");
+
+  --lg-chrome: rgba(255, 255, 255, .40);
+  --lg-panel: rgba(255, 255, 255, .42);
+  --lg-nested: rgba(255, 255, 255, .42);
+  --lg-pop: rgba(255, 255, 255, .78);
+  --lg-dialog: rgba(255, 255, 255, .74);
+  --lg-dense: rgba(252, 250, 248, .92);
+  --lg-solid-fallback: rgba(255, 255, 255, .97);
+
+  --lg-sheen:
+    linear-gradient(180deg, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, .18) 42%, rgba(255, 255, 255, .06) 100%),
+    radial-gradient(120% 80% at 0% 0%, rgba(255, 236, 222, .45) 0%, rgba(255, 236, 222, 0) 55%),
+    radial-gradient(110% 80% at 100% 100%, rgba(214, 224, 255, .28) 0%, rgba(214, 224, 255, 0) 60%);
+  --lg-sheen-strong:
+    linear-gradient(180deg, rgba(255, 255, 255, .7) 0%, rgba(255, 255, 255, .28) 34%, rgba(255, 255, 255, .1) 100%),
+    radial-gradient(90% 60% at 12% 0%, rgba(255, 238, 226, .55) 0%, rgba(255, 238, 226, 0) 60%),
+    radial-gradient(100% 70% at 100% 100%, rgba(214, 224, 255, .32) 0%, rgba(214, 224, 255, 0) 60%);
+  --lg-border: rgba(255, 255, 255, .72);
+  --lg-border-strong: rgba(255, 255, 255, .95);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, .95), inset 1px 0 0 rgba(255, 255, 255, .45),
+            inset 0 -1px 0 rgba(120, 90, 60, .10), 0 0 0 .5px rgba(90, 65, 40, .10);
+  --lg-rim-strong: inset 0 1px 0 #ffffff, inset 1px 0 0 rgba(255, 255, 255, .6),
+                   inset 0 -1px 0 rgba(120, 90, 60, .12), 0 0 0 .5px rgba(90, 65, 40, .14);
+  --lg-shadow-1: 0 1px 2px rgba(80, 56, 34, .06), 0 10px 30px rgba(80, 56, 34, .09);
+  --lg-shadow-2: 0 2px 8px rgba(80, 56, 34, .09), 0 20px 46px rgba(80, 56, 34, .16);
+  --lg-shadow-3: 0 4px 14px rgba(80, 56, 34, .11), 0 34px 80px rgba(80, 56, 34, .24);
+  --lg-scrim: rgba(70, 54, 40, .22);
+
+  --lg-ctl: rgba(255, 255, 255, .52);
+  --lg-ctl-hover: rgba(255, 255, 255, .78);
+  --lg-ctl-press: rgba(255, 255, 255, .4);
+  --lg-ctl-border: rgba(255, 255, 255, .85);
+  --lg-ctl-sheen: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, .1) 70%);
+  --lg-ctl-rim: inset 0 1px 0 #ffffff, inset 0 -1px 0 rgba(120, 90, 60, .10), 0 0 0 .5px rgba(90, 65, 40, .14),
+                0 1px 2px rgba(80, 56, 34, .06);
+  --lg-gel-rim: inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 -1px 0 rgba(90, 30, 0, .18),
+                inset 0 0 0 1px rgba(255, 255, 255, .08);
+  --lg-track: rgba(120, 95, 70, .08);
+  --lg-track-rim: inset 0 1px 2px rgba(90, 65, 40, .12), 0 1px 0 rgba(255, 255, 255, .7);
+  --lg-pill: rgba(255, 255, 255, .95);
+  --lg-pill-text: #16110d;
+  --lg-field: rgba(255, 255, 255, .62);
+  --lg-field-border: rgba(110, 85, 60, .16);
+  --lg-field-hover: rgba(110, 85, 60, .30);
+  --lg-field-rim: inset 0 1px 2px rgba(90, 65, 40, .08), 0 1px 0 rgba(255, 255, 255, .8);
+  --lg-row-hover: rgba(255, 255, 255, .55);
+  --lg-nav-hover: rgba(255, 255, 255, .45);
+  --lg-scroll: rgba(90, 65, 40, .2);
+  --lg-scroll-hover: rgba(90, 65, 40, .32);
+}
+/* A dark island (seasonal header scene etc.) keeps dark glass inside a light page. */
+html[data-theme="light"] :is(.be-dark-island, .bst-scene) {
+  --lg-panel: rgba(22, 27, 46, .44);  --lg-nested: rgba(255, 255, 255, .04);
+  --lg-border: rgba(255, 255, 255, .10);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, .13), inset 0 -1px 0 rgba(0, 0, 0, .28);
+  --lg-ctl: rgba(255, 255, 255, .055);  --lg-ctl-hover: rgba(255, 255, 255, .09);
+  --lg-ctl-border: rgba(255, 255, 255, .11);  --lg-ctl-sheen: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, 0) 60%);
+  --lg-ctl-rim: inset 0 1px 0 rgba(255, 255, 255, .10), inset 0 -1px 0 rgba(0, 0, 0, .22);
+  --lg-field: rgba(255, 255, 255, .045);  --lg-field-border: rgba(255, 255, 255, .12);
+}
+
+/* ── 2. Scene — structured, static backdrop the glass actually refracts ─────── */
+/* base colour on <html> (canvas), body transparent: a page that paints its own html background
+   stops body's background propagating, and body's own box would then cover the scene layer */
+html { background: var(--gl-base) !important; }
+html body { background: transparent !important; }
+html body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--lg-scene) 0 0 / 100% 100% no-repeat, var(--gl-base);   /* stretched: the soft light shapes stay in view on any screen shape */
+}
+/* page wrappers / full-screen sign-in + loading screens let the scene through */
+html :is(#main-application-frame, .min-h-screen.flex.overflow-hidden, #portal-login-screen,
+         #auth-loading-screen, body > #loading) { background: transparent !important; }
+
+/* ── 3. Materials ──────────────────────────────────────────────────────────── */
+
+/* 3a. Chrome — sidebar + top header (+ phone top bars) */
+html :is(aside.be-aside, aside#be-sidebar, .aside, .bes-header, #sales-mobile-appbar, .lg-chrome) {
+  background: var(--lg-sheen), var(--lg-chrome) !important;
+  border: 1px solid var(--lg-border) !important;
+  box-shadow: var(--lg-rim), var(--lg-shadow-1) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur-chrome)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur-chrome)) saturate(var(--lg-sat));
+}
+@media (min-width: 768px) {
+  html :is(aside.be-aside, aside#be-sidebar, .aside) {
+    margin: 12px 0 12px 12px;
+    border-radius: var(--r-xl);
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+  }
+}
+@media (max-width: 767px) {
+  /* phone: the sidebar is an off-canvas drawer / top strip — glass, no floating margin */
+  html :is(aside.be-aside, aside#be-sidebar, .aside) { border-radius: 0 var(--r-xl) var(--r-xl) 0; }
+}
+html .bes-header { border-radius: var(--r-lg); padding: 8px 10px 8px 12px; }
+html #sales-mobile-appbar { border-radius: 0 0 var(--r-lg) var(--r-lg); }
+
+/* 3b. Panels — cards, sections, stat tiles, module panels */
+html :is(.card, .hcard, .section, .acadx-section, .acadx-card, .stat-card-new, .stat-card, .pm-card,
+         .glass-card, .dash-card, .mw-card, .bw-card, .cc-card, .wp-card, .hfm-card, .ec-card, .tcard,
+         .mcard, .ub-card, .wf-card, .metric-strip, .assignment-panel, .emp-panel, .am-card,
+         .bsa-card, .be-login-shell),
+html body .lg-panel {
+  background: var(--lg-sheen), var(--lg-panel);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lg-rim), var(--lg-shadow-1);
+  -webkit-backdrop-filter: blur(var(--lg-blur-panel)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur-panel)) saturate(var(--lg-sat));
+  transition: border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease),
+              transform var(--dur-2) var(--ease), background-color var(--dur-2) var(--ease);
+}
+html :is(.card, .hcard, .stat-card-new, .stat-card, .glass-card, .dash-card, .mw-card, .bw-card,
+         .cc-card, .wp-card, .ec-card, .tcard, .mcard, .ub-card):hover,
+html body .lg-panel:hover {
+  border-color: var(--lg-border-strong);
+  box-shadow: var(--lg-rim-strong), var(--lg-shadow-2);
+}
+html :is(.stat-card-new, .stat-card, .glass-card):hover { transform: translateY(-2px); }
+
+/* 3c. Nested — a panel inside a panel: tint + rim, never a second blur or drop shadow */
+html :is(.card, .hcard, .section, .acadx-section, .acadx-card, .glass-card, .dash-card, .mw-card,
+         .bw-card, .cc-card, .wp-card, .hfm-card, .assignment-panel, .emp-panel, .lg-panel, .lg-dialog,
+         .lg-pop, .modal, .hr-modal, .acadx-modal, .bw-modal, .mw-modal)
+     :is(.card, .hcard, .acadx-card, .stat-card-new, .stat-card, .pm-card, .glass-card, .dash-card,
+         .mw-card, .bw-card, .cc-card, .wp-card, .hfm-card, .ec-card, .tcard, .mcard, .ub-card,
+         .wf-card, .metric-strip, .am-card),
+html body .lg-nested {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0) 55%), var(--lg-nested);
+  border-color: var(--lg-border);
+  box-shadow: var(--lg-rim);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: var(--r-md);
+}
+html body .lg-nested:hover { box-shadow: var(--lg-rim-strong); }
+/* a component's own accent wash / coloured edge (be-glass.js keepIdentity) stays on the glass */
+html body .lg-panel.lg-keep-img { background: var(--lg-sheen), var(--lg-own), var(--lg-panel) !important; }
+html body .lg-pop.lg-keep-img { background: var(--lg-sheen-strong), var(--lg-own), var(--lg-pop) !important; }
+html body .lg-nested.lg-keep-img { background: var(--lg-own), var(--lg-nested) !important; }
+html body .lg-keep-edge { border-color: var(--lg-own-edge) !important; }
+/* inline-styled templates: the material has to beat style="background:…" */
+html body .lg-nested.lg-inline { background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0) 55%), var(--lg-nested) !important; }
+html body .lg-panel.lg-inline { background: var(--lg-sheen), var(--lg-panel) !important; }
+
+/* 3d. Popovers — menus, dropdowns, pickers, notification panel, toasts */
+html :is(.am-dropdown, .ben-panel, #notif-panel > div, #global-search-overlay > div, #hr-float-menu,
+         #hr-month-picker, .be-sel-menu, .be-cal, .ub-cal-pop, .ub-time-pop, .wp-pick-pop, .au-pop,
+         .wp-drop, .switcher-panel, .toast, .ben-toast, .mw-toast, .bclk-toast, .be-ann-toast:not(.urgent)),
+html body .lg-pop {
+  background: var(--lg-sheen-strong), var(--lg-pop) !important;
+  border: 1px solid var(--lg-border-strong) !important;
+  border-radius: var(--r-md);
+  box-shadow: var(--lg-rim-strong), var(--lg-shadow-2) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur-pop)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur-pop)) saturate(var(--lg-sat));
+}
+
+/* 3e. Dialogs — modals, sheets, drawers, previews */
+html :is(.modal, .hr-modal, .acadx-modal, .dm-box, .mgr-drill, .bw-modal, .mw-modal, .fs-dlg, .cc-dlg,
+         .ld-dlg, .au-dlg, .bclk-dlg, .bcp-dlg, .bsa-dlg, .am-modal, .lbox, .fbs-win, .bes-pal-box,
+         .tp-box, .be-dp, .jv-sheet),
+html body .lg-dialog {
+  background: var(--lg-sheen-strong), var(--lg-dialog) !important;
+  border: 1px solid var(--lg-border-strong) !important;
+  border-radius: var(--r-xl);
+  box-shadow: var(--lg-rim-strong), var(--lg-shadow-3) !important;
+  -webkit-backdrop-filter: blur(var(--lg-blur-dialog)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur-dialog)) saturate(var(--lg-sat));
+}
+/* bands inside a dialog sit on its glass instead of painting their own slab */
+html :is(.hr-emp-head, .hr-emp-tabs, .hr-emp-foot, .hfm-foot, .sd-head, .sd-foot, .ubf-foot) {
+  background: transparent !important;
+}
+
+/* 3f. Backdrops — dim only. A blurred backdrop becomes the dialog's backdrop root, so the
+       dialog's own blur would sample nothing; dimming keeps the page visible THROUGH the glass. */
+html :is(.modal-bg, .hr-modal-overlay, .acadx-modal-bg, .dm-overlay, .mgr-drill-bg, .fs-ov, .cc-ov,
+         .au-ov, .bsa-ov, .ld-ov, .bear-ov, .am-modal-bg, .be-annm-bg, .be-msheet-bg, .jv-sheet-bg,
+         .tp-overlay, .be-dp-overlay, .be-pfp-overlay, #mobile-nav-overlay),
+html body .lg-scrim {
+  background: var(--lg-scrim) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ── 4. Controls ───────────────────────────────────────────────────────────── */
+
+/* 4a. Sidebar navigation */
+html :is(.sidebar-link, .acad-nav-link) {
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease),
+              transform var(--dur-1) var(--ease);
+}
+html :is(.sidebar-link, .acad-nav-link):hover { background: var(--lg-nav-hover); }
+html :is(.sidebar-link, .acad-nav-link):active { transform: scale(.985); }
+html :is(.sidebar-link, .acad-nav-link):is(.active, .on, [aria-current="page"]) {
+  background: var(--lg-ctl-sheen), var(--lg-pill) !important;
+  border: 1px solid var(--lg-ctl-border) !important;
+  color: var(--lg-pill-text) !important;
+  box-shadow: var(--lg-ctl-rim), 0 6px 16px rgba(var(--shade, 0,0,0), calc(.2 * var(--shade-k, 1))) !important;
+}
+html :is(.sidebar-link, .acad-nav-link):is(.active, .on, [aria-current="page"]) :is(svg, i) { color: var(--be-accent) !important; }
+
+/* 4b. Header controls */
+html :is(.bes-search, .bes-date, .bes-icon, .be-tt, .be-sidebar-toggle) {
+  background: var(--lg-ctl-sheen), var(--lg-ctl) !important;
+  border: 1px solid var(--lg-ctl-border) !important;
+  box-shadow: var(--lg-ctl-rim);
+  border-radius: var(--r-md);
+  transition: background-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease),
+              transform var(--dur-1) var(--ease);
+}
+html .be-sidebar-toggle { border-radius: var(--r-pill); }
+html :is(.bes-search, .bes-date, .bes-icon, .be-tt, .be-sidebar-toggle):hover {
+  background: var(--lg-ctl-sheen), var(--lg-ctl-hover) !important;
+}
+html .bes-account { border-radius: var(--r-pill); }
+
+/* 4c. Buttons (be-glass.js tags them by their real look) */
+html body .lg-btn {
+  background: var(--lg-ctl-sheen), var(--lg-ctl);
+  border: 1px solid var(--lg-ctl-border);
+  box-shadow: var(--lg-ctl-rim);
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+              box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+html body .lg-btn.lg-inline { background: var(--lg-ctl-sheen), var(--lg-ctl) !important; }
+html body .lg-btn:not(:disabled):hover { background: var(--lg-ctl-sheen), var(--lg-ctl-hover); border-color: var(--lg-border-strong); }
+html body .lg-btn.lg-inline:not(:disabled):hover { background: var(--lg-ctl-sheen), var(--lg-ctl-hover) !important; }
+html body .lg-btn:not(:disabled):active { background: var(--lg-ctl-press); transform: scale(.97); box-shadow: inset 0 1px 3px rgba(var(--shade, 0,0,0), calc(.25 * var(--shade-k, 1))); }
+
+/* filled buttons (brand gradient, success, danger …) keep their colour and gain a gel rim */
+html body .lg-btn-solid,
+html :is(.brand-gradient, .be-login-submit-btn, .acadx-btn-save, .submit-btn, .ub-primary) {
+  box-shadow: var(--lg-gel-rim), 0 4px 14px rgba(var(--shade, 0,0,0), calc(.22 * var(--shade-k, 1)));
+  transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), filter var(--dur-1) var(--ease);
+}
+html body .lg-btn-solid:not(:disabled):hover,
+html button:is(.brand-gradient, .be-login-submit-btn, .acadx-btn-save, .submit-btn, .ub-primary):not(:disabled):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06) saturate(1.05);
+  box-shadow: var(--lg-gel-rim), 0 8px 22px rgba(var(--shade, 0,0,0), calc(.3 * var(--shade-k, 1)));
+}
+html body .lg-btn-solid:not(:disabled):active,
+html button:is(.brand-gradient, .be-login-submit-btn, .acadx-btn-save, .submit-btn, .ub-primary):not(:disabled):active {
+  transform: translateY(0) scale(.98);
+  filter: brightness(.96);
+}
+/* ghost / icon buttons: no slab at rest, glass on hover */
+html body .lg-btn-ghost { transition: background-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease); }
+html body .lg-btn-ghost:not(:disabled):hover { background: var(--lg-ctl-sheen), var(--lg-ctl) !important; box-shadow: var(--lg-ctl-rim); }
+html body .lg-btn-ghost:not(:disabled):active { transform: scale(.96); }
+html body :is(.lg-btn, .lg-btn-solid, .lg-btn-ghost):disabled,
+html body :is(.lg-btn, .lg-btn-solid, .lg-btn-ghost)[aria-disabled="true"] {
+  opacity: .5; cursor: not-allowed; transform: none; filter: saturate(.6);
+}
+html body :is(.lg-btn, .lg-btn-solid)[aria-busy="true"] { opacity: .75; cursor: progress; }
+
+/* 4d. Tabs & segmented controls — recessed track, raised glass pill for the active item */
+html body .lg-seg {
+  background: var(--lg-track) !important;
+  border: 1px solid var(--lg-ctl-border) !important;
+  box-shadow: var(--lg-track-rim) !important;
+  border-radius: var(--r-md);
+}
+html body .lg-seg-item { transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease); border-radius: var(--r-sm); }
+html body .lg-seg-item:not(:disabled):hover { background: var(--lg-nav-hover); }
+html body .lg-seg-item:not(:disabled):active { transform: scale(.97); }
+html body .lg-seg:not(.lg-seg-keep) > :is(.active, .on, .sel, .selected, .is-active, .current, [aria-selected="true"], [aria-pressed="true"]) {
+  background: var(--lg-ctl-sheen), var(--lg-pill) !important;
+  color: var(--lg-pill-text) !important;
+  border-color: var(--lg-ctl-border) !important;
+  box-shadow: var(--lg-ctl-rim), 0 3px 10px rgba(var(--shade, 0,0,0), calc(.18 * var(--shade-k, 1))) !important;
+}
+/* tab lists without a track: underline tabs get glass hover + a pill for the active tab */
+html body [role="tablist"]:not(.lg-seg) > [role="tab"] { border-radius: var(--r-sm); transition: background-color var(--dur-1) var(--ease); }
+html body [role="tablist"]:not(.lg-seg) > [role="tab"]:hover { background: var(--lg-nav-hover); }
+
+/* 4e. Fields */
+html :is(input:not([type="file"]):not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="submit"]):not([type="button"]),
+         select, textarea, .be-sel-trigger, .be-date-trigger) {
+  background-color: var(--lg-field) !important;
+  border-color: var(--lg-field-border) !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: var(--lg-field-rim);
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease) !important;
+}
+html :is(input:not([type="file"]):not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="submit"]):not([type="button"]),
+         select, textarea, .be-sel-trigger, .be-date-trigger):hover {
+  border-color: var(--lg-field-hover) !important;
+}
+html :is(input:not([type="file"]):not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+         select, textarea):focus,
+html :is(.be-sel-trigger, .be-date-trigger):focus-visible,
+html .be-sel-wrap.open .be-sel-trigger {
+  outline: none !important;
+  border-color: var(--be-accent) !important;
+  box-shadow: var(--lg-field-rim), 0 0 0 3px var(--be-focus) !important;
+}
+html :is(input, select, textarea):is([aria-invalid="true"], :user-invalid) {
+  border-color: var(--be-danger) !important;
+  box-shadow: var(--lg-field-rim), 0 0 0 3px var(--be-danger-bg) !important;
+}
+html :is(input, select, textarea):disabled { opacity: .6; cursor: not-allowed; }
+/* fields that are part of a larger box keep their bare look */
+html :is(#global-search-overlay #global-search-input, .bes-pal-box input, .be-sel-search input, .lbox input) {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+html :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: var(--be-accent); }
+html select option { background-color: var(--lg-solid-fallback); color: var(--be-text); }
+
+/* 4f. Focus — one ring everywhere */
+html :is(button, [role="button"], [role="tab"], a, [tabindex]):focus-visible {
+  outline: 2px solid var(--be-accent);
+  outline-offset: 2px;
+}
+html :is(button, [role="button"], a) { -webkit-tap-highlight-color: transparent; }
+
+/* 4g. Tables — dense glass header, quiet rows; no blur inside data grids */
+html :is(.matrix-table, .scroll-table, .stable, .aud-tbl, .mgr-drill) thead th,
+html :is(.lg-panel, .lg-dialog, .lg-nested, .card, .section, .acadx-section, .hcard) table thead th,
+html .hr-att-grid thead th {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, 0)), var(--lg-dense);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html :is(.matrix-table, .scroll-table, .stable, .aud-tbl, .lg-panel table, .lg-dialog table, .card table,
+         .section table, .acadx-section table, .hcard table) tbody tr {
+  transition: background-color var(--dur-1) var(--ease);
+}
+html :is(.matrix-table, .scroll-table, .stable, .aud-tbl, .lg-panel table, .lg-dialog table, .card table,
+         .section table, .acadx-section table, .hcard table) tbody tr:hover {
+  background-color: var(--lg-row-hover);
+}
+html :is(.hr-att-grid th.hr-att-sticky, .hr-att-grid td.hr-att-sticky,
+         .hr-att-grid th.hr-att-sticky2, .hr-att-grid td.hr-att-sticky2) {
+  background: var(--lg-dense) !important;
+}
+
+/* 4h. Tooltips */
+html body [role="tooltip"] {
+  background: var(--lg-sheen-strong), var(--lg-pop) !important;
+  border: 1px solid var(--lg-border-strong);
+  box-shadow: var(--lg-rim-strong), var(--lg-shadow-2);
+  -webkit-backdrop-filter: blur(var(--lg-blur-pop)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur-pop)) saturate(var(--lg-sat));
+  color: var(--be-text);
+}
+
+/* 4i. Scrollbars */
+html * { scrollbar-width: thin; scrollbar-color: var(--lg-scroll) transparent; }
+html ::-webkit-scrollbar { width: 10px; height: 10px; }
+html ::-webkit-scrollbar-track { background: transparent; }
+html ::-webkit-scrollbar-thumb { background: var(--lg-scroll); border-radius: var(--r-pill); border: 3px solid transparent; background-clip: padding-box; }
+html ::-webkit-scrollbar-thumb:hover { background: var(--lg-scroll-hover); background-clip: padding-box; }
+
+/* ── 5. Phones, fallbacks, accessibility ───────────────────────────────────── */
+@media (max-width: 767px) {
+  /* lighter blur on phone GPUs — the glass stays visible, just cheaper */
+  :root { --lg-blur-panel: 12px; --lg-blur-chrome: 16px; --lg-blur-pop: 20px; --lg-blur-dialog: 24px; }
+}
+/* no backdrop-filter → near-opaque surfaces, so text never sits on raw background */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --lg-chrome: rgba(17, 21, 37, .94); --lg-panel: rgba(22, 27, 46, .92); --lg-pop: rgba(20, 24, 41, .98); --lg-dialog: rgba(19, 23, 40, .98); }
+  html[data-theme="light"] { --lg-chrome: rgba(252, 250, 248, .95); --lg-panel: rgba(255, 255, 255, .92); --lg-pop: #ffffff; --lg-dialog: #ffffff; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --lg-chrome: rgba(17, 21, 37, .97); --lg-panel: rgba(22, 27, 46, .97); --lg-pop: #141829; --lg-dialog: #141829; }
+  html[data-theme="light"] { --lg-chrome: #fbf9f7; --lg-panel: #ffffff; --lg-pop: #ffffff; --lg-dialog: #ffffff; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html :is(.lg-panel, .lg-btn, .lg-btn-solid, .lg-btn-ghost, .lg-seg-item, .card, .hcard, .stat-card-new, .stat-card,
+           .glass-card, .dash-card, .sidebar-link, .acad-nav-link, .brand-gradient, .be-login-submit-btn,
+           .acadx-btn-save, .submit-btn) {
+    transition: none !important;
+    transform: none !important;
+  }
+}
