@@ -15,14 +15,16 @@
 // Authority (effective ERP access, re-read on every call — never trusted from the browser):
 //   HR admin (System Role hr_admin or HR admin login) · leadership (founder / co-founder /
 //   director / management account)                → ANY active employee in ANY department
-//   Department head / Operations Manager           → their own (and assigned) departments
+//   Department head / Operations Manager           → ANY active employee in ANY department
 //   everyone else                                  → cannot assign
+// (assignableDivisions in _shared/aura/rules.ts — assigning only; what a head may SEE of other
+// departments still follows authorizedDivisions.)
 // HR keeps its HR role — organisation-wide assignment is a permission of HR admin access, not a
 // Manager role. Exited / inactive employees can't get new work unless an HR admin or leadership
 // sends allow_inactive (the explicit administrative override).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { adminClient, JarvisAuthError, resolveAuthContext } from "../_shared/jarvis/auth.ts";
-import { authorizedDivisions, clean, DIV, tierOf, type Row } from "../_shared/aura/rules.ts";
+import { assignableDivisions, authorizedDivisions, clean, DIV, tierOf, type Row } from "../_shared/aura/rules.ts";
 
 function cors(req: Request) {
   return {
@@ -71,22 +73,23 @@ Deno.serve(async (req) => {
     const hrAdmin = lc(me.system_role) === "hr_admin" || lc((rr.data as Row[] | null)?.[0]?.role) === "admin";
     const orgWide = tier === "manager" || hrAdmin;
     const ad = authorizedDivisions(me, tier);
-    const depts: "*" | string[] = orgWide || ad === "*" ? "*" : ad;
+    const depts: "*" | string[] = orgWide || ad === "*" ? "*" : ad;      // what the caller manages / sees
+    const assignTo = assignableDivisions(tier, hrAdmin);                    // who the caller may assign work to
     const canOverride = orgWide;
     const actor = me.full_name || auth.name;
     const actorRole = hrAdmin && tier !== "manager" ? "HR" : clean(me.designation) || "Your manager";
-    const active = (e: Row) => !["exited", "inactive"].includes(lc(e.employment_status || "active"));
-    const inScope = (e: Row) => depts === "*" || (!!e.division && depts.includes(String(e.division)));
+    const active = (e: Row) => !["exited", "inactive", "disabled", "terminated", "suspended"].includes(lc(e.employment_status || "active"));
+    const inScope = (e: Row) => assignTo === "*" || (!!e.division && assignTo.includes(String(e.division)));
 
     if (body.action === "scope") {
       return out(req, 200, {
-        org_wide: orgWide, departments: depts, can_assign: depts === "*" || depts.length > 0, can_override: canOverride,
+        org_wide: orgWide, departments: depts, assign_departments: assignTo, can_assign: assignTo === "*" || assignTo.length > 0, can_override: canOverride,
         role: hrAdmin && tier !== "manager" ? "hr" : tier,
       });
     }
 
     if (body.action === "create") {
-      if (depts !== "*" && !depts.length) return out(req, 403, { error: "Your role can't assign work." });
+      if (assignTo !== "*" && !assignTo.length) return out(req, 403, { error: "Your role can't assign work." });
       const title = String(body.title || "").trim().slice(0, 140);
       if (!title) return out(req, 400, { error: "Add a title." });
       const items = (Array.isArray(body.items) ? body.items : []).slice(0, 40) as Row[];

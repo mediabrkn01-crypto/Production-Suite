@@ -47,6 +47,15 @@ export function authorizedDivisions(e: Row, tier: string): "*" | string[] {
   return [...new Set([...own, ...managedDivisions(e)])];                 // Operations Manager: all assigned
 }
 
+/** WORK ASSIGNMENT ONLY — departments whose people this caller may ASSIGN work to. Leadership,
+ *  HR admin, Operations Managers and every Department Head may assign to anyone in the
+ *  organisation; normal employees to no one. This grants the assign action only: what a caller
+ *  may SEE of other departments still follows authorizedDivisions(). */
+export const ASSIGN_ANYWHERE_TIERS = ["manager", "operational_manager", "head"];
+export function assignableDivisions(tier: string, hrAdmin = false): "*" | string[] {
+  return hrAdmin || ASSIGN_ANYWHERE_TIERS.includes(tier) ? "*" : [];
+}
+
 
 export interface Caller { me: Row; tier: string; desig: Row[]; hrAdmin?: boolean }
 

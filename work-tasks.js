@@ -903,6 +903,18 @@
     el.classList.add('bw');
 
     function allowedDep(d) { return !deps || deps.indexOf(d || 'production') > -1; }
+    // WHO this board may assign to is separate from WHAT it shows: server boards ask the work
+    // function (assignableDivisions — heads, Operations Managers, HR admin and leadership may
+    // assign to anyone in the organisation). Browser-only boards keep their own departments.
+    S.assign = deps;
+    function canAssignTo(d) { return !S.assign || S.assign.indexOf(d || 'production') > -1; }
+    // Work this person assigned (any department) stays on their board so they can track it.
+    // (created_by / assigned_by hold a name: the page's actor name, or the HR name the work function writes)
+    function myNames() {
+      var em = lc(o.actor && o.actor.email), me = em ? S.emps.find(function (e) { return lc(e.portal_email) === em; }) : null;
+      return [actor, me && me.full_name].filter(Boolean).map(lc).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    }
+    function mine(t) { var n = myNames(); return n.indexOf(lc(t.created_by)) > -1 || n.indexOf(lc(t.assigned_by)) > -1; }
     async function loadEmps() {
       var r = await db.from('hr_employees').select('id,full_name,portal_email,division,designation,employment_status,account_type');
       S.emps = (r.data || []).filter(function (e) { return (e.account_type || '') !== 'system' && e.full_name; });
@@ -911,20 +923,22 @@
     async function load() {
       S.cols = await hasCols(db);
       var q = db.from('assignments').select('*').order('id', { ascending: false });
-      if (deps && S.cols) q = q.in('department', deps);
+      if (deps && S.cols) {
+        var who = myNames().map(function (n) { return '"' + n.replace(/["\\]/g, '') + '"'; }).join(',');
+        q = q.or((deps.length ? 'department.in.(' + deps.join(',') + '),' : '') + 'created_by.ilike(any).{' + who + '},assigned_by.ilike(any).{' + who + '}'); }
       var r = await q;
       if (r.error) { el.innerHTML = '<div class="bw-empty"><b>Could not load tasks</b>' + esc(r.error.message) + '</div>'; return; }
       S.teams = await hasTeams(db);
       var all = (r.data || []).map(function (t) { if (!t.department) t.department = 'production'; return t; });
       S.mem = await loadMembers(db, all.filter(isTeam).map(function (t) { return t.id; }));
       // A department head sees team work that involves anyone from their departments.
-      S.rows = all.filter(function (t) { return allowedDep(t.department) || (isTeam(t) && activeMembers(S.mem[String(t.id)]).some(function (m) { return allowedDep(m.department); })); });
+      S.rows = all.filter(function (t) { return allowedDep(t.department) || mine(t) || (isTeam(t) && activeMembers(S.mem[String(t.id)]).some(function (m) { return allowedDep(m.department); })); });
       S.ready = true; render();
     }
     function empById(id) { return S.emps.find(function (e) { return String(e.id) === String(id); }); }
     function empForTask(t) { return (t.employee_id && empById(t.employee_id)) || S.emps.find(function (e) { return lc(e.portal_email) && lc(e.portal_email) === lc(t.employee_email); }); }
     function activeTargets(dep) {
-      return S.emps.filter(function (e) { return (e.employment_status || 'active') === 'active' && allowedDep(e.division) && (!dep || e.division === dep); })
+      return S.emps.filter(function (e) { return (e.employment_status || 'active') === 'active' && canAssignTo(e.division) && (!dep || e.division === dep); })
         .sort(function (a, b) { return a.full_name.localeCompare(b.full_name); });
     }
     function filtered() {
@@ -954,13 +968,13 @@
       S.rows.filter(isOpen).forEach(function (t) { var e = empForTask(t); if (e && (e.employment_status || 'active') !== 'active') { (stuck[e.id] = stuck[e.id] || { e: e, n: 0 }).n++; } });
       var stuckList = Object.keys(stuck).map(function (k) { return stuck[k]; });
       var list = filtered();
-      var depOpts = Object.keys(DIV).filter(allowedDep);
+      var depOpts = Object.keys(DIV).filter(function (d) { return allowedDep(d) || S.rows.some(function (t) { return t.department === d; }); });
       var empOpts = {}; S.rows.forEach(function (t) { if (t.employee_email) empOpts[lc(t.employee_email)] = t.assigned_to || t.employee_email;
         if (isTeam(t)) activeMembers(S.mem[String(t.id)]).forEach(function (m) { empOpts[lc(m.employee_email)] = m.employee_name || m.employee_email; }); });
       var months = {}; S.rows.forEach(function (t) { var m = String(t.assigned_date || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) months[m] = 1; });
       var tabs = [['active', 'Active'], ['pending', 'Pending'], ['progress', 'In progress'], ['rework', 'Rework'], ['overdue', 'Overdue'], ['completed', 'Completed'], ['closed', 'Cancelled / Rejected'], ['all', 'All']];
       el.innerHTML =
-        '<div class="bw-head"><div><h2>' + esc(o.title || 'Work Assignment') + '</h2><p>' + esc(deps ? 'Assign and track work for ' + deps.map(function (d) { return DIV[d]; }).join(', ') + '.' : 'Assign and track work for every department — Media, Academics, Sales, HR and Management.') + '</p></div>' +
+        '<div class="bw-head"><div><h2>' + esc(o.title || 'Work Assignment') + '</h2><p>' + esc(deps ? (deps.length ? 'Track work for ' + deps.map(function (d) { return DIV[d]; }).join(', ') + ' and the work you assigned.' : 'Track the work you assigned.') + (S.assign ? '' : ' You can assign work to anyone in the organisation.') : 'Assign and track work for every department — Media, Academics, Sales, HR and Management.') + '</p></div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span data-archive-host></span><button type="button" class="bw-new" data-new><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Assign work</button></div></div>' +
         (S.cols ? '' : '<div class="bw-note">Run <b>20261010_work_assignments.sql</b> in Supabase to enable departments, history and progress. Assigning still works.</div>') +
         stuckList.map(function (x) { return '<div class="bw-warn">⚠️ <span><b>' + esc(x.e.full_name) + '</b> is ' + esc(x.e.employment_status) + ' and has ' + x.n + ' active task' + (x.n === 1 ? '' : 's') + '.</span><button class="bw-btn" data-bulk="' + esc(x.e.id) + '">Reassign tasks</button></div>'; }).join('') +
@@ -1107,7 +1121,7 @@
       var t = id ? rowById(id) : null, files = [];
       var e0 = t ? empForTask(t) : null;
       var dep0 = t ? (t.department || (e0 && e0.division) || '') : (deps && deps.length === 1 ? deps[0] : '');
-      var depOpts = Object.keys(DIV).filter(allowedDep);
+      var depOpts = Object.keys(DIV).filter(canAssignTo);
       var cats = {}; MEDIA_TYPES.concat(S.rows.map(function (x) { return x.type; })).forEach(function (c) { if (c) cats[c] = 1; });
       var pr = (t && t.priority) || 'medium';
       modal('<div class="bw-mh"><div><h3>' + (t ? 'Edit task' : 'Assign work') + '</h3><p>' + (t ? 'Changes are saved to the same task and recorded in its history.' : 'The employee is notified instantly in their own portal.') + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
@@ -1320,7 +1334,7 @@
     function reassign(ids, fromEmp) {
       var tasks = ids.map(rowById).filter(Boolean); if (!tasks.length) return;
       var dep0 = fromEmp ? fromEmp.division : (tasks[0].department || '');
-      var depOpts = Object.keys(DIV).filter(allowedDep);
+      var depOpts = Object.keys(DIV).filter(canAssignTo);
       modal('<div class="bw-mh"><div><h3>Reassign ' + (tasks.length === 1 ? 'task' : tasks.length + ' tasks') + '</h3><p>' + esc(tasks.length === 1 ? tasks[0].topic : 'All active tasks of ' + (fromEmp ? fromEmp.full_name : 'this employee')) + '</p></div><button class="bw-x" data-bw-close aria-label="Close">✕</button></div>' +
         '<div class="bw-mb"><div class="bw-g2"><div class="bw-f"><label class="bw-l" for="bw-rdep">Department</label><select id="bw-rdep">' + (depOpts.length > 1 ? '<option value="">All departments</option>' : '') + depOpts.map(function (d) { return '<option value="' + d + '"' + (dep0 === d ? ' selected' : '') + '>' + esc(DIV[d]) + '</option>'; }).join('') + '</select></div>' +
         '<div class="bw-f"><label class="bw-l" for="bw-remp">New employee <b>*</b></label><select id="bw-remp">' + empOptions(dep0, '') + '</select></div></div>' +
@@ -1346,7 +1360,8 @@
       });
     }
     el.innerHTML = '<div class="bw-empty">Loading work assignments…</div>';
-    Promise.all([loadEmps(), load()]).then(render);
+    loadEmps().then(load).then(render);
+    if (o.server) workApi('scope').then(function (j) { S.assign = j.assign_departments === '*' ? null : (j.assign_departments || []); render(); }, function () {});
     liveTeamBlocks();
     if (window.BELive) BELive.on('bework-mgr' + (deps ? '-' + deps.join('_') : ''), ['assignments', 'hr_employees', 'assignment_members'], function (evs, info) {
       if (info.resync || (evs || []).some(function (e) { return e.table === 'hr_employees'; })) loadEmps().then(load); else load();
