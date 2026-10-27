@@ -3620,8 +3620,9 @@ function hrOfficialEventFor(employee, dateStr) {
 // ============================================================================
 (function(){
   const BE_COLORS = {
-    bg: '#12162a', panelBg: '#0f1121', border: 'rgba(255,255,255,.1)',
-    text: '#f1f5f9', muted: '#a5adcf',
+    // theme tokens (be-theme.css / be-glass.css) with the original dark values as fallbacks
+    bg: 'var(--sf-3, #12162a)', panelBg: 'var(--sf-2, #0f1121)', border: 'rgba(var(--ink, 255,255,255), .1)',
+    text: 'var(--tx-1, #f1f5f9)', muted: 'var(--tx-4, #a5adcf)',
     success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6',
     gradient: 'linear-gradient(135deg,#ff6b06,#f9182f,#ff0552)',
     dangerGradient: 'linear-gradient(135deg,#f9182f,#ff0552)'

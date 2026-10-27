@@ -37,7 +37,7 @@
   var KNOWN = [
     ['lg-scrim', '.modal-bg, .hr-modal-overlay, .acadx-modal-bg, .dm-overlay, .mgr-drill-bg, .fs-ov, .cc-ov, .au-ov, .bsa-ov, .ld-ov, .bear-ov, .am-modal-bg, .be-annm-bg, .be-msheet-bg, .jv-sheet-bg, .tp-overlay, .be-dp-overlay, .be-pfp-overlay, #mobile-nav-overlay'],
     ['lg-dialog', '.modal, .hr-modal, .acadx-modal, .dm-box, .mgr-drill, .bw-modal, .mw-modal, .fs-dlg, .cc-dlg, .ld-dlg, .au-dlg, .bclk-dlg, .bcp-dlg, .bsa-dlg, .am-modal, .lbox, .fbs-win, .bes-pal-box, .tp-box, .be-dp, .jv-sheet'],
-    ['lg-pop', '.am-dropdown, .ben-panel, #notif-panel > div, #global-search-overlay > div, #hr-float-menu, #hr-month-picker, .be-sel-menu, .be-cal, .ub-cal-pop, .ub-time-pop, .wp-pick-pop, .au-pop, .wp-drop, .switcher-panel, .toast, .ben-toast, .mw-toast, .bclk-toast'],
+    ['lg-pop', '.am-dropdown, .ben-panel, #notif-panel > div, #global-search-overlay > div, #hr-float-menu, #hr-month-picker, .be-sel-menu, .be-cal, .ub-cal-pop, .ub-time-pop, .wp-pick-pop, .au-pop, .wp-drop, .switcher-panel, .toast, .ben-toast, .mw-toast, .bclk-toast, #be-toast-host > *'],
     ['lg-panel', '.card, .hcard, .section, .acadx-section, .acadx-card, .stat-card-new, .stat-card, .pm-card, .glass-card, .dash-card, .mw-card, .bw-card, .cc-card, .wp-card, .hfm-card, .ec-card, .tcard, .mcard, .ub-card, .wf-card, .metric-strip, .assignment-panel, .emp-panel, .am-card, .bsa-card, .be-login-shell']
   ];
   function known(el) {
@@ -112,6 +112,11 @@
     if (accentWash(cs.backgroundImage)) { el.style.setProperty('--lg-own', cs.backgroundImage); el.classList.add('lg-keep-img'); }
     var b = rgba(cs.borderTopColor);
     if (hasBorder(cs) && b && b.a >= 0.18 && sat(b) >= 60) { el.style.setProperty('--lg-own-edge', cs.borderTopColor); el.classList.add('lg-keep-edge'); }
+    // a coloured left stripe (status / priority accent) is information — keep it
+    var lw = parseFloat(cs.borderLeftWidth), l = rgba(cs.borderLeftColor);
+    if (lw >= 2 && cs.borderLeftStyle !== 'none' && l && l.a >= 0.3 && sat(l) >= 60) {
+      el.style.setProperty('--lg-own-left', lw + 'px solid ' + cs.borderLeftColor); el.classList.add('lg-keep-left');
+    }
   }
 
   function classifySurface(el, cs, r) {
@@ -166,6 +171,9 @@
     }
     var isList = el.getAttribute('role') === 'tablist';
     if (items.length < 2) return false;
+    // a track is packed with its items; a footer / toolbar strip with buttons pushed aside is not
+    var used = 0; for (var u = 0; u < items.length; u++) used += items[u].getBoundingClientRect().width;
+    if (!isList && used < r.width * 0.6) return false;
     var bg = rgba(cs.backgroundColor);
     if (!isList && !((bg && bg.a > 0.015) || hasBorder(cs))) return false;
     tag(el, 'lg-seg');
