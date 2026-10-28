@@ -167,6 +167,36 @@
       '.wp input.wp-in:focus,.wp select.wp-in:focus{border-color:rgba(255,107,6,.55)!important}',
       '.wp .bad{border-color:#f87171!important}',
       '.wp .wp-pick-pop input{background:rgba(var(--ink, 255,255,255), 0.03)!important;border:1px solid rgba(var(--ink, 255,255,255), 0.08)!important;border-radius:9px!important;font-size:12.5px!important;height:34px!important}',
+      /* ── refined layout (2026-10-28): readable hints, contained assignee cards, aligned project rows ── */
+      '.wp-hint{color:var(--tx-5, #808a9d)}.wp-lbl{color:var(--tx-5, #808a9d)}',
+      '.wp input.wp-title::placeholder{color:var(--tx-6, #6b74a0)!important;font-weight:600!important;opacity:1}',
+      '.wp textarea.wp-auto{border:1px solid rgba(var(--ink, 255,255,255), 0.08)!important}',
+      '#wp-cards{gap:10px;margin-top:10px}',
+      '.wp-card,.wp-card:first-child{padding:12px 14px;border:1px solid rgba(var(--ink, 255,255,255), 0.08);border-radius:14px;background:rgba(var(--ink, 255,255,255), 0.02);transition:border-color .15s}',
+      '.wp-card:focus-within{border-color:rgba(255,107,6,.35)}',
+      '.wp-ahead{border-top:0;padding-top:0}',
+      '.wp-more button{color:var(--tx-4, #8b93b8)}',
+      '.wp-addas{margin-top:10px;border:1px dashed rgba(var(--ink, 255,255,255), 0.14);width:100%;justify-content:center;height:40px;border-radius:12px}',
+      '.wp-addas:hover{border-color:rgba(255,107,6,.5)}',
+      '.wp-foot .sum{color:var(--tx-4, #8b93b8)}',
+      '.wp-go{height:42px;padding:0 22px;font-size:13.5px;letter-spacing:0;text-transform:none;border-radius:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 6px 18px -6px rgba(249,24,47,.55)}',
+      '.wpp-card{padding:16px 18px;border-radius:18px}',
+      '.wpp-top h4{font-size:16px;font-weight:800;letter-spacing:-.01em}.wpp-top p{color:var(--tx-4, #8b93b8);font-size:12px;margin-top:4px}',
+      '.wpp-st{--st:#94a3b8;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;font-size:11px;font-weight:700;border-radius:999px;color:color-mix(in srgb, var(--st) var(--acc-k, 100%), var(--acc-mix, #000));background:color-mix(in srgb, var(--st) 14%, transparent);border:1px solid color-mix(in srgb, var(--st) 38%, transparent)}',
+      '.wpp-st i{width:6px;height:6px;border-radius:50%;background:var(--st)}',
+      '.wpp-prog{font-size:11.5px;color:var(--tx-3, #a5adcf);font-variant-numeric:tabular-nums}',
+      '.wpp-list{gap:0;margin-top:14px;border:1px solid rgba(var(--ink, 255,255,255), 0.08);border-radius:14px;overflow:hidden}',
+      '.wpp-a{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:11px 14px;border:0;border-radius:0;background:rgba(var(--ink, 255,255,255), 0.02);transition:background-color .15s}',
+      '.wpp-a+.wpp-a{border-top:1px solid rgba(var(--ink, 255,255,255), 0.07)}.wpp-a:hover{background:rgba(var(--ink, 255,255,255), 0.045)}',
+      '.wpp-a .who{order:1;min-width:0}.wpp-a .wpp-st{order:2}.wpp-a .acts{order:3;justify-content:flex-end}',
+      '.wpp-a .who b{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wpp-a .who span{display:block;margin-top:2px;font-size:11.5px;color:var(--tx-4, #8b93b8)}',
+      '.wpp-a .acts{gap:6px}.wpp-a .acts button{height:30px;padding:0 12px;border-radius:9px;font-size:11.5px;color:var(--tx-1, #e6e9f5);transition:background-color .15s,border-color .15s}',
+      '.wpp-a .acts button:hover{background:rgba(var(--ink, 255,255,255), 0.1)}',
+      '.wpp-a .acts button.pri:hover{background:rgba(255,107,6,.2)}',
+      '.wpp-a .acts button.out{border-color:rgba(56,189,248,.35);background:rgba(56,189,248,.1);color:var(--fg-sky, #7dd3fc)}',
+      '.wpp-a .acts button.bad{border-color:transparent;background:transparent;color:var(--fg-red, #f87171)}.wpp-a .acts button.bad:hover{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.35)}',
+      '.wpp-a .acts button:focus-visible{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
+      '@media(max-width:760px){.wpp-a{grid-template-columns:minmax(0,1fr) auto}.wpp-a .acts{grid-column:1/-1;justify-content:flex-start}.wpp-a .acts button{flex:1 1 auto}}',
       /* tablet / phone */
       '@media(max-width:1024px){.wp-row1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wp-row1 .wp-cls{grid-column:1}.wp-row1 .wp-more{grid-column:2;justify-self:end}.wp-row1 .wp-delw{grid-column:1/-1;order:-1}}',
       '@media(max-width:1024px){.wp-row1 .wp-pick{order:-2;grid-column:1/-1}}',
@@ -346,7 +376,7 @@
       + '<div><div class="wp-ahead"><span class="wp-lbl">Assignees<b id="wp-count">1</b></span></div>'
       + '<div id="wp-cards"></div>'
       + '<button type="button" class="wp-addas" id="wp-add">' + IC.plus + 'Add assignee</button></div>'
-      + '<div class="wp-foot"><span class="sum" id="wp-sum"></span><button type="button" class="wp-go" id="wp-go">Assign Project</button></div>'
+      + '<div class="wp-foot"><span class="sum" id="wp-sum"></span><button type="button" class="wp-go" id="wp-go">Assign project</button></div>'
       + '</div>';
   }
   function addCard(from) {
@@ -543,7 +573,7 @@
     F.saving = true; go.disabled = true; go.textContent = 'Assigning…';
     try { await save(); }
     catch (e) { toastMsg('error', 'Could not assign the work project. ' + ((e && e.message) || '')); }
-    finally { F.saving = false; var g = document.getElementById('wp-go'); if (g) { g.disabled = false; g.textContent = 'Assign Project'; } }
+    finally { F.saving = false; var g = document.getElementById('wp-go'); if (g) { g.disabled = false; g.textContent = 'Assign project'; } }
   }
 
   function refString(refs, folderUrl) {
@@ -700,15 +730,15 @@
         var list = byP[p.id] || [], live = list.filter(function (x) { return x.status !== 'cancelled'; }), done = live.filter(function (x) { return x.status === 'Completed'; }).length;
         var st = STATUS[p.status] || [p.status, '#94a3b8'], pct = live.length ? Math.round(done / live.length * 100) : 0;
         return '<div class="wpp-card"><div class="wpp-top"><div style="min-width:0;flex:1"><h4>' + esc(p.title) + '</h4><p>' + list.length + ' assignments · by ' + esc(p.created_by || '—') + (p.shared_description ? ' · ' + esc(String(p.shared_description).slice(0, 90)) + (p.shared_description.length > 90 ? '…' : '') : '') + '</p></div>'
-          + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><span class="wpp-st" style="color:' + st[1] + ';background:' + st[1] + '22;border:1px solid ' + st[1] + '55">' + esc(st[0]) + '</span><div class="wpp-prog"><span>' + done + ' of ' + live.length + ' done</span><span class="bar"><i style="width:' + pct + '%"></i></span></div></div></div>'
+          + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><span class="wpp-st" style="--st:' + st[1] + '"><i></i>' + esc(st[0]) + '</span><div class="wpp-prog"><span>' + done + ' of ' + live.length + ' done</span><span class="bar"><i style="width:' + pct + '%"></i></span></div></div></div>'
           + ((P.shared[p.id] || []).length ? '<div style="margin-top:10px"><div style="font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--tx-6, #6b74a0);margin-bottom:4px">Shared project files</div>' + sharedList(p.id) + '</div>' : '')
           + '<div class="wpp-list">' + list.map(function (x) {
             var s = aState(x), open = x.status !== 'cancelled' && x.status !== 'Completed' && x.status !== 'Rejected', hasOut = String(x.asset_link || '').trim() !== '';
-            return '<div class="wpp-a"><span class="wpp-st" style="color:' + s[1] + ';background:' + s[1] + '1f;border:1px solid ' + s[1] + '55">' + esc(s[0]) + '</span>'
+            return '<div class="wpp-a"><span class="wpp-st" style="--st:' + s[1] + '"><i></i>' + esc(s[0]) + '</span>'
               + '<div class="who"><b>' + esc(x.type || 'Work') + ' — ' + esc(x.assigned_to || '—') + '</b><span>' + esc(x.deliverable || '') + (x.date ? ' · due ' + esc(String(x.date).slice(0, 10)) : '') + '</span></div>'
               + '<div class="acts">' + (open ? '<button type="button" data-wpp="view" data-id="' + x.id + '">View</button>' : '')
               + (open ? '<button type="button" class="pri" data-wpp="edit" data-id="' + x.id + '">Edit / Reassign</button>' : '')
-              + (hasOut ? '<button type="button" data-wpp="out" data-id="' + x.id + '">Review output</button>' : '')
+              + (hasOut ? '<button type="button" class="out" data-wpp="out" data-id="' + x.id + '">Review output</button>' : '')
               + (open ? '<button type="button" class="bad" data-wpp="cancel" data-id="' + x.id + '">Cancel</button>' : '') + '</div></div>';
           }).join('') + '</div></div>';
       }).join('') + '</div>';
