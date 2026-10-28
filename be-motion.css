@@ -1,0 +1,111 @@
+/* ============================================================================
+   BEMotion — the ERP's interaction + motion layer (behaviour in be-motion.js).
+   Loaded after be-glass.css on every portal. Motion only uses transform / opacity, never
+   delays an action, never replays on data refresh, and drops away under reduced motion.
+
+   Patterns (one small set, used everywhere):
+     enter      panes, dialogs, menus appear with a short fade + small rise / scale
+     glide      the active pill of a segmented tab group slides to the new tab
+     magnify    sidebar navigation: proximity icon magnification (desktop pointer only)
+     peek       [data-be-peek] — secondary detail on hover (delay) or keyboard focus
+     disclose   long notes clamp to 3 lines with an explicit Show more / Show less
+   ============================================================================ */
+:root {
+  --m-1: 140ms;  --m-2: 200ms;  --m-3: 260ms;
+  --m-ease: cubic-bezier(.2, .8, .2, 1);        /* standard */
+  --m-out: cubic-bezier(.16, 1, .3, 1);         /* entrances: quick start, soft landing */
+}
+
+/* ── magnify: sidebar navigation ───────────────────────────────────────────── */
+html :is(.sidebar-link, .acad-nav-link, .navlink) {
+  transform-origin: left center;
+  transition: transform var(--m-2) var(--m-ease), background-color var(--m-1) var(--m-ease),
+              color var(--m-1) var(--m-ease), box-shadow var(--m-2) var(--m-ease), border-color var(--m-1) var(--m-ease);
+}
+html :is(.sidebar-link, .acad-nav-link, .navlink) > :is(svg, i),
+html :is(.sidebar-link, .acad-nav-link, .navlink) > span:first-child > :is(svg, i) {
+  transform: scale(var(--be-mag, 1));
+  transform-origin: center;
+  transition: transform var(--m-1) var(--m-ease);
+  will-change: transform;
+}
+/* the item under the pointer: hair of lift + refined edge; neighbours only get the icon swell */
+html :is(.sidebar-link, .acad-nav-link, .navlink).be-mag-on:not(.active):not(.on) {
+  transform: translateX(2px) scale(1.012);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 4px 14px rgba(var(--shade, 0,0,0), calc(.18 * var(--shade-k, 1)));
+}
+html[data-theme="light"] :is(.sidebar-link, .acad-nav-link, .navlink).be-mag-on:not(.active):not(.on) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 4px 12px rgba(0, 0, 0, .06);
+}
+/* collapsed rail: icons are centred — magnify in place, no sideways shift */
+html .be-aside.be-collapsed:not(.be-hover-expanded) :is(.sidebar-link, .acad-nav-link).be-mag-on:not(.active) { transform: scale(1.02); transform-origin: center; }
+/* touch / pen: no tracking, a restrained press */
+html :is(.sidebar-link, .acad-nav-link, .navlink):active { transform: scale(.985); }
+
+/* ── enter ─────────────────────────────────────────────────────────────────── */
+@keyframes be-pane-in  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes be-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes be-dlg-in   { from { opacity: 0; transform: translateY(8px) scale(.965); } to { opacity: 1; transform: none; } }
+@keyframes be-pop-down { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes be-pop-up   { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+.be-pane-in  { animation: be-pane-in var(--m-3) var(--m-out) both; }
+.be-scrim-in { animation: be-fade-in var(--m-2) var(--m-ease) both; }
+.be-dlg-in   { animation: be-dlg-in var(--m-3) var(--m-out) both; }
+.be-pop-in   { animation: be-pop-down var(--m-1) var(--m-out) both; transform-origin: top center; }
+.be-pop-in.be-up { animation-name: be-pop-up; transform-origin: bottom center; }
+
+/* ── glide: segmented tabs ─────────────────────────────────────────────────── */
+.be-glide-host { position: relative; }
+.be-glide-host > :not(.be-glide) { position: relative; z-index: 1; }
+.be-glide { position: absolute; z-index: 0; pointer-events: none; will-change: transform, width; }
+.be-glide-to { background: transparent !important; box-shadow: none !important; }
+
+/* ── peek ──────────────────────────────────────────────────────────────────── */
+.be-peek {
+  position: fixed; z-index: 9800; max-width: min(360px, calc(100vw - 24px));
+  padding: 10px 12px; border-radius: 12px; pointer-events: none;
+  font: 500 12.5px/1.5 Inter, system-ui, sans-serif; color: var(--tx-1, #e6e9f5); white-space: pre-line;
+  background: var(--lg-pop, rgba(6, 6, 6, .86)); border: 1px solid var(--lg-border, rgba(255, 255, 255, .12));
+  -webkit-backdrop-filter: blur(var(--lg-blur-pop, 28px)) saturate(140%); backdrop-filter: blur(var(--lg-blur-pop, 28px)) saturate(140%);
+  box-shadow: var(--lg-rim, inset 0 1px 0 rgba(255, 255, 255, .14)), var(--lg-shadow-2, 0 20px 46px rgba(0, 0, 0, .65));
+  animation: be-pop-down var(--m-1) var(--m-out) both;
+}
+.be-peek.be-up { animation-name: be-pop-up; }
+.be-peek b { display: block; font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--tx-5, #808a9d); margin-bottom: 3px; }
+.be-peek b ~ b { margin-top: 8px; }
+
+/* ── disclose: long notes ──────────────────────────────────────────────────── */
+.be-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.be-clamp.be-open { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+.be-more-btn {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; padding: 2px 0; border: 0; background: none;
+  font: 700 11.5px Inter, system-ui, sans-serif; color: var(--fg-orange, #ff9a4d); cursor: pointer; border-radius: 6px;
+}
+.be-more-btn svg { transition: transform var(--m-2) var(--m-ease); }
+.be-more-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.be-more-btn:focus-visible { outline: 2px solid rgba(255, 107, 6, .6); outline-offset: 2px; }
+
+/* ── task rows (Work Assignment boards): whole row opens the task; actions surface on intent ── */
+html .bw-row[data-id] { cursor: pointer; transition: background-color var(--m-1) var(--m-ease); }
+html .bw-row[data-id]:focus-visible { outline: 2px solid rgba(255, 107, 6, .55); outline-offset: -2px; }
+@media (hover: hover) and (pointer: fine) {
+  html .bw-row[data-id] .bw-acts { opacity: .55; transition: opacity var(--m-1) var(--m-ease); }
+  html .bw-row[data-id]:is(:hover, :focus-within) .bw-acts { opacity: 1; }
+}
+
+/* ── buttons: one press response (glass controls already lift on hover in be-glass.css) ── */
+html :is(.aw-b, .bw-btn, .bw-new, .bbs-btn, .wa-btn, .hfm-btn, .acadx-btn-save, .btn-save):not(:disabled):active { transform: scale(.97); }
+html :is(.aw-b, .bw-btn, .bw-new, .bbs-btn, .wa-btn, .hfm-btn) { transition: background-color var(--m-1) var(--m-ease), border-color var(--m-1) var(--m-ease), transform var(--m-1) var(--m-ease), filter var(--m-1) var(--m-ease); }
+/* success flash for a button whose action just completed (BEMotion.ok(btn)) */
+@keyframes be-ok { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .45); } 100% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); } }
+.be-ok-flash { animation: be-ok 600ms var(--m-ease) 1; }
+
+/* ── reduced motion: keep every state, drop the movement ───────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .be-pane-in, .be-dlg-in, .be-pop-in, .be-peek, .be-ok-flash { animation: none !important; }
+  .be-scrim-in { animation-duration: 1ms !important; }
+  .be-glide { display: none !important; }
+  .be-glide-to { background: revert !important; box-shadow: revert !important; }
+  html :is(.sidebar-link, .acad-nav-link, .navlink), html :is(.sidebar-link, .acad-nav-link, .navlink) * { transform: none !important; }
+  html :is(.aw-b, .bw-btn, .bw-new, .bbs-btn, .wa-btn, .hfm-btn, .acadx-btn-save, .btn-save):active { transform: none !important; }
+}

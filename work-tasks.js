@@ -1010,7 +1010,7 @@
           list.slice(0, 400).map(function (t) {
             var out = outputSummary(t), when = t.completed_at || t.submitted_at;
             var late = when && t.date && String(fmtIso(when)) > String(t.date).slice(0, 10);
-            return '<div class="bw-row" data-id="' + esc(t.id) + '">' +
+            return '<div class="bw-row" data-id="' + esc(t.id) + '" data-be-peek="' + esc(peekText(t)) + '">' +
               '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + (t.project_id ? ' <span class="bw-projb">Project</span>' : '') + '</b><span>' + (t.deliverable ? esc(t.deliverable) + ' · ' : '') + esc(t.type || 'Task') + (isTeam(t) && t.final_submitted_by ? ' · submitted by ' + esc(t.final_submitted_by) : '') + (t.completed_at && state(t) === 'completed' ? ' · done ' + esc(fmtTs(t.completed_at)) : '') + '</span></div>' +
               whoCell(t) +
               '<div class="bw-c-by bw-due">' + esc(t.assigned_by || '—') + '</div>' +
@@ -1024,7 +1024,7 @@
         : list.length ? '<div class="bw-list"><div class="bw-row hd"><span>Task</span><span>Assigned to</span><span class="bw-c-pri">Priority</span><span>Due</span><span>Status</span><span class="bw-c-prog">Progress</span><span></span></div>' +
           list.slice(0, 300).map(function (t) {
             var pg = t.status === 'Completed' ? 100 : (t.progress || (t.status === 'In Progress' ? 10 : 0));
-            return '<div class="bw-row' + (isOverdue(t) ? ' od' : '') + '" data-id="' + esc(t.id) + '">' +
+            return '<div class="bw-row' + (isOverdue(t) ? ' od' : '') + '" data-id="' + esc(t.id) + '" data-be-peek="' + esc(peekText(t)) + '">' +
               '<div class="bw-tt"><b>' + esc(t.topic || 'Task') + (isTeam(t) ? ' ' + teamBadge() : '') + (t.project_id ? ' <span class="bw-projb">Project</span>' : '') + '</b><span>' + (t.deliverable ? esc(t.deliverable) + ' · ' : '') + esc(t.type || 'Task') + ' · assigned ' + esc(fmtD(t.assigned_date)) + '</span></div>' +
               whoCell(t) +
               '<div class="bw-c-pri">' + priPill(t.priority) + '</div>' +
@@ -1050,6 +1050,18 @@
     }
     // Assigner-owned review (review_route 'assigner'): waiting = submitted, not yet decided, and
     // the server says this person may review it (the assigner, or leadership).
+    // Hover / keyboard-focus preview of a task row (be-motion.js [data-be-peek]): the secondary
+    // detail that doesn't fit the row. The row still opens the full task on click / Enter.
+    function peekText(t) {
+      var p = [], cut = function (x, n) { x = String(x || '').trim(); return x.length > n ? x.slice(0, n - 1) + '…' : x; };
+      if (t.description && String(t.description).trim()) p.push('Brief: ' + cut(t.description, 320));
+      var refs = [t.reference_link ? 'link' : '', t.reference_file ? 'file' : ''].filter(Boolean);
+      if (refs.length) p.push('References: ' + refs.join(' + ') + ' attached — open the task to view');
+      if (t.status === 'Rework Required' && t.rework_reason) p.push('Rework reason: ' + cut(t.rework_reason, 220));
+      if (t.status === 'Rejected' && t.rejection_reason) p.push('Rejection reason: ' + cut(t.rejection_reason, 220));
+      if (t.assigned_by || t.created_by) p.push('Assigned by: ' + (t.assigned_by || t.created_by));
+      return p.join('\n\n');
+    }
     function needsReview(t) { return t.review_route === 'assigner' && !!t.can_review && t.status === 'Completed' && !t.manager_approved; }
     function rowById(id) { return S.rows.find(function (t) { return String(t.id) === String(id); }); }
     function whoCell(t) {
