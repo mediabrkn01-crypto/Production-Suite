@@ -269,6 +269,16 @@
     return { counts: counts, opaqueUnadopted: left };
   }
 
-  window.BEGlass = { audit: audit, refresh: function (el) { enqueue(el || document.body); } };
+  /* Classify a just-shown subtree NOW (same task, before paint). The idle queue alone lets an
+     opened panel / dialog paint once in its old look and switch to glass a moment later. */
+  function now(el) {
+    if (!el || el.nodeType !== 1) return;
+    var all = el.getElementsByTagName('*');
+    if (all.length > 1500) { enqueue(el); return; }   // very large panes stay on the idle queue
+    visit(el);
+    for (var i = 0; i < all.length; i++) visit(all[i]);
+  }
+
+  window.BEGlass = { audit: audit, now: now, refresh: function (el) { enqueue(el || document.body); } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

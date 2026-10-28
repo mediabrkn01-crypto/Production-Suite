@@ -27,6 +27,9 @@
   function vis(el) { if (!el || !el.isConnected) return false; var cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') return false; return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }
   function once(el, cls) {
     if (RM.matches || !el) return;
+    // a component with its own entrance (animate-item, benIn, confirm dialogs …) keeps it — a
+    // second animation would restart it mid-way
+    if (!el.classList.contains(cls) && getComputedStyle(el).animationName !== 'none') return;
     el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
     var done = function () { el.classList.remove(cls, 'be-up'); el.style.transformOrigin = el.__beOrigin || ''; el.removeEventListener('animationend', done); };
     el.addEventListener('animationend', done);
@@ -107,6 +110,7 @@
     var now = vis(el), was = shown.get(el);
     shown.set(el, now);
     if (!now || was) return;
+    if (window.BEGlass && BEGlass.now) BEGlass.now(el);   // glass material before the first paint, not after
     if (el.matches(POP)) return enterPop(el);
     if (el.matches(PANE)) { if ((!el.parentElement || !el.parentElement.closest('.be-pane-in')) && !hasFixed(el)) once(el, 'be-pane-in'); return; }
     if (isOverlay(el)) enterOverlay(el);
@@ -226,26 +230,36 @@
   });
 
   // ════ observe ════════════════════════════════════════════════════════════
-  var pending = new Set(), flushQ = false;
-  function flush() {
-    flushQ = false;
-    pending.forEach(function (n) { if (n.isConnected) { sweep(n); rows(n); } });
-    pending.clear();
+  var pending = new Set();
+  // Visibility checks run INSIDE the MutationObserver callback (a microtask, before the next
+  // paint): if the entrance class were added later, the browser would paint the opened panel
+  // once at full size and the animation would then restart it from 0 — a visible flash.
+  // Row tagging + note clamping are layout-light extras and stay on a short timer.
+  var later = new Set(), laterQ = false;
+  function flushLater() {
+    laterQ = false;
+    later.forEach(function (n) { if (n.isConnected) rows(n); });
+    later.clear();
     var c = document.querySelectorAll(CLAMP); for (var i = 0; i < c.length; i++) clamp(c[i]);
   }
-  // a timer, not rAF: background tabs must still tag rows / clamp notes before they're shown
-  function queue(n) { if (n && n.nodeType === 1) { pending.add(n); if (!flushQ) { flushQ = true; setTimeout(flush, 16); } } }
+  function queue(n) {
+    if (!n || n.nodeType !== 1) return;
+    pending.add(n); later.add(n);
+    if (!laterQ) { laterQ = true; setTimeout(flushLater, 16); }
+  }
+  function flushNow() { pending.forEach(function (n) { if (n.isConnected) sweep(n); }); pending.clear(); }
   function start() {
     // what is visible at load counts as already shown: nothing animates on first paint
     document.querySelectorAll(PANE + ',' + POP + ',' + OVL).forEach(function (el) { shown.set(el, vis(el)); });
     Array.prototype.forEach.call(document.body.children, function (el) { shown.set(el, vis(el)); });
-    rows(document.body); queue(document.body);
+    rows(document.body); queue(document.body); pending.clear();
     new MutationObserver(function (ms) {
       for (var i = 0; i < ms.length; i++) {
         var m = ms[i];
         if (m.type === 'childList') { for (var j = 0; j < m.addedNodes.length; j++) queue(m.addedNodes[j]); }
         else if (!ownClass(m)) queue(m.target);
       }
+      flushNow();
     }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'style', 'hidden', 'open'] });
   }
   // class changes that only add / remove our own or be-glass's tags never change visibility
