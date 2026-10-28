@@ -27,11 +27,10 @@ html :is(.sidebar-link, .acad-nav-link, .navlink) > span:first-child > :is(svg, 
   transform: scale(var(--be-mag, 1));
   transform-origin: center;
   transition: transform var(--m-1) var(--m-ease);
-  will-change: transform;
 }
 /* the item under the pointer: hair of lift + refined edge; neighbours only get the icon swell */
 html :is(.sidebar-link, .acad-nav-link, .navlink).be-mag-on:not(.active):not(.on) {
-  transform: translateX(2px) scale(1.012);
+  transform: translateX(2px);   /* no scale: scaling text re-rasterises it (shimmer) */
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 4px 14px rgba(var(--shade, 0,0,0), calc(.18 * var(--shade-k, 1)));
 }
 html[data-theme="light"] :is(.sidebar-link, .acad-nav-link, .navlink).be-mag-on:not(.active):not(.on) {
@@ -43,13 +42,15 @@ html .be-aside.be-collapsed:not(.be-hover-expanded) :is(.sidebar-link, .acad-nav
 html :is(.sidebar-link, .acad-nav-link, .navlink):active { transform: scale(.985); }
 
 /* ── enter ─────────────────────────────────────────────────────────────────── */
-@keyframes be-pane-in  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* No opacity on containers: an ancestor with opacity < 1 becomes a backdrop root, so every glass
+   surface inside it would lose its blur for the length of the animation and then snap back.
+   Panes therefore only rise; dialogs / menus fade themselves (own opacity is safe). */
+@keyframes be-pane-in  { from { transform: translateY(5px); } to { transform: none; } }
 @keyframes be-fade-in  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes be-dlg-in   { from { opacity: 0; transform: translateY(8px) scale(.965); } to { opacity: 1; transform: none; } }
 @keyframes be-pop-down { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes be-pop-up   { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
 .be-pane-in  { animation: be-pane-in var(--m-3) var(--m-out) both; }
-.be-scrim-in { animation: be-fade-in var(--m-2) var(--m-ease) both; }
 .be-dlg-in   { animation: be-dlg-in var(--m-3) var(--m-out) both; }
 .be-pop-in   { animation: be-pop-down var(--m-1) var(--m-out) both; transform-origin: top center; }
 .be-pop-in.be-up { animation-name: be-pop-up; transform-origin: bottom center; }
@@ -103,7 +104,6 @@ html :is(.aw-b, .bw-btn, .bw-new, .bbs-btn, .wa-btn, .hfm-btn) { transition: bac
 /* ── reduced motion: keep every state, drop the movement ───────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .be-pane-in, .be-dlg-in, .be-pop-in, .be-peek, .be-ok-flash { animation: none !important; }
-  .be-scrim-in { animation-duration: 1ms !important; }
   .be-glide { display: none !important; }
   .be-glide-to { background: revert !important; box-shadow: revert !important; }
   html :is(.sidebar-link, .acad-nav-link, .navlink), html :is(.sidebar-link, .acad-nav-link, .navlink) * { transform: none !important; }

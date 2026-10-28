@@ -88,7 +88,7 @@
   }
   function enterOverlay(scrim) {
     var dlg = overlayDialog(scrim); if (!dlg) return;
-    once(scrim, 'be-scrim-in');
+    // the scrim is NOT faded: its opacity would make it the dialog's backdrop root (glass goes flat)
     var p = recentPt(), r = dlg.getBoundingClientRect();
     if (p && r.width) {
       var ox = Math.min(Math.max(p.x - r.left, 0), r.width), oy = Math.min(Math.max(p.y - r.top, 0), r.height);
@@ -101,12 +101,14 @@
     if (p && r.height && r.bottom <= p.y + 4) el.classList.add('be-up');    // opened above its trigger
     once(el, 'be-pop-in');   // origin: top, or bottom for .be-up (CSS — menus rewrite their inline styles)
   }
+  // a transform on the pane would re-anchor any open fixed overlay inside it for the animation
+  function hasFixed(el) { var f = el.querySelectorAll('.fixed, [style*="position:fixed"], [style*="position: fixed"]'); for (var i = 0; i < f.length; i++) if (vis(f[i])) return true; return false; }
   function check(el) {
     var now = vis(el), was = shown.get(el);
     shown.set(el, now);
     if (!now || was) return;
     if (el.matches(POP)) return enterPop(el);
-    if (el.matches(PANE)) { if (!el.parentElement || !el.parentElement.closest('.be-pane-in')) once(el, 'be-pane-in'); return; }
+    if (el.matches(PANE)) { if ((!el.parentElement || !el.parentElement.closest('.be-pane-in')) && !hasFixed(el)) once(el, 'be-pane-in'); return; }
     if (isOverlay(el)) enterOverlay(el);
   }
   function sweep(root) {
@@ -242,9 +244,15 @@
       for (var i = 0; i < ms.length; i++) {
         var m = ms[i];
         if (m.type === 'childList') { for (var j = 0; j < m.addedNodes.length; j++) queue(m.addedNodes[j]); }
-        else if (m.attributeName !== 'data-lg' && !/^be-/.test(String(m.target.className).split(' ').pop() || '')) queue(m.target);
+        else if (!ownClass(m)) queue(m.target);
       }
-    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open'] });
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'style', 'hidden', 'open'] });
+  }
+  // class changes that only add / remove our own or be-glass's tags never change visibility
+  function ownClass(m) {
+    if (m.attributeName !== 'class' || typeof m.target.className !== 'string') return false;
+    var strip = function (v) { return String(v || '').replace(/(^|\s)(lg|be)-[\w-]+/g, '').trim(); };
+    return strip(m.target.className) === strip(m.oldValue);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
