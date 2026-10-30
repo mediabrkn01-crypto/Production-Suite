@@ -505,6 +505,39 @@ html ::-webkit-scrollbar-thumb:hover { background: var(--lg-scroll-hover); backg
   /* lighter blur on phone GPUs — the glass stays visible, just cheaper */
   :root { --lg-blur-panel: 12px; --lg-blur-chrome: 16px; --lg-blur-pop: 20px; --lg-blur-dialog: 24px; }
 }
+
+/* ── Custom background image (be-background.js adds html.be-bg-image): a photo behind the glass
+      varies far more than the black / white canvas, so surfaces get denser tints — still glass
+      (blur, rim, sheen), but the photo can no longer compete with text. ── */
+html.be-bg-image {
+  --lg-chrome: rgba(0, 0, 0, .72);  --lg-panel: rgba(0, 0, 0, .66);  --lg-nested: rgba(0, 0, 0, .42);
+  --lg-pop: rgba(8, 8, 8, .92);     --lg-dialog: rgba(6, 6, 6, .92);  --lg-field: rgba(0, 0, 0, .62);
+  --lg-blur-panel: 22px;            --lg-blur-chrome: 26px;
+}
+html[data-theme="light"].be-bg-image {
+  --lg-chrome: rgba(255, 255, 255, .86);  --lg-panel: rgba(255, 255, 255, .84);  --lg-nested: rgba(255, 255, 255, .72);
+  --lg-pop: rgba(255, 255, 255, .95);     --lg-dialog: rgba(255, 255, 255, .95); --lg-field: rgba(255, 255, 255, .9);
+}
+
+/* ── Sticky header / footer bars inside dialogs and panels: content scrolls underneath them, so
+      they need a near-opaque glass of their own (a translucent bar showed the rows through it). ── */
+html body :is(.lg-dialog, .lg-panel, .modal, .hr-modal) [style*="position:sticky"],
+html body :is(.lg-dialog, .lg-panel, .modal, .hr-modal) [style*="position: sticky"] {
+  background: var(--lg-sticky) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+/* page titles / subtitles sit straight on the photo (not on glass): a soft theme-matched halo
+   keeps them legible over any image without boxing them in */
+html.be-bg-image :is(h1, h1 + p, h1 + div > p, .bes-welcome *, .bes-greet) {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .75), 0 0 14px rgba(0, 0, 0, .55);
+}
+html[data-theme="light"].be-bg-image :is(h1, h1 + p, h1 + div > p, .bes-welcome *, .bes-greet) {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, .9), 0 0 16px rgba(255, 255, 255, .85);
+}
+:root { --lg-sticky: rgba(8, 8, 8, .94); }
+html[data-theme="light"] { --lg-sticky: rgba(255, 255, 255, .96); }
+
 /* no backdrop-filter → near-opaque surfaces, so text never sits on raw background */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root { --lg-chrome: rgba(0, 0, 0, .94); --lg-panel: rgba(6, 6, 6, .94); --lg-pop: #0a0a0a; --lg-dialog: #0a0a0a; }
