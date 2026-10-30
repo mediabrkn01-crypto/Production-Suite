@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<meta name="be-version" content="2026.10.30.1226-q5t8">
-<script src="be-update.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-theme.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-background.js?v=2026.10.30.1226-q5t8"></script>
-<link rel="stylesheet" href="be-theme.css?v=2026.10.30.1226-q5t8">
+<meta name="be-version" content="2026.10.30.1249-gv45">
+<script src="be-update.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-theme.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-background.js?v=2026.10.30.1249-gv45"></script>
+<link rel="stylesheet" href="be-theme.css?v=2026.10.30.1249-gv45">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Broken English | Production Studio Network</title>
 
@@ -26,8 +26,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="be-viewonly.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-live.js?v=2026.10.30.1226-q5t8"></script>
+<script src="be-viewonly.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-live.js?v=2026.10.30.1249-gv45"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
@@ -411,12 +411,38 @@
         .beu-btn.danger { flex: 0 0 auto; padding: 0 12px; color: var(--fg-red, #f87171); background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.35); }
         .beu-btn.pri { color: #fff; background: linear-gradient(135deg,#ff6b06,#f9182f); border-color: transparent; }
         .beu-btn:disabled { opacity: .45; cursor: default; }
-        /* Pipeline phone cards (renderTableRows → #production-matrix-mobile-cards) */
-        @media (max-width: 767px) {
-            #production-matrix-mobile-cards { display: flex; flex-direction: column; gap: 10px; }
-            #production-matrix-mobile-cards > * + * { margin-top: 0 !important; }
-        }
-        .pm-card { background: linear-gradient(180deg, rgba(var(--sf-3-rgb, 20,26,40), 0.6), rgba(var(--sf-2-rgb, 13,17,28), 0.6)); border: 1px solid rgba(var(--ink, 255,255,255), 0.07); border-radius: 16px; padding: 13px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        /* Pipeline work cards (renderTableRows → #production-matrix-mobile-cards): compact grid,
+           one card expands inline across the full row. 4 / 3 cols desktop, 2 tablet, 1 phone. */
+        .pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 12px; align-items: start; grid-auto-flow: row dense; }
+        .pm-grid > * + * { margin-top: 0 !important; }
+        .pm-grid > .pm-empty { grid-column: 1 / -1; }
+        @media (min-width: 768px) and (max-width: 1023px) { .pm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 767px) { .pm-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+        .pm-card { background: linear-gradient(180deg, rgba(var(--sf-3-rgb, 20,26,40), 0.6), rgba(var(--sf-2-rgb, 13,17,28), 0.6)); border: 1px solid rgba(var(--ink, 255,255,255), 0.07); border-radius: 16px; padding: 0; display: flex; flex-direction: column; min-width: 0; transition: border-color .16s ease, box-shadow .2s ease; }
+        .pm-card.open { grid-column: 1 / -1; border-color: rgba(255,107,6,.35); }
+        .pm-card.open .pm-title { -webkit-line-clamp: unset; line-clamp: unset; font-size: 15px; }
+        .pm-head { padding: 13px 14px; display: flex; flex-direction: column; gap: 10px; cursor: pointer; border-radius: 16px; outline: none; min-width: 0; }
+        .pm-head:focus-visible { box-shadow: inset 0 0 0 2px rgba(255,107,6,.6); }
+        .pm-card:hover:not(.open) { border-color: rgba(var(--ink, 255,255,255), 0.14); }
+        .pm-chev { flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--tx-5, #808a9d); background: rgba(var(--ink, 255,255,255), 0.04); border: 1px solid rgba(var(--ink, 255,255,255), 0.07); transition: transform .2s cubic-bezier(.2,.8,.2,1), color .15s ease; }
+        .pm-chev svg { width: 15px; height: 15px; }
+        .pm-card.open .pm-chev { transform: rotate(180deg); color: var(--fg-orange, #ff9a4d); }
+        .pm-tags .st-pill { margin-left: auto; }
+        .pm-x { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; border-top: 1px solid rgba(var(--ink, 255,255,255), 0.06); padding-top: 12px; margin: 0 0 0; }
+        .pm-x[hidden] { display: none; }
+        .pm-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 14px; }
+        .pm-info > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .pm-info small { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--tx-6, #6b74a0); }
+        .pm-info b { font-size: 12.5px; font-weight: 600; color: var(--tx-1, #e2e6f3); overflow-wrap: anywhere; text-transform: none; }
+        .pm-text { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--tx-2, #c7cbe0); white-space: pre-line; overflow-wrap: anywhere; word-break: break-word; }
+        .pm-block a { overflow-wrap: anywhere; word-break: break-all; }
+        .pm-hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+        .pm-hist li { font-size: 12px; color: var(--tx-2, #c7cbe0); padding-left: 12px; position: relative; overflow-wrap: anywhere; }
+        .pm-hist li::before { content: ''; position: absolute; left: 0; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--fg-orange, #ff9a4d); opacity: .7; }
+        .pm-hist b { font-weight: 700; color: var(--tx-1, #e2e6f3); text-transform: capitalize; }
+        .pm-hist span { color: var(--tx-6, #6b74a0); font-size: 11px; }
+        .pm-hist p { margin: 3px 0 0; color: var(--tx-3, #a5adcf); font-size: 11.5px; line-height: 1.45; }
+        @media (min-width: 900px) { .pm-card.open .pm-x { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; } .pm-card.open .pm-x[hidden] { display: none; } .pm-card.open .pm-x > .pm-info, .pm-card.open .pm-x > .pm-foot { grid-column: 1 / -1; } }
         .pm-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
         .pm-title { margin: 0; font-size: 14px; font-weight: 700; line-height: 1.35; color: var(--tx-1, #f1f5f9); min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .pm-top .st-pill { flex-shrink: 0; margin-top: 1px; }
@@ -913,30 +939,30 @@
          two files) — see sidebar-collapse.js's own header comment. Loaded plain (no defer) since it's a
          tiny same-origin file — negligible parse cost, and guarantees initSidebarCollapse()
          already exists by the time each page calls it right after its own <aside> markup. -->
-    <link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.30.1226-q5t8">
-    <script src="sidebar-collapse.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-select.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-mobile.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-nav-history.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-session.js?v=2026.10.30.1226-q5t8"></script>
-<script src="jarvis-voice.js?v=2026.10.30.1226-q5t8" data-jarvis-orb></script>
-<script src="jarvis-wake.js?v=2026.10.30.1226-q5t8"></script>
-    <link rel="stylesheet" href="account-menu.css?v=2026.10.30.1226-q5t8">
-<link rel="stylesheet" href="be-ui.css?v=2026.10.30.1226-q5t8">
-    <script src="account-menu.js?v=2026.10.30.1226-q5t8"></script>
-<script src="photo-preview.js?v=2026.10.30.1226-q5t8"></script>
-    <link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.30.1226-q5t8">
-    <script src="dashboard-metrics.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="shared-greeting.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="be-shell.js?v=2026.10.30.1226-q5t8"></script>
-<script src="be-season.js?v=2026.10.30.1226-q5t8"></script>
-<link rel="stylesheet" href="be-timepicker.css?v=2026.10.30.1226-q5t8">
-<script src="be-timepicker.js?v=2026.10.30.1226-q5t8"></script>
+    <link rel="stylesheet" href="sidebar-collapse.css?v=2026.10.30.1249-gv45">
+    <script src="sidebar-collapse.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-select.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-mobile.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-nav-history.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-session.js?v=2026.10.30.1249-gv45"></script>
+<script src="jarvis-voice.js?v=2026.10.30.1249-gv45" data-jarvis-orb></script>
+<script src="jarvis-wake.js?v=2026.10.30.1249-gv45"></script>
+    <link rel="stylesheet" href="account-menu.css?v=2026.10.30.1249-gv45">
+<link rel="stylesheet" href="be-ui.css?v=2026.10.30.1249-gv45">
+    <script src="account-menu.js?v=2026.10.30.1249-gv45"></script>
+<script src="photo-preview.js?v=2026.10.30.1249-gv45"></script>
+    <link rel="stylesheet" href="dashboard-metrics.css?v=2026.10.30.1249-gv45">
+    <script src="dashboard-metrics.js?v=2026.10.30.1249-gv45"></script>
+    <script src="shared-greeting.js?v=2026.10.30.1249-gv45"></script>
+    <script src="be-shell.js?v=2026.10.30.1249-gv45"></script>
+<script src="be-season.js?v=2026.10.30.1249-gv45"></script>
+<link rel="stylesheet" href="be-timepicker.css?v=2026.10.30.1249-gv45">
+<script src="be-timepicker.js?v=2026.10.30.1249-gv45"></script>
 
-<link rel="stylesheet" href="be-glass.css?v=2026.10.30.1226-q5t8">
-<script src="be-glass.js?v=2026.10.30.1226-q5t8" defer></script>
-<link rel="stylesheet" href="be-motion.css?v=2026.10.30.1226-q5t8">
-<script src="be-motion.js?v=2026.10.30.1226-q5t8" defer></script>
+<link rel="stylesheet" href="be-glass.css?v=2026.10.30.1249-gv45">
+<script src="be-glass.js?v=2026.10.30.1249-gv45" defer></script>
+<link rel="stylesheet" href="be-motion.css?v=2026.10.30.1249-gv45">
+<script src="be-motion.js?v=2026.10.30.1249-gv45" defer></script>
 </head>
 <body class="flex flex-col md:flex-row h-screen overflow-hidden">
 <!-- MANAGER EMBED MODE: when this page is loaded inside the Manager Command Center iframe
@@ -1894,10 +1920,10 @@
                                     <button id="pipe-tab-active" onclick="setPipeWorkTab('active')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all"><i data-lucide="list-checks" style="width:13px;height:13px"></i> Active Work</button>
                                     <button id="pipe-tab-rejected" onclick="setPipeWorkTab('rejected')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all"><i data-lucide="x-octagon" style="width:13px;height:13px"></i> Rejected Works <span id="pipe-rejected-count" style="min-width:18px;padding:0 6px;border-radius:999px;font-size:10px;line-height:17px;background:rgba(248,113,113,.16);color:var(--fg-red, #f87171);border:1px solid rgba(248,113,113,.35)">0</span></button>
                                 </div>
-                                <!-- Kanban / Table view toggle (§12) — preference persisted per browser. -->
+                                <!-- Cards / Kanban view toggle (§12) — preference persisted per browser ('table' = the cards view). -->
                                 <div class="flex items-center rounded-lg overflow-hidden border border-white/[0.08]" style="background:rgba(var(--ink, 255,255,255), 0.03)">
                                     <button id="pipe-toggle-kanban" onclick="setPipeView('kanban')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all"><i data-lucide="layout-grid" style="width:13px;height:13px"></i> Kanban</button>
-                                    <button id="pipe-toggle-table" onclick="setPipeView('table')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all"><i data-lucide="table" style="width:13px;height:13px"></i> Table</button>
+                                    <button id="pipe-toggle-table" onclick="setPipeView('table')" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all" title="Work cards (default)"><i data-lucide="layout-list" style="width:13px;height:13px"></i> Cards</button>
                                 </div>
                                 <!-- + button — only visible to admin/manager via JS role class -->
                                 <button id="btn-open-assign-panel" onclick="toggleAssignPanel()" class="admin-manager-only hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:rgba(255,107,6,0.12);border:1px solid rgba(255,107,6,0.25);color:var(--fg-orange, #ff6b06)" title="Create & Assign Work Task">
@@ -1992,29 +2018,8 @@
                             })();
                         </script>
                         
-                        <div class="hidden md:block card rounded-2xl overflow-hidden overflow-x-auto">
-                            <table class="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr class="bg-[#181b30] border-b border-white/[0.06] text-[#6b74a0] uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
-                                        <th class="py-3.5 px-4 sticky left-0 bg-[#181b30] z-20 min-w-[160px]">Campaign Topic</th>
-                                        <th class="py-3.5 px-4">Category</th>
-                                        <th class="py-3.5 px-4">Assigned Creator</th>
-                                        <th class="py-3.5 px-4">Description Info</th>
-                                        <th class="py-3.5 px-4">Assigned Date</th>
-                                        <th class="py-3.5 px-4">Target Date</th>
-                                        <th class="py-3.5 px-4">Status Engine</th>
-                                        <th class="py-3.5 px-4">Explanation Log</th>
-                                        <th class="py-3.5 px-4">Delivery Output</th>
-                                        <th class="py-3.5 px-4">Reference File</th>
-                                        <th id="th-actions" class="py-3.5 px-4 text-center hidden">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="production-matrix-rows" class="divide-y divide-white/[0.05]/60 text-gray-300">
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div id="production-matrix-mobile-cards" class="block md:hidden space-y-3">
+                        <!-- Work cards (renderTableRows): compact by default, one expands inline. Replaces the old table. -->
+                        <div id="production-matrix-mobile-cards" class="pm-grid" aria-live="polite">
                         </div>
 
                         <div id="pipeline-pagination" class="hidden items-center justify-center gap-1 flex-wrap pt-4 mt-2 border-t border-white/[0.06]/60" style="display:none">
@@ -2659,14 +2664,14 @@
         </main>
     </div>
 
-    <script src="common.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="access-guard.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="announcements.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="aura.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="content-calendar.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="leave-docs.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="file-share.js?v=2026.10.30.1226-q5t8"></script>
-<script src="work-archive.js?v=2026.10.30.1226-q5t8"></script>
+    <script src="common.js?v=2026.10.30.1249-gv45"></script>
+    <script src="access-guard.js?v=2026.10.30.1249-gv45"></script>
+    <script src="announcements.js?v=2026.10.30.1249-gv45"></script>
+    <script src="aura.js?v=2026.10.30.1249-gv45"></script>
+    <script src="content-calendar.js?v=2026.10.30.1249-gv45"></script>
+    <script src="leave-docs.js?v=2026.10.30.1249-gv45"></script>
+    <script src="file-share.js?v=2026.10.30.1249-gv45"></script>
+<script src="work-archive.js?v=2026.10.30.1249-gv45"></script>
     <script>
         // Signed out because access was revoked (access-guard.js) — say why on the sign-in screen.
         window.addEventListener('load', function () {
@@ -2676,9 +2681,9 @@
             if (typeof _showPortalLoginError === 'function') _showPortalLoginError(msg);
         });
     </script>
-    <script src="policy-config.js?v=2026.10.30.1226-q5t8"></script>
-    <script src="leave-policy.js?v=2026.10.30.1226-q5t8"></script>
-<script src="my-workspace.js?v=2026.10.30.1226-q5t8"></script>
+    <script src="policy-config.js?v=2026.10.30.1249-gv45"></script>
+    <script src="leave-policy.js?v=2026.10.30.1249-gv45"></script>
+<script src="my-workspace.js?v=2026.10.30.1249-gv45"></script>
 <script>
   // My Workspace — shared module (same UI + logic as Academic and Sales). Identity is read at
   // render time, so account switches pick up the new employee automatically.
@@ -2690,7 +2695,7 @@
     navigate: function (p) { switchTab({ profile: 'my-profile', announcements: 'announcements', attendance: 'my-attendance', leave: 'my-leave', documents: 'my-docs', payslips: 'my-payslips', team: 'team-members' }[p]); }
   });
 </script>
-    <script src="dynamic-tabs.js?v=2026.10.30.1226-q5t8"></script>
+    <script src="dynamic-tabs.js?v=2026.10.30.1249-gv45"></script>
     <script>
         // Configuration Parameters
         // [moved to shared/common.js or hr/index.html: original lines 2560-2561]
@@ -2997,7 +3002,7 @@
             currentPipelinePage = page;
             renderTableRows();
             // Scroll table into view
-            const sheet = document.getElementById('production-matrix-rows');
+            const sheet = document.getElementById('production-matrix-mobile-cards');
             if (sheet) sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
@@ -4252,7 +4257,7 @@
         // duplicate of common.js's own copy that silently shadowed it (function
         // re-declaration, last one loaded wins) and never got the photo-lookup/current-
         // account enhancements added there. Deleted — index.html already <script
-        // src="common.js?v=2026.10.30.1226-q5t8">s the one real copy, so this needed no replacement, just removal.
+        // src="common.js?v=2026.10.30.1249-gv45">s the one real copy, so this needed no replacement, just removal.
 
         function switchToAccount(email) {
             const accounts = getSavedAccounts();
@@ -6851,16 +6856,35 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             });
         }
 
+        // Pipeline work cards: which card is expanded (survives the sync re-render) + change detector.
+        let _pmOpenId = null, _pmLastSig = '';
+        function pmToggle(id, animate) {
+            const grid = document.getElementById('production-matrix-mobile-cards'); if (!grid) return;
+            const next = String(_pmOpenId) === String(id) ? null : id;
+            grid.querySelectorAll('.pm-card.open').forEach(c => { c.classList.remove('open'); const x = c.querySelector('.pm-x'); if (x) x.hidden = true; const h = c.querySelector('.pm-head'); if (h) h.setAttribute('aria-expanded', 'false'); });
+            _pmOpenId = next;
+            if (next == null) return;
+            const card = grid.querySelector(`.pm-card[data-id="${next}"]`); if (!card) return;
+            card.classList.add('open'); card.querySelector('.pm-head').setAttribute('aria-expanded', 'true');
+            const x = card.querySelector('.pm-x'); x.hidden = false;
+            const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (animate && !reduce && x.animate) x.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' });
+            const r = card.getBoundingClientRect(); if (r.top < 80 || r.top > innerHeight - 120) card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+        }
+        document.addEventListener('click', e => {
+            const h = e.target.closest && e.target.closest('.pm-head[data-pm-toggle]'); if (!h) return;
+            if (e.target.closest('a,button:not(.pm-head),select,input,textarea,label,.be-sel-trigger')) return;   // controls never toggle the card
+            pmToggle(h.dataset.pmToggle, true);
+        });
+        document.addEventListener('keydown', e => {
+            const h = e.target.matches && e.target.matches('.pm-head[data-pm-toggle]') ? e.target : null; if (!h) return;
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pmToggle(h.dataset.pmToggle, true); }
+        });
         function renderTableRows() {
             // Don't rebuild status cells while an upload is actively in progress — would flicker
             if (_deliveryUploadTaskId && _deliveryMinimized) return;
-            const tbody = document.getElementById('production-matrix-rows');
             const mobileContainer = document.getElementById('production-matrix-mobile-cards');
-            
-            if(!tbody || !mobileContainer) return;
-            
-            tbody.innerHTML = '';
-            mobileContainer.innerHTML = '';
+            if (!mobileContainer) return;
             if (typeof renderRejectedWorks === 'function') renderRejectedWorks();
 
             let targetTasks;
@@ -6938,8 +6962,8 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             });
 
             if(targetTasks.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="11"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="dsh-empty-t">Workbook tracking register dashboard logs empty for this filtered parameter mix.</div></div></td></tr>`;
-                mobileContainer.innerHTML = `<p class="text-center text-[#4a5182] text-xs italic py-4">Workbook tracking ledger is empty for this cycle.</p>`;
+                _pmLastSig = '';
+                mobileContainer.innerHTML = `<div class="pm-empty"><div class="dsh-empty" style="min-height:120px"><div class="dsh-empty-t">No work in this view</div><div class="dsh-empty-s">Try another month, type or status.</div></div></div>`;
                 renderPipelinePagination(0);
                 return;
             }
@@ -6952,6 +6976,13 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
             const pagedTasks = targetTasks.slice(startIdx, startIdx + PIPELINE_PAGE_SIZE);
 
             renderPipelinePagination(targetTasks.length);
+
+            // The sync loop re-renders every few seconds. Rebuild the cards only when what they show
+            // changed — an expanded card, an open status menu or a half-typed note is never reset.
+            const _sig = activeRole + '|' + (typeof hrEmployees !== 'undefined' && hrEmployees ? hrEmployees.length : 0) + '|' + JSON.stringify(pagedTasks.map(t => [t.id, t.topic, t.type, t.status, t.priority, t.date, t.assignedDate, t.assignedTo, t.description, t.deliverable, t.explanation, t.assetLink, t.referenceFile, t.managerApproved, t.socialApproved, t.assignApproved, t.assignedBy, (t.history || []).length]));
+            if (_sig === _pmLastSig && mobileContainer.querySelector('.pm-card')) return;
+            _pmLastSig = _sig;
+            mobileContainer.innerHTML = '';
 
             pagedTasks.forEach(t => {
                 let badgeColor = "text-yellow-400 bg-yellow-400/10 border border-yellow-400/20";
@@ -7094,95 +7125,59 @@ CREATE POLICY "allow_roster_write" ON user_roster FOR ALL TO anon USING (true) W
                 const _creatorEmp = (typeof hrEmployees !== 'undefined' && Array.isArray(hrEmployees)) ? hrEmployees.find(e => (e.portal_email || '').toLowerCase() === String(t.employeeEmail || '').toLowerCase()) : null;
                 const _creatorAv = (typeof hrAvatarHTML === 'function') ? hrAvatarHTML(_creatorEmp || t.assignedTo || '?', 30) : '';
 
-                let desktopRow = document.createElement('tr');
-                desktopRow.className = `hover:bg-transparent/40 transition text-xs ${isNewRealtimeItem ? 'flash-update' : ''}`;
-                desktopRow.innerHTML = `
-                    <td class="py-3 px-4 text-white sticky left-0 bg-transparent z-10 min-w-[200px]" ${(activeRole==='admin'||activeRole==='manager') ? `ondblclick="editTopicInline(this, ${t.id})" title="Double-click to edit"` : ''}><div class="font-bold text-[13px] leading-snug">${t.topic}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px">${(window.WorkProjects?WorkProjects.chip(t):'')}${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}${assignedByLine}</div></td>
-                    <td class="py-3 px-4"><span class="whitespace-nowrap" style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:var(--tx-2, #c7cbe0);background:rgba(var(--ink, 255,255,255), 0.05);border:1px solid rgba(var(--ink, 255,255,255), 0.1)">${t.type}</span></td>
-                    <td class="py-3 px-4" title="${t.employeeEmail || ''}"><div style="display:flex;align-items:center;gap:9px"><span style="flex-shrink:0">${_creatorAv}</span><div style="min-width:0"><div class="font-semibold text-white text-[12.5px] whitespace-nowrap">${t.assignedTo}</div>${creatorDesignationLine}</div></div></td>
-                    <td class="py-3 px-4 text-[#8890b5] cursor-pointer select-none" style="min-width:200px;max-width:280px" title="Double-click to view full content" ondblclick="openDescriptionModal(${t.id})">${t.deliverable ? `<div class="text-white font-semibold" style="font-size:11.5px;margin-bottom:2px">${activeRole === 'employee' ? 'Your deliverable: ' : 'Deliverable: '}${t.deliverable}</div>` : ''}<span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45">${t.description || '<span class="text-[#4a5182]">—</span>'}</span></td>
-                    <td class="py-3 px-4 text-[#8890b5] whitespace-nowrap">${_pmDate(t.assignedDate)}</td>
-                    <td class="py-3 px-4 whitespace-nowrap"><div class="text-white font-semibold">${_pmDate(t.date)}</div>${_pmDue(t.date, t.status)}</td>
-                    <td class="py-3 px-4" id="status-engine-cell-${t.id}">${inputActionSelectorMarkup}</td>
-                    <td class="py-3 px-4 italic max-w-xs ${t.status === 'Completed' && t.explanation !== 'None' ? 'text-emerald-400' : 'text-yellow-500'}">
-                        ${t.explanation && t.explanation !== 'None'
-                            ? `<span class="line-clamp-2 cursor-pointer hover:underline" onclick="showFullExplanation(this)" data-full="${(t.explanation||'').replace(/"/g,'&quot;')}" title="Click to read full note">${t.explanation}</span>`
-                            : `<span class="text-[#4a5182] not-italic">—</span>`}
-                    </td>
-                    <td class="py-3 px-4">${outputLinkBtn}</td>
-                    <td class="py-3 px-4">${window.WorkProjects ? WorkProjects.refCell(t, refFileBtnDesktop) : refFileBtnDesktop}</td>
-                    ${activeRole === 'admin' ? `
-                        <td class="py-3 px-4 text-center">
-                            <button onclick="deleteAssignment(${t.id})" class="text-[#4a5182] hover:text-red-500 transition">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        </td>
-                    ` : ''}
-                `;
-                tbody.appendChild(desktopRow);
 
-                // Phone card (md:hidden list) — compact: title + status, type/priority tags,
-                // one meta line (creator · assigned → due), clamped instructions (tap for full),
-                // delivery/reference/notes only when present, full-width status control.
+                // Work card — compact header (title, type, priority, status, assignee, due);
+                // the full brief, references, delivery, review notes, history and the existing
+                // role-checked status / submit controls open inline below it.
                 const _pmPill = { 'Completed': 'st-ok', 'Approved': 'st-ok', 'In Progress': 'st-info', 'Pending': 'st-warn', 'Rework Required': 'st-purple', 'Rejected': 'st-bad' }[t.status] || 'st-mute';
                 const _pmHasAsset = t.assetLink && t.assetLink !== 'null' && String(t.assetLink).trim() !== '';
                 const _pmHasNote = t.explanation && t.explanation !== 'None';
-                let mobileCard = document.createElement('div');
-                mobileCard.className = `pm-card ${isNewRealtimeItem ? 'flash-update' : ''}`;
+                const _pmOpen = String(_pmOpenId) === String(t.id);
+                const _pmHist = (t.history || []).filter(h => h && (h.action || h.note || h.status)).slice(-8).reverse();
+                const _pmWhen = v => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+                let mobileCard = document.createElement('article');
+                mobileCard.className = `pm-card${_pmOpen ? ' open' : ''} ${isNewRealtimeItem ? 'flash-update' : ''}`;
+                mobileCard.dataset.id = t.id;
                 mobileCard.innerHTML = `
-                    <div class="pm-top">
-                        <h4 class="pm-title">${t.topic}</h4>
-                        <span class="st-pill ${_pmPill}">${t.status}</span>
-                    </div>
-                    <div class="pm-tags"><span class="pm-type">${t.type}</span>${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}${(window.WorkProjects?WorkProjects.chip(t):'')}</div>
-                    <div class="pm-meta">
-                        <div class="pm-who"><span class="pm-av">${_creatorAv}</span><div class="pm-who-t"><b>${t.assignedTo}</b><small>${creatorDesignation || ((activeRole === 'employee' && t.assignedBy) ? 'Assigned by ' + t.assignedBy : 'Creator')}</small></div></div>
-                        <div class="pm-dates">
-                            <div><small>Assigned</small><b>${_pmDate(t.assignedDate)}</b></div>
-                            <i data-lucide="arrow-right"></i>
-                            <div><small>Due</small><b>${_pmDate(t.date)}</b></div>
+                    <div class="pm-head" role="button" tabindex="0" aria-expanded="${_pmOpen}" aria-controls="pm-x-${t.id}" data-pm-toggle="${t.id}">
+                        <div class="pm-top">
+                            <h4 class="pm-title">${t.topic}</h4>
+                            <span class="pm-chev" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
                         </div>
+                        <div class="pm-tags"><span class="pm-type">${t.type}</span>${(typeof bePriorityBadge==='function'?bePriorityBadge(t):'')}${(window.WorkProjects?WorkProjects.chip(t):'')}<span class="st-pill ${_pmPill}">${t.status}</span></div>
+                        <div class="pm-meta">
+                            <div class="pm-who"><span class="pm-av">${_creatorAv}</span><div class="pm-who-t"><b>${t.assignedTo}</b><small>${creatorDesignation || 'Creator'}</small></div></div>
+                            <div class="pm-dates"><div><small>Due</small><b>${_pmDate(t.date)}</b></div></div>
+                        </div>
+                        ${_pmDue(t.date, t.status) ? `<div class="pm-due">${_pmDue(t.date, t.status)}</div>` : ''}
                     </div>
-                    ${_pmDue(t.date, t.status) ? `<div class="pm-due">${_pmDue(t.date, t.status)}${(creatorDesignation && activeRole === 'employee' && t.assignedBy) ? `<span class="pm-by">by ${t.assignedBy}</span>` : ''}</div>` : ((creatorDesignation && activeRole === 'employee' && t.assignedBy) ? `<div class="pm-due"><span class="pm-by">by ${t.assignedBy}</span></div>` : '')}
-                    ${t.deliverable ? `<div class="pm-block"><p class="pm-lbl">${activeRole === 'employee' ? 'Your deliverable' : 'Deliverable'}</p><p class="pm-note-t">${t.deliverable}</p></div>` : ''}
-                    ${t.description ? `<div class="pm-desc" onclick="openDescriptionModal(${t.id})"><p>${t.description}</p></div>` : ''}
-                    ${(t.referenceFile || t.projectId) ? `<div class="pm-block pm-ref"><p class="pm-lbl">${t.projectId ? 'Reference files' : 'Reference file'}</p>${window.WorkProjects ? WorkProjects.refCell(t, t.referenceFile ? buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`) : '') : buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`)}</div>` : ''}
-                    ${_pmHasAsset ? `<div class="pm-block"><p class="pm-lbl">Delivery</p>${outputLinkBtn}</div>` : ''}
-                    ${_pmHasNote ? `<div class="pm-block ${t.status === 'Completed' ? 'pm-note-ok' : 'pm-note'}"><p class="pm-lbl">Review notes</p><p class="pm-note-t">${t.explanation}</p></div>` : ''}
-                    <div class="pm-foot">
-                        <span class="pm-lbl">Status</span>
-                        <div class="pm-ctrl">${inputActionSelectorMarkup}</div>
-                        ${activeRole === 'admin' ? `<button onclick="deleteAssignment(${t.id})" class="pm-del" title="Delete"><i data-lucide="trash-2"></i></button>` : ''}
+                    <div class="pm-x" id="pm-x-${t.id}" ${_pmOpen ? '' : 'hidden'}>
+                        <div class="pm-info">
+                            <div><small>Assigned to</small><b>${t.assignedTo}</b></div>
+                            <div><small>Assigned by</small><b>${t.assignedBy || '—'}</b></div>
+                            <div><small>Category</small><b>${t.type}</b></div>
+                            <div><small>Priority</small><b>${String(t.priority || 'medium').replace('_', ' ')}</b></div>
+                            <div><small>Assigned</small><b>${_pmDate(t.assignedDate)}</b></div>
+                            <div><small>Target</small><b>${_pmDate(t.date)}</b></div>
+                        </div>
+                        ${t.deliverable ? `<div class="pm-block"><p class="pm-lbl">${activeRole === 'employee' ? 'Your deliverable' : 'Deliverable'}</p><p class="pm-text">${t.deliverable}</p></div>` : ''}
+                        ${t.description ? `<div class="pm-block"><p class="pm-lbl">Brief</p><p class="pm-text pm-brief">${t.description}</p></div>` : ''}
+                        ${(t.referenceFile || t.projectId) ? `<div class="pm-block pm-ref"><p class="pm-lbl">${t.projectId ? 'Reference files' : 'Reference file'}</p>${window.WorkProjects ? WorkProjects.refCell(t, t.referenceFile ? buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`) : '') : buildReferenceFileMarkup(t.referenceFile, `${t.id}-m`)}</div>` : ''}
+                        ${_pmHasAsset ? `<div class="pm-block"><p class="pm-lbl">Delivery</p>${outputLinkBtn}</div>` : ''}
+                        ${_pmHasNote ? `<div class="pm-block ${t.status === 'Completed' ? 'pm-note-ok' : 'pm-note'}"><p class="pm-lbl">${t.status === 'Completed' ? 'Explanation' : 'Review notes'}</p><p class="pm-note-t">${t.explanation}</p></div>` : ''}
+                        ${_pmHist.length ? `<div class="pm-block"><p class="pm-lbl">Activity</p><ul class="pm-hist">${_pmHist.map(h => `<li><b>${String(h.action || h.status || 'Update').replace(/_/g, ' ')}</b>${h.by ? ` · ${h.by}` : ''}${(h.at || h.time) ? ` <span>${_pmWhen(h.at || h.time)}</span>` : ''}${h.note ? `<p>${String(h.note).replace(/</g, '&lt;')}</p>` : ''}</li>`).join('')}</ul></div>` : ''}
+                        <div class="pm-foot">
+                            <span class="pm-lbl">Status</span>
+                            <div class="pm-ctrl" id="status-engine-cell-${t.id}">${inputActionSelectorMarkup}</div>
+                            ${activeRole === 'admin' ? `<button onclick="deleteAssignment(${t.id})" class="pm-del" title="Delete" aria-label="Delete ${String(t.topic || '').replace(/"/g, '&quot;')}"><i data-lucide="trash-2"></i></button>` : ''}
+                        </div>
                     </div>
                 `;
                 mobileContainer.appendChild(mobileCard);
             });
 
-            _pmHideEmptyColumns(tbody);
             loadedTaskIdsSnapshot = assignmentsList.map(t => t.id);
             lucide.createIcons();
-        }
-        // Pipeline table: the optional columns (Explanation Log, Delivery Output, Reference File)
-        // are usually "—" for every visible task, which only widens the table into a sideways
-        // scroll. Hide such a column while it is empty for ALL rows shown; it comes back the
-        // moment any row has content. Display only — no data touched.
-        function _pmHideEmptyColumns(tbody) {
-            const table = tbody && tbody.closest('table');
-            if (!table) return;
-            const heads = [...table.querySelectorAll('thead th')];
-            const rows = [...tbody.querySelectorAll('tr')];
-            ['Explanation Log', 'Delivery Output', 'Reference File'].forEach(name => {
-                const idx = heads.findIndex(th => th.textContent.trim() === name);
-                if (idx < 0) return;
-                const empty = rows.length > 0 && rows.every(tr => {
-                    const td = tr.children[idx];
-                    if (!td) return true;
-                    if (td.querySelector('a,button,img,video')) return false;
-                    return /^(|—|-|none|no delivery link|no reference file)$/i.test(td.textContent.replace(/\s+/g, ' ').trim());
-                });
-                heads[idx].classList.toggle('hidden', empty);
-                rows.forEach(tr => { if (tr.children[idx]) tr.children[idx].classList.toggle('hidden', empty); });
-            });
         }
 
         // ============================================================
@@ -11652,7 +11647,7 @@ async function saveLeave(){
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && mhRa.id) mhReassignClose(); });
 })();
 </script>
-<script src="media-monthly-report.js?v=2026.10.30.1226-q5t8"></script>
-<script src="work-project.js?v=2026.10.30.1226-q5t8"></script>
+<script src="media-monthly-report.js?v=2026.10.30.1249-gv45"></script>
+<script src="work-project.js?v=2026.10.30.1249-gv45"></script>
 </body>
 </html>
