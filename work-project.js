@@ -196,6 +196,13 @@
       '.wpp-a .acts button.out{border-color:rgba(56,189,248,.35);background:rgba(56,189,248,.1);color:var(--fg-sky, #7dd3fc)}',
       '.wpp-a .acts button.bad{border-color:transparent;background:transparent;color:var(--fg-red, #f87171)}.wpp-a .acts button.bad:hover{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.35)}',
       '.wpp-a .acts button:focus-visible{outline:2px solid rgba(255,107,6,.6);outline-offset:2px}',
+      /* project cards in a responsive grid; each assignment stacks: name + state, then actions */
+      '.wpp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;align-items:stretch}',
+      '.wpp-grid>*+*{margin-top:0!important}.wpp-grid .wpp-card{display:flex;flex-direction:column;min-width:0}',
+      '.wpp-grid .wpp-top h4{overflow-wrap:anywhere}.wpp-grid .wpp-top p{overflow-wrap:anywhere}',
+      '.wpp-grid .wpp-a{grid-template-columns:minmax(0,1fr) auto;gap:8px 10px}.wpp-grid .wpp-a .acts{grid-column:1/-1;justify-content:flex-start}',
+      '.wpp-grid .wpp-a .acts:empty{display:none}.wpp-grid .wpp-a .who b{white-space:normal;overflow-wrap:anywhere}',
+      '@media(max-width:400px){.wpp-grid{grid-template-columns:minmax(0,1fr)}}',
       '@media(max-width:760px){.wpp-a{grid-template-columns:minmax(0,1fr) auto}.wpp-a .acts{grid-column:1/-1;justify-content:flex-start}.wpp-a .acts button{flex:1 1 auto}}',
       /* tablet / phone */
       '@media(max-width:1024px){.wp-row1{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wp-row1 .wp-cls{grid-column:1}.wp-row1 .wp-more{grid-column:2;justify-self:end}.wp-row1 .wp-delw{grid-column:1/-1;order:-1}}',
@@ -725,7 +732,7 @@
     // Only multi-person projects need grouping here; single ones already read fine in Assigned Work.
     var multi = projects.filter(function (p) { return (byP[p.id] || []).length > 1; });
     if (!multi.length) { host.innerHTML = ''; return; }
-    host.innerHTML = '<div class="wpp"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h3 class="text-base md:text-lg font-bold text-white" style="margin:0">Work projects</h3><span style="font-size:11px;color:var(--tx-6, #6b74a0)">Multi-person projects — each assignment tracked separately</span></div>'
+    host.innerHTML = '<div class="wpp"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h3 class="text-base md:text-lg font-bold text-white" style="margin:0">Work projects</h3><span style="font-size:11px;color:var(--tx-6, #6b74a0)">Multi-person projects — each assignment tracked separately</span></div><div class="wpp-grid">'
       + multi.map(function (p) {
         var list = byP[p.id] || [], live = list.filter(function (x) { return x.status !== 'cancelled'; }), done = live.filter(function (x) { return x.status === 'Completed'; }).length;
         var st = STATUS[p.status] || [p.status, '#94a3b8'], pct = live.length ? Math.round(done / live.length * 100) : 0;
@@ -736,12 +743,12 @@
             var s = aState(x), open = x.status !== 'cancelled' && x.status !== 'Completed' && x.status !== 'Rejected', hasOut = String(x.asset_link || '').trim() !== '';
             return '<div class="wpp-a"><span class="wpp-st" style="--st:' + s[1] + '"><i></i>' + esc(s[0]) + '</span>'
               + '<div class="who"><b>' + esc(x.type || 'Work') + ' — ' + esc(x.assigned_to || '—') + '</b><span>' + esc(x.deliverable || '') + (x.date ? ' · due ' + esc(String(x.date).slice(0, 10)) : '') + '</span></div>'
-              + '<div class="acts">' + (open ? '<button type="button" data-wpp="view" data-id="' + x.id + '">View</button>' : '')
+              + '<div class="acts lg-skip">' + (open ? '<button type="button" data-wpp="view" data-id="' + x.id + '">View</button>' : '')
               + (open ? '<button type="button" class="pri" data-wpp="edit" data-id="' + x.id + '">Edit / Reassign</button>' : '')
               + (hasOut ? '<button type="button" class="out" data-wpp="out" data-id="' + x.id + '">Review output</button>' : '')
               + (open ? '<button type="button" class="bad" data-wpp="cancel" data-id="' + x.id + '">Cancel</button>' : '') + '</div></div>';
           }).join('') + '</div></div>';
-      }).join('') + '</div>';
+      }).join('') + '</div></div>';
   }
   function panelClick(e) {
     var b = e.target.closest('[data-wpp]'); if (!b) return;
