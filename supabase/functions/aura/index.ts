@@ -25,14 +25,17 @@
 //                       management account → every department, 10/20/50/100
 //   operational_manager head-level access whose designation is Operations Manager, or who has
 //                       extra departments in hr_employees.managed_divisions → own division +
-//                       every managed division, 10/20/50
+//                       Academics + Sales (Operations Manager designation) + every managed
+//                       division, 10/20/50 — award AND deduct
+//   HR manager          system_role hr_admin or ERP admin login → award to any employee who
+//                       holds Aura, 10/20/50 (deductions as before)
 //   head                head-level access (academic_head / media_head / hr_admin / Sales head)
 //                       → own division only, 10/20/50
 //   Department = hr_employees.division (no cross-department exceptions).
 //   Non-managers can only reward people BELOW their own level; nobody can reward themselves.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { adminClient, JarvisAuthError, resolveAuthContext, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
-import { authorizedDivisions, clean, deductEligibility, deductPoints, DIV, eligibility, holdsAura, POINTS, seesPrivate, tierOf, type Row } from "../_shared/aura/rules.ts";
+import { authorizedDivisions, awardDivisions, awardPoints, clean, deductEligibility, deductPoints, DIV, eligibility, holdsAura, seesPrivate, tierOf, type Row } from "../_shared/aura/rules.ts";
 
 function cors(req: Request) {
   return {
@@ -127,7 +130,8 @@ Deno.serve(async (req) => {
   try {
     switch (body.action) {
       case "scope": {
-        const eligible = c.tier === "employee" ? [] : c.emps
+        const aPts = awardPoints(c);
+        const eligible = !aPts.length ? [] : c.emps
           .filter((t) => !eligibility(c, t))
           .map((t) => ({ id: t.id, name: t.full_name, division: t.division, department: DIV[t.division] || t.division || "", designation: clean(t.designation) || "", photo_url: t.photo_url || null, aura: 0, month: 0 }))
           .sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -151,9 +155,9 @@ Deno.serve(async (req) => {
           earns: holdsAura(c.me, c.desig), view_all: c.tier === "manager" || c.hrAdmin,
           deduct_points: dPts, can_deduct: deductable.length > 0, deductable,
           me: { id: c.me.id, name: actorName, division: c.me.division },
-          tier: c.tier, points: POINTS[c.tier] || [], can_award: c.tier !== "employee" && eligible.length > 0,
-          scope: (() => { const a = authorizedDivisions(c.me, c.tier); return a === "*" ? "organisation" : a.length ? a.map((d) => DIV[d] || d).join(" + ") : "none"; })(),
-          departments: authorizedDivisions(c.me, c.tier),
+          tier: c.tier, points: aPts, can_award: aPts.length > 0 && eligible.length > 0,
+          scope: (() => { const a = awardDivisions(c); return a === "*" ? "organisation" : a.length ? a.map((d) => DIV[d] || d).join(" + ") : "none"; })(),
+          departments: awardDivisions(c),
           // What this person may SEE on the Aura dashboard / history (HR + Best Employee pickers: all).
           view_departments: c.tier === "manager" || c.hrAdmin || c.canSelectBest ? "*" : authorizedDivisions(c.me, c.tier),
           role_label: roleLabel(c),
@@ -165,7 +169,8 @@ Deno.serve(async (req) => {
         const pts = Number(body.points), reason = String(body.reason || "").trim().slice(0, 300), note = String(body.note || "").trim().slice(0, 600) || null;
         const key = String(body.idempotency_key || "").slice(0, 80);
         if (!key) return out(req, 400, { error: "Missing request id." });
-        if (!(POINTS[c.tier] || []).includes(pts)) return out(req, 403, { error: c.tier === "employee" ? "Your role can't give Aura Points." : `You can give ${POINTS[c.tier].join(" / ")} Aura Points per award.` });
+        const aPts = awardPoints(c);
+        if (!aPts.includes(pts)) return out(req, 403, { error: !aPts.length ? "Your role can't give Aura Points." : `You can give ${aPts.join(" / ")} Aura Points per award.` });
         if (!reason) return out(req, 400, { error: "A reason is required." });
         const t = c.emps.find((e) => e.id === body.recipient_id);
         const why = eligibility(c, t);
@@ -173,8 +178,8 @@ Deno.serve(async (req) => {
         // Idempotent: the same dialog submission (same key) never creates a second award.
         const prev = await db.from("aura_point_transactions").select("*").eq("awarded_by_employee_id", c.me.id).eq("idempotency_key", key).maybeSingle();
         if (prev.data) return out(req, 200, { ok: true, duplicate: true, transaction: prev.data });
-        const role = c.tier + (c.me.designation ? ` · ${clean(c.me.designation)}` : "");
-        const allowed = authorizedDivisions(c.me, c.tier);
+        const role = (c.hrAdmin && c.tier !== "manager" ? "hr_manager" : c.tier) + (c.me.designation ? ` · ${clean(c.me.designation)}` : "");
+        const allowed = awardDivisions(c);
         const scopeSnap = allowed === "*" ? ["*"] : allowed;
         const row: Row = {
           recipient_employee_id: t!.id, recipient_name: t!.full_name, recipient_department: t!.division || null,

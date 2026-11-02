@@ -38,13 +38,31 @@ export function managedDivisions(e: Row): string[] {
   return (Array.isArray(v) ? v : []).map((x) => String(x || "").trim()).filter(Boolean);
 }
 
+/** An Operations Manager (by designation) always covers Academics and Sales, on top of their
+ *  own department and any extra departments HR assigns in managed_divisions. */
+export const OPS_MANAGER_DIVISIONS = ["education", "sales"];
+export const isOpsManagerDesignation = (e: Row) => /operations?\s*manager/i.test(clean(e && e.designation));
+
 /** Departments the caller may award in: "*" = organisation-wide. */
 export function authorizedDivisions(e: Row, tier: string): "*" | string[] {
   if (tier === "manager") return "*";
   if (tier === "employee") return [];
   const own = e.division ? [String(e.division)] : [];
   if (tier === "head") return own;                                       // Department Head: own department only
-  return [...new Set([...own, ...managedDivisions(e)])];                 // Operations Manager: all assigned
+  const ops = isOpsManagerDesignation(e) ? OPS_MANAGER_DIVISIONS : [];
+  return [...new Set([...own, ...ops, ...managedDivisions(e)])];         // Operations Manager: all assigned
+}
+
+/** Points a caller may AWARD per action. The HR manager (hrAdmin) awards org-wide at head level
+ *  even when their designation alone carries no head access. */
+export function awardPoints(c: Caller): number[] {
+  const own = POINTS[c.tier] || [];
+  if (own.length) return own;
+  return c.hrAdmin ? POINTS.head : [];
+}
+/** Award scope for display / snapshots: HR manager = organisation. */
+export function awardDivisions(c: Caller): "*" | string[] {
+  return c.hrAdmin ? "*" : authorizedDivisions(c.me, c.tier);
 }
 
 /** WORK ASSIGNMENT ONLY — departments whose people this caller may ASSIGN work to. Leadership,
@@ -105,6 +123,9 @@ export function eligibility(c: Caller, t: Row | undefined): string | null {
   if (t.account_type === "system") return "That account can't receive Aura Points.";
   if (!holdsAura(t, c.desig)) return "Founders don't hold Aura Points.";
   if (["exited", "inactive"].includes(lc(t.employment_status || "active"))) return "That employee is not active.";
+  if (!awardPoints(c).length) return "Your role can't give Aura Points.";
+  // HR manager: any employee who holds Aura (same reach HR already has for deductions).
+  if (c.hrAdmin && c.tier !== "manager") return null;
   const scope = authorizedDivisions(c.me, c.tier);
   if (scope === "*") return null;
   if (!scope.length) return "Your role can't give Aura Points.";
