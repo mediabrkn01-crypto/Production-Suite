@@ -162,7 +162,12 @@
       '.aub-feed{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:14px;border:1px solid rgba(var(--ink, 255,255,255), 0.06);background:rgba(var(--ink, 255,255,255), 0.02)}',
       '.aub-fi{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--tx-2, #cfd4ea);line-height:1.45}.aub-fi .au-av{flex-shrink:0}.aub-fi b{color:var(--tx-0, #fff)}.aub-fi b.pos{color:var(--fg-emerald, #34d399)}.aub-fi small{display:block;color:var(--tx-6, #6b74a0);font-size:11px;margin-top:2px}',
       '.au-blank{padding:44px 16px;text-align:center;color:var(--tx-4, #8b93b8);font-size:13px;border:1px dashed rgba(var(--ink, 255,255,255), 0.08);border-radius:14px}.au-blank b{display:block;color:var(--tx-0, #fff);font-size:15px;margin-bottom:4px}',
-      '@media(max-width:860px){.aub{grid-template-columns:minmax(0,1fr)}}',
+      '.aub-note{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;font-size:12.5px;color:var(--tx-3, #a5adcf);background:rgba(255,138,61,.06);border:1px solid rgba(255,138,61,.18)}.aub-note b{color:var(--tx-0, #fff)}',
+      '.aub-link{border:0;background:none;padding:0;font:inherit;font-weight:700;color:var(--fg-orange, #ffb37a);cursor:pointer}.aub-link:hover{text-decoration:underline}',
+      '.aub-blank{display:flex;flex-direction:column;align-items:center;gap:6px;padding:28px 16px;text-align:center;color:var(--tx-4, #8b93b8);font-size:13px;border:1px dashed rgba(var(--ink, 255,255,255), 0.08);border-radius:14px}.aub-blank b{color:var(--tx-0, #fff);font-size:15px}.aub-blank .au-btn{margin-top:6px}',
+      '.aub-feed{position:sticky;top:0;max-height:min(68vh,640px);overflow:auto}.aub-fi .x{display:inline-block;margin-left:4px;padding:0 6px;border-radius:99px;font-size:10.5px;font-weight:800;color:var(--tx-3, #a5adcf);background:rgba(var(--ink, 255,255,255), 0.06)}',
+      '.aub-more{align-self:flex-start;margin-top:2px;font-size:12.5px}',
+      '@media(max-width:860px){.aub{grid-template-columns:minmax(0,1fr)}.aub-feed{position:static;max-height:none}}',
       '@media(max-width:560px){.aub-r{grid-template-columns:26px 32px minmax(0,1fr) auto;padding:8px 10px}.au-month{min-width:0;flex:1}.aup-acts{flex-wrap:wrap}.aup-acts .au-ded-btn{flex:1;justify-content:center}}',
       /* profile: stats row + recent */
       '.au-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:1 1 360px;min-width:0}',
@@ -251,6 +256,7 @@
     return out.join('');
   }
   function curMonth() { return istToday().slice(0, 7); }
+  function prevMonth(k) { var p = k.split('-'), y = +p[0], m = +p[1] - 1; if (!m) { y--; m = 12; } return y + '-' + String(m).padStart(2, '0'); }
   function monthLabel(k) { if (k === 'all') return 'All time'; var p = k.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); }
   function signed(n) { n = Number(n || 0); return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString('en-IN'); }
   function photoOf(id) {
@@ -748,25 +754,47 @@
   }
   // Company-wide monthly leaderboard (net = awards − deductions) + public awards feed.
   async function boardView(el, o) {
-    o = o || {}; var B_ = el._auB || (el._auB = { month: curMonth(), dept: '' });
+    o = o || {}; var first = !el._auB, B_ = el._auB || (el._auB = { month: curMonth(), dept: '', feedAll: false });
     el.innerHTML = '<div class="au-empty">Loading leaderboard…</div>';
     var L, F;
-    try { var r = await Promise.all([api('leaderboard', { month: B_.month, department: B_.dept || null }), api('feed', { limit: 15 }).catch(function () { return { items: [] }; })]); L = r[0]; F = r[1]; }
+    try { var r = await Promise.all([api('leaderboard', { month: B_.month, department: B_.dept || null }), el._auFeed ? Promise.resolve(el._auFeed) : api('feed', { limit: 40 }).catch(function () { return { items: [] }; })]); L = r[0]; F = el._auFeed = r[1]; }
     catch (e) { el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Leaderboard could not load.') + '</div>'; return; }
+    // Early in a month the ranking is empty — on first open show last month instead (with a note),
+    // so the page leads with a real ranking rather than a blank panel.
+    var fellBack = false;
+    if (first && !L.active && B_.month === curMonth()) {
+      try { var P = await api('leaderboard', { month: prevMonth(B_.month), department: null }); if (P && P.active) { L = P; B_.month = P.month || prevMonth(B_.month); fellBack = true; } } catch (_) {}
+    }
     var rows = L.rows || [], tie = {}; rows.forEach(function (x) { tie[x.rank] = (tie[x.rank] || 0) + 1; });
     var bar = '<div class="aud-bar"><select class="au-in au-month" data-bm aria-label="Month">' + monthOpts(B_.month, false) + '</select>'
       + ((L.departments || []).length > 1 ? '<select class="au-in" data-bd aria-label="Department"><option value="">All departments</option>' + L.departments.map(function (d) { return '<option value="' + esc(d.code) + '"' + (B_.dept === d.code ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select>' : '') + '</div>';
-    var list = !L.active ? '<div class="au-blank"><b>No Aura activity in ' + esc(monthLabel(B_.month)) + '</b>When points are awarded this month, the ranking appears here.</div>'
+    var isCur = B_.month === curMonth();
+    var note = fellBack ? '<div class="aub-note"><span>No Aura Points yet in <b>' + esc(monthLabel(curMonth())) + '</b> — showing ' + esc(monthLabel(B_.month)) + '.</span><button type="button" class="aub-link" data-cur>View ' + esc(monthLabel(curMonth())) + '</button></div>' : '';
+    var list = !L.active ? '<div class="aub-blank"><b>No Aura activity in ' + esc(monthLabel(B_.month)) + '</b><span>' + (isCur ? 'The ranking fills in as points are awarded this month.' : 'Nobody received or lost points that month.') + '</span>'
+        + (isCur ? '<button type="button" class="aub-link" data-prev>See ' + esc(monthLabel(prevMonth(B_.month))) + ' ranking</button>' : '') + '</div>'
       : !rows.length ? '<div class="au-empty">No one in this department.</div>'
       : '<div class="aub-list">' + rows.map(function (x) {
           return '<button type="button" class="aub-r' + (x.rank === 1 && x.net > 0 ? ' top' : '') + (x.net === 0 ? ' zero' : '') + '" data-st="' + esc(x.id) + '"><span class="pos">' + x.rank + '</span>' + av(x.id, x.name, x.photo_url)
             + '<span class="aub-who"><b>' + esc(x.name) + (tie[x.rank] > 1 ? ' <span class="aud-tie">TIE</span>' : '') + '</b><small>' + esc([x.department, x.designation].filter(Boolean).join(' · ')) + '</small></span>'
             + '<span class="aub-net' + (x.net < 0 ? ' neg' : x.net > 0 ? ' pos' : '') + '">' + signed(x.net) + '</span></button>';
         }).join('') + '</div>';
-    var feed = '<div class="aub-feed"><div class="au-rh" style="margin-top:0"><span>Recent recognition</span></div>' + ((F.items || []).length ? F.items.map(function (t) {
-        return '<div class="aub-fi">' + av(t.recipient_employee_id, t.recipient_name) + '<div><b>' + esc(t.recipient_name) + '</b> received <b class="pos">+' + t.points + '</b> for ' + esc(t.reason) + '<small>' + esc(t.awarded_by_name || '') + ' · ' + esc(fDay(istDay(t.created_at), true)) + '</small></div></div>';
-      }).join('') : '<div class="au-empty">No awards yet.</div>') + '</div>';
-    el.innerHTML = '<div class="aub">' + '<div class="aub-main">' + bar + list + '</div>' + feed + '</div>';
+    // Same person + reason + awarder + day → one line with the total ("+40 · 2 awards").
+    var groups = [];
+    (F.items || []).forEach(function (t) {
+      var d = istDay(t.created_at), k = [t.recipient_employee_id, t.reason, t.awarded_by_name, d].join('|'), g = groups.length && groups[groups.length - 1];
+      if (g && g.k === k) { g.pts += Number(t.points || 0); g.n++; } else groups.push({ k: k, t: t, d: d, pts: Number(t.points || 0), n: 1 });
+    });
+    var FEED_PREVIEW = 6, shown = B_.feedAll ? groups : groups.slice(0, FEED_PREVIEW);
+    var feed = '<div class="aub-feed"><div class="au-rh" style="margin-top:0"><span>Recent recognition</span></div>' + (groups.length ? shown.map(function (g) {
+        var t = g.t;
+        return '<div class="aub-fi">' + av(t.recipient_employee_id, t.recipient_name) + '<div><b>' + esc(t.recipient_name) + '</b> received <b class="pos">+' + g.pts + '</b>' + (g.n > 1 ? '<span class="x">' + g.n + ' awards</span>' : '') + ' for ' + esc(t.reason) + '<small>' + esc(t.awarded_by_name || '') + ' · ' + esc(fDay(g.d, true)) + '</small></div></div>';
+      }).join('') + (groups.length > FEED_PREVIEW ? '<button type="button" class="aub-link aub-more" data-feedmore>' + (B_.feedAll ? 'Show less' : 'Show ' + (groups.length - FEED_PREVIEW) + ' more') + '</button>' : '')
+      : '<div class="au-empty">No awards yet.</div>') + '</div>';
+    el.innerHTML = '<div class="aub">' + '<div class="aub-main">' + bar + note + list + '</div>' + feed + '</div>';
+    var go = function (m) { B_.month = m; boardView(el, o); };
+    var bc = el.querySelector('[data-cur]'); if (bc) bc.onclick = function () { go(curMonth()); };
+    var bp = el.querySelector('[data-prev]'); if (bp) bp.onclick = function () { go(prevMonth(curMonth())); };
+    var fm = el.querySelector('[data-feedmore]'); if (fm) fm.onclick = function () { B_.feedAll = !B_.feedAll; boardView(el, o); };
     el.querySelector('[data-bm]').onchange = function () { B_.month = this.value; boardView(el, o); };
     var bd = el.querySelector('[data-bd]'); if (bd) bd.onchange = function () { B_.dept = bd.value; boardView(el, o); };
     el.onclick = function (e) {   // a row opens that person's statement (server decides what it shows)
