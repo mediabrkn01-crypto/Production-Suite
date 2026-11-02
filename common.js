@@ -1722,13 +1722,22 @@ function hrOfficialEventFor(employee, dateStr) {
         }
 
 // ── hrGetEffectiveSalary (orig line 10316) ──
+        // The employee record (hr_employees.monthly_salary — what Edit Employee shows and saves) is
+        // the configured CURRENT salary. hr_salary_history only decides the salary of months that
+        // lie before a later dated change: if a newer history row starts after this month, that
+        // month keeps its older history amount. Otherwise (the month is in the current salary
+        // period) the employee record wins — so a salary edited in Edit Employee can never be
+        // silently overridden by an older history row (e.g. the 'Initial Salary' entry).
         function hrGetEffectiveSalary(employeeId, monthStr) {
             const monthEnd = new Date(monthStr + '-01'); monthEnd.setMonth(monthEnd.getMonth() + 1); monthEnd.setDate(0);
             const monthEndStr = monthEnd.toISOString().slice(0,10);
-            const history = hrSalaryHistory.filter(s => s.employee_id === employeeId && s.effective_date <= monthEndStr).sort((a,b) => b.effective_date.localeCompare(a.effective_date));
-            if (history.length) return history[0].salary;
+            const all = hrSalaryHistory.filter(s => s.employee_id === employeeId).sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+            const history = all.filter(s => s.effective_date <= monthEndStr);
             const e = hrEmployees.find(x => x.id === employeeId);
-            return e?.monthly_salary || 0;
+            const configured = Number(e?.monthly_salary) || 0;
+            if (!history.length) return configured || (all.length ? Number(all[all.length - 1].salary) || 0 : 0);
+            if (configured > 0 && history[0] === all[0]) return configured;   // current salary period
+            return Number(history[0].salary) || 0;                            // before a later dated change
         }
 
 // ── Salary day basis ──
