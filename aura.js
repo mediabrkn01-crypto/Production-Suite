@@ -11,7 +11,7 @@
    BEAura.mountProfile(el, employee, {self})   stat (lifetime · this month) + history
    BEAura.dashboard(el, {mode:'hr'|'manager'}) overview · ranking · Best Employee
    BEAura.give()                               "Give Aura Points" dialog (permission-scoped)
-   BEAura.watch()                              live "+50 Aura Points" toast for the signed-in employee
+   BEAura.watch()                              live balance, open views and the company-wide award card
    Aura is recognition only — never read by payroll, leave, attendance or performance code.
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -87,7 +87,7 @@
       '.au-cel.on .au-cel-ic i{animation:auCelSpark .85s ease-out .1s}',
       '.au-cel-ic i:nth-child(1){--x:-27px;--y:-17px}.au-cel-ic i:nth-child(2){--x:0;--y:-31px;background:#fbbf24}.au-cel-ic i:nth-child(3){--x:27px;--y:-17px;background:#ff0552}.au-cel-ic i:nth-child(4){--x:27px;--y:17px;background:#fbbf24}.au-cel-ic i:nth-child(5){--x:0;--y:31px}.au-cel-ic i:nth-child(6){--x:-27px;--y:17px;background:#ff0552}',
       '@keyframes auCelPop{from{transform:scale(.4) rotate(-20deg)}to{transform:none}}@keyframes auCelSpark{0%{opacity:1;transform:none}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(.4)}}',
-      '.au-cel-t{flex:1;min-width:0}.au-cel-t small{display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-orange, #ff8a3d)}',
+      '.au-cel-t [data-more]{font-weight:700;letter-spacing:0;text-transform:none;color:var(--tx-4, #8b93b8)}.au-cel-t{flex:1;min-width:0}.au-cel-t small{display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-orange, #ff8a3d)}',
       '.au-cel-t p{margin:3px 0 1px;font-size:14px;line-height:1.4;color:var(--tx-1, #e6e9f5);overflow-wrap:anywhere}.au-cel-t p b{color:var(--tx-0, #fff);font-weight:800}.au-cel-t p em{font-style:normal;font-weight:800;color:var(--fg-orange, #ff8a3d);font-variant-numeric:tabular-nums}.au-cel-t span{font-size:12.5px;color:var(--tx-3, #a5adcf)}',
       '.au-cel button{flex-shrink:0;width:26px;height:26px;border:0;border-radius:8px;background:none;color:var(--tx-4, #8b93b8);font-size:13px;cursor:pointer}.au-cel button:hover{background:rgba(var(--ink, 255,255,255), 0.08);color:var(--tx-0, #fff)}.au-cel button:focus-visible{outline:2px solid #ff6b06;outline-offset:1px}',
       '@media(max-width:640px){.au-cel{top:60px;left:12px;right:12px;width:auto}}',
@@ -337,7 +337,7 @@
     if (tg) tg.onclick = function () { var h = el.querySelector('[data-au-hist]'); h.hidden = !h.hidden; this.setAttribute('aria-expanded', String(!h.hidden)); this.textContent = h.hidden ? 'View all ' + rows.length : 'Show less'; };
     var g = el.querySelector('[data-au-give]'); if (g) g.onclick = function () { give({ employeeId: giveFor, onDone: function () { mountProfile(el, emp, opts); } }); };
     if (opts.openHistory && tg) tg.click();
-    if (!el._auHook) { el._auHook = true; document.addEventListener('be-aura-changed', function (ev) { var id = ev.detail && ev.detail.employeeId; if (el.isConnected && (!id || id === emp.id)) mountProfile(el, emp, opts); }); }
+    liveView(el, function () { mountProfile(el, emp, opts); }, emp.id);
   }
   function history(rows, opts) {
     if (!rows.length) return '<div class="au-empty">' + (opts.empty || (opts.self ? 'No Aura Points yet — recognitions from your Head or Manager will appear here.' : 'No Aura Points yet.')) + '</div>';
@@ -528,17 +528,21 @@
   // ════════════════════════════════════════════════════════════════════════
   async function dashboard(el, opts) {
     if (!el) return; css(); opts = opts || {};
+    var isLive = opts._live; if (isLive) { opts = Object.assign({}, opts); delete opts._live; }
     var D = el._aura || (el._aura = { tab: 'rank', period: 'this', from: '', to: '', q: '', dept: '', sort: 'period' });
     el.classList.add('au');
-    el.innerHTML = '<div class="au-empty">Loading Aura Points…</div>';
+    if (!isLive) el.innerHTML = '<div class="au-empty">Loading Aura Points…</div>';
+    var tk = el._auTk = (el._auTk || 0) + 1;
     var emps, T, sc = null, best = [], P = period(D);
     try {
       // Nets come from the server (awards − deductions); the browser can't read deductions.
       var r = await Promise.all([employees(), api('totals', { from: P.from || null, to: P.to || null }), scope().catch(function () { return null; }), db().from('best_employee_selections').select('*').eq('status', 'active').order('selected_at', { ascending: false }).limit(24)]);
       emps = r[0]; T = r[1]; sc = r[2]; best = (r[3] && r[3].data) || [];
     } catch (e) {
+      if (isLive || el._auTk !== tk) return;   // a failed background refresh keeps what is on screen
       el.innerHTML = '<div class="au-empty">' + (/aura_point|relation|schema cache/i.test(e.message || '') ? 'Aura Points needs the database update 20261027_aura_points.sql.' : 'Aura Points could not load.') + '</div>'; return;
     }
+    if (el._auTk !== tk) return;
     var view = sc && sc.view_departments ? sc.view_departments : (opts.mode === 'manager' || opts.mode === 'hr' ? '*' : []);
     var inView = function (e) { return view === '*' || view.indexOf(e.division) > -1; };
     var noAura = {}; (T.no_aura || []).forEach(function (id) { noAura[id] = 1; });   // founders / leadership
@@ -564,13 +568,7 @@
       + (D.tab === 'rank' ? rankHTML(list, P, sc, curBest, can) : tableHTML(list, can))
       + '</div>';
     wireDash(el, opts, list, P, sc);
-    if (!el._auLive && window.BELive) {
-      el._auLive = 'be-aura-dash-' + Math.random().toString(36).slice(2, 8);
-      BELive.on(el._auLive, [{ table: 'aura_point_transactions', event: '*' }, { table: 'best_employee_selections', event: '*' }], function () {
-        if (!el.isConnected) return; S.txAt = 0;
-        if (!el.contains(document.activeElement) || !/INPUT|SELECT/.test(document.activeElement.tagName)) dashboard(el, opts);
-      }, { debounce: 600 });
-    }
+    liveView(el, function () { dashboard(el, Object.assign({}, opts, { _live: true })); });
   }
   function period(D) {
     if (D.period === 'prev') return monthRange(-1);
@@ -653,7 +651,9 @@
   // ════════════════════════════════════════════════════════════════════════
   async function loadMine() {
     if (!S.me) return null;
+    var seq = S.mineSeq = (S.mineSeq || 0) + 1;
     var ST = await stmt(S.me, 'all'), rows = ST.rows || [];
+    if (seq !== S.mineSeq) return S.mine;   // a newer refresh is on its way
     S.mine = { rows: rows, life: sum(rows), month: ST.month_net || 0, rank: ST.rank, ranked: ST.ranked, earns: ST.earns !== false,
       n: rows.filter(function (t) { return t.status === 'active' && t.kind === 'award'; }).length };
     paintHeader();
@@ -739,12 +739,16 @@
   // One person's statement (self or someone the viewer may see). The server decides what is in
   // it: deductions only for the employee, their head, HR and founders.
   async function statementView(el, empId, o) {
-    o = o || {}; var month = o.month || curMonth();
-    el.innerHTML = (o.dialog ? '<h3>Aura Statement</h3>' : '') + '<div class="au-empty">Loading…</div>';
+    o = o || {}; var isLive = o._live; if (isLive) { o = Object.assign({}, o); delete o._live; }
+    var month = o.month || curMonth();
+    if (!isLive) el.innerHTML = (o.dialog ? '<h3>Aura Statement</h3>' : '') + '<div class="au-empty">Loading…</div>';
+    var tk = el._auTk = (el._auTk || 0) + 1;
     var ST;
-    try { ST = await stmt(empId, month); } catch (e) { el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Aura Points could not load right now.') + '</div>'; return; }
+    try { ST = await stmt(empId, month); } catch (e) { if (!isLive && el._auTk === tk) el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Aura Points could not load right now.') + '</div>'; return; }
     var E = ST.employee || {}, rows = ST.rows || [], sc = null;
     try { sc = await scope(); } catch (_) {}
+    if (el._auTk !== tk) return;   // switched tab or month meanwhile
+    liveView(el, function () { statementView(el, empId, Object.assign({}, o, { _live: true, focus: null })); }, E.id || empId);
     var canGive = !o.self && sc && (sc.eligible || []).some(function (x) { return x.id === E.id; });
     var canDed = !o.self && sc && (sc.deductable || []).some(function (x) { return x.id === E.id; });
     var awards = rows.filter(function (t) { return t.status === 'active' && t.kind === 'award'; }).length;
@@ -767,17 +771,21 @@
   }
   // Company-wide monthly leaderboard (net = awards − deductions) + public awards feed.
   async function boardView(el, o) {
-    o = o || {}; var first = !el._auB, B_ = el._auB || (el._auB = { month: curMonth(), dept: '', feedAll: false });
-    el.innerHTML = '<div class="au-empty">Loading leaderboard…</div>';
+    o = o || {}; var isLive = o._live; if (isLive) { o = Object.assign({}, o); delete o._live; el._auFeed = null; }
+    var first = !el._auB, B_ = el._auB || (el._auB = { month: curMonth(), dept: '', feedAll: false });
+    if (!isLive) el.innerHTML = '<div class="au-empty">Loading leaderboard…</div>';
+    var tk = el._auTk = (el._auTk || 0) + 1;
     var L, F;
     try { var r = await Promise.all([api('leaderboard', { month: B_.month, department: B_.dept || null }), el._auFeed ? Promise.resolve(el._auFeed) : api('feed', { limit: 40 }).catch(function () { return { items: [] }; })]); L = r[0]; F = el._auFeed = r[1]; }
-    catch (e) { el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Leaderboard could not load.') + '</div>'; return; }
+    catch (e) { if (!isLive && el._auTk === tk) el.innerHTML = '<div class="au-empty">' + esc(e.message || 'Leaderboard could not load.') + '</div>'; return; }
     // Early in a month the ranking is empty — on first open show last month instead (with a note),
     // so the page leads with a real ranking rather than a blank panel.
     var fellBack = false;
     if (first && !L.active && B_.month === curMonth()) {
       try { var P = await api('leaderboard', { month: prevMonth(B_.month), department: null }); if (P && P.active) { L = P; B_.month = P.month || prevMonth(B_.month); fellBack = true; } } catch (_) {}
     }
+    if (el._auTk !== tk) return;
+    liveView(el, function () { boardView(el, Object.assign({}, o, { _live: true })); });
     var rows = L.rows || [], tie = {}; rows.forEach(function (x) { tie[x.rank] = (tie[x.rank] || 0) + 1; });
     var bar = '<div class="aud-bar"><select class="au-in au-month" data-bm aria-label="Month">' + monthOpts(B_.month, false) + '</select>'
       + ((L.departments || []).length > 1 ? '<select class="au-in" data-bd aria-label="Department"><option value="">All departments</option>' + L.departments.map(function (d) { return '<option value="' + esc(d.code) + '"' + (B_.dept === d.code ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select>' : '') + '</div>';
@@ -856,6 +864,7 @@
     }
     var focus = opts.focus || null;
     function draw() {
+      body._auRe = null; body._auTk = (body._auTk || 0) + 1;
       sh.querySelector('[data-sub]').textContent = tab === 'team' ? (view === '*' ? 'Organisation overview, rankings and history' : teamLabel + ' — your team’s recognition') : tab === 'board' ? 'Monthly ranking of net Aura Points · Asia/Kolkata calendar month' : 'Your statement — this month’s net, your rank and every entry';
       sh.querySelector('[data-tabs]').innerHTML = (earns ? '<button type="button" data-t="mine" class="' + (tab === 'mine' ? 'on' : '') + '">My Aura</button>' : '') + '<button type="button" data-t="board" class="' + (tab === 'board' ? 'on' : '') + '">Leaderboard</button>' + (team ? '<button type="button" data-t="team" class="' + (tab === 'team' ? 'on' : '') + '">' + esc(teamLabel) + '</button>' : '');
       if (tab === 'team') { body.innerHTML = '<div></div>'; dashboard(body.firstChild, { embedded: true }); return; }
@@ -911,7 +920,87 @@
     e.preventDefault(); e.stopPropagation(); give({ employeeId: b.getAttribute('data-au-quick') });
   }, true);
 
-  // ── live toast for the signed-in employee ──────────────────────────────────
+  // ── Live data ──────────────────────────────────────────────────────────────────────────
+  // One subscription per page (the shared BELive channel), whatever is open. A change refreshes the
+  // header and every Aura view on screen, so views never subscribe on their own. Totals still come
+  // from the server. Deductions are invisible to Realtime (RLS, 20261105): the affected employee
+  // hears through a detail-free notification, open views through a payload-free broadcast.
+  var VIEWS = [];
+  function liveView(el, fn, forId) { el._auRe = fn; el._auFor = forId || null; if (VIEWS.indexOf(el) < 0) VIEWS.push(el); }
+  function editing(el) { var a = document.activeElement; return !!(a && el.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
+  function refreshViews(ids) {
+    VIEWS = VIEWS.filter(function (el) { return el.isConnected; });
+    VIEWS.forEach(function (el) {
+      if (!el._auRe || (ids && el._auFor && !ids[el._auFor])) return;
+      if (editing(el)) { clearTimeout(el._auWait); el._auWait = setTimeout(function () { refreshViews(ids); }, 3000); return; }   // never while typing
+      el._auRe();
+    });
+  }
+  var CH = { t: 0, ids: {}, all: false };
+  /** Coalesces a burst of events into one refresh. id = whose Aura changed; empty = anyone's. */
+  function changed(id) {
+    S.scopeAt = 0;
+    if (id) CH.ids[id] = 1; else CH.all = true;
+    clearTimeout(CH.t);
+    CH.t = setTimeout(function () {
+      var all = CH.all, ids = CH.ids; CH.all = false; CH.ids = {};
+      if (S.me && (all || ids[S.me])) loadMine().catch(function () {});
+      refreshViews(all ? null : ids);
+    }, 200);
+  }
+  document.addEventListener('be-aura-changed', function (ev) { changed(ev.detail && ev.detail.employeeId); });
+  /** Shows a confirmed award in the header at once; the server's figure follows moments later. */
+  function bumpMine(n) {
+    if (!S.mine || !S.mine.earns) return;
+    var d = Number(n.points) || 0;
+    S.mine.life += d;
+    if (n.created_at && istDay(n.created_at).slice(0, 7) === curMonth()) S.mine.month += d;
+    paintHeader();
+  }
+  function onTx(p) {
+    var n = (p && p.new) || {}, who = n.recipient_employee_id;
+    if (p && p.eventType === 'UPDATE' && n.status !== 'active') celDrop(n.id);
+    if (p && p.eventType === 'INSERT') {
+      celebrate(n);
+      if (who && who === S.me) { bumpMine(n); pulse(); }
+    }
+    changed(who);
+    // Everyone else's rank may have moved: refresh the header, spread out so all sessions don't hit at once.
+    if (who && who !== S.me && S.mine && S.mine.earns) setTimeout(function () { loadMine().catch(function () {}); }, 400 + Math.random() * 2000);
+  }
+  function watchLive(email) {
+    BELive.on('be-aura-live', [{ table: 'aura_point_transactions', event: '*' }, { table: 'best_employee_selections', event: '*' }], function (evs, info) {
+      (evs || []).forEach(function (p) { if (p && p.table === 'aura_point_transactions') onTx(p); else changed(); });
+      if (info && info.resync) changed();   // back online: reload the figures. Popups only ever come from live inserts.
+    }, { debounce: 0 });
+    CEL.email = email;
+    BELive.on('be-aura-inbox', [{ table: 'erp_notifications', filter: 'recipient_email=eq.' + email, event: 'INSERT' }], function (evs, info) {
+      var bell = !!(info && info.resync);
+      (evs || []).forEach(function (p) {
+        var n = p && p.new; if (!n) return;
+        if (BELL_TYPES.indexOf(n.type) > -1) bell = true;
+        if (n.type === 'aura_update') privateUpdate(n);
+      });
+      if (bell) syncBell().catch(function () {});
+    }, { debounce: 0 });
+    (function join(tries) {
+      var c = BELive.client;
+      if (!c) { if (tries < 30) setTimeout(function () { join(tries + 1); }, 1000); return; }
+      c.channel('be-aura-sync').on('broadcast', { event: 'changed' }, function () { setTimeout(changed, Math.random() * 1200); }).subscribe();
+    })(0);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { celNext(); syncBell().catch(function () {}); } });
+    setTimeout(function () { syncBell().catch(function () {}); }, 1500);
+    setInterval(function () { syncBell().catch(function () {}); }, 60000);   // read elsewhere; bell list loaded late
+  }
+  /** A deduction on my own account: never a celebration. The details are fetched privately. */
+  function privateUpdate(n) {
+    var id = String(n.link || '').replace(/^aura:/, '');
+    stmt(S.me || null, 'all').then(function (ST) {
+      var t = (ST.rows || []).filter(function (x) { return x.id === id; })[0]; if (!t) return;
+      pop(signed(t.points) + ' Aura Points', true, t.reason);
+      changed(S.me);
+    }).catch(function () {});
+  }
   async function watch() {
     if (S.watching) return; S.watching = true;
     var email = B().currentEmail ? String(B().currentEmail() || '').toLowerCase() : '';
@@ -920,46 +1009,23 @@
     try { if (location.hash === '#aura') setTimeout(function () { openPage(); }, 600); } catch (_) {}
     scopeCached();
     setTimeout(function () { scope().then(applyScope).catch(function () {}); }, 400);   // prefetch for the Give dialog
-    var r = await db().from('hr_employees').select('id').ilike('portal_email', email.replace(/[\\%_]/g, function (c) { return '\\' + c; })).limit(1);
-    var me = r.data && r.data[0]; if (!me) return;
-    S.me = me.id;
+    // Subscribed first: signed-in accounts without an employee record still see the company-wide card.
+    if (window.BELive) watchLive(email);
+    try { await meId(); } catch (_) {}
+    if (!S.me) { try { var mine = await stmt(null, 'all'); if (mine.employee && mine.employee.id) S.me = mine.employee.id; } catch (_) {} }
+    if (!S.me) return;
     loadMine().catch(function () {});
     // The header can be (re)built after us — keep the ring on it.
     var mo = new MutationObserver(function () { if (S.mine && avatars().some(function (a) { return !a.parentNode.classList.contains('au-avw'); })) paintHeader(); });
     mo.observe(document.body, { childList: true, subtree: true });
-    document.addEventListener('be-aura-changed', function () { loadMine().catch(function () {}); });
-    if (!window.BELive) return;
-    watchCelebrations(email);
-    BELive.on('be-aura-me', [{ table: 'aura_point_transactions', filter: 'recipient_employee_id=eq.' + me.id, event: 'INSERT' }], function (evs) {
-      (evs || []).forEach(function (p) {
-        var n = p && p.new; if (!n || n.status !== 'active' || Number(n.points) <= 0) return;
-        try { var seen = JSON.parse(localStorage.getItem('be_aura_seen') || '[]'); if (seen.indexOf(n.id) > -1) return; seen.push(n.id); localStorage.setItem('be_aura_seen', JSON.stringify(seen.slice(-50))); } catch (_) {}
-        pop('+' + n.points + ' Aura', false, n.reason + (n.awarded_by_name ? ' — ' + n.awarded_by_name : ''));
-        pulse();
-      });
-      document.dispatchEvent(new CustomEvent('be-aura-changed'));
-    }, { debounce: 0 });
-    // Deductions never reach the browser through the table (RLS). The server writes a detail-free
-    // notification for the affected employee only; the details are fetched privately here.
-    BELive.on('be-aura-upd', [{ table: 'erp_notifications', filter: 'recipient_email=eq.' + email, event: 'INSERT' }], function (evs) {
-      (evs || []).forEach(function (p) {
-        var n = p && p.new; if (!n || n.type !== 'aura_update') return;
-        var id = String(n.link || '').replace(/^aura:/, '');
-        stmt(S.me, 'all').then(function (ST) {
-          var t = (ST.rows || []).filter(function (x) { return x.id === id; })[0]; if (!t) return;
-          pop(signed(t.points) + ' Aura Points', true, t.reason);
-          document.dispatchEvent(new CustomEvent('be-aura-changed'));
-        }).catch(function () {});
-      });
-    }, { debounce: 0 });
   }
   // ── Global achievement: "🎉 Ali has earned +50 Aura Points!" ─────────────────────────────
-  // The aura edge function writes ONE erp_notifications row per employee for each confirmed award
-  // (type aura_celebration, never for a deduction). An INSERT arriving live pops this card, one at
-  // a time; nothing replays on refresh because only live inserts pop. A browser with several tabs
-  // shows each card once. The same rows feed the bell on portals with their own list.
-  var CEL = { q: [], showing: false, mem: {}, email: '', rows: [], sig: '' };
-  var CEL_MS = 6500, CEL_FRESH_MS = 15 * 60000;
+  // Driven by the transaction row itself, the only proof of a confirmed award: browsers can't write
+  // to that table and deductions never reach them. Only live inserts pop, so a refresh, first load or
+  // reconnect can't replay one. Cards show one at a time until closed. Several tabs of a browser show
+  // each award once. The bell is separate: saved erp_notifications rows, written by the aura function.
+  var CEL = { q: [], el: null, mem: {}, email: '', rows: [], sig: '' };
+  var CEL_FRESH_MS = 15 * 60000;
   var BELL_TYPES = ['aura_celebration', 'aura_award'];
   function celFresh(n) { var t = Date.parse(n.created_at); return !t || Date.now() - t < CEL_FRESH_MS; }
   function celClaim(id) {
@@ -967,30 +1033,25 @@
     return true;
   }
   function celebrate(n) {
-    if (!n || n.type !== 'aura_celebration' || n.resolved_at || CEL.mem[n.id]) return;
-    var md = n.metadata || {};
-    if (!(Number(md.points) > 0) || !md.recipient_name) return;
-    CEL.mem[n.id] = 1; CEL.q.push(n); celNext();
+    if (!n || n.kind !== 'award' || n.status !== 'active' || !(Number(n.points) > 0) || !n.recipient_name || !n.id || CEL.mem[n.id]) return;
+    CEL.mem[n.id] = 1; CEL.q.push(n); celMore(); celNext();
   }
+  function celDrop(id) { CEL.q = CEL.q.filter(function (n) { return n.id !== id; }); celMore(); }   // reversed while waiting
+  function celMore() { var m = CEL.el && CEL.el.querySelector('[data-more]'); if (m) m.textContent = CEL.q.length ? ' · ' + CEL.q.length + ' more' : ''; }
   function celNext() {
-    if (CEL.showing || document.hidden) return;
+    if (CEL.el || document.hidden) return;
     var n = CEL.q.shift(); if (!n) return;
     if (!celFresh(n) || !celClaim(n.id)) return celNext();
-    css(); CEL.showing = true;
-    var md = n.metadata || {};
-    var el = document.createElement('div'); el.className = 'au-cel'; el.setAttribute('role', 'status');
+    css();
+    var self = S.me && n.recipient_employee_id === S.me;
+    var el = CEL.el = document.createElement('div'); el.className = 'au-cel'; el.setAttribute('role', 'status');
     el.innerHTML = '<span class="au-cel-ic" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.4 5.6L20 9.3l-4.3 3.9 1.2 5.8L12 16.1 7.1 19l1.2-5.8L4 9.3l5.6-.7z"/></svg></span>'
-      + '<div class="au-cel-t"><small>🎉 Aura Points Earned!</small><p><b>' + esc(md.recipient_name) + '</b> has earned <em>+' + esc(Number(md.points)) + ' Aura Points</em>!</p><span>Congratulations!</span></div>'
+      + '<div class="au-cel-t"><small>🎉 Aura Points Earned!<span data-more></span></small><p><b>' + (self ? 'You' : esc(n.recipient_name)) + '</b> ' + (self ? 'earned' : 'has earned') + ' <em>+' + esc(Number(n.points)) + ' Aura Points</em>!</p><span>Congratulations!</span></div>'
       + '<button type="button" aria-label="Dismiss">✕</button>';
     document.body.appendChild(el);
+    celMore();
     requestAnimationFrame(function () { el.classList.add('on'); });
-    var t = 0;
-    function gone() { clearTimeout(t); el.classList.remove('on'); setTimeout(function () { el.remove(); CEL.showing = false; celNext(); }, 280); }
-    function arm(ms) { clearTimeout(t); t = setTimeout(gone, ms); }
-    el.querySelector('button').onclick = gone;
-    el.addEventListener('mouseenter', function () { clearTimeout(t); });
-    el.addEventListener('mouseleave', function () { arm(2500); });
-    arm(CEL_MS);
+    el.querySelector('button').onclick = function () { el.classList.remove('on'); setTimeout(function () { el.remove(); CEL.el = null; celNext(); }, 280); };
   }
   function bellText(s) { return String(s || '').replace(/[<>]/g, ''); }
   async function syncBell() {
@@ -1029,17 +1090,6 @@
     db().from('erp_notifications').update({ read_at: new Date().toISOString() }).eq('id', m[1]).eq('recipient_email', CEL.email).is('read_at', null).then(function () {}, function () {});
   }
   function bellRows() { return CEL.rows.map(function (x) { return { id: x.id, text: bellText(x.title), time: x.created_at }; }); }
-  function watchCelebrations(email) {
-    CEL.email = email;
-    BELive.on('be-aura-cel', [{ table: 'erp_notifications', filter: 'recipient_email=eq.' + email, event: 'INSERT' }], function (evs, info) {
-      var mine = false;
-      (evs || []).forEach(function (p) { var n = p && p.new; if (n && BELL_TYPES.indexOf(n.type) > -1) { mine = true; celebrate(n); } });
-      if (mine || (info && info.resync)) syncBell().catch(function () {});
-    }, { debounce: 0 });
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) { celNext(); syncBell().catch(function () {}); } });
-    setTimeout(function () { syncBell().catch(function () {}); }, 1500);
-    setInterval(function () { syncBell().catch(function () {}); }, 60000);   // read elsewhere; bell list loaded late
-  }
 
   // Notification links: aura:<transaction id> → that entry in my statement · aura:best → leaderboard
   function openFromLink(link) {
@@ -1051,5 +1101,5 @@
   window.BEAura = { bellRead: bellRead, bellRows: bellRows, openFromLink: openFromLink, deduct: function (o) { return give(Object.assign({}, o || {}, { mode: 'deduct' })); }, statement: openHistory, mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard, openPage: openPage };
   // Auto: start the live toast once someone is signed in (not inside embedded frames).
   var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
-  if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); if (++tries < 60) setTimeout(w, 2000); })(); }
+  if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); setTimeout(w, ++tries < 60 ? 2000 : 5000); })(); }
 })();

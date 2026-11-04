@@ -96,6 +96,19 @@ function monthBounds(m: string): [string, string] {
 const activeEmp = (e: Row) => !["exited", "inactive"].includes(lc(e.employment_status || "active")) && e.account_type !== "system";
 /** Public row shape (what a deduction-blind viewer may get). */
 const PUBLIC_COLS = "id,recipient_employee_id,recipient_name,recipient_department,awarded_by_name,awarder_role_snapshot,kind,points,reason,note,status,reversed_by,reversed_at,reversal_reason,created_at";
+/** Tells open Aura pages to reload after a change Realtime can't show them (deductions are hidden
+ *  from browsers by RLS). Carries no data: viewers refetch through this function, which applies
+ *  their own permissions. Best effort: a failure never affects the transaction. */
+async function signalChanged() {
+  try {
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/realtime/v1/api/broadcast`, {
+      method: "POST", signal: AbortSignal.timeout(1500),
+      headers: { "Content-Type": "application/json", apikey: key, Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ messages: [{ topic: "be-aura-sync", event: "changed", payload: {} }] }),
+    });
+  } catch (e) { console.error("[aura] change signal:", e instanceof Error ? e.message : e); }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
@@ -273,6 +286,7 @@ Deno.serve(async (req) => {
         // itself (immutable, who / when / why) is the confidential record.
         await db.from("hr_audit_log").insert({ actor_email: c.auth.email, actor_name: actorName, action: "aura_deducted", entity: "aura", entity_id: tx.id,
           meta: { recipient_id: t!.id } }).then(() => {}, () => {});
+        await signalChanged();
         return out(req, 200, { ok: true, transaction: tx });
       }
 
@@ -373,6 +387,7 @@ Deno.serve(async (req) => {
         // A cancelled award stops being celebrated (rows stay, hidden from unread lists).
         await db.from("erp_notifications").update({ resolved_at: new Date().toISOString() }).eq("dedupe_key", "aura-cel:" + body.transaction_id).is("resolved_at", null).then(() => {}, () => {});
         await db.from("hr_audit_log").insert({ actor_email: c.auth.email, actor_name: actorName, action: "aura_reversed", entity: "aura", entity_id: body.transaction_id, reason: why }).then(() => {}, () => {});
+        await signalChanged();
         return out(req, 200, { ok: true, transaction: u.data[0] });
       }
     }
