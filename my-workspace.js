@@ -229,6 +229,8 @@
       var r = LP.resolveAttendanceStatus(ctx, ds), code = r.preJoining || r.open ? null : (r.unapproved ? 'A' : r.code), c = code && CODEC[code] ? CODEC[code][0] : null;
       if (r.unapproved) unapproved.push({ date: ds, confirmed: !!r.confirmed });
       var tip = r.label + (r.clockIn ? ' · in ' + new Date(r.clockIn).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '') + (r.clockOut ? ' · out ' + new Date(r.clockOut).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '');
+      var split = !r.preJoining && !r.open && halfCell(r, ctx, ds, d, today);
+      if (split) { cells.push(split); continue; }
       cells.push('<div class="mw-cal-d' + (ds === today ? ' is-today' : '') + '" title="' + esc(fDate(ds, true, true) + ' — ' + tip) + '"' + (c ? ' style="--c:' + c + '"' : '') + '><span>' + d + '</span><b>' + esc(r.preJoining ? '—' : (code === 'NS' ? '·' : code || '—')) + '</b></div>');
     }
     body.outerHTML = '<div class="mw-stats">' + stats.map(function (s) { return '<div class="mw-stat" style="--c:' + s[2] + '"><div class="mw-stat-n">' + s[1] + '</div><div class="mw-stat-l">' + s[0] + '</div></div>'; }).join('') + '</div>'
@@ -241,6 +243,32 @@
       f.querySelector('[data-reg-cancel]').onclick = function () { f.style.display = 'none'; b.style.display = ''; };
       f.querySelector('[data-reg-send]').onclick = function () { this.disabled = true; requestRegularization(root, e, d, f.querySelector('[data-reg-reason]').value).finally(() => { this.disabled = false; }); };
     });
+  }
+
+  // Half-day records (engine result r.half: a 0.5 LOP, a half paid from CL/SL, or a plain half
+  // day) → split cell: left = morning, right = afternoon. Only the half the record covers takes
+  // its colour; the other half shows the real attendance row (clock-in → Present), else blank.
+  // Display only — the engine result (and so payroll / totals) is untouched.
+  function halfCell(r, ctx, ds, d, today) {
+    if (!r.half) return '';
+    var rec = (ctx.attendance || []).find(function (a) { return a.att_date && a.att_date.slice(0, 10) === ds; }) || null;
+    var sess = r.halfType || (rec && rec.half_day_type) || '';
+    // What the covered half is: a half paid from CL / SL shows that code; any unpaid half
+    // (0.5 LOP, or a plain HD that payroll deducts as 0.5 LOP) shows as LOP.
+    var off = r.halfPaid === 'CL' || r.halfPaid === 'SL' ? r.halfPaid : 'LOP';
+    var side = sess === 'morning' ? 'AM' : sess === 'afternoon' ? 'PM' : '';
+    var worked = !!(rec && rec.clock_in_time);
+    var t = function (x) { return x ? new Date(x).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''; };
+    var otherTxt = worked ? 'Present' + (rec.clock_in_time ? ' · in ' + t(rec.clock_in_time) : '') + (rec.clock_out_time ? ' · out ' + t(rec.clock_out_time) : '') : 'No attendance recorded';
+    var offName = off === 'LOP' ? 'LOP (unpaid)' : off === 'CL' ? 'Casual Leave' : off === 'SL' ? 'Sick Leave' : 'Half Day';
+    var tip = fDate(ds, true, true) + ' — ' + (side ? (side === 'AM' ? 'Morning' : 'Afternoon') + ' half-day ' : 'Half-day ') + offName + ' (0.5 day)'
+      + (side ? ' · ' + (side === 'AM' ? 'Afternoon' : 'Morning') + ': ' + otherTxt : ' · session not recorded');
+    var offC = (CODEC[off] || CODEC.HD)[0], othC = worked ? CODEC.P[0] : 'transparent';
+    var am = side === 'PM' ? othC : offC, pm = side === 'AM' ? othC : offC;
+    if (!side) { am = offC; pm = offC; }
+    var lbl = (side ? side + ' ' : 'Half ') + off;
+    return '<div class="mw-cal-d mw-cal-split' + (ds === today ? ' is-today' : '') + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '" style="--c:' + offC + ';--am:' + am + ';--pm:' + pm + '"><span>' + d + '</span><b>' + esc(lbl) + '</b>'
+      + (side ? '<em>' + (side === 'AM' ? 'PM ' : 'AM ') + (worked ? 'P' : '—') + '</em>' : '<em>0.5 day</em>') + '</div>';
   }
 
   // Days with no clock-in and no approved leave — shown plainly, never hidden (§11). The
@@ -612,6 +640,10 @@
     '.mw-cal-d{--c:rgba(255,255,255,.12);min-height:54px;border-radius:10px;border:1px solid color-mix(in srgb,var(--c) 35%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}',
     '.mw-cal-d span{font-size:10px;color:var(--tx-4, #8890b5);font-weight:600}',
     '.mw-cal-d b{font-size:12.5px;font-weight:800;color:color-mix(in srgb, var(--c) var(--acc-k, 100%), var(--acc-mix, #000))}',
+    '.mw-cal-split{background:linear-gradient(90deg,color-mix(in srgb,var(--am) 14%,transparent) 50%,color-mix(in srgb,var(--pm) 14%,transparent) 50%);border-color:color-mix(in srgb,var(--c) 35%,transparent);position:relative}',
+    '.mw-cal-split::after{content:"";position:absolute;top:8px;bottom:8px;left:50%;border-left:1px dashed color-mix(in srgb,var(--c) 40%,transparent)}',
+    '.mw-cal-split b{font-size:11.5px;letter-spacing:.01em;position:relative;z-index:1}',
+    '.mw-cal-split em{font-style:normal;font-size:9.5px;font-weight:700;color:var(--tx-4, #8890b5);position:relative;z-index:1}',
     '.mw-cal-d.is-future{background:rgba(var(--ink, 255,255,255), 0.015);border-color:rgba(var(--ink, 255,255,255), 0.05)}',
     '.mw-cal-d.is-today{box-shadow:0 0 0 2px #ff6b06}',
     '.mw-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;font-size:11px;color:var(--tx-4, #8890b5)}',
