@@ -79,6 +79,19 @@
       '.au-confirm{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;padding:12px 14px;border-radius:12px;background:rgba(var(--ink, 255,255,255), 0.03)}.au-confirm span{color:var(--tx-6, #6b74a0)}.au-confirm b{color:var(--tx-0, #fff);font-weight:600;overflow-wrap:anywhere}',
       '.au-err{color:var(--fg-red, #f87171);font-size:12.5px}',
       '.au-pop{position:fixed;left:50%;top:20px;z-index:9400;transform:translate(-50%,-12px);opacity:0;transition:all .22s ease;display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:14px;background:var(--sf-3, #11182a);border:1px solid rgba(255,138,61,.35);box-shadow:0 20px 50px -14px rgba(var(--shade, 0,0,0), calc(0.8 * var(--shade-k, 1)));color:var(--tx-1, #e6e9f5);max-width:calc(100vw - 24px)}',
+      '.au-cel{position:fixed;top:72px;right:16px;z-index:9460;width:min(360px,calc(100vw - 24px));display:flex;gap:12px;align-items:flex-start;padding:14px 12px 14px 14px;border-radius:18px;background:color-mix(in srgb,var(--sf-3, #11182a) 82%,transparent);backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);border:1px solid rgba(255,138,61,.35);box-shadow:0 18px 48px rgba(var(--shade, 0,0,0), calc(0.4 * var(--shade-k, 1)));transform:translateX(16px);opacity:0;transition:transform .28s cubic-bezier(.22,.61,.36,1),opacity .28s}',
+      '.au-cel.on{transform:none;opacity:1}',
+      '.au-cel-ic{position:relative;flex-shrink:0;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}',
+      '.au-cel.on .au-cel-ic svg{animation:auCelPop .6s cubic-bezier(.3,1.5,.5,1)}',
+      '.au-cel-ic i{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#ff8a3d;opacity:0}',
+      '.au-cel.on .au-cel-ic i{animation:auCelSpark .85s ease-out .1s}',
+      '.au-cel-ic i:nth-child(1){--x:-27px;--y:-17px}.au-cel-ic i:nth-child(2){--x:0;--y:-31px;background:#fbbf24}.au-cel-ic i:nth-child(3){--x:27px;--y:-17px;background:#ff0552}.au-cel-ic i:nth-child(4){--x:27px;--y:17px;background:#fbbf24}.au-cel-ic i:nth-child(5){--x:0;--y:31px}.au-cel-ic i:nth-child(6){--x:-27px;--y:17px;background:#ff0552}',
+      '@keyframes auCelPop{from{transform:scale(.4) rotate(-20deg)}to{transform:none}}@keyframes auCelSpark{0%{opacity:1;transform:none}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(.4)}}',
+      '.au-cel-t{flex:1;min-width:0}.au-cel-t small{display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-orange, #ff8a3d)}',
+      '.au-cel-t p{margin:3px 0 1px;font-size:14px;line-height:1.4;color:var(--tx-1, #e6e9f5);overflow-wrap:anywhere}.au-cel-t p b{color:var(--tx-0, #fff);font-weight:800}.au-cel-t p em{font-style:normal;font-weight:800;color:var(--fg-orange, #ff8a3d);font-variant-numeric:tabular-nums}.au-cel-t span{font-size:12.5px;color:var(--tx-3, #a5adcf)}',
+      '.au-cel button{flex-shrink:0;width:26px;height:26px;border:0;border-radius:8px;background:none;color:var(--tx-4, #8b93b8);font-size:13px;cursor:pointer}.au-cel button:hover{background:rgba(var(--ink, 255,255,255), 0.08);color:var(--tx-0, #fff)}.au-cel button:focus-visible{outline:2px solid #ff6b06;outline-offset:1px}',
+      '@media(max-width:640px){.au-cel{top:60px;left:12px;right:12px;width:auto}}',
+      '@media (prefers-reduced-motion:reduce){.au-cel{transition:none;transform:none}.au-cel.on .au-cel-ic svg,.au-cel.on .au-cel-ic i{animation:none}}',
       '.au-pop.on{transform:translate(-50%,0);opacity:1}.au-pop b{display:block;color:var(--tx-0, #fff);font-size:14.5px;font-variant-numeric:tabular-nums}.au-pop span{display:block;color:var(--tx-3, #a5adcf);font-size:12px}.au-pop svg{color:var(--fg-orange, #ff8a3d);flex-shrink:0}',
       /* dashboard */
       '.aud{display:flex;flex-direction:column;gap:16px}',
@@ -916,6 +929,7 @@
     mo.observe(document.body, { childList: true, subtree: true });
     document.addEventListener('be-aura-changed', function () { loadMine().catch(function () {}); });
     if (!window.BELive) return;
+    watchCelebrations(email);
     BELive.on('be-aura-me', [{ table: 'aura_point_transactions', filter: 'recipient_employee_id=eq.' + me.id, event: 'INSERT' }], function (evs) {
       (evs || []).forEach(function (p) {
         var n = p && p.new; if (!n || n.status !== 'active' || Number(n.points) <= 0) return;
@@ -939,6 +953,94 @@
       });
     }, { debounce: 0 });
   }
+  // ── Global achievement: "🎉 Ali has earned +50 Aura Points!" ─────────────────────────────
+  // The aura edge function writes ONE erp_notifications row per employee for each confirmed award
+  // (type aura_celebration, never for a deduction). An INSERT arriving live pops this card, one at
+  // a time; nothing replays on refresh because only live inserts pop. A browser with several tabs
+  // shows each card once. The same rows feed the bell on portals with their own list.
+  var CEL = { q: [], showing: false, mem: {}, email: '', rows: [], sig: '' };
+  var CEL_MS = 6500, CEL_FRESH_MS = 15 * 60000;
+  var BELL_TYPES = ['aura_celebration', 'aura_award'];
+  function celFresh(n) { var t = Date.parse(n.created_at); return !t || Date.now() - t < CEL_FRESH_MS; }
+  function celClaim(id) {
+    try { var a = JSON.parse(localStorage.getItem('be_aura_cel_seen') || '[]'); if (a.indexOf(id) > -1) return false; a.push(id); localStorage.setItem('be_aura_cel_seen', JSON.stringify(a.slice(-100))); } catch (_) {}
+    return true;
+  }
+  function celebrate(n) {
+    if (!n || n.type !== 'aura_celebration' || n.resolved_at || CEL.mem[n.id]) return;
+    var md = n.metadata || {};
+    if (!(Number(md.points) > 0) || !md.recipient_name) return;
+    CEL.mem[n.id] = 1; CEL.q.push(n); celNext();
+  }
+  function celNext() {
+    if (CEL.showing || document.hidden) return;
+    var n = CEL.q.shift(); if (!n) return;
+    if (!celFresh(n) || !celClaim(n.id)) return celNext();
+    css(); CEL.showing = true;
+    var md = n.metadata || {};
+    var el = document.createElement('div'); el.className = 'au-cel'; el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="au-cel-ic" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.4 5.6L20 9.3l-4.3 3.9 1.2 5.8L12 16.1 7.1 19l1.2-5.8L4 9.3l5.6-.7z"/></svg></span>'
+      + '<div class="au-cel-t"><small>🎉 Aura Points Earned!</small><p><b>' + esc(md.recipient_name) + '</b> has earned <em>+' + esc(Number(md.points)) + ' Aura Points</em>!</p><span>Congratulations!</span></div>'
+      + '<button type="button" aria-label="Dismiss">✕</button>';
+    document.body.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('on'); });
+    var t = 0;
+    function gone() { clearTimeout(t); el.classList.remove('on'); setTimeout(function () { el.remove(); CEL.showing = false; celNext(); }, 280); }
+    function arm(ms) { clearTimeout(t); t = setTimeout(gone, ms); }
+    el.querySelector('button').onclick = gone;
+    el.addEventListener('mouseenter', function () { clearTimeout(t); });
+    el.addEventListener('mouseleave', function () { arm(2500); });
+    arm(CEL_MS);
+  }
+  function bellText(s) { return String(s || '').replace(/[<>]/g, ''); }
+  async function syncBell() {
+    if (!CEL.email || !db()) return;
+    var since = new Date(Date.now() - 30 * 86400000).toISOString();
+    var r = await db().from('erp_notifications').select('id,type,title,created_at').eq('recipient_email', CEL.email).in('type', BELL_TYPES)
+      .is('read_at', null).is('resolved_at', null).gte('created_at', since).order('created_at', { ascending: false }).limit(30);
+    if (r.error) return;
+    CEL.rows = r.data || [];
+    paintBell();
+  }
+  function paintBell() {
+    var sig = CEL.rows.map(function (x) { return x.id; }).join();
+    try {
+      // HR: its Notifications tab + badge are computed (hrComputeNotifications reads bellRows).
+      if (document.getElementById('hr-notifications-list')) {
+        if (sig === CEL.sig) return; CEL.sig = sig;
+        if (typeof renderHRNotifications === 'function') renderHRNotifications();
+        if (typeof renderHRDashboard === 'function' && typeof hrDataState !== 'undefined' && hrDataState === 'ready') renderHRDashboard();
+        return;
+      }
+      // Media + Academic: the portal's own bell list. Manager + Sales use BENotify, which already lists these rows.
+      if (!document.getElementById('notif-list') || !window._beNotifsLoaded || typeof addNotif !== 'function') return;
+      var live = {};
+      CEL.rows.slice().reverse().forEach(function (x) { live[x.type + '_' + x.id] = 1; addNotif(x.type, bellText(x.title), null, x.id, null, x.created_at); });
+      // read on another device, or the award was cancelled → off this list too
+      var kept = notifications.filter(function (n) { return BELL_TYPES.indexOf(n.type) < 0 || live[n.id]; });
+      if (kept.length !== notifications.length) { notifications = kept; saveNotifs(); renderNotifBadges(); if (typeof renderDashboardNotifFeed === 'function') renderDashboardNotifFeed(); }
+      if (typeof renderNotifList === 'function') renderNotifList();
+    } catch (e) { console.warn('[aura] bell:', e && e.message); }
+  }
+  /** A bell entry was dismissed / read: ids look like aura_celebration_<uuid>, aura_award_<uuid>, aura_<uuid> (HR). */
+  function bellRead(id) {
+    var m = String(id || '').match(/^aura_(?:celebration_|award_)?([0-9a-f-]{36})$/i); if (!m || !CEL.email || !db()) return;
+    CEL.rows = CEL.rows.filter(function (x) { return x.id !== m[1]; });
+    db().from('erp_notifications').update({ read_at: new Date().toISOString() }).eq('id', m[1]).eq('recipient_email', CEL.email).is('read_at', null).then(function () {}, function () {});
+  }
+  function bellRows() { return CEL.rows.map(function (x) { return { id: x.id, text: bellText(x.title), time: x.created_at }; }); }
+  function watchCelebrations(email) {
+    CEL.email = email;
+    BELive.on('be-aura-cel', [{ table: 'erp_notifications', filter: 'recipient_email=eq.' + email, event: 'INSERT' }], function (evs, info) {
+      var mine = false;
+      (evs || []).forEach(function (p) { var n = p && p.new; if (n && BELL_TYPES.indexOf(n.type) > -1) { mine = true; celebrate(n); } });
+      if (mine || (info && info.resync)) syncBell().catch(function () {});
+    }, { debounce: 0 });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { celNext(); syncBell().catch(function () {}); } });
+    setTimeout(function () { syncBell().catch(function () {}); }, 1500);
+    setInterval(function () { syncBell().catch(function () {}); }, 60000);   // read elsewhere; bell list loaded late
+  }
+
   // Notification links: aura:<transaction id> → that entry in my statement · aura:best → leaderboard
   function openFromLink(link) {
     var m = String(link || '').match(/^aura:(.+)$/); if (!m) return false;
@@ -946,7 +1048,7 @@
     return true;
   }
 
-  window.BEAura = { openFromLink: openFromLink, deduct: function (o) { return give(Object.assign({}, o || {}, { mode: 'deduct' })); }, statement: openHistory, mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard, openPage: openPage };
+  window.BEAura = { bellRead: bellRead, bellRows: bellRows, openFromLink: openFromLink, deduct: function (o) { return give(Object.assign({}, o || {}, { mode: 'deduct' })); }, statement: openHistory, mountProfile: mountProfile, dashboard: dashboard, give: give, watch: watch, scope: scope, menuRow: menuRow, openMine: openMine, refreshMine: loadMine, openHistory: openHistory, openDashboard: openDashboard, openPage: openPage };
   // Auto: start the live toast once someone is signed in (not inside embedded frames).
   var embedded = /[?&]embed=1\b/.test(location.search) || window.self !== window.top;
   if (!embedded) { var tries = 0; (function w() { if (B().currentEmail && B().currentEmail()) return watch(); if (++tries < 60) setTimeout(w, 2000); })(); }

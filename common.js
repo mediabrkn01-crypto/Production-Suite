@@ -616,6 +616,8 @@ async function loadMyHRData() {
                 case 'birthday': return { icon: 'cake', color: 'orange', label: '🎂 Happy Birthday!', onClick: null };
                 case 'work_anniversary': return { icon: 'award', color: 'orange', label: '🏆 Work Anniversary', onClick: null };
                 case 'celebration': return { icon: 'party-popper', color: 'orange', label: '🎉 Celebration', onClick: null };
+                case 'aura_celebration': return { icon: 'trophy', color: 'orange', label: '🎉 Aura Points', onClick: "if(typeof closeNotifPanel==='function')closeNotifPanel();BEAura.openPage({tab:'board'});" };
+                case 'aura_award': return { icon: 'star', color: 'orange', label: '⭐ Aura Points', onClick: "if(typeof closeNotifPanel==='function')closeNotifPanel();BEAura.openPage({tab:'mine'});" };
                 default: return { icon: 'plus-circle', color: 'orange', label: '🆕 New Task Assigned', onClick: null };
             }
         }
@@ -625,6 +627,7 @@ async function loadMyHRData() {
             try { notifications = JSON.parse(localStorage.getItem(`be_notifs_${activeEmail}`) || '[]'); } catch(e) { notifications = []; }
             try { _readNotifIds = new Set(JSON.parse(localStorage.getItem(`be_read_notifs_${activeEmail}`) || '[]')); } catch(e) { _readNotifIds = new Set(); }
             notifications = notifications.filter(n => !_readNotifIds.has(n.id));
+            window._beNotifsLoaded = true;   // aura.js adds its entries only after this (never over an unread list)
         }
 
 // ── saveNotifs (orig line 6933) ──
@@ -634,7 +637,7 @@ async function loadMyHRData() {
         }
 
 // ── addNotif (orig line 6937) ──
-        function addNotif(type, topic, assignedTo, taskId, priority) {
+        function addNotif(type, topic, assignedTo, taskId, priority, time) {
             // Stable ID per (type, task) — previously this was Date.now(), meaning a
             // regenerated notification for the SAME task always got a fresh id, so the
             // dismissed-ids set could never block it and cleared notifications kept
@@ -649,7 +652,7 @@ async function loadMyHRData() {
             // priority (optional — currently only set by announcement delivery) travels with
             // the notification itself so notifMeta() can render Urgent/Important differently
             // using the exact same card layout, not a second component.
-            notifications.unshift({ id: newId, type, topic, assignedTo, time: new Date().toISOString(), priority: priority || null });
+            notifications.unshift({ id: newId, type, topic, assignedTo, time: time || new Date().toISOString(), priority: priority || null });
             saveNotifs();
             renderNotifBadges();
             renderDashboardNotifFeed();
@@ -675,7 +678,7 @@ async function loadMyHRData() {
 // ── dismissAllNotifs (orig line 6967) ──
         function dismissAllNotifs() {
             // Clearing the bell only hides entries — an announcement counts as read only once it is opened.
-            notifications.forEach(n => _readNotifIds.add(n.id));
+            notifications.forEach(n => { _readNotifIds.add(n.id); if (window.BEAura && BEAura.bellRead) BEAura.bellRead(n.id); });
             notifications = [];
             saveNotifs();
             renderNotifBadges();
@@ -687,6 +690,7 @@ async function loadMyHRData() {
         function dismissNotif(id) {
             const dismissed = notifications.find(n => n.id === id);
             _readNotifIds.add(id);
+            if (window.BEAura && BEAura.bellRead) BEAura.bellRead(id);
             notifications = notifications.filter(n => n.id !== id);
             saveNotifs();
             renderNotifBadges();

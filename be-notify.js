@@ -44,6 +44,7 @@
     calendar_assigned:    { c: '#a78bfa', ic: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/>', l: 'New calendar item' },
     work_assigned:        { c: '#ff8a3d', ic: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>', l: 'New work assigned' },
     aura_award:           { c: '#ff8a3d', ic: '<path d="M12 3l2.4 5.6L20 9.3l-4.3 3.9 1.2 5.8L12 16.1 7.1 19l1.2-5.8L4 9.3l5.6-.7z"/>', l: 'Aura Points' },
+    aura_celebration:     { c: '#ff8a3d', ic: '<path d="M12 3l2.4 5.6L20 9.3l-4.3 3.9 1.2 5.8L12 16.1 7.1 19l1.2-5.8L4 9.3l5.6-.7z"/>', l: 'Aura Points' },
     aura_update:          { c: '#94a3b8', ic: '<path d="M12 3l2.4 5.6L20 9.3l-4.3 3.9 1.2 5.8L12 16.1 7.1 19l1.2-5.8L4 9.3l5.6-.7z"/>', l: 'Aura Points' },
     file_shared:          { c: '#ff9a4d', ic: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>', l: 'File shared with you' },
     work_output_uploaded: { c: '#60a5fa', ic: '<rect x="2" y="5" width="15" height="14" rx="2"/><path d="m17 10 5-3v10l-5-3"/>', l: 'Output ready for review' }

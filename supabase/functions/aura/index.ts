@@ -208,6 +208,21 @@ Deno.serve(async (req) => {
             metadata: { points: pts, reason, awarded_by: actorName, awarded_by_role: roleLabel(c) },
           }, { onConflict: "recipient_email,dedupe_key", ignoreDuplicates: true }).then(() => {}, () => {});
         }
+        // Global achievement: everyone else in the ERP gets one saved notification per award (the
+        // recipient already has their own above). Only name + points — never the reason or note.
+        // Live popups come from these rows (aura.js); a failure here never undoes the award.
+        const others = new Map<string, string>();
+        for (const e of c.emps) { const m = lc(e.portal_email); if (m && m !== lc(t!.portal_email) && activeEmp(e)) others.set(m, e.id); }
+        if (others.size) {
+          const name = String(t!.full_name || "").trim() || "A colleague";
+          const fan = await db.from("erp_notifications").upsert([...others].map(([email, id]) => ({
+            recipient_email: email, recipient_employee_id: id, type: "aura_celebration",
+            title: `🎉 ${name} earned ${pts} Aura Points!`, message: "Congratulations!",
+            entity_type: "aura_point_transaction", entity_id: tx.id, dedupe_key: "aura-cel:" + tx.id, link: "aura:best",
+            metadata: { points: pts, recipient_name: name },
+          })), { onConflict: "recipient_email,dedupe_key", ignoreDuplicates: true });
+          if (fan.error) console.error("[aura] celebration notifications:", fan.error.message);
+        }
         await db.from("hr_audit_log").insert({ actor_email: c.auth.email, actor_name: actorName, action: "aura_awarded", entity: "aura", entity_id: tx.id,
           reason, meta: { recipient: t!.full_name, recipient_id: t!.id, department: t!.division || null, points: pts, note, tier: c.tier, role: roleLabel(c), scope: scopeSnap } }).then(() => {}, () => {});
         return out(req, 200, { ok: true, transaction: tx });
@@ -355,6 +370,8 @@ Deno.serve(async (req) => {
           .eq("id", body.transaction_id).eq("status", "active").select("*");
         if (u.error) throw new Error(u.error.message);
         if (!u.data?.length) return out(req, 409, { error: "That award is already reversed or doesn't exist." });
+        // A cancelled award stops being celebrated (rows stay, hidden from unread lists).
+        await db.from("erp_notifications").update({ resolved_at: new Date().toISOString() }).eq("dedupe_key", "aura-cel:" + body.transaction_id).is("resolved_at", null).then(() => {}, () => {});
         await db.from("hr_audit_log").insert({ actor_email: c.auth.email, actor_name: actorName, action: "aura_reversed", entity: "aura", entity_id: body.transaction_id, reason: why }).then(() => {}, () => {});
         return out(req, 200, { ok: true, transaction: u.data[0] });
       }
