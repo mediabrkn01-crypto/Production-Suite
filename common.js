@@ -266,7 +266,7 @@ async function fetchDeptOnLeaveToday() {
             .eq('employment_status', 'active');
         if (e1 || !deptEmployees || !deptEmployees.length) return [];
         const ids = deptEmployees.map(e => e.id);
-        const today = new Date().toISOString().slice(0, 10);
+        const _n = new Date(), today = `${_n.getFullYear()}-${String(_n.getMonth() + 1).padStart(2, '0')}-${String(_n.getDate()).padStart(2, '0')}`;   // local (IST) date, not UTC
         const { data: leaves, error: e2 } = await dbInstance.from('hr_leave_requests')
             .select('*')
             .eq('status', 'approved')
@@ -288,6 +288,21 @@ async function fetchDeptOnLeaveToday() {
 // approved leave request "On Leave" regardless of type, which is what made a WFH row
 // (e.g. Ali's) show up here as "On Leave" — generic by leave_type value, not any specific
 // employee's name, so this fixes it for everyone, not just one person.
+// Session-aware badge for an approved leave: Morning / Afternoon (orange), Full-Day (red).
+function _deptLeaveSession(l) { return window.LeavePolicy && LeavePolicy.leaveSession ? LeavePolicy.leaveSession(l) : (l.half_day_type || 'full'); }
+function _deptLeaveBadge(l) {
+    const s = _deptLeaveSession(l), half = s === 'morning' || s === 'afternoon' || s === 'half';
+    const lbl = window.LeavePolicy && LeavePolicy.leaveSessionLabel ? LeavePolicy.leaveSessionLabel(l) : 'On Leave';
+    const st = half ? 'background:rgba(249,115,22,.14);color:var(--fg-orange, #fb923c)' : 'background:rgba(239,68,68,.14);color:var(--fg-red, #f87171)';
+    return `<span class="hr-badge shrink-0" style="${st}">${lbl}</span>`;
+}
+function _deptLeaveWhen(l) {
+    const s = _deptLeaveSession(l);
+    if (s === 'morning') return 'Morning off · back for the afternoon';
+    if (s === 'afternoon') return 'Afternoon off · working the morning';
+    if (s === 'half') return 'Half day · session not recorded';
+    return l.start_date === l.end_date ? 'Full day' : `${l.start_date} → ${l.end_date}`;
+}
 async function renderDeptOnLeaveWidget(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
@@ -301,9 +316,9 @@ async function renderDeptOnLeaveWidget(containerId) {
             ${hrAvatarHTML(employee, 36)}
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-bold text-white truncate">${employee.full_name}</div>
-                <div class="text-[11px] text-[#6b74a0]">${leave.start_date} → ${leave.end_date}</div>
+                <div class="text-[11px] text-[#6b74a0]">${_deptLeaveWhen(leave)}</div>
             </div>
-            <span class="hr-badge ${isWfh ? 'hr-badge-wfh' : 'hr-badge-on_leave'} shrink-0">${isWfh ? 'Work From Home' : 'On Leave'}</span>
+            ${isWfh ? '<span class="hr-badge hr-badge-wfh shrink-0">Work From Home</span>' : _deptLeaveBadge(leave)}
         </div>
     `;
     const wfhRows = rows.filter(r => r.leave.leave_type === 'Work From Home');
@@ -330,6 +345,21 @@ function loadDeptLeaveNotifBaseline() {
 }
 function saveDeptLeaveNotifBaseline() {
     localStorage.setItem(`be_known_dept_leaves_${activeEmail}`, JSON.stringify([..._lastKnownDeptLeaveIds]));
+}
+// Team-leave bell text, from the approved request's own leave type + session (leave-policy.js).
+function teamLeaveNotifText(who, l) {
+    if (window.LeavePolicy && LeavePolicy.teamLeaveMessage) return LeavePolicy.teamLeaveMessage(who, l);
+    return `${who} is on leave from ${l.start_date} to ${l.end_date}.`;
+}
+function refreshTeamLeaveNotifs(leaves, byId) {
+    let n = 0;
+    (leaves || []).forEach(l => {
+        if (l.leave_type === 'Work From Home') return;
+        const x = notifications.find(m => m.id === 'team_leave_' + l.id); if (!x) return;
+        const t = teamLeaveNotifText(byId[l.employee_id]?.full_name || 'A team member', l);
+        if (x.topic !== t) { x.topic = t; n++; }
+    });
+    return n > 0;
 }
 async function checkDeptLeaveNotifications() {
     const me = myHREmployeeRecord();
@@ -358,7 +388,7 @@ async function checkDeptLeaveNotifications() {
                         const range = l.start_date === l.end_date ? `on ${l.start_date}` : `from ${l.start_date} to ${l.end_date}`;
                         addNotif('team_wfh', `${who} is working from home ${range}.`, null, l.id);
                     } else {
-                        addNotif('team_leave', `${who} is on leave from ${l.start_date} to ${l.end_date}.`, null, l.id);
+                        addNotif('team_leave', teamLeaveNotifText(who, l), null, l.id);
                     }
                 }
                 _lastKnownDeptLeaveIds.add(l.id);
@@ -366,6 +396,9 @@ async function checkDeptLeaveNotifications() {
             }
         });
         if (changed) saveDeptLeaveNotifBaseline();
+        // Older bells were worded "on leave from X to Y" with no session — re-word them from
+        // the same approved request (same id, so nothing is duplicated or re-shown).
+        if (refreshTeamLeaveNotifs(leaves, byId)) { saveNotifs(); renderNotifList(); renderDashboardNotifFeed(); }
     } catch (e) { /* non-critical — skip this tick */ }
 }
 

@@ -501,14 +501,47 @@
     var t = todayStr();
     var ppl = await db().from('hr_employees').select('id,full_name,designation,department,division,photo_base64,photo_url,employment_status').eq('division', e.division).eq('employment_status', 'active').order('full_name');
     var team = ppl.data || [], ids = team.map(function (x) { return x.id; });
-    var lv = ids.length ? await db().from('hr_leave_requests').select('employee_id,leave_type,start_date,end_date').eq('status', 'approved').lte('start_date', t).gte('end_date', t).in('employee_id', ids) : { data: [] };
-    var today = {}; (lv.data || []).forEach(function (r) { today[r.employee_id] = r; });
-    var wfh = team.filter(function (x) { return today[x.id] && /home|wfh/i.test(today[x.id].leave_type || ''); });
-    var off = team.filter(function (x) { return today[x.id] && !/home|wfh/i.test(today[x.id].leave_type || ''); });
-    var row = function (x) { var r = today[x.id]; return '<div class="mw-item">' + avatar(x, x.full_name, 36) + '<div class="mw-item-main"><b>' + esc(x.full_name) + (x.id === e.id ? ' <span class="mw-muted" style="font-weight:500">(you)</span>' : '') + '</b><div class="mw-sub">' + esc(x.designation || roleInfo(x).primary || '—') + '</div></div><div class="mw-item-end">' + (r ? (/home|wfh/i.test(r.leave_type || '') ? pill('Work from home', 'purple') : pill('On leave · until ' + fDate(r.end_date), 'warn')) : pill('Working today', 'ok')) + '</div></div>'; };
+    var lv = ids.length ? await db().from('hr_leave_requests').select('employee_id,leave_type,half_day_type,days,start_date,end_date').eq('status', 'approved').lte('start_date', t).gte('end_date', t).in('employee_id', ids) : { data: [] };
+    // Session of each approved leave today (LeavePolicy.leaveSession: morning | afternoon | half | full | wfh).
+    var sessOf = function (r) {
+      if (window.LeavePolicy && LeavePolicy.leaveSession) return LeavePolicy.leaveSession(r);
+      if (/home|wfh/i.test(r.leave_type || '')) return 'wfh';
+      return r.half_day_type === 'morning' || r.half_day_type === 'afternoon' ? r.half_day_type : (Number(r.days) === 0.5 ? 'half' : 'full');
+    };
+    // A person can have a full-day row and a half-day row the same day → the wider one wins.
+    var RANK = { wfh: 1, half: 2, morning: 2, afternoon: 2, full: 3 };
+    var today = {}; (lv.data || []).forEach(function (r) { r._s = sessOf(r); var o = today[r.employee_id]; if (!o || RANK[r._s] > RANK[o._s]) today[r.employee_id] = r; });
+    var isHalf = function (s) { return s === 'morning' || s === 'afternoon' || s === 'half'; };
+    var halfIds = team.filter(function (x) { return today[x.id] && isHalf(today[x.id]._s); }).map(function (x) { return x.id; });
+    // The other half is shown from real attendance only — never assumed attended.
+    var att = {};
+    if (halfIds.length) {
+      try { var ar = await db().from('hr_attendance').select('employee_id,status,clock_in_time,clock_out_time').eq('att_date', t).in('employee_id', halfIds); (ar.data || []).forEach(function (a) { att[a.employee_id] = a; }); } catch (_) {}
+    }
+    var otherHalf = function (id) { var a = att[id]; return a && a.clock_in_time ? (a.clock_out_time ? 'Worked' : 'Working') : 'Available'; };
+    var wfh = team.filter(function (x) { return today[x.id] && today[x.id]._s === 'wfh'; });
+    var off = team.filter(function (x) { return today[x.id] && today[x.id]._s === 'full'; });
+    var half = team.filter(function (x) { return today[x.id] && isHalf(today[x.id]._s); });
+    var status = function (x) {
+      var r = today[x.id]; if (!r) return pill('Working today', 'ok');
+      if (r._s === 'wfh') return pill('Work from home', 'purple');
+      if (r._s === 'full') return pill('Full-Day Leave' + (r.end_date > t ? ' · until ' + fDate(r.end_date) : ''), 'bad');
+      if (r._s === 'half') return pill('Half-Day Leave', 'orange');
+      return pill(r._s === 'morning' ? 'Morning Leave' : 'Afternoon Leave', 'orange');
+    };
+    var sub = function (x) {
+      var r = today[x.id], d = esc(x.designation || roleInfo(x).primary || '—');
+      if (!r || !isHalf(r._s)) return d;
+      var o = otherHalf(x.id);
+      var s2 = r._s === 'morning' ? 'Morning: On leave · Afternoon: ' + o : r._s === 'afternoon' ? 'Morning: ' + o + ' · Afternoon: On leave' : 'Half day · session not recorded';
+      return d + '<span class="mw-halfln">' + esc(s2) + '</span>';
+    };
+    var row = function (x) { return '<div class="mw-item">' + avatar(x, x.full_name, 36) + '<div class="mw-item-main"><b>' + esc(x.full_name) + (x.id === e.id ? ' <span class="mw-muted" style="font-weight:500">(you)</span>' : '') + '</b><div class="mw-sub">' + sub(x) + '</div></div><div class="mw-item-end">' + status(x) + '</div></div>'; };
     root.innerHTML = header('Team Members', 'Your ' + (DIV[e.division] || 'team') + ' colleagues and who is out today.', divPill(e.division))
-      + '<div class="mw-stats">' + [['Team size', team.length, '#3b82f6'], ['Working today', team.length - off.length - wfh.length, '#10b981'], ['On leave', off.length, '#f59e0b'], ['WFH', wfh.length, '#a78bfa']].map(function (s) { return '<div class="mw-stat" style="--c:' + s[2] + '"><div class="mw-stat-n">' + s[1] + '</div><div class="mw-stat-l">' + s[0] + '</div></div>'; }).join('') + '</div>'
-      + (off.length || wfh.length ? '<div class="mw-card"><div class="mw-card-t">Out today</div><div class="mw-list">' + off.concat(wfh).map(row).join('') + '</div></div>' : '')
+      // Working today = everyone not on a full-day leave and not WFH (half-day people work half);
+      // half-day leave is its own count, never folded into full-day absence.
+      + '<div class="mw-stats">' + [['Team size', team.length, '#3b82f6'], ['Working today', team.length - off.length - wfh.length, '#10b981'], ['Full-day leave', off.length, '#ef4444'], ['Half-day leave', half.length, '#f97316'], ['WFH', wfh.length, '#a78bfa']].map(function (s) { return '<div class="mw-stat" style="--c:' + s[2] + '"><div class="mw-stat-n">' + s[1] + '</div><div class="mw-stat-l">' + s[0] + '</div></div>'; }).join('') + '</div>'
+      + (off.length || half.length || wfh.length ? '<div class="mw-card"><div class="mw-card-t">Out today</div><div class="mw-list">' + off.concat(half, wfh).map(row).join('') + '</div></div>' : '')
       + '<div class="mw-card"><div class="mw-card-t">Everyone</div>' + (team.length ? '<div class="mw-list">' + team.map(row).join('') + '</div>' : empty('users', 'No team members found')) + '</div>';
   }
 
@@ -527,6 +560,8 @@
     '.mw-ok{color:var(--fg-emerald, #34d399);background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3)}',
     '.mw-warn{color:var(--fg-amber, #fbbf24);background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3)}',
     '.mw-bad{color:var(--fg-red, #f87171);background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}',
+    '.mw-orange{color:var(--fg-orange, #fb923c);background:rgba(249,115,22,.1);border-color:rgba(249,115,22,.32)}',
+    '.mw-halfln{display:block;margin-top:2px;font-size:11px;color:var(--fg-orange, #fb923c);font-weight:600}',
     '.mw-purple{color:var(--fg-violet, #a78bfa);background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.3)}',
     '.mw-brand{color:var(--fg-orange, #ff8a3d);background:rgba(255,107,6,.12);border-color:rgba(255,107,6,.3)}',
     '.mw-new{color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f);border-color:transparent}',

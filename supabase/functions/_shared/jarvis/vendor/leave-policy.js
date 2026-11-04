@@ -762,8 +762,42 @@
     }
   }
 
+  // ── Approved-leave session (Team Members, dept widgets, team-leave notifications) ──
+  // Read straight from the hr_leave_requests row: half_day_type 'morning' = off the first half,
+  // 'afternoon' = off the second half. A half request with no recorded session (days 0.5 or a
+  // 'Half Day' type, half_day_type empty) stays 'half' — never promoted to a full day.
+  function leaveSession(req) {
+    if (!req) return null;
+    if (/home|wfh/i.test(req.leave_type || '')) return 'wfh';
+    var h = String(req.half_day_type || '').toLowerCase();
+    if (h === 'morning' || h === 'afternoon') return h;
+    if (Number(req.days) === 0.5 || /half/i.test(req.leave_type || '')) return 'half';
+    return 'full';
+  }
+  var SESSION_LABEL = { morning: 'Morning Leave', afternoon: 'Afternoon Leave', half: 'Half-Day Leave', full: 'Full-Day Leave', wfh: 'Work From Home' };
+  function leaveSessionLabel(req) { var s = leaveSession(req); return s ? SESSION_LABEL[s] : ''; }
+  function fmtLeaveDate(ymdStr) {
+    var p = String(ymdStr || '').slice(0, 10).split('-');
+    if (p.length !== 3) return String(ymdStr || '');
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  /** Bell text for a colleague's approved leave, worded from the request itself. */
+  function teamLeaveMessage(who, req) {
+    var s = leaveSession(req), a = fmtLeaveDate(req.start_date), b = fmtLeaveDate(req.end_date);
+    var when = req.start_date === req.end_date || !req.end_date ? 'on ' + a : 'from ' + a + ' to ' + b;
+    if (s === 'wfh') return who + ' is working from home ' + when + '.';
+    if (s === 'morning') return who + ' is on Morning Half-Day Leave on ' + a + '.';
+    if (s === 'afternoon') return who + ' is on Afternoon Half-Day Leave on ' + a + '.';
+    if (s === 'half') return who + ' is on Half-Day Leave on ' + a + ' (session not recorded).';
+    return who + ' is on Full-Day Leave ' + when + '.';
+  }
+
   var LeavePolicy = {
     P: P, CODES: CODES,
+    leaveSession: leaveSession,
+    leaveSessionLabel: leaveSessionLabel,
+    teamLeaveMessage: teamLeaveMessage,
+    fmtLeaveDate: fmtLeaveDate,
     P_DEFAULTS: P_DEFAULTS,
     reloadPolicy: reloadPolicy,
     normType: normType,
