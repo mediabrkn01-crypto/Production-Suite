@@ -1807,7 +1807,12 @@ function hrOfficialEventFor(employee, dateStr) {
                 version: 2, for: employeeId && month ? employeeId + '|' + month : undefined,
                 basis: c.salaryDayBasis || HR_SALARY_DAY_BASIS, days_in_month: c.daysInMonth,
                 elapsed: c.elapsedDays, future: c.futureDays,
-                present: c.presentDays, paid_leave: c.paidLeaveDays, sl: c.slDays || 0, cl: c.clDays || 0, ml: c.maternityLeaveDays || 0,
+                present: c.presentDays, paid_leave: c.paidLeaveDays,
+                // Present incl. the worked half of each half day (22 + 0.5 → 22.5) — the SAME
+                // hrPresentEquivalent figure My Attendance / reports show. `present` stays the
+                // full-day count (day-overlap check below); money never reads either.
+                present_total: typeof hrPresentEquivalent === 'function' ? hrPresentEquivalent(c) : c.presentDays,
+                present_half_days: c.presentHalfDays || 0, half_lop_days: c.halfLopDays || 0, sl: c.slDays || 0, cl: c.clDays || 0, ml: c.maternityLeaveDays || 0,
                 weekly_off: c.weeklyOffDays, holiday: c.holidayDays, official_event: c.officialEventDays || 0,
                 half_day: c.halfDayDays, half_day_paid: c.halfDayPaidDays || 0, absent: c.absentDays, leave_lop: c.unpaidLeaveDays,
                 incident_days: c.incidentDays || 0, double_days: c.doubleDeductionDays || 0,
@@ -2343,7 +2348,9 @@ function hrOfficialEventFor(employee, dateStr) {
             const fin = hrPayrollFinalFigures(p, bd);
             const isSessionPay = fin.pay_type === 'sessions';
             const dayInfo = bd ? {
-                presentDays: +bd.present || 0, paidLeaveDays: +bd.paid_leave || 0, weeklyOffDays: +bd.weekly_off || 0,
+                // Rows saved after the half-day fix carry present_total; older rows print what
+                // they were saved with (never silently recomputed).
+                presentDays: bd.present_total != null ? (+bd.present_total || 0) : (+bd.present || 0), paidLeaveDays: +bd.paid_leave || 0, weeklyOffDays: +bd.weekly_off || 0,
                 holidayDays: (+bd.holiday || 0) + (+bd.official_event || 0), attendanceLopDays: _r2((+bd.lop_days || 0)),
                 preJoiningDays: +bd.pre_joining || 0, elapsedDays: bd.elapsed ?? null, futureDays: +bd.future || 0
             } : null;
