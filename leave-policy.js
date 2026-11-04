@@ -654,11 +654,23 @@
   //    Returns LOP days + full breakdown + incident deduction, with an audit
   //    trail string per deduction. Payroll multiplies by daily salary.
   // =========================================================================
+  // Was the non-leave half of a half-day result actually worked? Only real evidence counts:
+  // a clock-in, an HR-marked half_day attendance row (HR marks the worked half), or a portal log.
+  // Shared by the My Attendance calendar + summary and HR's monthly reports.
+  function workedHalf(ctx, dateStr) {
+    dateStr = ymd(dateStr);
+    var rec = (ctx.attendance || []).find(function (a) { return a.att_date && a.att_date.slice(0, 10) === dateStr; });
+    if (rec && (rec.clock_in_time || rec.status === 'half_day')) return true;
+    return !!(ctx.portalLog && ctx.portalLog(dateStr));
+  }
+
   function resolvePayrollDeduction(ctx, monthStr) {
     var p = monthStr.split('-').map(Number), y = p[0], m = p[1];
     var daysInMonth = new Date(y, m, 0).getDate();
     var todayStr = ymd(ctx.now || new Date());
-    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, ml: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0, unapproved: 0, notScheduled: 0 };
+    // presentHalf / halfLop are summary-only (fractional Present, half-day LOP count) — they never
+    // feed lopDays, so deductions are unchanged.
+    var buckets = { present: 0, late: 0, wfh: 0, sl: 0, cl: 0, ml: 0, wo: 0, holiday: 0, oe: 0, half: 0, lop: 0, lopDouble: 0, preJoining: 0, unapproved: 0, notScheduled: 0, presentHalf: 0, halfLop: 0 };
     var lopDays = 0, breakdown = [];
     for (var d = 1; d <= daysInMonth; d++) {
       var dateStr = monthStr + '-' + String(d).padStart(2, '0');
@@ -668,6 +680,10 @@
       if (r.code === CODES.NS) { buckets.notScheduled++; continue; } // not a working day for them
       if (r.unapproved) buckets.unapproved++;                // subset of lop — reported separately
       if (r.preJoining) { buckets.preJoining++; lopDays += 1; breakdown.push({ date: dateStr, code: 'PRE', lop: 1, reason: 'Pre-joining day' }); continue; }
+      if (r.half) {                                          // the worked half of a half day = 0.5 Present
+        if (r.code === CODES.LOP) buckets.halfLop++;
+        if (workedHalf(ctx, dateStr)) buckets.presentHalf += 0.5;
+      }
       switch (r.code) {
         case CODES.P: buckets.present++; break;
         case CODES.L: buckets.late++; break;
@@ -817,6 +833,7 @@
     resolveAttendanceStatus: resolveAttendanceStatus,
     resolveIncidents: resolveIncidents,
     resolvePayrollDeduction: resolvePayrollDeduction,
+    workedHalf: workedHalf,
     detectAdjacency: detectAdjacency,
     planCLConsumption: planCLConsumption,
     isApproved: isApproved,

@@ -2055,6 +2055,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     clLeft = Math.max(0, Math.min(clCredit, earned) - Math.max(usedBefore, clBucketUsed));
                 }
                 let present=0, sl=0, cl=0, ml=0, wo=0, holiday=0, oe=0, half=0, halfPaid=0, preJoining=0;
+                let workedHalves=0, halfLopDays=0, halfLopWorked=0; // attendance summary only (fractional Present) — not money
                 let leaveLop=0, absentLop=0, doubleExtra=0, unapprovedDays=0;
                 const lopReasons = []; // §6 — HR must see WHY each day became LOP
                 const addLop = (dateStr, reason, factor) => { lopReasons.push({ date: dateStr, reason, factor: factor||1 }); };
@@ -2069,6 +2070,11 @@ function hrOfficialEventFor(employee, dateStr) {
                     // or the report shows Absent 0 while payroll invents Absent 1 (§1/§5).
                     if (r.open || r.code === 'NS') continue; // before today's cutoff / not a scheduled working day
                     if (r.unapproved) unapprovedDays++;
+                    if (r.half) {
+                        const w = !!(LeavePolicy.workedHalf && LeavePolicy.workedHalf(ctx, dateStr));
+                        if (w) workedHalves++;
+                        if (r.code !== 'HD') { halfLopDays++; if (w) halfLopWorked++; }
+                    }
                     switch (r.code) {
                         case 'P': case 'L': case 'WFH': present++; break;
                         case 'SL':
@@ -2124,6 +2130,7 @@ function hrOfficialEventFor(employee, dateStr) {
                     elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
                     incidentDays, incidents, doubleDeductionDays: doubleExtra,
                     slDays: sl, clDays: cl, maternityLeaveDays: ml, lopReasons,
+                    presentHalfDays: workedHalves, halfLopDays, halfLopWorkedDays: halfLopWorked,
                     unapprovedAbsenceDays: unapprovedDays   // subset of absentDays — no clock-in, no approved leave
                 };
             }
@@ -2240,8 +2247,16 @@ function hrOfficialEventFor(employee, dateStr) {
             // — for a month that's completely in the past this equals the full salary anyway
             // (elapsedDays === daysInMonth), so nothing changes for normal end-of-month payroll.
             const { earnedBasic, leaveDeduction, preJoiningBasisDays, salaryDayBasis } = hrPayrollMoney(salary, daysInMonth, elapsedDays, lopDays, preJoiningDays);
-            return { salary, daysInMonth, dailySalary, salaryDayBasis, preJoiningBasisDays, presentDays, paidLeaveDays, eligibleLeaveDays, excessLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, officialEventDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction };
+            return { salary, daysInMonth, dailySalary, salaryDayBasis, preJoiningBasisDays, presentDays, paidLeaveDays, eligibleLeaveDays, excessLeaveDays, unpaidLeaveDays, absentDays, holidayDays, weeklyOffDays, halfDayDays, preJoiningDays, officialEventDays, elapsedDays, futureDays, lopDays, payableDays, earnedBasic, leaveDeduction,
+                presentHalfDays: halfDayDays, halfLopDays: 0, halfLopWorkedDays: 0 };   // fallback: a half_day row is the worked half
         }
+
+// ── Attendance summary from hrCalculatePayrollForMonth (reports only — never money) ──
+// Present = full worked days + 0.5 per half day whose other half was actually worked (the same
+// LeavePolicy.workedHalf rule the My Attendance calendar/summary use). A half-day LOP day is an
+// applicable working day too, so the percentage stays honest.
+        function hrPresentEquivalent(p) { return (p.presentDays || 0) + 0.5 * (p.presentHalfDays != null ? p.presentHalfDays : (p.halfDayDays || 0)); }
+        function hrApplicableWorkingDays(p) { return (p.presentDays || 0) + (p.halfDayDays || 0) + (p.halfLopDays || 0) + (p.absentDays || 0); }
 
 // ── hrProbationEndDate (orig line 10650) ──
         function hrProbationEndDate(employee) {

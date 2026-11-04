@@ -219,7 +219,9 @@
     var body = root.querySelector('.mw-card');
     if (!LP || !ctx) { body.innerHTML = empty('clock', 'Attendance engine unavailable', 'Please reload the page.'); return; }
     var pay = LP.resolvePayrollDeduction(ctx, month), b = pay.buckets;
-    var stats = [['Present', b.present + b.late, '#10b981'], ['Late', b.late, '#f59e0b'], ['WFH', b.wfh, '#a78bfa'], ['Paid Leave', b.sl + b.cl + b.ml, '#60a5fa'], ['Weekly Off', b.wo, '#64748b'], ['Holidays / Events', b.holiday + b.oe, '#c084fc'], ['Half Days', b.half, '#facc15'], ['Unapproved Absence', b.unapproved || 0, '#ef4444'], ['LOP days', pay.totalDeductionDays, '#f87171']];
+    // Present = full days (P + Late) + 0.5 for the worked half of every half day; Half Days =
+    // every half-day record (paid half, plain half, or half-day LOP). Same engine as the calendar.
+    var stats = [['Present', b.present + b.late + (b.presentHalf || 0), '#10b981'], ['Late', b.late, '#f59e0b'], ['WFH', b.wfh, '#a78bfa'], ['Paid Leave', b.sl + b.cl + b.ml, '#60a5fa'], ['Weekly Off', b.wo, '#64748b'], ['Holidays / Events', b.holiday + b.oe, '#c084fc'], ['Half Days', b.half + (b.halfLop || 0), '#facc15'], ['Unapproved Absence', b.unapproved || 0, '#ef4444'], ['LOP days', pay.totalDeductionDays, '#f87171']];
     var days = new Date(p[0], p[1], 0).getDate(), first = new Date(p[0], p[1] - 1, 1).getDay(), today = todayStr(), unapproved = [];
     var cells = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(function (d) { return '<div class="mw-cal-h">' + d + '</div>'; });
     for (var i = 0; i < first; i++) cells.push('<div></div>');
@@ -233,7 +235,7 @@
       if (split) { cells.push(split); continue; }
       cells.push('<div class="mw-cal-d' + (ds === today ? ' is-today' : '') + '" title="' + esc(fDate(ds, true, true) + ' — ' + tip) + '"' + (c ? ' style="--c:' + c + '"' : '') + '><span>' + d + '</span><b>' + esc(r.preJoining ? '—' : (code === 'NS' ? '·' : code || '—')) + '</b></div>');
     }
-    body.outerHTML = '<div class="mw-stats">' + stats.map(function (s) { return '<div class="mw-stat" style="--c:' + s[2] + '"><div class="mw-stat-n">' + s[1] + '</div><div class="mw-stat-l">' + s[0] + '</div></div>'; }).join('') + '</div>'
+    body.outerHTML = '<div class="mw-stats">' + stats.map(function (s) { return '<div class="mw-stat" style="--c:' + s[2] + '"><div class="mw-stat-n">' + fmtDays(s[1]) + '</div><div class="mw-stat-l">' + s[0] + '</div></div>'; }).join('') + '</div>'
       + '<div class="mw-card"><div class="mw-cal">' + cells.join('') + '</div><div class="mw-legend">' + Object.keys(CODEC).map(function (k) { return '<span><i style="background:' + CODEC[k][0] + '"></i>' + k + ' ' + CODEC[k][1] + '</span>'; }).join('') + '</div>'
       + unapprovedBlock(unapproved, ctx)
       + (pay.incidents && pay.incidents.count ? '<div class="mw-note mw-note-warn">' + esc(pay.incidents.count + ' late-login / early-logout incident(s) this month' + (pay.incidentDays ? ' — ' + pay.incidentDays + ' day deduction' : '')) + '</div>' : '') + '</div>';
@@ -249,6 +251,8 @@
   // day) → split cell: left = morning, right = afternoon. Only the half the record covers takes
   // its colour; the other half shows the real attendance row (clock-in → Present), else blank.
   // Display only — the engine result (and so payroll / totals) is untouched.
+  // 22 → "22", 22.5 → "22.5" (never rounded); guards float noise from 0.5 sums.
+  function fmtDays(n) { n = Math.round(Number(n || 0) * 100) / 100; return String(n); }
   function halfCell(r, ctx, ds, d, today) {
     if (!r.half) return '';
     var rec = (ctx.attendance || []).find(function (a) { return a.att_date && a.att_date.slice(0, 10) === ds; }) || null;
@@ -257,7 +261,7 @@
     // (0.5 LOP, or a plain HD that payroll deducts as 0.5 LOP) shows as LOP.
     var off = r.halfPaid === 'CL' || r.halfPaid === 'SL' ? r.halfPaid : 'LOP';
     var side = sess === 'morning' ? 'AM' : sess === 'afternoon' ? 'PM' : '';
-    var worked = !!(rec && rec.clock_in_time);
+    var worked = window.LeavePolicy && LeavePolicy.workedHalf ? LeavePolicy.workedHalf(ctx, ds) : !!(rec && rec.clock_in_time);
     var t = function (x) { return x ? new Date(x).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''; };
     var otherTxt = worked ? 'Present' + (rec.clock_in_time ? ' · in ' + t(rec.clock_in_time) : '') + (rec.clock_out_time ? ' · out ' + t(rec.clock_out_time) : '') : 'No attendance recorded';
     var offName = off === 'LOP' ? 'LOP (unpaid)' : off === 'CL' ? 'Casual Leave' : off === 'SL' ? 'Sick Leave' : 'Half Day';
