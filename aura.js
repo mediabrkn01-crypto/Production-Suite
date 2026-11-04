@@ -79,19 +79,25 @@
       '.au-confirm{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;padding:12px 14px;border-radius:12px;background:rgba(var(--ink, 255,255,255), 0.03)}.au-confirm span{color:var(--tx-6, #6b74a0)}.au-confirm b{color:var(--tx-0, #fff);font-weight:600;overflow-wrap:anywhere}',
       '.au-err{color:var(--fg-red, #f87171);font-size:12.5px}',
       '.au-pop{position:fixed;left:50%;top:20px;z-index:9400;transform:translate(-50%,-12px);opacity:0;transition:all .22s ease;display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:14px;background:var(--sf-3, #11182a);border:1px solid rgba(255,138,61,.35);box-shadow:0 20px 50px -14px rgba(var(--shade, 0,0,0), calc(0.8 * var(--shade-k, 1)));color:var(--tx-1, #e6e9f5);max-width:calc(100vw - 24px)}',
-      '.au-cel{position:fixed;top:72px;right:16px;z-index:9460;width:min(360px,calc(100vw - 24px));display:flex;gap:12px;align-items:flex-start;padding:14px 12px 14px 14px;border-radius:18px;background:color-mix(in srgb,var(--sf-3, #11182a) 82%,transparent);backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);border:1px solid rgba(255,138,61,.35);box-shadow:0 18px 48px rgba(var(--shade, 0,0,0), calc(0.4 * var(--shade-k, 1)));transform:translateX(16px);opacity:0;transition:transform .28s cubic-bezier(.22,.61,.36,1),opacity .28s}',
-      '.au-cel.on{transform:none;opacity:1}',
-      '.au-cel-ic{position:relative;flex-shrink:0;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}',
-      '.au-cel.on .au-cel-ic svg{animation:auCelPop .6s cubic-bezier(.3,1.5,.5,1)}',
-      '.au-cel-ic i{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#ff8a3d;opacity:0}',
-      '.au-cel.on .au-cel-ic i{animation:auCelSpark .85s ease-out .1s}',
-      '.au-cel-ic i:nth-child(1){--x:-27px;--y:-17px}.au-cel-ic i:nth-child(2){--x:0;--y:-31px;background:#fbbf24}.au-cel-ic i:nth-child(3){--x:27px;--y:-17px;background:#ff0552}.au-cel-ic i:nth-child(4){--x:27px;--y:17px;background:#fbbf24}.au-cel-ic i:nth-child(5){--x:0;--y:31px}.au-cel-ic i:nth-child(6){--x:-27px;--y:17px;background:#ff0552}',
-      '@keyframes auCelPop{from{transform:scale(.4) rotate(-20deg)}to{transform:none}}@keyframes auCelSpark{0%{opacity:1;transform:none}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(.4)}}',
-      '.au-cel-t [data-more]{font-weight:700;letter-spacing:0;text-transform:none;color:var(--tx-4, #8b93b8)}.au-cel-t{flex:1;min-width:0}.au-cel-t small{display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-orange, #ff8a3d)}',
-      '.au-cel-t p{margin:3px 0 1px;font-size:14px;line-height:1.4;color:var(--tx-1, #e6e9f5);overflow-wrap:anywhere}.au-cel-t p b{color:var(--tx-0, #fff);font-weight:800}.au-cel-t p em{font-style:normal;font-weight:800;color:var(--fg-orange, #ff8a3d);font-variant-numeric:tabular-nums}.au-cel-t span{font-size:12.5px;color:var(--tx-3, #a5adcf)}',
-      '.au-cel button{flex-shrink:0;width:26px;height:26px;border:0;border-radius:8px;background:none;color:var(--tx-4, #8b93b8);font-size:13px;cursor:pointer}.au-cel button:hover{background:rgba(var(--ink, 255,255,255), 0.08);color:var(--tx-0, #fff)}.au-cel button:focus-visible{outline:2px solid #ff6b06;outline-offset:1px}',
-      '@media(max-width:640px){.au-cel{top:60px;left:12px;right:12px;width:auto}}',
-      '@media (prefers-reduced-motion:reduce){.au-cel{transition:none;transform:none}.au-cel.on .au-cel-ic svg,.au-cel.on .au-cel-ic i{animation:none}}',
+      /* award celebration: centered modal, above ERP dialogs (10000-10050), below announcements and clock prompts */
+      '.au-cel{position:fixed;inset:0;z-index:20000;display:grid;place-items:center;padding:16px;background:rgba(var(--scrim, 3,5,9), calc(0.55 * var(--scrim-k, 1)));backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);opacity:0;transition:opacity .25s ease;overscroll-behavior:contain}',
+      '.au-cel.on{opacity:1}.au-cel canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}',
+      '.au-cel-card{position:relative;box-sizing:border-box;width:min(440px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;padding:34px 28px 24px;border-radius:24px;text-align:center;color:var(--tx-1, #e6e9f5);background:color-mix(in srgb,var(--sf-2, #0e1222) 86%,transparent);backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);border:1px solid rgba(255,138,61,.32);box-shadow:0 30px 80px -18px rgba(var(--shade, 0,0,0), calc(0.7 * var(--shade-k, 1))),inset 0 1px 0 rgba(255,255,255,.08);transform:scale(.86) translateY(10px);transition:transform .42s cubic-bezier(.2,1.25,.4,1);outline:0}',
+      '.au-cel.on .au-cel-card{transform:none}',
+      '.au-cel-x{position:absolute;top:12px;right:12px;width:38px;height:38px;display:grid;place-items:center;border-radius:12px;border:1px solid rgba(var(--ink, 255,255,255), 0.12);background:rgba(var(--ink, 255,255,255), 0.05);color:var(--tx-1, #e6e9f5);font:inherit;font-size:16px;line-height:1;cursor:pointer}.au-cel-x:hover{background:rgba(var(--ink, 255,255,255), 0.12);color:var(--tx-0, #fff)}',
+      '.au-cel-ic{width:76px;height:76px;margin:0 auto 16px;border-radius:24px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552);box-shadow:0 10px 34px -4px rgba(255,107,6,.55)}',
+      '.au-cel.on .au-cel-ic{animation:auCelGlow 1.5s ease-in-out 2}.au-cel.on .au-cel-ic svg{animation:auCelPop .6s cubic-bezier(.3,1.5,.5,1)}',
+      '@keyframes auCelPop{from{transform:scale(.4) rotate(-20deg)}to{transform:none}}@keyframes auCelGlow{50%{box-shadow:0 10px 50px 8px rgba(255,107,6,.6)}}',
+      '.au-cel-k{margin:0;font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-orange, #ff8a3d)}',
+      '.au-cel-h{margin:8px 0 14px;font-size:15px;font-weight:700;color:var(--tx-2, #c7cbe0)}',
+      '.au-cel-who{margin:0;font-size:27px;line-height:1.2;font-weight:800;letter-spacing:-.01em;color:var(--tx-0, #fff);overflow-wrap:anywhere}',
+      '.au-cel-pts{margin:6px 0 0;font-size:14px;color:var(--tx-2, #c7cbe0)}.au-cel-pts b{display:block;margin-top:2px;font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;color:var(--fg-orange, #ff8a3d);font-variant-numeric:tabular-nums}',
+      '.au-cel-m{margin:14px 0 20px;font-size:14px;color:var(--tx-2, #c7cbe0)}',
+      '.au-cel-ok{width:100%;height:46px;border:0;border-radius:13px;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer;background:linear-gradient(135deg,#ff6b06,#f9182f 55%,#ff0552)}.au-cel-ok:hover{filter:brightness(1.08)}',
+      '.au-cel-x:focus-visible,.au-cel-ok:focus-visible{outline:2px solid #ff6b06;outline-offset:2px}',
+      '.au-cel-more{margin:12px 0 0;font-size:12px;font-weight:600;color:var(--tx-3, #a5adcf)}.au-cel-more:empty{display:none}',
+      '@media(max-width:480px){.au-cel-card{padding:30px 20px 20px;border-radius:20px}.au-cel-ic{width:66px;height:66px;border-radius:20px;margin-bottom:12px}.au-cel-who{font-size:23px}.au-cel-pts b{font-size:29px}}',
+      '@media (prefers-reduced-motion:reduce){.au-cel,.au-cel-card{transition:none}.au-cel-card{transform:none}.au-cel.on .au-cel-ic,.au-cel.on .au-cel-ic svg{animation:none}}',
       '.au-pop.on{transform:translate(-50%,0);opacity:1}.au-pop b{display:block;color:var(--tx-0, #fff);font-size:14.5px;font-variant-numeric:tabular-nums}.au-pop span{display:block;color:var(--tx-3, #a5adcf);font-size:12px}.au-pop svg{color:var(--fg-orange, #ff8a3d);flex-shrink:0}',
       /* dashboard */
       '.aud{display:flex;flex-direction:column;gap:16px}',
@@ -1021,11 +1027,12 @@
   }
   // ── Global achievement: "🎉 Ali has earned +50 Aura Points!" ─────────────────────────────
   // Driven by the transaction row itself, the only proof of a confirmed award: browsers can't write
-  // to that table and deductions never reach them. Only live inserts pop, so a refresh, first load or
-  // reconnect can't replay one. Cards show one at a time until closed. Several tabs of a browser show
-  // each award once. The bell is separate: saved erp_notifications rows, written by the aura function.
+  // to that table and deductions never reach them. Only live inserts are queued, so a refresh, first
+  // load or reconnect can't replay one. One centered modal at a time; nothing closes it but X,
+  // Awesome! or Esc. Several tabs of a browser show each award once. The bell is separate: saved
+  // erp_notifications rows, written by the aura function.
   var CEL = { q: [], el: null, mem: {}, email: '', rows: [], sig: '' };
-  var CEL_FRESH_MS = 15 * 60000;
+  var CEL_FRESH_MS = 15 * 60000, CONFETTI_MS = 3600;
   var BELL_TYPES = ['aura_celebration', 'aura_award'];
   function celFresh(n) { var t = Date.parse(n.created_at); return !t || Date.now() - t < CEL_FRESH_MS; }
   function celClaim(id) {
@@ -1034,24 +1041,88 @@
   }
   function celebrate(n) {
     if (!n || n.kind !== 'award' || n.status !== 'active' || !(Number(n.points) > 0) || !n.recipient_name || !n.id || CEL.mem[n.id]) return;
+    if (!celFresh(n)) return;   // judged on arrival: an award waiting behind an open modal is never dropped for age
     CEL.mem[n.id] = 1; CEL.q.push(n); celMore(); celNext();
   }
   function celDrop(id) { CEL.q = CEL.q.filter(function (n) { return n.id !== id; }); celMore(); }   // reversed while waiting
-  function celMore() { var m = CEL.el && CEL.el.querySelector('[data-more]'); if (m) m.textContent = CEL.q.length ? ' · ' + CEL.q.length + ' more' : ''; }
+  function celMore() { var m = CEL.el && CEL.el.querySelector('[data-more]'); if (m) m.textContent = CEL.q.length ? CEL.q.length + ' more ' + (CEL.q.length === 1 ? 'celebration' : 'celebrations') + ' next' : ''; }
+  /** Brief burst from the center of the screen. Removes itself; returns a stop function. */
+  function confetti(host) {
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return function () {};
+    var cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+    if (!ctx) return function () {};
+    var w = window.innerWidth, h = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    cv.width = w * dpr; cv.height = h * dpr; cv.setAttribute('aria-hidden', 'true');
+    host.insertBefore(cv, host.firstChild);
+    ctx.scale(dpr, dpr);
+    var COLORS = ['#ff6b06', '#f9182f', '#ff0552', '#fbbf24', '#34d399', '#60a5fa', '#c084fc'];
+    var reach = Math.min(1.25, Math.max(w, h) / 900), bits = [], count = w < 560 ? 70 : 120;
+    for (var i = 0; i < count; i++) {
+      var ang = Math.random() * Math.PI * 2, sp = (260 + Math.random() * 760) * reach;
+      bits.push({ x: w / 2, y: h / 2, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 160, s: 5 + Math.random() * 6, r: Math.random() * 6.3, vr: (Math.random() - .5) * 12,
+        c: COLORS[i % COLORS.length], round: i % 4 === 0, wait: i % 3 === 0 ? 260 : 0 });
+    }
+    var start = 0, last = 0, raf = 0, over = false, guard = 0;
+    function stop() { if (over) return; over = true; cancelAnimationFrame(raf); clearTimeout(guard); cv.remove(); }
+    function frame(now) {
+      if (over) return;
+      if (!start) start = last = now;
+      var t = now - start, dt = Math.min(.05, (now - last) / 1000); last = now;
+      if (t >= CONFETTI_MS) return stop();
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalAlpha = t > CONFETTI_MS - 900 ? (CONFETTI_MS - t) / 900 : 1;
+      bits.forEach(function (b) {
+        if (t < b.wait) return;
+        var drag = Math.pow(.14, dt);
+        b.vx *= drag; b.vy = b.vy * drag + 620 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.r += b.vr * dt;
+        ctx.fillStyle = b.c;
+        if (b.round) { ctx.beginPath(); ctx.arc(b.x, b.y, b.s / 2.4, 0, 6.3); ctx.fill(); return; }
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.scale(1, Math.abs(Math.cos(b.r)) * .8 + .2); ctx.fillRect(-b.s / 2, -b.s / 3, b.s, b.s * .66); ctx.restore();
+      });
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+    guard = setTimeout(stop, CONFETTI_MS + 300);   // a background tab gets no animation frames
+    return stop;
+  }
+  function typingIn(a) { return !!(a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)); }
   function celNext() {
     if (CEL.el || document.hidden) return;
     var n = CEL.q.shift(); if (!n) return;
-    if (!celFresh(n) || !celClaim(n.id)) return celNext();
+    if (!celClaim(n.id)) return celNext();
     css();
     var self = S.me && n.recipient_employee_id === S.me;
-    var el = CEL.el = document.createElement('div'); el.className = 'au-cel'; el.setAttribute('role', 'status');
-    el.innerHTML = '<span class="au-cel-ic" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.4 5.6L20 9.3l-4.3 3.9 1.2 5.8L12 16.1 7.1 19l1.2-5.8L4 9.3l5.6-.7z"/></svg></span>'
-      + '<div class="au-cel-t"><small>🎉 Aura Points Earned!<span data-more></span></small><p><b>' + (self ? 'You' : esc(n.recipient_name)) + '</b> ' + (self ? 'earned' : 'has earned') + ' <em>+' + esc(Number(n.points)) + ' Aura Points</em>!</p><span>Congratulations!</span></div>'
-      + '<button type="button" aria-label="Dismiss">✕</button>';
+    var el = CEL.el = document.createElement('div'); el.className = 'au-cel';
+    el.innerHTML = '<div class="au-cel-card" role="dialog" aria-modal="true" aria-labelledby="au-cel-title" aria-describedby="au-cel-who" tabindex="-1">'
+      + '<button type="button" class="au-cel-x" data-close aria-label="Close">✕</button>'
+      + '<div class="au-cel-ic" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/></svg></div>'
+      + '<p class="au-cel-k" id="au-cel-title">Aura Points Achievement</p><p class="au-cel-h">🎉 Congratulations!</p>'
+      + '<div id="au-cel-who"><p class="au-cel-who">' + (self ? 'You' : esc(n.recipient_name)) + '</p><p class="au-cel-pts">' + 'earned' + ' <b>+' + esc(Number(n.points)) + ' Aura Points!</b></p></div>'
+      + '<p class="au-cel-m">Keep up the amazing work!</p>'
+      + '<button type="button" class="au-cel-ok" data-close>Awesome!</button><p class="au-cel-more" data-more></p></div>';
     document.body.appendChild(el);
     celMore();
+    var card = el.querySelector('.au-cel-card'), before = document.activeElement, stopFx = confetti(el), closing = false;
+    // Someone mid-sentence keeps their cursor: moving focus would fire blur (autosave, validation) on their form.
+    if (!typingIn(before)) { try { card.focus({ preventScroll: true }); } catch (_) {} }
     requestAnimationFrame(function () { el.classList.add('on'); });
-    el.querySelector('button').onclick = function () { el.classList.remove('on'); setTimeout(function () { el.remove(); CEL.el = null; celNext(); }, 280); };
+    function close() {
+      if (closing) return; closing = true;
+      document.removeEventListener('keydown', onKey, true);
+      stopFx(); el.classList.remove('on');
+      if (card.contains(document.activeElement) && before && before.isConnected && before.focus) { try { before.focus({ preventScroll: true }); } catch (_) {} }
+      setTimeout(function () { el.remove(); CEL.el = null; celNext(); }, 260);
+    }
+    function onKey(e) {
+      var inCard = card.contains(document.activeElement);
+      if (e.key === 'Escape' && (inCard || !typingIn(document.activeElement))) { e.preventDefault(); e.stopImmediatePropagation(); close(); return; }
+      if (e.key !== 'Tab') return;
+      var btns = card.querySelectorAll('button'), first = btns[0], last = btns[btns.length - 1];
+      if (!inCard || (e.shiftKey && (document.activeElement === first || document.activeElement === card))) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    document.addEventListener('keydown', onKey, true);
+    Array.prototype.forEach.call(el.querySelectorAll('[data-close]'), function (b) { b.onclick = close; });
   }
   function bellText(s) { return String(s || '').replace(/[<>]/g, ''); }
   async function syncBell() {
