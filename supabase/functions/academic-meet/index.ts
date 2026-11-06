@@ -21,7 +21,7 @@ import { encryptToken, decryptToken, encryptionReady } from "../_shared/google/t
 import { actorForKey, connectionOf, employeeOfTrainer } from "./owners.ts";
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
-  retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom,
+  retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom, linkInvitees,
   enqueue, processQueue, recreateWithTrainer,
 } from "./academicMeetService.ts";
 import { calendarPause } from "./syncGuard.ts";
@@ -200,6 +200,7 @@ async function handle(a: JarvisAuthContext, body: any, key: string, hint: { star
       }
       case "set_trainer_email": return json({ ok: true, ...(await setTrainerEmail(a, key, String(body.email || ""), hint)) });
       case "open_room": return json({ ok: true, ...(await openRoom(a, key, hint)) });
+      case "link_invitees": return json({ ok: true, ...(await linkInvitees(a, key, hint)) });
       case "join": return json({ ok: true, ...(await joinLive(a, key, hint)) });
       case "end": return json({ ok: true, ...(await endClass(a, key, hint)) });
       case "sync_report": return json({ ok: true, ...(await syncMeetReport(a, key, hint)) });

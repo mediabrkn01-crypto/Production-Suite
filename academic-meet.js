@@ -774,14 +774,14 @@
     if (man && hasMeet) {
       var hs = l.cohost_status || 'pending';
       var roleTxt = l.trainer_meet_role === 'OWNER' ? { assigned: 'Organizer / host ✓' } : { assigned: 'Co-Host ✓', unsupported: 'Guest — co-host needs a Google Workspace organizer', missing_email: 'Not set — trainer email missing', failed: 'Not set', pending: 'Pending' }[hs] || 'Pending';
-      var open = l.google_meet_access === 'open';
+      var open = l.google_meet_access === 'open', linked = l.google_meet_access === 'invite';
       html += '<section class="am-hist"><button type="button" class="am-hist-h" data-setup-toggle aria-expanded="' + !!S.setupOpen + '"><b>Meet setup</b><span>' + (hs === 'assigned' ? 'Trainer is co-host' : hs === 'failed' ? 'Needs attention' : open ? 'Open link' : 'Controlled') + '</span><i data-lucide="chevron-' + (S.setupOpen ? 'up' : 'down') + '"></i></button>';
       if (S.setupOpen) {
         html += '<div class="am-setup-grid">'
           + '<div><small>Organizer</small><b class="' + (trainerOwned(l) ? 'is-ok' : '') + '">' + esc(trainerOwned(l) ? o.trainerName + ' (trainer)' : 'Fallback organizer') + '</b><span>' + esc(l.google_organizer_email || l.organizer_email || (S.status && S.status.organizerEmail) || '') + '</span></div>'
           + '<div><small>Trainer</small><b>' + esc(o.trainerName) + '</b><span>' + esc(l.trainer_email || '') + '</span></div>'
           + '<div><small>Trainer Meet role</small><b class="' + (hs === 'assigned' ? 'is-ok' : hs === 'failed' ? 'is-bad' : '') + '">' + esc(roleTxt) + '</b></div>'
-          + '<div><small>Access</small><b>' + (open ? 'Open link' : 'Controlled') + '</b><span>' + (open ? 'Anyone with the link joins' : 'Invited guests join; others ask to join') + '</span></div>'
+          + '<div><small>Access</small><b class="' + (linked ? 'is-ok' : '') + '">' + (open ? 'Open link' : linked ? 'Invitation list' : 'Controlled') + '</b><span>' + (open ? 'Anyone with the link joins' : linked ? 'Invited guests join directly (with the invited Google account); others ask the trainer' : 'Invited guests join; others ask to join') + '</span></div>'
           + '<div><small>Google sync</small><b>' + esc(SYNC_LABEL[syncState(o)] || '—') + '</b></div>'
           + '</div>';
         if (!trainerOwned(l) && !isEnded && !erpEnded && !isLive) {
@@ -789,6 +789,10 @@
           html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="user-cog"></i><div><b>Classes BRK owns this Meet</b><span>' + (tc ? 'Move it to ' + esc(o.trainerName) + '’s own Google account so the trainer hosts and can admit students. A new Meet link is created; the old event is cancelled and Google emails the update.' : esc(o.trainerName) + ' has not connected a Google Meet account yet.') + '</span></div>'
             + (tc ? '<button type="button" class="am-btn am-btn-sm" data-recreate' + (busy ? ' disabled' : '') + '>Recreate using trainer account</button>' : '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-request>Request Google connection</button>') + '</div></div>';
         }
+        // Trainer-hosted Meet made separately from its Calendar event: Google doesn't treat the
+        // event's guests as invited, so they ask to join. Relink = Calendar-made Meet, same event.
+        if (trainerOwned(l) && !linked && !open && !isEnded && !erpEnded && !isLive)
+          html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="user-check"></i><div><b>Invited students may be asked to “request to join”</b><span>This Meet isn’t linked to the class invitation list. Link it so everyone invited joins directly with their invited Google account; anyone else still asks the trainer. The Meet link changes and Google emails the new one.</span></div><button type="button" class="am-btn am-btn-sm" data-link-invitees' + (busy ? ' disabled' : '') + '>Link to invitations</button></div></div>';
         if (hs === 'failed') html += '<div class="am-err"><b>Trainer host access could not be configured.</b> ' + esc(l.cohost_error || '') + '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(key) + '"' + (busy ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Retry</button></div>';
         if (!open && hs !== 'assigned' && !trainerOwned(l) && !isEnded && !erpEnded) html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="door-closed"></i><div><b>Students without an invitation can’t be let in</b><span>Nobody in this call can admit them (the trainer isn’t co-host). Use an open link — the link changes and Google emails the new one.</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-open-room' + (busy ? ' disabled' : '') + '>Use open link</button></div></div>';
       }
@@ -1042,6 +1046,12 @@
         var cf = g('beConfirm');
         (typeof cf === 'function' ? cf({ title: 'Use an open Meet link?', message: 'Anyone with the new link joins directly — no waiting to be admitted.', detail: 'The Meet link changes. Google emails the new link to everyone invited; re-share it on WhatsApp.', confirmLabel: 'Use open link', confirmColor: '#10b981' }) : Promise.resolve(true))
           .then(function (ok) { if (ok) run(key, 'open_room', null, 'Open link ready — Google emailed the new link.'); });
+        return;
+      }
+      if (t.hasAttribute('data-link-invitees')) {
+        var cf2 = g('beConfirm');
+        (typeof cf2 === 'function' ? cf2({ title: 'Link Meet to the invitation list?', message: 'Invited students and the review account join directly with the Google account the invitation was sent to. Anyone else asks the trainer to join.', detail: 'The Meet link changes. Google emails the new link to everyone invited; re-share it on WhatsApp.', confirmLabel: 'Link to invitations', confirmColor: '#10b981' }) : Promise.resolve(true))
+          .then(function (ok) { if (ok) run(key, 'link_invitees', null, 'Meet linked — Google emailed the new link to everyone invited.'); });
         return;
       }
       if (t.hasAttribute('data-tfix-toggle')) { S.tfixOpen = !S.tfixOpen; renderModal(); var ti = m.querySelector('[data-tfix-input]'); if (ti) ti.focus(); return; }

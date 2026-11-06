@@ -133,6 +133,7 @@ export async function resolveClass(key: string, hint: { start?: string } = {}): 
     `${isOne ? "Student" : "Batch"}:\n${who}${!isOne && students.length ? ` (${students.length} students)` : ""}`, "",
     `Class Type:\n${typeLabel}`, "",
     `Time:\n${fmt12(startMin!)} – ${fmt12(endMin!)} (India time)`, "",
+    "Joining: open the Meet while signed in to the Google account this invitation was sent to — you join directly. Another Google account has to ask to join and wait for the trainer.", "",
     "Managed through Broken English ERP.",
   ].join("\n");
 
@@ -224,7 +225,9 @@ function rememberCohost(ok: boolean) {
 }
 
 /** Room access stored separately (tolerates the column not existing yet). */
-function setAccess(key: string, row: any, access: "open" | "trusted") {
+/** open = anyone with the link; trusted = separately-made room; invite = Calendar-made Meet whose
+ *  invitees are the event guests (they join directly, others ask the host). */
+function setAccess(key: string, row: any, access: "open" | "trusted" | "invite") {
   return adminClient().from(T).update({ google_meet_access: access }).eq("occurrence_key", key).select().maybeSingle()
     .then((r) => (r.error ? row : r.data || row), () => row);
 }
@@ -252,6 +255,36 @@ export async function openRoom(a: JarvisAuthContext, key: string, hint: { start?
     await fail(key, e, a.email);
     throw e;
   }
+}
+
+/** Trainer-owned class whose Meet was made separately (Meet API room attached to the event):
+ *  swap it for a Calendar-made Meet on the SAME event, so the event's guests become the meeting's
+ *  invitees and join directly. New link — Google emails every guest the update. Before the class
+ *  starts only; the Academic team or the class trainer. Access stays invite-based (never OPEN). */
+export async function linkInvitees(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {
+  const info = await resolveClass(key, hint);
+  if (!canManage(a) && !canRun(a, info.trainerId)) throw new MeetError(403, "FORBIDDEN", "Only the Academic team or this class's trainer can change the Meet.");
+  const row = await getRow(key);
+  if (!row?.google_calendar_event_id || row.class_status === "cancelled") throw new MeetError(409, "NO_MEET", "This class has no active Meet.");
+  if (row.google_organizer_kind !== "trainer") throw new MeetError(409, "NOT_TRAINER_HOSTED", "Only a trainer-hosted Meet can be linked to its invitation list.");
+  if (Date.now() >= new Date(istTs(info.date, info.startMin)).getTime()) throw new MeetError(409, "STARTED", "This class has already started — the Meet link can't change now.");
+  return runAs(await actorForRow(row), async () => {
+    const org = await requireOrganizer();
+    await claim(info, a.email);
+    try {
+      const cal = row.google_calendar_id || org.calendarId;
+      const reminders = row.reminder_minutes?.length ? row.reminder_minutes : org.defaultReminders;
+      // Same event, same guests; only the conference changes (Calendar creates it).
+      let ev = await Cal.patchEvent(cal, row.google_calendar_event_id, { ...eventBody(info, reminders), status: "confirmed", conferenceData: newConference() }, true);
+      ev = await settle(cal, ev);
+      const saved = await save(key, { ...(await linkFields({ ...org, calendarId: cal }, ev, info, reminders)), updated_by: a.email });
+      await logEvent(key, "Meet linked to invitation list", saved?.google_meet_url || null, a.email);
+      return { row: await setAccess(key, saved, "invite") };
+    } catch (e) {
+      await fail(key, e, a.email);
+      throw e;
+    }
+  });
 }
 
 // ── Trainer = Google Meet COHOST (organizer account stays the owner) ─────────────────────
@@ -417,7 +450,7 @@ async function linkFields(org: { calendarId: string; organizerEmail: string | nu
   let status = "synced", err: string | null = null, next: string | null = null;
   if (v.trainer === "missing_email") { status = "failed"; err = "The trainer has no email address — add it (HR employee record) and the invitation is sent."; }
   else if (v.trainer === "not_configured") { status = "failed"; err = "No trainer is assigned to this class."; }
-  else if (v.trainer === "failed" || v.review === "failed") { status = "pending"; err = "Google did not confirm every invitation yet. The system will retry automatically."; next = new Date(Date.now() + RETRY.transient(1)).toISOString(); }
+  else if (v.trainer === "failed" || v.review === "failed" || v.students.length) { status = "pending"; err = "Google did not confirm every invitation yet. The system will retry automatically."; next = new Date(Date.now() + RETRY.transient(1)).toISOString(); }
   return {
     ...rowFields(info), google_calendar_id: org.calendarId, google_calendar_event_id: ev.id, google_meet_url: m.url, google_meet_code: m.code,
     google_meet_space_name: space?.name || null, organizer_email: ev.organizer?.email || org.organizerEmail,
@@ -431,17 +464,22 @@ async function linkFields(org: { calendarId: string; organizerEmail: string | nu
 
 /** Is the trainer / review address really an attendee of the event Google returned? */
 function verifyAttendees(info: ClassInfo, ev: any) {
-  const got = new Set((ev?.attendees || []).map((x: any) => String(x.email || "").trim().toLowerCase()));
+  const got = new Set<string>((ev?.attendees || []).map((x: any) => String(x.email || "").trim().toLowerCase()));
   const t = info.trainer?.email || null;
   // Trainer-owned: Google must report the trainer's own account as the ORGANIZER.
   if (trainerOwns()) {
     const own = String(currentActor().email || "").toLowerCase(), org = String(ev?.organizer?.email || "").toLowerCase();
-    return { trainer: org && org === own ? "ok" : "failed", review: !info.reviewEmail ? "not_configured" : got.has(info.reviewEmail) ? "ok" : "failed" };
+    return { trainer: org && org === own ? "ok" : "failed", review: !info.reviewEmail ? "not_configured" : got.has(info.reviewEmail) ? "ok" : "failed", students: studentsMissing(info, got) };
   }
   return {
     trainer: !info.trainer ? "not_configured" : !t ? "missing_email" : got.has(t) ? "ok" : "failed",
     review: !info.reviewEmail ? "not_configured" : got.has(info.reviewEmail) ? "ok" : "failed",
+    students: studentsMissing(info, got),
   };
+}
+/** Student emails the ERP invited that Google's event does NOT list as guests. */
+function studentsMissing(info: ClassInfo, got: Set<string>) {
+  return info.students.filter((p) => p.email && !got.has(p.email.toLowerCase())).map((p) => p.email as string);
 }
 
 const newConference = () => ({ createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: "hangoutsMeet" } } });
@@ -493,6 +531,12 @@ async function createAsOwner(a: JarvisAuthContext, key: string, info: ClassInfo,
     // Gmail) — otherwise uninvited students would wait with nobody able to admit them.
     // Trainer-owned: TRUSTED room — invited guests join directly, anyone else asks to join and the
     // trainer (the owner) admits them. Never an open room. Fallback keeps the earlier policy.
+    // Trainer-owned: the Meet is created BY CALENDAR for the event (createRequest). Only then does
+    // Google treat the event's guests as the meeting's invitees, so invited students / review join
+    // directly and anyone else asks the trainer (host) to join. A room made separately with the
+    // Meet API and attached to the event is not linked to the guest list — invited guests had to
+    // ask to join too. Fallback organizer (no host in the call) keeps its earlier room policy.
+    const calendarMade = trainerOwns();
     const access = trainerOwns() ? "TRUSTED" : (await cohostSupported()) ? "TRUSTED" : "OPEN";
     // One Meet room per class: a room made by an earlier attempt that never reached Calendar
     // (e.g. Google limited the event) is reused — retries never create another room. Only a room
@@ -500,13 +544,13 @@ async function createAsOwner(a: JarvisAuthContext, key: string, info: ClassInfo,
     const sameOwner = (existing?.google_organizer_kind || "fallback") === (trainerOwns() ? "trainer" : "fallback")
       && (!trainerOwns() || existing?.google_organizer_employee_id === currentActor().employeeId);
     let space: { name: string; meetingUri: string; meetingCode: string } | null =
-      sameOwner && !existing?.google_calendar_event_id && existing?.google_meet_space_name && existing?.google_meet_code
+      !calendarMade && sameOwner && !existing?.google_calendar_event_id && existing?.google_meet_space_name && existing?.google_meet_code
         ? { name: existing.google_meet_space_name, meetingUri: "https://meet.google.com/" + existing.google_meet_code, meetingCode: existing.google_meet_code } : null;
     // Mark the owner early (so a retry reuses this room) — only while the class has no event yet;
     // a class being MOVED keeps its current owner until the new event exists.
     if (trainerOwns()) await adminClient().from(T).update({ google_organizer_kind: "trainer", google_organizer_employee_id: currentActor().employeeId, google_organizer_email: currentActor().email })
       .eq("occurrence_key", key).is("google_calendar_event_id", null).then(() => {}, () => {});
-    if (!space) {
+    if (!space && !calendarMade) {
       space = await createSpace(access).catch(() => null);
       if (space) await save(key, { google_meet_space_name: space.name, google_meet_code: space.meetingCode }).catch(() => {});
     }
@@ -515,6 +559,7 @@ async function createAsOwner(a: JarvisAuthContext, key: string, info: ClassInfo,
       ev = await Cal.insertEvent(org.calendarId, { ...body, id, conferenceData: conference });
     } catch (e) {
       if (!(e instanceof GoogleApiError) || e.status !== 409) throw e;
+      // (adopting below keeps the event's existing Meet — never a second room)
       // The event already exists (an earlier attempt reached Google): adopt it — never a second one.
       // Only an event this account ORGANIZES is adopted; an invitation copy of someone else's
       // event (same id in this calendar) is never taken over.
@@ -529,7 +574,7 @@ async function createAsOwner(a: JarvisAuthContext, key: string, info: ClassInfo,
     if (trainerOwns() && !ev?.organizer?.self && String(ev?.organizer?.email || "").toLowerCase() !== String(currentActor().email || "").toLowerCase())
       throw new MeetError(502, "NOT_ORGANIZER", `Google reports ${ev?.organizer?.email || "another account"} as organizer, not ${currentActor().email} — not marked as the trainer's meeting.`);
     const row0 = await save(key, { ...(await linkFields(org, ev, info, reminders)), ...ownerFields(ev), class_status: "scheduled", created_by: existing?.created_by || a.email, updated_by: a.email });
-    const row = await setAccess(key, row0, space && Cal.meetFromEvent(ev).code === space.meetingCode && access === "OPEN" ? "open" : "trusted");
+    const row = await setAccess(key, row0, calendarMade ? "invite" : space && Cal.meetFromEvent(ev).code === space.meetingCode && access === "OPEN" ? "open" : "trusted");
     await logEvent(key, "Meet created", (row?.google_meet_url || "") + " · organizer " + (row?.google_organizer_email || "?") + (trainerOwns() ? " (trainer)" : " (fallback organizer)"), a.email);
     await inviteEvents(key, row, a.email, false);
     const withHost = await assignCohost(info, row, a.email);
@@ -1058,6 +1103,24 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
       const ran = await asOwner(row, () => updateClassMeeting(a, row.occurrence_key, hintOf(row), "retry"))
         .catch(async () => { await save(row.occurrence_key, { last_verified_at: new Date().toISOString() }).catch(() => {}); return true; });   // don't re-pick it every run
       if (ran) { verified++; await sleep(1200); }
+    }
+    // 2b) guest-list drift: a student added to / removed from the batch (or an email fixed) since
+    //     the event was synced → the SAME event is updated (Google emails only the changed guests'
+    //     invitations). Compared against the ERP's own last-synced list first, so an unchanged
+    //     class costs no Google call. Next 3 days, a few per run.
+    const soon = addDay(addDay(addDay(today(), 1), 1), 1);
+    const { data: up } = await sb.from(T).select("*").eq("google_sync_status", "synced").eq("class_status", "scheduled").not("google_calendar_event_id", "is", null)
+      .neq("live_status", "ended").gte("class_date", today()).lte("class_date", soon).order("class_date").order("start_time").limit(40);
+    let drift = 0;
+    for (const row of up || []) {
+      if (Date.now() - t0 > budgetMs || drift >= 6) break;
+      const info = await runAs(await actorForRow(row), () => resolveClass(row.occurrence_key, hintOf(row))).catch(() => null);
+      if (!info) continue;
+      const want = await runAs(await actorForRow(row), async () => attendeesOf(info).invited.map((x: any) => String(x.email || "").toLowerCase()).filter(Boolean).sort().join(","));
+      const have = (row.invited || []).map((x: any) => String(x.email || "").toLowerCase()).filter(Boolean).sort().join(",");
+      if (want === have) continue;
+      const ran = await asOwner(row, () => updateClassMeeting(a, row.occurrence_key, hintOf(row), "retry")).catch(() => true);
+      if (ran) { drift++; verified++; await sleep(1200); }
     }
     // 3) classes still organized by Classes BRK whose trainer has connected → moved to the trainer
     //    (next 7 days, before the class starts; a few per run so neither account is flooded).
