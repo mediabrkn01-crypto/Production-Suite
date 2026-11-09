@@ -502,8 +502,8 @@ html ::-webkit-scrollbar-thumb:hover { background: var(--lg-scroll-hover); backg
 
 /* ── 5. Phones, fallbacks, accessibility ───────────────────────────────────── */
 @media (max-width: 767px) {
-  /* lighter blur on phone GPUs — the glass stays visible, just cheaper */
-  :root { --lg-blur-panel: 12px; --lg-blur-chrome: 16px; --lg-blur-pop: 20px; --lg-blur-dialog: 24px; }
+  /* phones: lighter blur — many stacked blurred panels are the main scroll-jank cost on iOS/Android GPUs */
+  :root { --lg-blur-panel: 8px; --lg-blur-chrome: 14px; --lg-blur-pop: 16px; --lg-blur-dialog: 20px; }
 }
 
 /* ── Custom background image (be-background.js adds html.be-bg-image): a photo behind the glass
@@ -517,6 +517,12 @@ html.be-bg-image {
 html[data-theme="light"].be-bg-image {
   --lg-chrome: rgba(255, 255, 255, .86);  --lg-panel: rgba(255, 255, 255, .84);  --lg-nested: rgba(255, 255, 255, .72);
   --lg-pop: rgba(255, 255, 255, .95);     --lg-dialog: rgba(255, 255, 255, .95); --lg-field: rgba(255, 255, 255, .9);
+}
+
+/* phones with a photo background: keep the denser tint, but the lighter blur too (the rule above
+   would otherwise put the 22px/26px desktop blur back on every panel) */
+@media (max-width: 767px) {
+  html.be-bg-image { --lg-blur-panel: 10px; --lg-blur-chrome: 16px; }
 }
 
 /* ── Sticky header / footer bars inside dialogs and panels: content scrolls underneath them, so
@@ -556,4 +562,117 @@ html[data-theme="light"] { --lg-sticky: rgba(255, 255, 255, .96); }
     transition: none !important;
     transform: none !important;
   }
+}
+
+/* ── 6. Typography + card hierarchy (all portals) ────────────────────────────
+   Pairing: Newsreader (display serif, optical sizes) for page and section titles only;
+   Inter for everything people read, scan or click: body, labels, buttons, tables, numbers.
+   Serif titles get font-size-adjust so a title takes the same room the old sans one did and
+   no layout moves. `:not(#be-type)` lifts these rules above Tailwind utilities (.font-bold,
+   .text-2xl), which the CDN injects after this file; inline styles still win.
+   Reusable for new markup: .be-display .be-section-title .be-card-title .be-eyebrow .be-meta
+   .be-value .be-ic (icon tile) .be-bullets. ── */
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --t-page: clamp(25px, 0.9vw + 18px, 33px);
+  --t-section: 20px;  --t-card: 15px;  --t-body: 14px;  --t-meta: 12.5px;  --t-label: 10.5px;
+  --lh-display: 1.14;  --lh-snug: 1.3;  --lh-body: 1.55;
+  --tr-display: -0.014em;  --tr-tight: -0.011em;  --tr-label: .12em;
+  --c-eyebrow: var(--fg-orange, #ff9a52);
+  --c-label: var(--tx-5, #8b93b8);
+  --ic-tile: linear-gradient(145deg, #ff8a3d, #e8551c);
+  --ic-tile-rim: inset 0 1px 0 rgba(255, 255, 255, .35), 0 6px 16px -6px rgba(232, 85, 28, .55);
+}
+/* light: a faint warm cast on hairlines and shadows instead of neutral grey (canvas stays white) */
+html[data-theme="light"] {
+  --lg-border: rgba(94, 62, 30, .11);
+  --lg-border-strong: rgba(94, 62, 30, .19);
+  --lg-shadow-1: 0 1px 2px rgba(74, 44, 16, .04), 0 10px 26px -8px rgba(74, 44, 16, .10);
+  --lg-shadow-2: 0 2px 4px rgba(74, 44, 16, .05), 0 18px 40px -10px rgba(74, 44, 16, .15);
+  --c-label: #776a5f;
+}
+
+html body:not(#be-type) {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11";   /* Inter: single-storey a — softer, closer to the reference */
+}
+html body :is(button, input, select, textarea, table, .lg-btn, .lg-seg):not(#be-type) { font-family: var(--font-sans); }
+
+/* Page titles */
+html body :is(h1, .be-display):not(#be-type) {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-size: var(--t-page);
+  font-weight: 500;
+  line-height: var(--lh-display);
+  letter-spacing: var(--tr-display);
+  color: var(--tx-0, #fff);
+  text-wrap: balance;
+}
+/* Section titles: serif, but keep each component's size (font-size-adjust keeps the footprint) */
+html body :is(h2, .be-section-title, .acadx-section h2):not(#be-type) {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-size-adjust: .53;
+  font-weight: 500;
+  letter-spacing: var(--tr-tight);
+  line-height: var(--lh-snug);
+}
+/* Card titles: sans, medium-bold rather than heavy */
+html body :is(h3, h4, .be-card-title, .acadx-dash-card h3, .acadx-modal h3, .modal h3, .mgr-drill-h h3, .rawsum):not(.uppercase):not(#be-type) {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: var(--tr-tight);
+  line-height: var(--lh-snug);
+}
+/* Dialog headings read as titles */
+html body :is(.lg-dialog, .modal, .hr-modal, .acadx-modal, .au-dlg) :is(h2, h3):first-of-type:not(.uppercase):not(#be-type) {
+  font-family: var(--font-display); font-size-adjust: .53; font-weight: 500;
+}
+/* Eyebrows / small caps labels ("TOP ROLE", "COMPENSATION") */
+html body :is(h3.uppercase, h4.uppercase, .nav-section-title, .be-eyebrow):not(#be-type) {
+  font-family: var(--font-sans);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: var(--tr-label);
+  line-height: 1.4;
+}
+html body .be-eyebrow:not(#be-type) { color: var(--c-eyebrow); display: inline-flex; align-items: center; gap: 7px; }
+html body .be-eyebrow::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .85; }
+html body :is(.uppercase.tracking-wider, .uppercase.tracking-widest, .uppercase[class*="tracking-"]):not(h1):not(h2):not(#be-type) { font-weight: 600; letter-spacing: .1em; }
+/* Nothing in the ERP needs black/extra-bold weight; headline numbers keep 700 */
+html body :is(.font-black, .font-extrabold):not(#be-type) { font-weight: 700; }
+html body :is(h1, h2).font-bold:not(#be-type) { font-weight: 500; }
+
+/* Metadata + values */
+html body .be-meta:not(#be-type) { font-size: var(--t-meta); color: var(--c-label); line-height: 1.45; }
+html body :is(.be-value, .val, .ab-stat-n, .ub-stat-n, .acad-stat-card .val, .num, .cmdc .cv, .ws .cv, .bval):not(#be-type) {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+html body :is(.num, .cmdc .cv, .ws .cv, .bval):not(#be-type) { font-weight: 600; }
+/* Manager deck labels: same label voice as the rest of the ERP */
+html body :is(.eb, .cmdc .cl, .cmdc .ct, .ws .cl, .tag, .ph .tg, .navsep, .li .dl, .mgr-drill th):not(#be-type) { font-family: var(--font-sans); letter-spacing: .08em; }
+html body :is(.tb h1, .ph h2):not(#be-type) { font-family: var(--font-display); text-transform: none; }
+
+/* Cards: one radius and comfortable minimum padding for the main panels */
+html body :is(.glass-card, .dash-card, .rpx-card, .wf-card, .lb-card, .ubf-card, .sd-card, .hfm-card, .ab-card):not(#be-type) { border-radius: var(--r-lg); }
+html body .glass-card:not([class*="p-"]):not([style*="padding"]):not(#be-type) { padding: 20px; }
+/* Card header row: title left, actions right, quiet divider */
+html body :is(.lg-panel, .glass-card) > :is(h2, h3):first-child:not(.uppercase):not(#be-type) { margin-bottom: 12px; }
+
+/* Reusable pieces from the reference: icon tile, bullet list */
+.be-ic { width: 40px; height: 40px; border-radius: 50%; display: inline-grid; place-items: center; flex-shrink: 0; color: #fff; background: var(--ic-tile); box-shadow: var(--ic-tile-rim); }
+.be-ic svg { width: 18px; height: 18px; }
+.be-bullets { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.be-bullets li { position: relative; padding-left: 16px; font-size: var(--t-body); line-height: var(--lh-body); color: var(--tx-2, #c7cbe0); }
+.be-bullets li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 5px; height: 5px; border-radius: 50%; background: var(--be-accent, #ff6b06); }
+
+@media (max-width: 640px) {
+  :root { --t-page: 25px; }
+  html body .glass-card:not([class*="p-"]):not([style*="padding"]):not(#be-type) { padding: 16px; }
 }
