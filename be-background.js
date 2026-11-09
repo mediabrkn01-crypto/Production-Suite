@@ -26,11 +26,11 @@
   var TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
   var FITS = [['cover', 'Cover', 'Fills the screen, may crop edges'], ['contain', 'Contain', 'Whole image, plain colour around it'], ['auto', 'Actual size', 'Original pixels, no scaling'], ['tile', 'Tile', 'Repeats the image']];
   var POS = ['top left', 'top', 'top right', 'left', 'center', 'right', 'bottom left', 'bottom', 'bottom right'];
-  var PURE = { black: '#000000', white: '#FFFFFF', soft: '#EEF1F5' };   // soft: light default, lets cards float
+  var PURE = { black: '#000000', white: '#FFFFFF' };
   var CACHE = 'be_bg_cache:';
 
   // ── preferences ───────────────────────────────────────────────────────────
-  function defPref(theme) { return { mode: theme === 'light' ? 'soft' : 'black', fit: 'cover', pos: 'center', blur: 0, overlay: 25 }; }
+  function defPref(theme) { return { mode: theme === 'light' ? 'white' : 'black', fit: 'cover', pos: 'center', blur: 0, overlay: 25 }; }
   function defBg() { return { same: false, dark: defPref('dark'), light: defPref('light') }; }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function norm(bg) {
@@ -156,7 +156,7 @@
   // ════════════════════════════════════════════════════════════════════════
   var SHEET_CSS = [
     '.bbs-scrim{position:fixed;inset:0;z-index:9400;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.5)}',
-    '.bbs{width:min(980px,100%);max-height:calc(var(--be-vh,100vh) - 32px);display:flex;flex-direction:column;border-radius:20px;overflow:hidden;color:var(--tx-1,#e6e9f5);font:500 13px/1.45 Inter,system-ui,sans-serif;border:1px solid var(--lg-border,rgba(255,255,255,.11));background:var(--lg-dialog,rgba(4,4,4,.86));backdrop-filter:blur(34px) saturate(140%);-webkit-backdrop-filter:blur(34px) saturate(140%);box-shadow:var(--lg-shadow-3,0 32px 80px rgba(0,0,0,.75)),var(--lg-rim-strong,inset 0 1px 0 rgba(255,255,255,.2))}',
+    '.bbs{width:min(980px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border-radius:20px;overflow:hidden;color:var(--tx-1,#e6e9f5);font:500 13px/1.45 Inter,system-ui,sans-serif;border:1px solid var(--lg-border,rgba(255,255,255,.11));background:var(--lg-dialog,rgba(4,4,4,.86));backdrop-filter:blur(34px) saturate(140%);-webkit-backdrop-filter:blur(34px) saturate(140%);box-shadow:var(--lg-shadow-3,0 32px 80px rgba(0,0,0,.75)),var(--lg-rim-strong,inset 0 1px 0 rgba(255,255,255,.2))}',
     '.bbs-h{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--lg-border,rgba(255,255,255,.1))}',
     '.bbs-h h2{margin:0;font-size:17px;font-weight:800;color:var(--tx-0,#fff)}.bbs-crumb{font-size:12px;color:var(--tx-5,#808a9d)}',
     '.bbs-x{margin-left:auto;width:34px;height:34px;border-radius:10px;border:1px solid var(--lg-border,rgba(255,255,255,.11));background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}',
@@ -172,7 +172,7 @@
     '.bbs-seg button{border:0;background:transparent;color:var(--tx-4,#8b93b8);font:700 12.5px Inter,system-ui,sans-serif;padding:7px 13px;border-radius:9px;cursor:pointer}',
     '.bbs-seg button.on{background:var(--lg-pill,rgba(255,255,255,.12));color:var(--tx-0,#fff);box-shadow:var(--lg-ctl-rim,none)}',
     '.bbs-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:18px;align-items:start}',
-    '.bbs-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px}',
+    '.bbs-opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
     '.bbs-opt{position:relative;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;border:1.5px solid var(--lg-border,rgba(255,255,255,.12));background:var(--lg-ctl,rgba(255,255,255,.035));color:inherit;cursor:pointer;text-align:left;font:inherit}',
     '.bbs-opt.on{border-color:#ff6b06;box-shadow:0 0 0 3px rgba(255,107,6,.18)}',
     '.bbs-opt i{display:block;height:46px;border-radius:9px;border:1px solid rgba(128,128,128,.35);background-size:cover;background-position:center}',
@@ -262,22 +262,21 @@
     if (!sheet) return;
     var main = sheet.querySelector('[data-main]'), p = pv(), t = E.draft.same ? theme() : E.target;
     var img = p.mode === 'image' && p.path ? urlFor(p.path) : '';
-    var mismatch = (t === 'light' && p.mode === 'black') || (t === 'dark' && (p.mode === 'white' || p.mode === 'soft'));
+    var mismatch = (t === 'light' && p.mode === 'black') || (t === 'dark' && p.mode === 'white');
     main.innerHTML =
       '<section class="bbs-sec"><h3>Appearance</h3><p>Only you see these settings — they follow your account to every portal and device.</p>'
       + '<div class="bbs-lbl">Theme</div><div class="bbs-seg" role="group" aria-label="Theme"><button type="button" data-theme-set="light" class="' + (theme() === 'light' ? 'on' : '') + '" aria-pressed="' + (theme() === 'light') + '">Light mode</button><button type="button" data-theme-set="dark" class="' + (theme() === 'dark' ? 'on' : '') + '" aria-pressed="' + (theme() === 'dark') + '">Dark mode</button></div></section>'
-      + '<section class="bbs-sec"><h3>Background Customization</h3><p>Shown behind the Liquid Glass interface. Soft Grey (light) and Pure Black (dark) are the defaults.</p>'
+      + '<section class="bbs-sec"><h3>Background Customization</h3><p>Shown behind the Liquid Glass interface. Pure Black and Pure White are the defaults.</p>'
       + '<div class="bbs-row" style="margin-bottom:12px">'
         + (E.draft.same ? '' : '<div class="bbs-seg" role="tablist" aria-label="Edit background for"><button type="button" role="tab" data-tgt="dark" aria-selected="' + (E.target === 'dark') + '" class="' + (E.target === 'dark' ? 'on' : '') + '">For Dark mode</button><button type="button" role="tab" data-tgt="light" aria-selected="' + (E.target === 'light') + '" class="' + (E.target === 'light' ? 'on' : '') + '">For Light mode</button></div>')
         + '<label class="bbs-chk"><input type="checkbox" data-same' + (E.draft.same ? ' checked' : '') + '> Use the same background in both themes</label></div>'
       + '<div class="bbs-grid"><div style="display:flex;flex-direction:column;gap:14px">'
         + '<div class="bbs-opts" role="radiogroup" aria-label="Background">'
           + opt('black', 'Pure Black', '#000000', 'background:#000000')
-          + opt('soft', 'Soft Grey', '#EEF1F5', 'background:#EEF1F5')
           + opt('white', 'Pure White', '#FFFFFF', 'background:#FFFFFF')
           + opt('image', 'Custom image', img ? 'Your image' : 'Upload JPG, PNG, WebP', img ? 'background-image:url(&quot;' + esc(img) + '&quot;)' : 'background:repeating-linear-gradient(45deg,rgba(128,128,128,.25) 0 6px,transparent 6px 12px)')
         + '</div>'
-        + (mismatch ? '<div class="bbs-warn">Page headings sit directly on the background — ' + (t === 'light' ? 'Soft Grey or Pure White' : 'Pure Black') + ' reads best in ' + (t === 'light' ? 'Light' : 'Dark') + ' mode.</div>' : '')
+        + (mismatch ? '<div class="bbs-warn">Page headings sit directly on the background — ' + (t === 'light' ? 'Pure White' : 'Pure Black') + ' reads best in ' + (t === 'light' ? 'Light' : 'Dark') + ' mode.</div>' : '')
         + (p.mode === 'image' ? imagePanel(p, img) : '')
         + (S.setup ? '' : '<div class="bbs-warn">Image backgrounds need a one-time database update by the administrator (20261112). Pure Black / Pure White work now.</div>')
       + '</div>'
@@ -285,7 +284,7 @@
         + '<div class="bbs-pv" data-t="' + t + '"><div class="bbg-img" data-scale=".35"></div><div class="bbg-ov"></div>'
         + '<div class="pv-ui"><div class="pv-g"><span class="pv-t"></span><span class="pv-t s"></span><span class="pv-t s"></span><span class="pv-t s"></span></div>'
         + '<div class="pv-r"><div class="pv-g" style="height:16%"><span class="pv-t s"></span></div><div class="pv-cards"><div class="pv-g"><span class="pv-t"></span></div><div class="pv-g"><span class="pv-t"></span></div><div class="pv-g"><span class="pv-t"></span></div></div><div class="pv-g" style="height:34%"><span class="pv-t"></span><span class="pv-t s"></span></div></div></div>'
-        + '<span class="pv-cap">' + (p.mode === 'image' ? (img ? 'Custom image' : 'No image yet') : (PURE[p.mode] || '#FFFFFF')) + '</span></div>'
+        + '<span class="pv-cap">' + (p.mode === 'image' ? (img ? 'Custom image' : 'No image yet') : (p.mode === 'black' ? '#000000' : '#FFFFFF')) + '</span></div>'
         + '<div class="bbs-note">Apply shows it on this page now; Save keeps it on every device.</div>'
       + '</div></div></section>';
     var box = main.querySelector('.bbs-pv');
@@ -327,7 +326,7 @@
     if (b.hasAttribute('data-fit')) { setP('fit', b.getAttribute('data-fit')); drawSheet(); return; }
     if (b.hasAttribute('data-pos')) { setP('pos', b.getAttribute('data-pos')); drawSheet(); return; }
     if (k === 'upload') return sheet.querySelector('[data-file]').click();
-    if (k === 'remove') { var p = pv(); p.mode = E.target === 'light' && !E.draft.same ? 'soft' : 'black'; delete p.path; if (E.draft.same) E.draft.light = Object.assign({}, E.draft.dark); E.name = ''; drawSheet(); return; }
+    if (k === 'remove') { var p = pv(); p.mode = E.target === 'light' && !E.draft.same ? 'white' : 'black'; delete p.path; if (E.draft.same) E.draft.light = Object.assign({}, E.draft.dark); E.name = ''; drawSheet(); return; }
     if (k === 'adjreset') { var q = pv(), d = defPref(E.target); q.fit = d.fit; q.pos = d.pos; q.blur = d.blur; q.overlay = d.overlay; if (E.draft.same) E.draft.light = Object.assign({}, E.draft.dark); drawSheet(); return; }
     if (k === 'reset') { if (E.draft.same) { E.draft = defBg(); } else { E.draft[E.target] = defPref(E.target); } E.err = E.warn = ''; E.name = ''; drawSheet(); toast('info', 'Reset to the default — Save to keep it.'); return; }
     if (k === 'cancel') return cancel();
