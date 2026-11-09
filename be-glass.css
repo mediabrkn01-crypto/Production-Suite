@@ -584,14 +584,8 @@ html[data-theme="light"] { --lg-sticky: rgba(255, 255, 255, .96); }
   --ic-tile: linear-gradient(145deg, #ff8a3d, #e8551c);
   --ic-tile-rim: inset 0 1px 0 rgba(255, 255, 255, .35), 0 6px 16px -6px rgba(232, 85, 28, .55);
 }
-/* light: a faint warm cast on hairlines and shadows instead of neutral grey (canvas stays white) */
-html[data-theme="light"] {
-  --lg-border: rgba(94, 62, 30, .11);
-  --lg-border-strong: rgba(94, 62, 30, .19);
-  --lg-shadow-1: 0 1px 2px rgba(74, 44, 16, .04), 0 10px 26px -8px rgba(74, 44, 16, .10);
-  --lg-shadow-2: 0 2px 4px rgba(74, 44, 16, .05), 0 18px 40px -10px rgba(74, 44, 16, .15);
-  --c-label: #776a5f;
-}
+/* light hairlines, shadows and canvas: section 7 (elevation) */
+html[data-theme="light"] { --c-label: #5f6b7d; }
 
 html body:not(#be-type) {
   font-family: var(--font-sans);
@@ -675,4 +669,138 @@ html body :is(.lg-panel, .glass-card) > :is(h2, h3):first-child:not(.uppercase):
 @media (max-width: 640px) {
   :root { --t-page: 25px; }
   html body .glass-card:not([class*="p-"]):not([style*="padding"]):not(#be-type) { padding: 16px; }
+}
+
+
+/* ── 7. Elevation + colour (KPI-dashboard look) ──────────────────────────────
+   Light: a soft grey canvas (be-background.js "Soft Grey", the new light default) so white
+   cards float on layered shadows: a tight contact shadow, a mid shadow and a wide ambient
+   one, plus a white top highlight. Dark keeps its black glass and gains the same colour
+   accents. Colour lives in accents (icon tiles, KPI tints, bars, dots), never in large
+   saturated fills. Tokens:
+     --elev-0..3        nested tile · card at rest · card hover · dialog
+     --p-<hue>          chart / accent palette (pink orange amber green teal blue violet)
+     --p-<hue>-soft     8–12% tints for card washes and chips
+     --st-ok/wait/warn/bad/info (+ -soft)   status meaning, same in every portal
+   Classes: .be-kpi (+ data-tone="pink|orange|…"), .be-chip, .be-dots ── */
+:root {
+  --p-pink: #ec5b84;   --p-orange: #f5893a;  --p-amber: #f4b13e;  --p-green: #2fb985;
+  --p-teal: #22b2c2;   --p-blue: #4b8fe8;    --p-violet: #8a6cf0;
+  --p-pink-soft: rgba(236, 91, 132, .12);   --p-orange-soft: rgba(245, 137, 58, .12);
+  --p-amber-soft: rgba(244, 177, 62, .13);  --p-green-soft: rgba(47, 185, 133, .12);
+  --p-teal-soft: rgba(34, 178, 194, .12);   --p-blue-soft: rgba(75, 143, 232, .12);
+  --p-violet-soft: rgba(138, 108, 240, .12);
+  --st-ok: var(--p-green);  --st-wait: var(--p-blue);  --st-warn: var(--p-amber);  --st-bad: #e5484d;  --st-info: var(--p-teal);
+  --st-ok-soft: var(--p-green-soft);  --st-wait-soft: var(--p-blue-soft);  --st-warn-soft: var(--p-amber-soft);
+  --st-bad-soft: rgba(229, 72, 77, .12);  --st-info-soft: var(--p-teal-soft);
+  --r-card: 20px;  --r-tile: 16px;
+  --sp-card: 20px;  --sp-gap: 16px;
+  /* dark: depth comes from rim light; drop shadows only show over an image background */
+  --elev-0: inset 0 1px 0 rgba(255, 255, 255, .06);
+  --elev-1: inset 0 1px 0 rgba(255, 255, 255, .10), 0 1px 0 rgba(255, 255, 255, .02), 0 18px 40px -18px rgba(0, 0, 0, .9);
+  --elev-2: inset 0 1px 0 rgba(255, 255, 255, .16), 0 24px 52px -20px rgba(0, 0, 0, .95);
+  --elev-3: inset 0 1px 0 rgba(255, 255, 255, .14), 0 40px 90px -24px rgba(0, 0, 0, .9);
+}
+html[data-theme="light"] {
+  --canvas-soft: #eef1f5;
+  --lg-panel: rgba(255, 255, 255, .96);
+  --lg-nested: #ffffff;
+  --lg-border: rgba(15, 23, 42, .06);
+  --lg-border-strong: rgba(15, 23, 42, .11);
+  --lg-sheen: linear-gradient(180deg, rgba(255, 255, 255, .9) 0%, rgba(255, 255, 255, 0) 30%);
+  --elev-0: 0 1px 2px rgba(15, 23, 42, .05), 0 4px 10px -4px rgba(15, 23, 42, .09), inset 0 1px 0 #fff;
+  --elev-1: 0 1px 2px rgba(15, 23, 42, .05), 0 6px 14px -6px rgba(15, 23, 42, .09), 0 22px 40px -22px rgba(15, 23, 42, .20), inset 0 1px 0 #fff;
+  --elev-2: 0 2px 4px rgba(15, 23, 42, .06), 0 12px 24px -10px rgba(15, 23, 42, .14), 0 32px 56px -24px rgba(15, 23, 42, .26), inset 0 1px 0 #fff;
+  --elev-3: 0 4px 8px rgba(15, 23, 42, .06), 0 30px 70px -20px rgba(15, 23, 42, .32);
+  --lg-shadow-1: 0 6px 14px -6px rgba(15, 23, 42, .09), 0 22px 40px -22px rgba(15, 23, 42, .20);
+  --lg-shadow-2: 0 12px 24px -10px rgba(15, 23, 42, .14), 0 32px 56px -24px rgba(15, 23, 42, .26);
+  --lg-rim: inset 0 1px 0 #ffffff;
+  --lg-rim-strong: inset 0 1px 0 #ffffff;
+  --p-pink: #e04877;  --p-orange: #ec7a24;  --p-amber: #e29d1f;  --p-green: #1fa772;
+  --p-teal: #149fb0;  --p-blue: #3a7ddb;    --p-violet: #7656e6;
+}
+
+/* Cards at rest / hover, nested tiles, dialogs */
+html body .lg-panel:not(#be-type) { border-radius: var(--r-card); box-shadow: var(--elev-1); }
+html body .lg-panel:hover:not(#be-type) { box-shadow: var(--elev-2); }
+html body .lg-nested:not(#be-type) { border-radius: var(--r-tile); box-shadow: var(--elev-0); }
+html body .lg-dialog:not(#be-type) { box-shadow: var(--elev-3); }
+html[data-theme="light"] body .lg-panel:not(#be-type) { background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-theme="light"] body .lg-nested:not(#be-type) { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); }
+html[data-theme="light"].be-bg-image body .lg-panel:not(#be-type) { background: rgba(255, 255, 255, .86); -webkit-backdrop-filter: blur(var(--lg-blur-panel)) saturate(var(--lg-sat)); backdrop-filter: blur(var(--lg-blur-panel)) saturate(var(--lg-sat)); }
+@media (hover: hover) {
+  html body :is(.metric-item[data-clickable], .lg-panel.is-link, .stat-card, .at-kpi, .kpi, .be-kpi):hover:not(#be-type) { transform: translateY(-2px); }
+}
+html body :is(.metric-item, .be-kpi, .at-kpi, .kpi, .stat-card):not(#be-type) { transition: transform var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease); }
+
+/* Metric strips (Media, HR, Academic dashboards): one divided bar → separate floating KPI cards,
+   each washed in its own metric colour (--mc comes from the page's data) */
+html body .metric-strip:not(#be-type) {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 14px;
+  background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; overflow: visible; border-radius: 0;
+}
+html body .metric-strip > .metric-item:not(#be-type) {
+  min-width: 0; max-width: none; padding: 16px; gap: 12px;
+  border: 1px solid var(--lg-border) !important; border-radius: var(--r-tile);
+  background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--mc, #ff6b06) 16%, transparent), transparent 58%), var(--lg-panel);
+  box-shadow: var(--elev-1);
+}
+html[data-theme="light"] body .metric-strip > .metric-item:not(#be-type) {
+  background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--mc, #ff6b06) 11%, #fff), #fff 60%);
+}
+html body .metric-strip > .metric-item:hover:not(#be-type) { box-shadow: var(--elev-2); }
+html body .metric-strip .metric-ring:not(#be-type) {
+  border: 0; color: #fff; border-radius: 14px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--mc, #ff6b06) 78%, #fff), var(--mc, #ff6b06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px var(--mc, #ff6b06);
+}
+html body .metric-strip .metric-value:not(#be-type) { font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--tx-0, #fff); }
+html body .metric-strip .metric-label:not(#be-type) { font-weight: 600; letter-spacing: .08em; }
+@media (max-width: 640px) {
+  html body .metric-strip:not(#be-type) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  html body .metric-strip > .metric-item:not(#be-type) { padding: 12px; gap: 10px; }
+  html body .metric-strip .metric-ring:not(#be-type) { border-radius: 11px; }
+}
+
+/* Progress bars: rounded, softly lit; plain report rows cycle the palette like the reference */
+html body .rp-bar:not(#be-type) { height: 9px; background: rgba(var(--ink, 255,255,255), .07); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .08); }
+html body .rp-bar > span:not(#be-type) { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); }
+html body .rp-row:nth-of-type(6n+1) .rp-bar > span:not([style*="background"]):not(#be-type) { background: linear-gradient(90deg, var(--p-pink), color-mix(in srgb, var(--p-pink) 70%, #fff)); }
+html body .rp-row:nth-of-type(6n+2) .rp-bar > span:not([style*="background"]):not(#be-type) { background: linear-gradient(90deg, var(--p-amber), color-mix(in srgb, var(--p-amber) 70%, #fff)); }
+html body .rp-row:nth-of-type(6n+3) .rp-bar > span:not([style*="background"]):not(#be-type) { background: linear-gradient(90deg, var(--p-green), color-mix(in srgb, var(--p-green) 70%, #fff)); }
+html body .rp-row:nth-of-type(6n+4) .rp-bar > span:not([style*="background"]):not(#be-type) { background: linear-gradient(90deg, var(--p-blue), color-mix(in srgb, var(--p-blue) 70%, #fff)); }
+html body .rp-row:nth-of-type(6n+5) .rp-bar > span:not([style*="background"]):not(#be-type) { background: linear-gradient(90deg, var(--p-violet), color-mix(in srgb, var(--p-violet) 70%, #fff)); }
+html body .rp-row:nth-of-type(6n) .rp-bar > span:not([style*="background"]):not(#be-type) { background: linear-gradient(90deg, var(--p-teal), color-mix(in srgb, var(--p-teal) 70%, #fff)); }
+
+/* Status pills: same soft palette everywhere */
+html body .st-ok:not(#be-type) { color: var(--st-ok); background: var(--st-ok-soft); border-color: color-mix(in srgb, var(--st-ok) 30%, transparent); }
+html body .st-warn:not(#be-type) { color: var(--st-warn); background: var(--st-warn-soft); border-color: color-mix(in srgb, var(--st-warn) 32%, transparent); }
+html body .st-bad:not(#be-type) { color: var(--st-bad); background: var(--st-bad-soft); border-color: color-mix(in srgb, var(--st-bad) 30%, transparent); }
+html body .st-info:not(#be-type) { color: var(--st-wait); background: var(--st-wait-soft); border-color: color-mix(in srgb, var(--st-wait) 30%, transparent); }
+html body .st-purple:not(#be-type) { color: var(--p-violet); background: var(--p-violet-soft); border-color: color-mix(in srgb, var(--p-violet) 30%, transparent); }
+html[data-theme="light"] body :is(.st-ok, .st-warn, .st-bad, .st-info, .st-purple):not(#be-type) { color: color-mix(in srgb, currentColor 82%, #000); }
+
+/* Existing KPI tiles that already carry a colour variable get the same wash */
+html body .at-kpi:not(#be-type) { background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--k, #ff6b06) 13%, transparent), transparent 60%), var(--lg-panel); box-shadow: var(--elev-1); border-radius: var(--r-tile); }
+html body .kpi:not(#be-type) { box-shadow: var(--elev-1); border-radius: var(--r-tile); }
+html body .lb-card:not(#be-type) { background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--lc, #64748b) 12%, transparent), transparent 60%), var(--lg-panel); }
+
+/* Page titles: the reference's three colour dots */
+html body main h1:not(.tb h1)::after, html body .be-dots::after {
+  content: ""; display: block; width: 30px; height: 6px; margin-top: 9px;
+  background:
+    radial-gradient(circle, var(--p-pink) 2.6px, transparent 3px) 0 0 / 10px 6px no-repeat,
+    radial-gradient(circle, var(--p-amber) 2.6px, transparent 3px) 10px 0 / 10px 6px no-repeat,
+    radial-gradient(circle, var(--p-teal) 2.6px, transparent 3px) 20px 0 / 10px 6px no-repeat;
+}
+
+/* Reusable: KPI card + chip for new screens */
+.be-kpi { --tone: var(--p-orange); position: relative; padding: 16px; border-radius: var(--r-tile); border: 1px solid var(--lg-border);
+  background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--tone) 14%, transparent), transparent 60%), var(--lg-panel); box-shadow: var(--elev-1); }
+.be-kpi[data-tone="pink"] { --tone: var(--p-pink); } .be-kpi[data-tone="amber"] { --tone: var(--p-amber); } .be-kpi[data-tone="green"] { --tone: var(--p-green); }
+.be-kpi[data-tone="teal"] { --tone: var(--p-teal); } .be-kpi[data-tone="blue"] { --tone: var(--p-blue); } .be-kpi[data-tone="violet"] { --tone: var(--p-violet); }
+.be-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--tone, var(--p-blue)); background: color-mix(in srgb, var(--tone, var(--p-blue)) 12%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  html body :is(.metric-item, .be-kpi, .at-kpi, .kpi, .stat-card, .lg-panel):not(#be-type) { transition: none; transform: none !important; }
 }
