@@ -106,6 +106,29 @@
     el.setAttribute('data-lg', role);
     if (role.indexOf('lg-') === 0) el.classList.add(role);
     if (inline) el.classList.add('lg-inline');
+    depth(el, role);
+  }
+  /* elevation level: a big section panel gets ambient depth only; a card people click lifts on hover */
+  function depth(el, role) {
+    if (role !== 'lg-panel' && role !== 'lg-nested') return;
+    var r = el.getBoundingClientRect();
+    if (role === 'lg-panel' && (r.width >= 900 || (r.width >= 600 && r.height >= 420))) el.classList.add('lg-large');
+    var hot = el.tagName === 'A' || el.tagName === 'BUTTON' || el.hasAttribute('onclick') || el.getAttribute('role') === 'button';
+    if (!hot) { try { hot = getComputedStyle(el).cursor === 'pointer'; } catch (_) {} }
+    if (hot && r.height <= 360) el.classList.add('lg-hover');
+  }
+  /* small boxes — icon containers, mini stat tiles, avatars — get compact depth (colours kept) */
+  function classifyTile(el, cs, r) {
+    if (r.width < 28 || r.height < 28 || r.width > 170 || r.height > 130) return false;
+    if (parseFloat(cs.borderTopLeftRadius) < 8) return false;
+    var bg = rgba(cs.backgroundColor), img = cs.backgroundImage && cs.backgroundImage !== 'none';
+    if (!((bg && bg.a > 0.04) || img || hasBorder(cs))) return false;
+    var icon = !!el.querySelector('svg, i, img');
+    var txt = (el.textContent || '').trim().length;
+    if (!icon && (txt === 0 || r.height < 36)) return false;   // empty decoration / pills
+    tag(el, 'lg-tile');
+    if (img) el.classList.add('lg-tile-img');   // gradient avatars / coloured tiles keep their image
+    return true;
   }
   /* keep a surface's identity: its accent wash rides on top of the glass, its coloured edge stays */
   function keepIdentity(el, cs) {
@@ -136,7 +159,10 @@
     var solid = isSurfaceColour(bg) || gradientIsSurface(cs.backgroundImage);
     var floating = pos === 'fixed' || (pos === 'absolute' && z >= 10);
     if (!solid && floating && !anc && bg && bg.a >= 0.5 && sat(bg) <= 42) solid = true;   // menus / toasts, same reason
-    var tint = !solid && isInkTint(bg) && hasBorder(cs) && parseFloat(cs.borderTopLeftRadius) >= 8;
+    var rad = parseFloat(cs.borderTopLeftRadius);
+    var faint = bg && bg.a > 0 && bg.a < 0.2 && sat(bg) <= 24;   // a neutral wash built for the other theme
+    var outline = (!bg || bg.a === 0) && hasBorder(cs) && rad >= 10 && cs.backgroundImage === 'none';   // bordered box, no fill
+    var tint = !solid && rad >= 8 && ((isInkTint(bg) && (hasBorder(cs) || rad >= 10)) || (faint && rad >= 10) || outline);   // borderless rounded tint boxes are cards too
     if (!solid && !tint) return false;
     if (solid ? (r.width < 120 || r.height < 40) : (r.width < 170 || r.height < 52)) return false;
     keepIdentity(el, cs);
@@ -194,7 +220,7 @@
     if (!r.width || !r.height) return;          // not rendered yet — retried when it appears
     if (el.matches(CHROME)) { el.setAttribute('data-lg', 'lg-chrome'); return; }
     var k = known(el);
-    if (k) { el.setAttribute('data-lg', k === 'lg-panel' && surfaceAncestor(el) ? 'lg-nested' : k); return; }
+    if (k) { var kr = k === 'lg-panel' && surfaceAncestor(el) ? 'lg-nested' : k; el.setAttribute('data-lg', kr); if (kr !== 'lg-scrim') el.classList.add(kr); depth(el, kr); return; }
     var cs = getComputedStyle(el), done = false;
     if (cs.display === 'none' || cs.visibility === 'hidden') return;
     var isBtn = el.tagName === 'BUTTON' || el.getAttribute('role') === 'button' || el.getAttribute('role') === 'tab' ||
@@ -202,7 +228,7 @@
     // tile-sized buttons (KPI cards, clickable panels) are surfaces, not controls
     if (isBtn && r.width >= 140 && r.height >= 64 && !filled(cs)) done = classifySurface(el, cs, r);
     if (isBtn && !done) done = classifyButton(el, cs, r);
-    else if (SURFACE_TAGS[el.tagName]) done = classifySeg(el, cs, r) || classifySurface(el, cs, r);
+    else if (SURFACE_TAGS[el.tagName] || el.tagName === 'SPAN') done = (el.tagName !== 'SPAN' && (classifySeg(el, cs, r) || classifySurface(el, cs, r))) || classifyTile(el, cs, r);
     if (!done) el.setAttribute('data-lg', '-');
   }
 
