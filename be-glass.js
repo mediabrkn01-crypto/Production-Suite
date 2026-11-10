@@ -31,7 +31,7 @@
   var SKIP_TAGS = { SCRIPT: 1, STYLE: 1, LINK: 1, META: 1, IMG: 1, SVG: 1, PATH: 1, CANVAS: 1, VIDEO: 1, IFRAME: 1, PICTURE: 1, OPTION: 1, TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TD: 1, TH: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, I: 1, svg: 1 };
   var SKIP_ZONE = '.lg-skip, .bst-scene, .be-dark-island, .be-celeb-overlay, .bst, svg, table, .jv-orb, .be-login-visual-side';
   var CHROME = 'aside.be-aside, aside#be-sidebar, .aside, .bes-header, #sales-mobile-appbar, .lg-chrome';
-  var OWN_NAV = '.sidebar-link, .acad-nav-link, .bes-search, .bes-date, .bes-icon, .be-tt, .be-sidebar-toggle, .bes-account, .be-tt *';
+  var OWN_NAV = '.sidebar-link, .acad-nav-link, .be-mnav-item, .be-msheet-item, .bes-search, .bes-date, .bes-icon, .be-tt, .be-sidebar-toggle, .bes-account, .be-tt *';
   var SURF_ROLES = ['lg-panel', 'lg-nested', 'lg-pop', 'lg-dialog'];
   /* families be-glass.css already styles by class (first paint, before this script runs) */
   var KNOWN = [

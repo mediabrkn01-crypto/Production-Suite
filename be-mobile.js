@@ -312,8 +312,10 @@
     build();
   }
 
-  function openSheet() { if (sheetBg) { sheetBg.setAttribute('data-open', ''); if (menuBtn) menuBtn.setAttribute('data-active', ''); syncActive(); } }
-  function closeSheet() { if (sheetBg) sheetBg.removeAttribute('data-open'); if (menuBtn) menuBtn.removeAttribute('data-active'); }
+  // Menu only opens the sheet — it never takes the orange highlight, so exactly one tab (the
+  // section actually showing) is lit at any time. aria-expanded tells screen readers it's open.
+  function openSheet() { if (sheetBg) { sheetBg.setAttribute('data-open', ''); if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true'); syncActive(); } }
+  function closeSheet() { if (sheetBg) sheetBg.removeAttribute('data-open'); if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false'); }
 
   function syncActive() {
     primaries.forEach(function (p) {
