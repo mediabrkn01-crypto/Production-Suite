@@ -61,7 +61,9 @@
     '.bes-account > svg{color:var(--tx-6, #6b74a0);flex-shrink:0}',
     '@media(max-width:1100px){.bes-who{display:none}}',
     '@media(max-width:900px){.bes-date span{display:none}.bes-date{width:40px;padding:0;justify-content:center}}',
-    '@media(max-width:380px){.bes-header.bes-compact .bes-search{flex:0 0 38px;width:38px;padding:0;justify-content:center}.bes-header.bes-compact .bes-search span{display:none}}',
+    /* phones: search becomes one icon button (aria-label="Search" stays) instead of a pill cut to "S…" */
+    '@media(max-width:560px){.bes-header.bes-compact .bes-search{flex:0 0 40px;width:40px;padding:0;justify-content:center}.bes-header.bes-compact .bes-search span{display:none}.bes-header.bes-compact{gap:6px!important}.bes-header.bes-compact .bes-right{gap:6px!important;min-width:0;flex-shrink:1}}',
+    '@media(max-width:340px){.bes-header.bes-compact .bes-date{display:none!important}}',
     '.be-embed .bes-header{display:none!important}',
     /* number fields: no browser up/down spinner (type a value instead) */
     'input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;appearance:none;margin:0}',

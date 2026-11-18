@@ -16,9 +16,22 @@
   var CSS = [
     ':root{--bem-bg:var(--sf-1, #0a0e17);--bem-border:rgba(var(--ink, 255,255,255), 0.09);--bem-text:var(--tx-2, #c7cbe0);--bem-muted:var(--tx-6, #6b7488);--bem-accent:#ff3b6b;}',
     '.be-mnav,.be-msheet-bg{display:none;}',
+    /* Viewport height token: iOS Safari's 100vh = height with the toolbar HIDDEN, so anything sized
+       100vh runs under the bottom toolbar while it is showing. 100dvh tracks the visible area.
+       Every shared file uses var(--be-vh,100vh), so older browsers keep plain 100vh. */
+    ':root{--be-vh:100vh;}@supports (height:100dvh){:root{--be-vh:100dvh;}}',
+    'body.h-screen{height:var(--be-vh,100vh);}',
     '@media (max-width:' + BP + 'px){',
     /* bottom clearance now lives on each page's own scroll container (below), not on <body> too */
     'body{padding-bottom:env(safe-area-inset-bottom,0px)!important;}',
+    /* no sideways page scroll: clip (not hidden) so position:sticky and inner scrollers keep working */
+    'html,body{max-width:100%;overflow-x:clip;}',
+    /* iOS Safari zooms the page when a focused field is under 16px; Android Chrome is unaffected
+       either way. Touch devices only, so desktop type sizes stay as they are. */
+    '@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:max(16px,1em)!important;}}',
+    /* header icon buttons and the bar itself: thumb-sized targets */
+    '.bes-header .bes-icon,.bes-header .bes-account,.bes-header .be-tt{min-width:40px;min-height:40px;}',
+    'body .be-mnav{touch-action:manipulation;}',
     /* FLOATING PILL bottom nav (OLINEX-style): detached from the screen edges, rounded,
        elevated, dark glass. Active item gets an accent pill instead of a flat underline. */
     '.be-mnav{display:flex;position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:150;',
@@ -32,7 +45,7 @@
     '.be-msheet-bg{display:none;position:fixed;inset:0;z-index:180;background:rgba(var(--scrim, 0,0,0), calc(0.6 * var(--scrim-k, 1)));backdrop-filter:blur(3px);}',
     '.be-msheet-bg[data-open]{display:block;}',
     '.be-msheet{position:fixed;left:0;right:0;bottom:0;z-index:181;background:var(--bem-bg);border-top:1px solid var(--bem-border);',
-    'border-radius:16px 16px 0 0;max-height:76vh;overflow-y:auto;padding:8px 10px calc(16px + env(safe-area-inset-bottom,0px));transform:translateY(100%);transition:transform .2s;}',
+    'border-radius:16px 16px 0 0;max-height:76vh;max-height:76dvh;overflow-y:auto;overscroll-behavior:contain;padding:8px 10px calc(16px + env(safe-area-inset-bottom,0px));transform:translateY(100%);transition:transform .2s;}',
     '.be-msheet-bg[data-open] .be-msheet{transform:translateY(0);}',
     '.be-msheet-grab{width:40px;height:4px;border-radius:99px;background:rgba(var(--ink, 255,255,255), 0.2);margin:8px auto 12px;}',
     '.be-msheet-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;',
@@ -153,7 +166,7 @@
   function shortLabel(t) {
     // first meaningful word, so it fits a bottom tab ("My Work Queue" -> "Queue")
     var words = t.split(' ').filter(function (w) { return !/^(my|the|a|all)$/i.test(w); });
-    return (words[0] || t).slice(0, 10);
+    return words[0] || t;   // whole word; the tab's CSS ellipsis trims it if it can't fit
   }
 
   // The ONE canonical nav container to read links from — the page's real desktop sidebar.
@@ -234,8 +247,23 @@
     return out;
   }
 
+  // Inside the Manager Command Center iframe (manager.html loads app/hr/academics/sales with
+  // ?embed=1) the PARENT page already draws the bottom bar. The embed script hides this page's
+  // sidebar with display:none, but appReady() deliberately ignores the sidebar's own display, so
+  // the iframe used to build a second bar that sat on top of the parent's — the two overlapping
+  // bars on phones. Embedded pages keep the responsive CSS above, but never build a bar.
+  function isEmbedded() {
+    try {
+      var p = new URLSearchParams(location.search);
+      if (p.get('embed') === '1') return true;
+      if (p.get('embed') === '0') return false;
+      return window.self !== window.top;
+    } catch (e) { return true; }   // cross-origin parent access throws → we are framed
+  }
+  var EMBEDDED = isEmbedded();
+
   function build() {
-    if (nav) return;
+    if (nav || EMBEDDED) return;
     if (!appReady()) return;   // don't paint the bar over the login screen
     var links = collectLinks();
     if (!links.length) return;
@@ -336,11 +364,11 @@
   // appReady(), so this never paints over the login screen; it just retries cheaply until the
   // authenticated shell is up. Generous cap (~10 min) purely as a safety stop.
   var tries = 0;
-  var iv = setInterval(function () { if (nav || tries++ > 1200) { clearInterval(iv); return; } build(); }, 500);
+  var iv = setInterval(function () { if (nav || EMBEDDED || tries++ > 1200) { clearInterval(iv); return; } build(); }, 500);
   // Instant trigger the moment the app frame is revealed (login success flips
   // #main-application-frame's opacity/pointer-events, or a page toggles #app's display) — so the
   // bar appears right after auth without waiting on the polling interval (which a backgrounded
   // tab can throttle). Disconnects itself once the bar is built.
-  var preObs = new MutationObserver(function () { if (nav) { preObs.disconnect(); return; } build(); });
+  var preObs = new MutationObserver(function () { if (nav || EMBEDDED) { preObs.disconnect(); return; } build(); });
   try { preObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'], subtree: true }); } catch (e) {}
 })();

@@ -18,6 +18,34 @@ export async function employeeOfTrainer(trainerId: string | null): Promise<strin
   return data?.hr_employee_id || null;
 }
 
+export type TrainerProfileState = "linked" | "no_profile" | "not_linked" | "not_trainer";
+export interface TrainerProfile { state: TrainerProfileState; employeeId: string | null; trainerId: string | null }
+
+/** Is the signed-in person an Academic trainer whose profile is linked to THEIR HR record?
+ *    linked       trainers row with hr_employee_id = this employee  → may connect Google Meet
+ *    not_linked   a trainer profile resolved for this sign-in but linked to another / no HR record
+ *    no_profile   an Education trainer/coach in HR with no Academic trainer profile yet
+ *    not_trainer  everyone else
+ *  Never creates or relinks anything — provisioning stays with the HR → Academic sync. */
+export async function trainerProfileOf(a: { employeeId: string; trainerId: string | null; role: string; permissions: string[] }): Promise<TrainerProfile> {
+  if (a.trainerId) {
+    const emp = await employeeOfTrainer(a.trainerId);
+    return emp && emp === a.employeeId
+      ? { state: "linked", employeeId: emp, trainerId: a.trainerId }
+      : { state: "not_linked", employeeId: null, trainerId: a.trainerId };
+  }
+  const { data: e } = await adminClient().from("hr_employees").select("division,department,designation,system_role").eq("id", a.employeeId).maybeSingle();
+  const teaches = !!e && (String(e.system_role || "").toLowerCase() === "trainer"
+    || (e.division === "education" && /coach|trainer/i.test(`${e.department || ""} ${e.designation || ""}`)));
+  return { state: teaches ? "no_profile" : "not_trainer", employeeId: null, trainerId: null };
+}
+
+export const TRAINER_PROFILE_MSG: Record<Exclude<TrainerProfileState, "linked">, { code: string; message: string }> = {
+  no_profile: { code: "TRAINER_PROFILE_MISSING", message: "Your Academic trainer profile hasn't been created yet. Ask the Academic Head to open Academic → Coaches (it syncs trainer profiles from HR), then try again." },
+  not_linked: { code: "TRAINER_PROFILE_NOT_LINKED", message: "Your Academic trainer profile isn't linked to your HR employee record. Ask HR or the Academic Head to fix the link, then try again." },
+  not_trainer: { code: "NOT_TRAINER", message: "Only trainers with an Academic trainer profile can connect a Google Meet account." },
+};
+
 /** Connection summary (no token). */
 export async function connectionOf(employeeId: string | null): Promise<TrainerConn | null> {
   if (!employeeId) return null;

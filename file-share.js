@@ -95,7 +95,7 @@
       '.fs ::-webkit-scrollbar{width:8px;height:8px}.fs ::-webkit-scrollbar-thumb{background:rgba(var(--ink, 255,255,255), 0.14);border-radius:8px}',
       // dialog
       '.fs-ov{position:fixed;inset:0;z-index:9360;display:grid;place-items:center;padding:16px;background:rgba(var(--scrim, 3,5,9), calc(0.62 * var(--scrim-k, 1)));backdrop-filter:blur(3px)}',
-      '.fs-dlg{width:min(560px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;background:linear-gradient(170deg,var(--sf-3, #141a2c),var(--sf-2, #0c0f1c));border:1px solid rgba(var(--ink, 255,255,255), 0.09);border-radius:18px;box-shadow:0 30px 80px -20px rgba(var(--shade, 0,0,0), calc(0.85 * var(--shade-k, 1)));animation:fsIn .16s ease}',
+      '.fs-dlg{width:min(560px,100%);max-height:calc(var(--be-vh,100vh) - 32px);display:flex;flex-direction:column;background:linear-gradient(170deg,var(--sf-3, #141a2c),var(--sf-2, #0c0f1c));border:1px solid rgba(var(--ink, 255,255,255), 0.09);border-radius:18px;box-shadow:0 30px 80px -20px rgba(var(--shade, 0,0,0), calc(0.85 * var(--shade-k, 1)));animation:fsIn .16s ease}',
       '@keyframes fsIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}',
       '.fs-hd{display:flex;align-items:center;gap:10px;padding:16px 18px 12px}.fs-hd h3{margin:0;flex:1;font-size:16px;font-weight:800;color:var(--tx-0, #fff)}',
       '.fs-x{width:32px;height:32px;border-radius:9px;border:1px solid var(--fs-line);background:rgba(var(--ink, 255,255,255), 0.03);color:var(--tx-3, #aab1d1);display:grid;place-items:center;cursor:pointer}.fs-x:hover{color:var(--tx-0, #fff)}',
@@ -137,7 +137,7 @@
       '.fs-btn:hover{background:rgba(var(--ink, 255,255,255), 0.08)}.fs-btn.pri{background:linear-gradient(135deg,#ff6b06,#f9182f);border-color:transparent;color:#fff}.fs-btn.pri:disabled{opacity:.45;cursor:not-allowed}',
       '.fs-btn.sm{height:30px;padding:0 11px;font-size:11.5px;border-radius:8px}',
       // wide two-pane Send dialog
-      '.fs-dlg.wide{width:min(1040px,100%);height:min(720px,calc(100vh - 32px))}',
+      '.fs-dlg.wide{width:min(1040px,100%);height:min(720px,calc(var(--be-vh,100vh) - 32px))}',
       '.fs-split{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,370px) minmax(0,1fr);border-top:1px solid var(--fs-line)}',
       '.fs-side{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;border-right:1px solid var(--fs-line);background:rgba(var(--ink, 255,255,255), 0.012)}',
       '.fs-main{padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}',
@@ -157,7 +157,7 @@
       '.fs-ft{align-items:center}.fs-ftsum{margin-right:auto;font-size:12px;color:var(--fs-mute);min-width:0}.fs-ftsum b{color:var(--tx-1, #e6e9f5);font-weight:700}',
       // panel
       '.fs-sheet{position:fixed;inset:0;z-index:9150;background:rgba(var(--scrim, 3,5,9), calc(0.7 * var(--scrim-k, 1)));backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:22px 16px;overflow:auto}',
-      '.fs-pane{width:min(860px,100%);min-height:min(640px,calc(100vh - 44px));background:var(--fs-bg);border:1px solid rgba(var(--ink, 255,255,255), 0.08);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px -20px rgba(var(--shade, 0,0,0), calc(0.85 * var(--shade-k, 1)))}',
+      '.fs-pane{width:min(860px,100%);min-height:min(640px,calc(var(--be-vh,100vh) - 44px));background:var(--fs-bg);border:1px solid rgba(var(--ink, 255,255,255), 0.08);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px -20px rgba(var(--shade, 0,0,0), calc(0.85 * var(--shade-k, 1)))}',
       '.fs-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.fs-top h2{margin:0;font-size:20px;font-weight:800;color:var(--tx-0, #fff);flex:1}',
       '.fs-tabs{display:flex;gap:4px}.fs-tabs button{height:32px;padding:0 13px;border-radius:999px;border:1px solid transparent;background:none;color:var(--fs-mute);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}',
       '.fs-tabs button.on{color:var(--tx-0, #fff);background:rgba(255,107,6,.16);border-color:rgba(255,107,6,.4)}',
@@ -185,7 +185,7 @@
       ' .fs-split{display:flex;flex-direction:column;overflow-y:auto;padding:14px 16px 6px;gap:16px}.fs-side{display:contents}.fs-main{padding:0;min-height:auto}',
       ' .o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.fs-main .fs-res{max-height:240px;display:block}.fs-ftsum{display:none}',
       ' .fs-seg.full button{font-size:11.5px;padding:0 4px}.fs-ft{padding-bottom:calc(14px + env(safe-area-inset-bottom))}.fs-ft .fs-btn{flex:1}',
-      ' .fs-sheet{padding:0}.fs-pane{border-radius:0;min-height:100vh;padding:14px 14px 24px;border:0}.fs-top h2{font-size:18px}.fs-tabs{order:3;width:100%}.fs-tabs button{flex:1;justify-content:center}',
+      ' .fs-sheet{padding:0}.fs-pane{border-radius:0;min-height:var(--be-vh,100vh);padding:14px 14px 24px;border:0}.fs-top h2{font-size:18px}.fs-tabs{order:3;width:100%}.fs-tabs button{flex:1;justify-content:center}',
       ' .fs-det{padding:0 12px 12px}.fs-fl{flex-wrap:wrap}.fs-fl .fs-fn{flex-basis:calc(100% - 30px)}.fs-fl .fs-a{width:100%}.fs-fl .fs-a .fs-btn{flex:1}',
       ' .fs-note{left:12px;right:12px;bottom:12px;max-width:none}',
       '}'
@@ -439,7 +439,7 @@
   // Boot: nav entry + unread badge + live arrivals (every portal)
   // ════════════════════════════════════════════════════════════════════════
   function addNav() {
-    var links = document.querySelectorAll('#nav-acad-announcements, #nav-announcements, #hrtree-announcements, .sidebar-link[data-tab="announcements"], .sidebar-link[onclick*="\'announcements\'"], [data-sec="announcements"]');
+    var links = document.querySelectorAll('#nav-acad-announcements, #nav-announcements, #hrtree-my-announcements, .sidebar-link[data-tab="announcements"], .sidebar-link[onclick*="\'announcements\'"]:not(#hrtree-announcements), [data-sec="announcements"]');
     Array.prototype.forEach.call(links, function (a) {
       if (a._fsNav) return; a._fsNav = true;
       var b = document.createElement(a.tagName === 'A' ? 'a' : 'button'); if (b.tagName === 'BUTTON') b.type = 'button';

@@ -423,6 +423,14 @@ function beSetSystemAccount(on) {
 }
 window.beIsSystemAccount = beIsSystemAccount; window.beSetSystemAccount = beSetSystemAccount;
 
+// True when a leave request belongs to the logged-in person (matched by portal email, the same
+// identity My Workspace uses). Used to stop HR deciding or re-typing their own leave.
+function hrIsOwnLeaveRequest(req) {
+    if (!req || typeof activeEmail === 'undefined' || !activeEmail) return false;
+    const em = String(activeEmail).trim().toLowerCase();
+    const emp = (hrEmployees || []).find(e => e.id === req.employee_id);
+    return !!(emp && String(emp.portal_email || '').trim().toLowerCase() === em);
+}
 async function loadMyHRData() {
     if (!activeEmail) { myHRDataLoaded = true; return; }
     if (typeof PolicyConfig !== 'undefined' && dbInstance) {
@@ -2749,6 +2757,14 @@ function hrOfficialEventFor(employee, dateStr) {
             opts = opts || {};
             const req = hrLeaveRequests.find(r => r.id === id);
             if (!req) { if (typeof showToast === 'function') showToast('error', 'Could not find that leave request — try reloading.'); return; }
+            // Separation of duties: nobody decides their OWN leave (approve / reject / exception). An HR
+            // officer's personal request waits for another HR officer, the Manager or an admin. The DB
+            // trigger hr_leave_no_self_decision enforces the same rule server-side.
+            if (hrIsOwnLeaveRequest(req)) {
+                const msg = 'This is your own leave request — another HR officer, the Manager or an admin must decide it.';
+                if (typeof showToast === 'function') showToast('error', msg); else alert(msg);
+                return;
+            }
             const actorEmail = (typeof activeEmail !== 'undefined' && activeEmail) || null;
             const actorName = (typeof activeUser !== 'undefined' && activeUser) || 'HR';
             const nowIso = new Date().toISOString();

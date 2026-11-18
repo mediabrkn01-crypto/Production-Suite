@@ -18,7 +18,7 @@ import { resolveAuthContext, JarvisAuthError, adminClient, type JarvisAuthContex
 import { signSession, verifySession } from "../_shared/jarvis/session.ts";
 import { consentUrl, exchangeCode, googleConfig, GoogleApiError, loadOrganizer, runAs, trainerConsentUrl, userInfo, revokeToken, TRAINER_SCOPES } from "../_shared/google/googleAuthService.ts";
 import { encryptToken, decryptToken, encryptionReady } from "../_shared/google/tokenCrypto.ts";
-import { actorForKey, connectionOf, employeeOfTrainer } from "./owners.ts";
+import { actorForKey, connectionOf, trainerProfileOf, TRAINER_PROFILE_MSG } from "./owners.ts";
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
   retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom, linkInvitees,
@@ -88,13 +88,25 @@ async function trainerCallback(url: URL, erpEmail: string): Promise<Response> {
   const tok = (await signSession(erpEmail)).token;
   let a: JarvisAuthContext;
   try { a = await resolveAuthContext(new Request("https://x", { headers: { "x-erp-session": tok } })); } catch { return page("Not allowed", "Your ERP access could not be confirmed.", false); }
-  const employeeId = await employeeOfTrainer(a.trainerId);
-  if (!employeeId) return page("Not a trainer", "Only trainers with an Academic trainer profile linked to their HR record can connect a Google Meet account.", false);
+  const prof = await trainerProfileOf(a);
+  if (prof.state !== "linked") {
+    const m = TRAINER_PROFILE_MSG[prof.state];
+    return page(prof.state === "no_profile" ? "Trainer profile missing" : prof.state === "not_linked" ? "Trainer profile not linked" : "Not a trainer", m.message, false);
+  }
+  const employeeId = prof.employeeId!;
   try {
-    const { refreshToken, accessToken, scope } = await exchangeCode(url.searchParams.get("code") || "");
+    let tok: { refreshToken: string; accessToken: string; scope: string };
+    try { tok = await exchangeCode(url.searchParams.get("code") || ""); }
+    catch (e) {
+      const noRefresh = /refresh token/i.test((e as Error).message || "");
+      return page("Google authorization failed", noRefresh
+        ? "Google didn't return a lasting authorization. Remove Broken English ERP from your Google account's third-party access, then connect again."
+        : "Google didn't confirm the sign-in. Close this tab and press Connect Google account again.", false);
+    }
+    const { refreshToken, accessToken, scope } = tok;
     const who = await userInfo(accessToken);
     const missing = TRAINER_SCOPES.filter((sc) => sc.startsWith("https://") && !scope.includes(sc));
-    if (missing.length) return page("Permission missing", "Google didn't grant every permission Live Classes needs (Calendar events and Meet). Connect again and tick every box.", false);
+    if (missing.length) return page("Calendar permission missing", "Google didn't grant every permission Live Classes needs (Calendar events and Meet). Connect again and tick every box.", false);
     const { error } = await adminClient().from("employee_google_connections").upsert({
       employee_id: employeeId, trainer_id: a.trainerId, google_email: who.email, google_user_id: who.sub,
       refresh_token_encrypted: await encryptToken(refreshToken), scopes: scope, connected_at: new Date().toISOString(), connected_by: a.email,
@@ -103,7 +115,8 @@ async function trainerCallback(url: URL, erpEmail: string): Promise<Response> {
     if (error) throw new Error(error.message);
     return page("Google Meet account connected", `Your classes will be created in ${who.email}'s Google Calendar — you are the host and can admit students. You can close this tab.`, true);
   } catch (e) {
-    return page("Google not connected", (e as Error).message || "Something went wrong.", false);
+    console.error("academic-meet trainer connect", e);
+    return page("Google Meet connection failed", "The connection couldn't be saved. Nothing was changed — try again, or tell the Academic team if it keeps failing.", false);
   }
 }
 
@@ -150,21 +163,24 @@ async function handle(a: JarvisAuthContext, body: any, key: string, hint: { star
       case "recreate_trainer": return json({ ok: true, ...(await recreateWithTrainer(a, key, hint)) });
       // ── Trainer's own Google Meet account ──
       case "my_google": {
-        const emp = await employeeOfTrainer(a.trainerId);
-        const c = await connectionOf(emp);
-        return json({ ok: true, isTrainer: !!emp, connected: c?.status === "connected", email: c?.email || null, status: c?.status || "not_connected", connectedAt: c?.connectedAt || null, serverReady: encryptionReady() && !!googleConfig.clientId });
+        const prof = await trainerProfileOf(a);
+        const c = prof.state === "linked" ? await connectionOf(prof.employeeId) : null;
+        const pm = prof.state === "linked" ? null : TRAINER_PROFILE_MSG[prof.state];
+        return json({ ok: true, isTrainer: prof.state === "linked", profile: prof.state, profileCode: pm?.code || null, profileMessage: pm && prof.state !== "not_trainer" ? pm.message : null,
+          connected: c?.status === "connected", email: c?.email || null, status: c?.status || "not_connected", connectedAt: c?.connectedAt || null, serverReady: encryptionReady() && !!googleConfig.clientId });
       }
       case "trainer_oauth_url": {
-        const emp = await employeeOfTrainer(a.trainerId);
-        if (!emp) return json({ ok: false, code: "NOT_TRAINER", message: "Only trainers with an Academic trainer profile can connect a Google Meet account." }, 403);
+        const prof = await trainerProfileOf(a);
+        if (prof.state !== "linked") return json({ ok: false, ...TRAINER_PROFILE_MSG[prof.state] }, 403);
         if (!googleConfig.clientId || !googleConfig.clientSecret) return json({ ok: false, code: "NOT_CONFIGURED", message: "Google is not set up on the server yet." }, 503);
         if (!encryptionReady()) return json({ ok: false, code: "NO_ENC_KEY", message: "The server can't store Google connections securely yet (GOOGLE_TOKEN_ENC_KEY is missing) — tell the admin." }, 503);
         const state = (await signSession("oauth-trainer:" + a.email)).token;
         return json({ ok: true, url: trainerConsentUrl(state, typeof body.hint === "string" ? body.hint : undefined) });
       }
       case "trainer_disconnect": {
-        const emp = await employeeOfTrainer(a.trainerId);
-        if (!emp) return json({ ok: false, code: "NOT_TRAINER", message: "Not a trainer." }, 403);
+        const prof = await trainerProfileOf(a);
+        if (prof.state !== "linked") return json({ ok: false, ...TRAINER_PROFILE_MSG[prof.state] }, 403);
+        const emp = prof.employeeId!;
         const { data } = await adminClient().from("employee_google_connections").select("refresh_token_encrypted").eq("employee_id", emp).maybeSingle();
         if (data?.refresh_token_encrypted) { try { await revokeToken(await decryptToken(data.refresh_token_encrypted)); } catch { /* still removed below */ } }
         await adminClient().from("employee_google_connections").delete().eq("employee_id", emp);
@@ -175,7 +191,14 @@ async function handle(a: JarvisAuthContext, body: any, key: string, hint: { star
         const { data: trs } = await adminClient().from("trainers").select("id,name,hr_employee_id,status");
         const { data: cs } = await adminClient().from("employee_google_connections").select("employee_id,google_email,connection_status,connected_at").then((r) => r, () => ({ data: [] as any[] }));
         const by = new Map((cs || []).map((c: any) => [c.employee_id, c]));
-        return json({ ok: true, trainers: (trs || []).filter((t: any) => t.status !== "inactive").map((t: any) => {
+        // Active Education trainers/coaches in HR that have NO linked Academic trainer profile —
+        // they can't connect Google Meet until the HR → Academic sync creates/links one.
+        const { data: emps } = await adminClient().from("hr_employees").select("id,full_name,employee_id,division,department,designation,system_role,employment_status");
+        const linkedIds = new Set((trs || []).map((t: any) => t.hr_employee_id).filter(Boolean));
+        const missingProfiles = (emps || []).filter((e: any) => !["exited", "inactive"].includes(String(e.employment_status || "active").toLowerCase())
+          && (String(e.system_role || "").toLowerCase() === "trainer" || (e.division === "education" && /coach|trainer/i.test(`${e.department || ""} ${e.designation || ""}`)))
+          && !linkedIds.has(e.id)).map((e: any) => ({ employeeId: e.id, code: e.employee_id || null, name: e.full_name }));
+        return json({ ok: true, missingProfiles, trainers: (trs || []).filter((t: any) => t.status !== "inactive").map((t: any) => {
           const c: any = t.hr_employee_id ? by.get(t.hr_employee_id) : null;
           return { trainerId: t.id, name: t.name, linked: !!t.hr_employee_id, connected: c?.connection_status === "connected", status: c?.connection_status || "not_connected", email: c?.google_email || null };
         }) });

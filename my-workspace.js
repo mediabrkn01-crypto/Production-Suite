@@ -10,6 +10,7 @@
        getName:   () => '<display name>'            (optional, audit fallback),
        mounts:    { profile, announcements, attendance, leave, documents, payslips, team } -> element ids,
        navigate:  (panel) => void                   (optional, used by Profile quick access)
+       hostReload: false                            (optional; HR portal — don't call loadMyHRData)
      });
      MyWorkspace.open('<panel>');                   // render into that panel's mount
 
@@ -83,7 +84,9 @@
   function email() { return String((cfg.getEmail && cfg.getEmail()) || '').trim().toLowerCase(); }
   function likeExact(v) { return String(v || '').replace(/[\\%_]/g, function (c) { return '\\' + c; }); }
   function policy() { var LP = window.LeavePolicy; if (LP && !LP.db && LP.withClient) LP.withClient(db()); return LP && LP.db ? LP : null; }
-  function refreshHost() { try { if (typeof window.loadMyHRData === 'function') window.loadMyHRData(); } catch (e) {} if (cfg.onChange) try { cfg.onChange(); } catch (e) {} }
+  // hostReload:false — the HR portal also loads common.js, where loadMyHRData() would replace HR's
+  // full employee/leave lists with the self-service subset. HR refreshes through its own BELive hook.
+  function refreshHost() { try { if (cfg.hostReload !== false && typeof window.loadMyHRData === 'function') window.loadMyHRData(); } catch (e) {} if (cfg.onChange) try { cfg.onChange(); } catch (e) {} }
 
   // ------------------------------------------------------------------ data
   async function me(force) {

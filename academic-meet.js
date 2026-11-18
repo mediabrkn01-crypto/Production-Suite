@@ -301,7 +301,7 @@
   async function loadGoogleSelf() {
     try { S.myGoogle = await api('my_google'); } catch (e) { S.myGoogle = null; }
     if (canManage() || isOrg()) {
-      try { var r = await api('trainer_connections'); S.conns = {}; (r.trainers || []).forEach(function (t) { S.conns[String(t.trainerId)] = t; }); } catch (e) {}
+      try { var r = await api('trainer_connections'); S.conns = {}; S.missingProfiles = r.missingProfiles || []; (r.trainers || []).forEach(function (t) { S.conns[String(t.trainerId)] = t; }); } catch (e) {}
     }
   }
   function cancelled(o) { var l = linkOf(o); return !!(l && l.class_status === 'cancelled'); }
@@ -471,7 +471,13 @@
     var st = S.status, html = '', cls = 'am-setup';
     var mg = S.myGoogle;
     var gcard = '';
-    if (mg && mg.isTrainer) {
+    if (mg && !mg.isTrainer && mg.profileMessage) {
+      // Trainer/Coach in HR whose Academic trainer profile is missing or not linked to their
+      // HR record — explain the fix instead of offering a Connect button that can only fail.
+      gcard = '<div class="am-gacc"><i data-lucide="user-x"></i><div><b>' + (mg.profile === 'not_linked' ? 'Trainer profile not linked' : 'Academic trainer profile missing') + '</b><span>' + esc(mg.profileMessage) + '</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-recheck><i data-lucide="refresh-cw"></i>Check again</button></div>';
+    } else if (mg && mg.isTrainer && !mg.connected && mg.status === 'revoked') {
+      gcard = '<div class="am-gacc"><i data-lucide="video-off"></i><div><b>Google Meet access expired</b><span>' + esc(mg.email || 'Your Google account') + ' no longer allows Live Classes to create meetings (access was removed or expired). Reconnect to keep hosting your classes.</span></div><button type="button" class="am-btn am-btn-sm" data-g-connect><i data-lucide="link"></i>Reconnect Google account</button></div>';
+    } else if (mg && mg.isTrainer) {
       gcard = mg.connected
         ? '<div class="am-gacc ok"><i data-lucide="video"></i><div><b>Google Meet account</b><span>' + esc(mg.email) + ' · Connected — your classes are created in your Google Calendar and you host them.</span></div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-disconnect>Disconnect</button></div>'
         : '<div class="am-gacc"><i data-lucide="video-off"></i><div><b>Google Meet account · Not connected</b><span>Connect once so your classes are created in your own Google Calendar — you enter directly and can admit students. No new password: Google asks you to allow access.</span></div><button type="button" class="am-btn am-btn-sm" data-g-connect><i data-lucide="link"></i>Connect Google account</button></div>';
@@ -483,6 +489,8 @@
     else if (st && canManage() && !st.connected) html = '<div class="am-setup-t"><b>Connect the Broken English Google account</b>Classes are created by one organisation account (for example academics@…). Trainers and students are invited as attendees.</div><button type="button" class="am-btn" data-connect><i data-lucide="link"></i>Connect Google account</button>';
     else if (st && st.connected && canManage() && st.calendarPausedUntil && Date.parse(st.calendarPausedUntil) > Date.now()) html = '<div class="am-setup-t"><b>Classes BRK limited by Google</b>Google has temporarily limited ' + esc(st.organizerEmail || 'the Classes BRK account') + ' (fallback organizer). Only classes still organized by it are waiting. Classes in a trainer\'s own Google account are not affected, and classes of connected trainers move to their account automatically. No need to press Retry.</div>';
     else if (st && st.connected && canManage()) { cls += ' ok'; html = '<div class="am-setup-t">Google connected' + (st.organizerEmail ? ' as <b style="display:inline">' + esc(st.organizerEmail) + '</b>' : '') + ' · Reminder: ' + esc(remText(st.defaultReminders)) + '</div><button type="button" class="am-btn am-btn-ghost am-btn-sm" data-settings><i data-lucide="settings-2"></i>Settings</button>'; }
+    var mp = (canManage() || isOrg()) ? (S.missingProfiles || []) : [];
+    if (mp.length) gcard += '<div class="am-gacc"><i data-lucide="user-x"></i><div><b>' + mp.length + ' trainer' + (mp.length === 1 ? '' : 's') + ' can\u2019t connect Google Meet yet</b><span>No Academic trainer profile linked to their HR record: ' + mp.map(function (x) { return esc(x.name + (x.code ? ' (' + x.code + ')' : '')); }).join(', ') + '. Open Coaches to sync profiles from HR.</span></div></div>';
     if (gcard) { html = gcard + (html ? '<div class="am-setup-row">' + html + '</div>' : ''); cls = 'am-setup am-setup-stack'; }
     el.className = cls;
     el.hidden = !html;
@@ -1017,6 +1025,7 @@
       if (t.id === 'am-bulk') { bulkCreate(); return; }
       if (t.hasAttribute('data-connect')) { connect(t); return; }
       if (t.hasAttribute('data-g-connect')) { connectMine(t); return; }
+      if (t.hasAttribute('data-g-recheck')) { t.disabled = true; loadGoogleSelf().then(function () { render(); }); return; }
       if (t.hasAttribute('data-g-disconnect')) { disconnectMine(); return; }
       if (t.hasAttribute('data-settings')) { settings(); return; }
       if (t.hasAttribute('data-recheck')) { loadStatus().then(render); return; }

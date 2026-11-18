@@ -20,10 +20,10 @@
   var MIN_W = 560, MIN_H = 380, PAD = 24;
   var CSS = [
     '.bewin{display:flex!important;flex-direction:column;position:relative;padding:0!important;overflow:hidden!important;box-sizing:border-box;',
-    'width:min(82vw,1320px);height:min(88vh,920px);max-width:calc(100vw - ' + PAD + 'px)!important;max-height:calc(100vh - ' + PAD + 'px)!important;transition:width .18s,height .18s}',
+    'width:min(82vw,1320px);height:min(88vh,920px);max-width:calc(100vw - ' + PAD + 'px)!important;max-height:calc(var(--be-vh,100vh) - ' + PAD + 'px)!important;transition:width .18s,height .18s}',
     '.bewin.bewin-resizing{transition:none;user-select:none}',
     '.bewin[data-mode="compact"]{width:min(640px,calc(100vw - ' + PAD + 'px));height:min(88vh,920px)}',
-    '.bewin[data-mode="max"]{width:calc(100vw - ' + PAD + 'px)!important;height:calc(100vh - ' + PAD + 'px)!important}',
+    '.bewin[data-mode="max"]{width:calc(100vw - ' + PAD + 'px)!important;height:calc(var(--be-vh,100vh) - ' + PAD + 'px)!important}',
     '.bewin>[data-bewin-head]{flex:0 0 auto;position:relative;z-index:2}',
     '.bewin>[data-bewin-body]{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;container-type:inline-size;container-name:bewin}',
     '.bewin>[data-bewin-foot]{flex:0 0 auto;position:relative;z-index:2}',
@@ -39,7 +39,7 @@
     '.bewin-rz-c{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;',
     'background:linear-gradient(135deg,transparent 50%,rgba(var(--ink, 255,255,255), 0.18) 50%,rgba(var(--ink, 255,255,255), 0.18) 58%,transparent 58%,transparent 70%,rgba(var(--ink, 255,255,255), 0.18) 70%,rgba(var(--ink, 255,255,255), 0.18) 78%,transparent 78%)}',
     '.bewin[data-mode="max"] .bewin-rz,.bewin[data-mode="compact"] .bewin-rz-r,.bewin[data-mode="compact"] .bewin-rz-c{display:none}',
-    '@media (max-width:760px),(pointer:coarse){.bewin,.bewin[data-mode]{width:calc(100vw - 16px)!important;height:auto!important;max-height:calc(100vh - 16px)!important;max-width:calc(100vw - 16px)!important}',
+    '@media (max-width:760px),(pointer:coarse){.bewin,.bewin[data-mode]{width:calc(100vw - 16px)!important;height:auto!important;max-height:calc(var(--be-vh,100vh) - 16px)!important;max-width:calc(100vw - 16px)!important}',
     '.bewin .bewin-rz,.bewin [data-bewin-act="compact"],.bewin [data-bewin-act="max"]{display:none!important}}'
   ].join('');
   var ICON = {

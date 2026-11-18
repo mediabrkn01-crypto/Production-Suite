@@ -118,8 +118,16 @@ export async function resolveAuthContext(req: Request): Promise<JarvisAuthContex
 
   let trainerId: string | null = null;
   if (p.has("academic.own") || p.has("academic.all")) {
-    const t = await sb.from("trainers").select("id").or(`hr_employee_id.eq.${rec.id},portal_email.eq.${email}`).limit(1);
-    if (t.data && t.data[0]) trainerId = t.data[0].id;
+    // Trainer identity: the profile LINKED to this HR record wins (stable id). The sign-in email is
+    // only a fallback for a legacy profile that has no HR link yet — never a profile already linked
+    // to a different employee (e.g. a rehire's old record), which would act as someone else.
+    const byId = await sb.from("trainers").select("id,status").eq("hr_employee_id", rec.id);
+    const linked = (byId.data || []).sort((x, y) => Number(y.status !== "inactive") - Number(x.status !== "inactive"))[0];
+    if (linked) trainerId = linked.id;
+    else {
+      const byMail = await sb.from("trainers").select("id").is("hr_employee_id", null).ilike("portal_email", likeExact(email)).limit(1);
+      if (byMail.data && byMail.data[0]) trainerId = byMail.data[0].id;
+    }
   }
 
   return {
