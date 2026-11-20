@@ -298,6 +298,15 @@
   /** Academic team view: is this class's trainer's Google Meet account connected? (null = unknown) */
   function trainerConnected(o) { var c = S.conns[String(o.trainerId || '')]; return c ? !!c.connected : null; }
   function trainerOwned(l) { return !!(l && l.google_organizer_kind === 'trainer'); }
+  /** The Meet lives in ANOTHER trainer's Google account (class reassigned, Meet not moved yet):
+   *  that account is the host — the assigned trainer may wait to be admitted. Academic view only
+   *  (needs the trainer connection list); null = unknown. */
+  function hostMismatch(o, l) {
+    if (!l || !trainerOwned(l) || !l.google_meet_url) return null;
+    var c = S.conns[String(o.trainerId || '')]; if (!c) return null;
+    return !c.connected || String(c.email || '').toLowerCase() !== String(l.google_organizer_email || '').toLowerCase();
+  }
+  var HANDOVER_LABEL = { update_required: 'Trainer changed — Meet setup not updated', update_requested: 'Moving the Meet to the new trainer…', manual_required: 'Google Meet Setup Required', kept: 'Existing Meet kept', failed: 'Meet handover failed' };
   async function loadGoogleSelf() {
     try { S.myGoogle = await api('my_google'); } catch (e) { S.myGoogle = null; }
     if (canManage() || isOrg()) {
@@ -377,6 +386,7 @@
     if ((s === 'synced' || (s === 'waiting' && l && l.google_meet_url)) && !cancelled(o) && !ended(o)) a += '<a class="am-btn am-btn-meet am-btn-sm" href="' + esc(l.google_meet_url) + '" target="_blank" rel="noopener" data-stop><i data-lucide="video"></i>Join Meet</a>';
     else if (canManage() && (ready() || trainerConnected(o)) && trainerConnected(o) !== false && needsMeet(o) && s !== 'failed' && s !== 'waiting') a += '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-create="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '><i data-lucide="video"></i>Create Meet</button>';
     if (s === 'failed' && canManage()) a += '<button type="button" class="am-btn am-btn-danger am-btn-sm" data-retry="' + esc(o.key) + '"' + (S.busy[o.key] ? ' disabled' : '') + '>Retry Sync</button>';
+    if (canManage() && !ended(o) && !cancelled(o) && hostMismatch(o, l)) a += '<span class="am-btn am-btn-ghost am-btn-sm" title="This Meet is hosted by ' + esc(l.google_organizer_email || 'another account') + ', not ' + esc(o.trainerName) + '. Open the class to update the Meet setup." style="cursor:default;color:var(--fg-amber, #fbbf24);border-color:rgba(251,191,36,.35)"><i data-lucide="user-x"></i>Host: previous trainer</span>';
     return a;
   }
 
@@ -786,12 +796,20 @@
       html += '<section class="am-hist"><button type="button" class="am-hist-h" data-setup-toggle aria-expanded="' + !!S.setupOpen + '"><b>Meet setup</b><span>' + (hs === 'assigned' ? 'Trainer is co-host' : hs === 'failed' ? 'Needs attention' : open ? 'Open link' : 'Controlled') + '</span><i data-lucide="chevron-' + (S.setupOpen ? 'up' : 'down') + '"></i></button>';
       if (S.setupOpen) {
         html += '<div class="am-setup-grid">'
-          + '<div><small>Organizer</small><b class="' + (trainerOwned(l) ? 'is-ok' : '') + '">' + esc(trainerOwned(l) ? o.trainerName + ' (trainer)' : 'Fallback organizer') + '</b><span>' + esc(l.google_organizer_email || l.organizer_email || (S.status && S.status.organizerEmail) || '') + '</span></div>'
+          + '<div><small>Organizer</small><b class="' + (trainerOwned(l) && !hostMismatch(o, l) ? 'is-ok' : hostMismatch(o, l) ? 'is-bad' : '') + '">' + esc(!trainerOwned(l) ? 'Fallback organizer' : hostMismatch(o, l) ? 'Previous trainer’s account' : o.trainerName + ' (trainer)') + '</b><span>' + esc(l.google_organizer_email || l.organizer_email || (S.status && S.status.organizerEmail) || '') + '</span></div>'
           + '<div><small>Trainer</small><b>' + esc(o.trainerName) + '</b><span>' + esc(l.trainer_email || '') + '</span></div>'
           + '<div><small>Trainer Meet role</small><b class="' + (hs === 'assigned' ? 'is-ok' : hs === 'failed' ? 'is-bad' : '') + '">' + esc(roleTxt) + '</b></div>'
           + '<div><small>Access</small><b class="' + (linked ? 'is-ok' : '') + '">' + (open ? 'Open link' : linked ? 'Invitation list' : 'Controlled') + '</b><span>' + (open ? 'Anyone with the link joins' : linked ? 'Invited guests join directly (with the invited Google account); others ask the trainer' : 'Invited guests join; others ask to join') + '</span></div>'
           + '<div><small>Google sync</small><b>' + esc(SYNC_LABEL[syncState(o)] || '—') + '</b></div>'
           + '</div>';
+        // Reassigned class whose Meet is still in the PREVIOUS trainer's Google account.
+        if (hostMismatch(o, l) && !isEnded && !erpEnded && !isLive) {
+          var tc2 = trainerConnected(o);
+          html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="user-x"></i><div><b>' + esc(HANDOVER_LABEL[l.meet_handover_status] || 'Trainer changed — Meet still hosted by the previous trainer') + '</b><span>' + esc(l.google_organizer_email || 'The previous trainer') + ' is the host of this Meet; ' + esc(o.trainerName) + ' joins as a guest and may wait to be admitted. '
+            + (tc2 ? 'Move it to ' + esc(o.trainerName) + '’s Google account so they host it — a new link is created and Google emails everyone the update.' : esc(o.trainerName) + ' has not connected a Google account yet (Google Meet Setup Required).')
+            + (l.meet_handover_error ? ' ' + esc(l.meet_handover_error) : '') + '</span></div>'
+            + (tc2 ? '<button type="button" class="am-btn am-btn-sm" data-recreate' + (busy ? ' disabled' : '') + '>Move Meet to ' + esc(o.trainerName) + '</button>' : '<button type="button" class="am-btn am-btn-ghost am-btn-sm" data-g-request>Request Google connection</button>') + '</div></div>';
+        }
         if (!trainerOwned(l) && !isEnded && !erpEnded && !isLive) {
           var tc = trainerConnected(o);
           html += '<div class="am-miss"><div class="am-miss-h"><i data-lucide="user-cog"></i><div><b>Classes BRK owns this Meet</b><span>' + (tc ? 'Move it to ' + esc(o.trainerName) + '’s own Google account so the trainer hosts and can admit students. A new Meet link is created; the old event is cancelled and Google emails the update.' : esc(o.trainerName) + ' has not connected a Google Meet account yet.') + '</span></div>'
@@ -1202,6 +1220,62 @@
     BELive.on('acad-meet-erp', ['class_postponements', 'oto_sessions', 'batches'], function () { if (S.root) load(true); }, { debounce: 800 });
   }
 
+  // ── trainer change → Meet handover modal ─────────────────────────────────
+  function handoverModal(pv, p) {
+    return new Promise(function (resolve) {
+      var nt = pv.newTrainer || {}, cls = pv.classes || [], aff = cls.filter(function (c) { return (c.hasEvent || c.syncStatus === 'failed') && !c.alreadyNewTrainers; });
+      var orgs = {}; aff.forEach(function (c) { if (c.organizerEmail) orgs[c.organizerEmail + (c.organizerName ? ' (' + c.organizerName + ')' : c.organizerKind === 'fallback' ? ' (Classes BRK)' : '')] = 1; });
+      var sync = {}; aff.forEach(function (c) { var k = c.syncStatus === 'synced' ? 'Synced' : c.syncStatus === 'failed' ? 'Sync Failed' : c.syncStatus === 'pending' ? 'Waiting for Google' : (c.syncStatus || '—'); sync[k] = (sync[k] || 0) + 1; });
+      var first = aff[0] || {};
+      var profileBad = nt.profile && nt.profile !== 'ok';
+      var gNo = !profileBad && !(nt.google && nt.google.connected);
+      var row = function (k, v) { return '<div class="amh-r"><span>' + esc(k) + '</span><b>' + v + '</b></div>'; };
+      var ov = document.createElement('div');
+      ov.className = 'amh-ov';
+      ov.innerHTML = '<div class="amh" role="dialog" aria-modal="true" aria-labelledby="amh-t">'
+        + '<h3 id="amh-t">Trainer Changed – Update Google Meet Setup?</h3>'
+        + '<p>You have reassigned this class to another trainer. The existing Google Meet may still be associated with the previous trainer. Would you like to update the Google Meet setup for the newly assigned trainer?</p>'
+        + '<div class="amh-g">'
+        + row('Class / Batch', esc(pv.batch.name || p.batchName || ''))
+        + row('Previous trainer', esc(pv.batch.trainerName || p.prevTrainerName || '—'))
+        + row('New trainer', esc(nt.name || p.newTrainerName || '—'))
+        + row('Current Google Meet', esc(aff.length + ' upcoming class' + (aff.length === 1 ? '' : 'es')) + (first.meetUrl ? '<small>' + esc(first.meetUrl.replace(/^https:\/\//, '')) + (aff.length > 1 ? ' …' : '') + '</small>' : ''))
+        + row('Meeting organizer', esc(Object.keys(orgs).join(', ') || '—'))
+        + row('Sync status', esc(Object.keys(sync).map(function (k) { return k + (aff.length > 1 ? ' ×' + sync[k] : ''); }).join(', ') || '—'))
+        + '</div>'
+        + (profileBad ? '<div class="amh-w bad"><b>' + esc(nt.name || 'The new trainer') + ' can’t host Google Meet yet.</b> ' + (nt.profile === 'not_linked' ? 'Their Academic trainer profile isn’t linked to an HR employee record.' : nt.profile === 'inactive' ? 'Their employee record or trainer profile is not active.' : 'They have no Academic trainer profile.') + ' Fix this in HR first, or keep the existing setup.</div>'
+          : gNo ? '<div class="amh-w"><b>Google Meet Setup Required.</b> ' + esc(nt.name || 'The new trainer') + ' hasn’t connected a Google account' + (nt.google && nt.google.status === 'revoked' ? ' (access expired)' : '') + '. Ask them to open Live Classes → <b>Connect Google account</b>. If you choose Update now, the current Meets keep working and move to them automatically once they connect.</div>'
+          : '<div class="amh-w ok">' + esc(nt.name) + '’s Google account (' + esc(nt.google.email || '') + ') is connected. Update re-creates each upcoming Meet in their account so they are the host; Google emails students the new link. Started and past classes are not changed.</div>')
+        + '<div class="amh-keep">Keep: the previous organizer stays the host — ' + esc(nt.name || 'the new trainer') + ' is invited but may have to wait to be admitted (co-host needs a Google Workspace organizer).</div>'
+        + '<div class="amh-a">'
+        + '<button type="button" class="am-btn" data-h="update"' + (profileBad ? ' disabled' : '') + '><i data-lucide="refresh-cw"></i>Update Google Meet Setup <em>Recommended</em></button>'
+        + '<button type="button" class="am-btn am-btn-ghost" data-h="keep">Keep Existing Meeting Setup</button>'
+        + '<button type="button" class="am-btn am-btn-ghost" data-h="cancel">Cancel</button>'
+        + '</div></div>';
+      if (!document.getElementById('amh-css')) {
+        var st = document.createElement('style'); st.id = 'amh-css';
+        st.textContent = '.amh-ov{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(var(--scrim, 0,0,0), calc(0.6 * var(--scrim-k, 1)));backdrop-filter:blur(4px)}'
+          + '.amh{width:100%;max-width:460px;max-height:calc(var(--be-vh,100vh) - 32px);overflow:auto;background:var(--sf-2, #0d111c);border:1px solid rgba(var(--ink, 255,255,255), 0.1);border-radius:16px;padding:20px 20px 16px;box-shadow:0 20px 60px rgba(var(--shade, 0,0,0), calc(0.6 * var(--shade-k, 1)));color:var(--tx-1, #f1f5f9)}'
+          + '.amh h3{margin:0 0 8px;font-size:16px;font-weight:800;color:var(--tx-0, #fff);text-wrap:balance}.amh p{margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--tx-3, #a5adcf)}'
+          + '.amh-g{display:grid;gap:6px;padding:10px 12px;border-radius:10px;background:rgba(var(--ink, 255,255,255), 0.04);border:1px solid rgba(var(--ink, 255,255,255), 0.07);margin-bottom:10px}'
+          + '.amh-r{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}.amh-r span{color:var(--tx-4, #8890b5);flex:none}.amh-r b{text-align:right;font-weight:700;min-width:0;overflow-wrap:anywhere}.amh-r small{display:block;font-weight:500;color:var(--tx-4, #8890b5)}'
+          + '.amh-w{font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:10px;margin-bottom:8px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:var(--tx-2, #e2e8f0)}.amh-w.ok{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.08)}.amh-w.bad{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08)}'
+          + '.amh-keep{font-size:11.5px;color:var(--tx-4, #8890b5);margin:0 0 12px;line-height:1.45}'
+          + '.amh-a{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.amh-a .am-btn em{font-style:normal;font-size:10px;font-weight:800;margin-left:6px;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.18)}'
+          + '@media(max-width:520px){.amh-a{flex-direction:column}.amh-a .am-btn{width:100%;justify-content:center}}';
+        document.head.appendChild(st);
+      }
+      document.body.appendChild(ov);
+      icons();
+      var done = false;
+      function close(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); ov.remove(); resolve(v); }
+      function onKey(e) { if (e.key === 'Escape') close('cancel'); }
+      document.addEventListener('keydown', onKey);
+      ov.addEventListener('click', function (e) { var b = e.target.closest('[data-h]'); if (b && !b.disabled) close(b.getAttribute('data-h')); else if (e.target === ov) close('cancel'); });
+      var f = ov.querySelector('[data-h="update"]:not([disabled])') || ov.querySelector('[data-h="keep"]'); if (f) f.focus();
+    });
+  }
+
   // ── public API ────────────────────────────────────────────────────────────
   window.AcademicMeet = {
     /** Called by academics.html after injecting academic-meet.html into the tab. */
@@ -1230,6 +1304,39 @@
         toast('error', 'Time changed in the ERP, but Google Calendar was not updated: ' + (e.message || e) + ' Open Live Classes → Retry Sync.', 9000);
       }
       if (S.root) load(true);
+    },
+    /** Change Trainer / Edit Batch / Assign — BEFORE the trainer change is saved. Shows
+     *  "Trainer Changed – Update Google Meet Setup?" when upcoming classes already have Meets.
+     *  Resolves 'update' | 'keep' | 'cancel' | 'none' (no Meets affected → nothing to ask). */
+    trainerChangeGate: async function (p) {
+      var pv;
+      try { pv = await api('handover_preview', { batchId: p.batchId, newTrainerId: p.newTrainerId }); }
+      catch (e) {
+        if (e.code === 'NOT_DEPLOYED' || e.code === 'FORBIDDEN') return 'none';
+        toast('warning', 'Could not check this batch’s Google Meet setup (' + (e.message || e) + '). The trainer change can still be saved; update the Meets from Live Classes.', 8000);
+        return 'none';
+      }
+      if (!pv.affected) return 'none';
+      return handoverModal(pv, p);
+    },
+    /** AFTER the trainer change is saved: apply the choice to the upcoming Meets. */
+    applyHandover: async function (batchId, mode) {
+      if (mode !== 'update' && mode !== 'keep') return null;
+      toast('info', mode === 'update' ? 'Updating Google Meet setup for the new trainer…' : 'Keeping the existing Meets — inviting the new trainer…', 4000);
+      var r;
+      try { r = await api('handover', { batchId: batchId, mode: mode }); }
+      catch (e) { toast('error', 'Trainer saved, but the Google Meet setup was not updated: ' + (e.message || e) + ' Open Live Classes → the class → Meet setup to retry.', 10000); return null; }
+      var parts = [];
+      if (r.done) parts.push(r.done + ' moved to the new trainer');
+      if (r.kept) parts.push(r.kept + ' kept (new trainer invited)');
+      if (r.queued) parts.push(r.queued + ' continuing in the background');
+      if (r.manual) parts.push(r.manual + ' waiting — Google Meet Setup Required (the trainer must connect Google)');
+      if (r.failed) parts.push(r.failed + ' failed');
+      var msg = 'Google Meet: ' + (parts.join(' · ') || 'nothing to change') + '.';
+      var bad = (r.results || []).filter(function (x) { return x.state === 'failed' || x.state === 'manual_required'; })[0];
+      toast(r.failed ? 'error' : r.manual ? 'warning' : 'success', msg + (bad && bad.message ? ' ' + bad.message : ''), r.failed || r.manual ? 12000 : 6000);
+      if (S.root) load(true);
+      return r;
     },
     /** Create Batch with "Create online class" ticked. */
     onBatchCreated: async function (batchId) {

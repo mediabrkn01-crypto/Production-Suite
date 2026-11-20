@@ -18,7 +18,7 @@
 // same event (Google answers 409) — never a second event / second Meet link.
 import { adminClient, can, type JarvisAuthContext } from "../_shared/jarvis/auth.ts";
 import { GoogleApiError, loadOrganizer, googleConfig, runAs, currentActor } from "../_shared/google/googleAuthService.ts";
-import { ORG, actorForEmployee, actorForRow, actorForTrainer, employeeOfTrainer } from "./owners.ts";
+import { ORG, actorForEmployee, actorForRow, actorForTrainer, employeeOfTrainer, connectionOf } from "./owners.ts";
 import * as Cal from "../_shared/google/googleCalendarService.ts";
 import { loadLeaveIndex } from "../_shared/trainer-availability.ts";
 import { sessionLabel, sessionNumberForClass } from "../_shared/session-number.ts";
@@ -292,7 +292,11 @@ export async function linkInvitees(a: JarvisAuthContext, key: string, hint: { st
 // (e.g. the previous trainer). Never fails the Meet itself: the outcome is stored on the row
 // (cohost_status) and shown in the class popup. The review email is never made co-host.
 async function assignCohost(info: ClassInfo, row: any, actor: string) {
-  if (trainerOwns()) return ownerHost(info, row);
+  // The organizer account is the host. It is the assigned trainer's host access ONLY when the
+  // organizer IS that trainer — a meeting kept in a previous trainer's calendar after a
+  // reassignment makes the new trainer a guest (co-host attempted below, capability-aware).
+  const orgIsTrainer = trainerOwns() && !!info.trainerId && (await employeeOfTrainer(info.trainerId)) === currentActor().employeeId;
+  if (orgIsTrainer) return ownerHost(info, row);
   const key = info.key, email = info.trainer?.email?.toLowerCase() || null;
   const set = (patch: Record<string, unknown>) =>
     adminClient().from(T).update({ ...patch, updated_at: new Date().toISOString() }).eq("occurrence_key", key).select().maybeSingle()
@@ -315,13 +319,13 @@ async function assignCohost(info: ClassInfo, row: any, actor: string) {
       await addMember(space, email, "COHOST");
       await logEvent(key, "Trainer set as co-host", `${info.trainer!.name} · ${email}`, actor);
     }
-    await rememberCohost(true);
+    if (!trainerOwns()) await rememberCohost(true);
     return set({ trainer_email: email, trainer_meet_role: "COHOST", cohost_status: "assigned", cohost_error: null });
   } catch (e) {
     // Google only lets a Google Workspace organizer add co-hosts; a personal Gmail organizer gets 403.
     // Not an error for the class: the trainer joins as a guest. Switches on by itself with Workspace.
     if (e instanceof GoogleApiError && e.status === 403) {
-      await rememberCohost(false);
+      if (!trainerOwns()) await rememberCohost(false);   // the remembered flag is the central organizer's
       const r = await set({ trainer_email: email, trainer_meet_role: "GUEST", cohost_status: "unsupported", cohost_error: null });
       if (r?.cohost_status === "unsupported") return r;
       return set({ trainer_email: email, trainer_meet_role: null, cohost_status: "failed", cohost_error: "Co-host needs a Google Workspace organizer account — the trainer joins as a guest." });
@@ -359,7 +363,8 @@ async function claim(info: ClassInfo, by: string) {
 // Columns added by 20261021_live_class_sync_queue.sql — dropped from a write if that migration
 // hasn't been run yet, so the existing flow keeps working.
 const SYNC_COLS = ["calendar_event_status", "meet_status", "trainer_invite_status", "review_invite_status", "trainer_calendar_invited",
-  "sync_attempts", "next_retry_at", "last_sync_attempt_at", "last_error_status", "last_error_reason", "last_verified_at", "superseded_event"];
+  "sync_attempts", "next_retry_at", "last_sync_attempt_at", "last_error_status", "last_error_reason", "last_verified_at", "superseded_event",
+  "meet_handover_status", "meet_handover_error"];
 async function save(key: string, patch: Record<string, unknown>) {
   const run = (p: Record<string, unknown>) => adminClient().from(T).update({ ...p, updated_at: new Date().toISOString() }).eq("occurrence_key", key).select().maybeSingle();
   let { data, error } = await run(patch);
@@ -507,7 +512,9 @@ export async function createClassMeeting(a: JarvisAuthContext, key: string, hint
   const owner = opts.fallback ? ORG : await actorForTrainer(info.trainerId);
   if (!owner) {
     await adminClient().from(T).upsert({ ...rowFields(info), google_sync_status: "pending", created_by: a.email }, { onConflict: "occurrence_key", ignoreDuplicates: true });
-    await save(key, { google_sync_status: "failed", google_sync_error: TRAINER_NOT_CONNECTED_MSG + ` Trainer: ${info.trainer?.name || "not assigned"}.`, last_error_reason: "TRAINER_NOT_CONNECTED", next_retry_at: null, updated_by: a.email });
+    // trainer_id = the batch's CURRENT trainer, so the queue retries this class as soon as THAT
+    // trainer connects (a stale id kept it in Sync Failed forever).
+    await save(key, { trainer_id: info.trainerId, google_sync_status: "failed", google_sync_error: info.trainerId ? `Google Meet Setup Required — ${info.trainer?.name || "the trainer"} has not connected a Google account (Live Classes → Connect Google account). The Meet is created automatically once they connect.` : "No trainer is assigned to this class.", last_error_reason: "TRAINER_NOT_CONNECTED", next_retry_at: null, updated_by: a.email });
     throw new MeetError(409, "TRAINER_NOT_CONNECTED", `${TRAINER_NOT_CONNECTED_MSG} Trainer: ${info.trainer?.name || "not assigned"}.`);
   }
   return runAs(owner, () => createAsOwner(a, key, info, opts.fresh ? null : existing));
@@ -593,9 +600,14 @@ export async function updateClassMeeting(a: JarvisAuthContext, key: string, hint
   if (!row?.google_calendar_event_id || row.class_status === "cancelled") return { row, skipped: true };
   // A trainer-owned meeting whose class was given to ANOTHER trainer lives in the old trainer's
   // calendar — move it to the new trainer (create as them, then cancel the old event).
-  if (row.google_organizer_kind === "trainer" && canManage(a)) {
+  // It is moved ONLY when the Academic team chose "Update Google Meet Setup" (handover); a
+  // working Meet is never replaced silently. Undecided → flagged "update required".
+  if (row.google_organizer_kind === "trainer") {
     const emp = await employeeOfTrainer(info.trainerId);
-    if (emp && emp !== row.google_organizer_employee_id) return recreateWithTrainer(a, key, hint);
+    if (emp && emp !== row.google_organizer_employee_id) {
+      if (canManage(a) && ["update_requested", "manual_required"].includes(row.meet_handover_status) && await actorForTrainer(info.trainerId)) return recreateWithTrainer(a, key, hint);
+      if (!row.meet_handover_status || row.meet_handover_status === "done") await save(key, { meet_handover_status: "update_required", meet_handover_error: null }).catch(() => {});
+    }
   }
   return runAs(await actorForRow(row), () => updateAsOwner(a, key, hint, why, info, row));
 }
@@ -672,6 +684,7 @@ export async function recreateWithTrainer(a: JarvisAuthContext, key: string, hin
   catch (e) { await restore(); await logEvent(key, "Move to the trainer's Google account failed", explain(e).slice(0, 300), a.email); throw e; }
   if (!made?.row?.google_calendar_event_id || made.row.google_organizer_kind !== "trainer" || made.row.google_calendar_event_id === old.event_id) { await restore(); return made; }
   const res = await cancelSuperseded(key, old, a.email);
+  await save(key, { meet_handover_status: "done", meet_handover_error: null }).catch(() => null);
   await logEvent(key, "Meet moved to the trainer's Google account", made.row.google_organizer_email || null, a.email);
   return { ...made, row: res || made.row, moved: true };
 }
@@ -1028,7 +1041,8 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
     if (!row.google_calendar_event_id) {
       // cancelled before it ever reached Google → nothing to cancel there
       if (row.class_status === "cancelled") { await save(row.occurrence_key, { google_sync_status: "cancelled", next_retry_at: null }).catch(() => {}); return true; }
-      const t = await actorForTrainer(row.trainer_id);
+      const cur = await resolveClass(row.occurrence_key, hintOf(row)).catch(() => null);   // CURRENT trainer, not the stored id
+      const t = await actorForTrainer(cur?.trainerId ?? row.trainer_id);
       if (!t) { await createClassMeeting(a, row.occurrence_key, hintOf(row)).catch(() => {}); return true; }
       return runIfFree({ ...t, rowKey: row.occurrence_key }, fn);
     }
@@ -1087,7 +1101,9 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
       .or("google_sync_error.ilike.*limit*,last_error_reason.eq.TRAINER_NOT_CONNECTED,last_error_reason.eq.quotaExceeded").order("class_date").order("start_time").limit(15);
     for (const row of stuck || []) {
       if (Date.now() - t0 > budgetMs) break;
-      const t = await actorForTrainer(row.trainer_id);
+      // The class's CURRENT trainer (batch / 1:1), not the id stored when the row was first made.
+      const cur = await resolveClass(row.occurrence_key, hintOf(row)).catch(() => null);
+      const t = await actorForTrainer(cur?.trainerId ?? row.trainer_id);
       if (!t) {
         if (row.last_error_reason !== "TRAINER_NOT_CONNECTED") await createClassMeeting(a, row.occurrence_key, hintOf(row)).catch(() => {});
         continue;
@@ -1134,9 +1150,146 @@ export async function processQueue(a: JarvisAuthContext, budgetMs = 50_000) {
       try { await recreateWithTrainer(a, row.occurrence_key, hintOf(row)); moves++; processed++; await sleep(2500); }
       catch (e) { if (e instanceof MeetError && e.code === "GOOGLE_LIMITED") limitedOwners.add(t.key); }
     }
+    // 3b) trainer changed and the Academic team chose "Update Google Meet Setup", but the new
+    //     trainer had not connected Google yet → moved as soon as they are connected.
+    const { data: ho } = await sb.from(T).select("*").in("meet_handover_status", ["update_requested", "manual_required"]).eq("class_status", "scheduled")
+      .neq("live_status", "live").neq("live_status", "ended").gte("class_date", today()).order("class_date").order("start_time").limit(10)
+      .then((r) => r, () => ({ data: [] as any[] }));
+    for (const row of ho || []) {
+      if (Date.now() - t0 > budgetMs || moves >= 8) break;
+      const cur = await resolveClass(row.occurrence_key, hintOf(row)).catch(() => null);
+      if (!cur || !(await actorForTrainer(cur.trainerId))) continue;      // still waiting for the trainer to connect
+      const r = await handoverOne(a, row, "update").catch(() => null);
+      if (r && (r.state === "done")) { moves++; processed++; await sleep(2500); }
+    }
   } finally { await releaseQueueLock(); }
   const { count } = await sb.from(T).select("occurrence_key", { count: "exact", head: true }).eq("google_sync_status", "pending").gte("class_date", today());
   return { processed, verified, remaining: count || 0, pausedUntil: (await calendarPause())?.until || null };
+}
+
+// ── Trainer reassignment → Google Meet handover ──────────────────────────────────────────────
+// Changing a batch's trainer in the ERP does NOT change who hosts its Google Meets: each Meet
+// lives in its organizer's calendar and that account is the host. The Academic team decides per
+// reassignment (Change Trainer / Edit Batch / Assign):
+//   update  → each upcoming class's Meet is re-created in the NEW trainer's own Google account
+//             (they become organizer + host; students get Google's updated invitation; the old
+//             event is cancelled as its owner). Needs the new trainer's Google connection — if it's
+//             missing the class is "Manual action required" and moves automatically once they
+//             connect (queue step 3b); the current Meet keeps working meanwhile.
+//   keep    → the SAME event is kept; the new trainer is invited (co-host only when the organizer
+//             is a Google Workspace account — personal Gmail can't grant co-host, so they may have
+//             to be admitted). Recorded as "kept" so nothing moves it later.
+// Started / past classes are never touched; history and attendance stay as they are.
+const HANDOVER_SELECT = "occurrence_key,class_kind,batch_id,class_date,start_time,class_status,live_status,trainer_id,google_calendar_event_id,google_meet_url,google_organizer_kind,google_organizer_employee_id,google_organizer_email,organizer_email,google_sync_status,google_sync_error,last_error_reason,meet_handover_status,meet_handover_error";
+
+async function upcomingRows(batchId: string) {
+  let r: any = await adminClient().from(T).select(HANDOVER_SELECT).eq("batch_id", batchId).eq("class_status", "scheduled").gte("class_date", today()).order("class_date").order("start_time");
+  if (r.error && /column|schema cache/i.test(r.error.message || "")) {
+    r = await adminClient().from(T).select(HANDOVER_SELECT.replace(",meet_handover_status,meet_handover_error", "")).eq("batch_id", batchId).eq("class_status", "scheduled").gte("class_date", today()).order("class_date").order("start_time");
+  }
+  if (r.error) throw new MeetError(500, "DB", r.error.message);
+  const now = Date.now();
+  return (r.data || []).filter((x: any) => x.live_status !== "live" && x.live_status !== "ended"
+    && now < new Date(istTs(x.class_date, toMin(x.start_time) ?? 0)).getTime());
+}
+
+/** What changing this batch's trainer means for its upcoming Meets (read-only). */
+export async function handoverPreview(a: JarvisAuthContext, batchId: string, newTrainerId: string | null) {
+  if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only the Academic team can change a trainer.");
+  const sb = adminClient();
+  const { data: batch } = await sb.from("batches").select("id,name,trainer_id,trainer_name").eq("id", batchId).maybeSingle();
+  if (!batch) throw new MeetError(404, "NOT_FOUND", "This batch no longer exists.");
+  const rows = await upcomingRows(batchId);
+  // New trainer readiness: active employee, linked Academic trainer profile, Google connected.
+  let nt: any = null;
+  if (newTrainerId) {
+    const { data: t } = await sb.from("trainers").select("id,name,status,hr_employee_id").eq("id", newTrainerId).maybeSingle();
+    const { data: e } = t?.hr_employee_id ? await sb.from("hr_employees").select("full_name,employment_status,portal_access_enabled").eq("id", t.hr_employee_id).maybeSingle() : { data: null };
+    const c = t?.hr_employee_id ? await connectionOf(t.hr_employee_id) : null;
+    const active = !!e && !["inactive", "exited"].includes(String(e.employment_status || "active").toLowerCase()) && e.portal_access_enabled !== false;
+    nt = { id: newTrainerId, name: e?.full_name || t?.name || "Trainer", employeeId: t?.hr_employee_id || null,
+      profile: !t ? "missing" : !t.hr_employee_id ? "not_linked" : !active ? "inactive" : t.status === "inactive" ? "inactive" : "ok",
+      google: { connected: c?.status === "connected", status: c?.status || "not_connected", email: c?.email || null } };
+  }
+  const empIds = [...new Set(rows.map((r: any) => r.google_organizer_employee_id).filter(Boolean))];
+  const { data: emps } = empIds.length ? await sb.from("hr_employees").select("id,full_name").in("id", empIds) : { data: [] as any[] };
+  const nameOf = new Map((emps || []).map((e: any) => [e.id, e.full_name]));
+  const classes = rows.map((r: any) => ({
+    key: r.occurrence_key, date: r.class_date, start: String(r.start_time || "").slice(0, 5), meetUrl: r.google_meet_url || null,
+    hasEvent: !!r.google_calendar_event_id, syncStatus: r.google_sync_status, syncError: r.google_sync_error || null,
+    organizerKind: r.google_organizer_kind || (r.google_calendar_event_id ? "fallback" : null),
+    organizerEmail: r.google_organizer_email || r.organizer_email || null, organizerName: nameOf.get(r.google_organizer_employee_id) || null,
+    handover: r.meet_handover_status || null,
+    alreadyNewTrainers: !!(nt?.employeeId && r.google_organizer_kind === "trainer" && r.google_organizer_employee_id === nt.employeeId),
+  }));
+  return { batch: { id: batch.id, name: batch.name, trainerId: batch.trainer_id, trainerName: batch.trainer_name }, newTrainer: nt, classes,
+    affected: classes.filter((c: any) => (c.hasEvent || c.syncStatus === "failed") && !c.alreadyNewTrainers).length };
+}
+
+/** One class: apply the Academic team's decision. Idempotent — an already-moved class is "done". */
+export async function handoverOne(a: JarvisAuthContext, row: any, mode: "update" | "keep") {
+  const key = row.occurrence_key, hint = hintOf(row);
+  const info = await resolveClass(key, hint);
+  const out = (state: string, message: string | null, extra: Record<string, unknown> = {}) => ({ key, date: info.date, state, message, ...extra });
+  const mark = (st: string, err: string | null = null) => save(key, { meet_handover_status: st, meet_handover_error: err }).catch(() => null);
+  if (row.live_status === "live" || row.live_status === "ended" || Date.now() >= new Date(istTs(info.date, info.startMin)).getTime())
+    return out("skipped", "Already started — left as it was.");
+  const newEmp = await employeeOfTrainer(info.trainerId);
+  const tName = info.trainer?.name || "the new trainer";
+  if (!info.trainerId) return out("skipped", "No trainer assigned.");
+  if (row.google_calendar_event_id && row.google_organizer_kind === "trainer" && newEmp && row.google_organizer_employee_id === newEmp) {
+    await mark("done"); return out("done", `Already in ${tName}'s Google account.`, { meetUrl: row.google_meet_url });
+  }
+  if (mode === "keep") {
+    const msg = `Existing Meet kept — ${row.google_organizer_email || row.organizer_email || "the current organizer"} stays the host. ${tName} is invited as a guest and may have to be admitted (co-host only works when the organizer is a Google Workspace account).`;
+    await mark("kept", msg);
+    if (row.google_calendar_event_id) await updateClassMeeting(a, key, hint, "retry").catch(() => {});
+    await logEvent(key, "Trainer changed — existing Meet kept", tName, a.email);
+    return out("kept", msg, { meetUrl: row.google_meet_url });
+  }
+  const t = await actorForTrainer(info.trainerId);
+  if (!t) {
+    const msg = `Google Meet Setup Required — ${tName} must connect their Google account (Live Classes → Connect Google account). The Meet moves to them automatically once connected; the current Meet keeps working until then.`;
+    await mark("manual_required", msg);
+    if (row.google_calendar_event_id) await updateClassMeeting(a, key, hint, "retry").catch(() => {});   // at least invite the new trainer
+    await logEvent(key, "Meet handover waiting for the trainer's Google account", tName, a.email);
+    return out("manual_required", msg);
+  }
+  await mark("update_requested");
+  try {
+    const r: any = row.google_calendar_event_id ? await recreateWithTrainer(a, key, hint) : await createClassMeeting(a, key, hint);
+    const now = r?.row || (await getRow(key));
+    const ok = now?.google_organizer_kind === "trainer" && now.google_organizer_employee_id === newEmp && now.google_meet_url && now.google_sync_status === "synced";
+    if (ok) { await mark("done"); return out("done", `Meet moved to ${tName}'s Google account — ${tName} is the host.`, { meetUrl: now.google_meet_url }); }
+    const err = now?.google_sync_error || "Google has not confirmed the new meeting yet — it will be retried.";
+    await mark(now?.google_sync_status === "pending" ? "update_requested" : "failed", err);
+    return out(now?.google_sync_status === "pending" ? "queued" : "failed", err);
+  } catch (e) {
+    if (e instanceof MeetError && (e.code === "GOOGLE_LIMITED" || e.code === "BUSY")) { await mark("update_requested", e.message); return out("queued", e.message); }
+    const msg = explain(e).slice(0, 300);
+    await mark("failed", msg);
+    await logEvent(key, "Meet handover failed", msg, a.email);
+    return out("failed", msg);
+  }
+}
+
+/** Apply the decision to every upcoming class of the batch (run AFTER the trainer change is saved). */
+export async function handoverBatch(a: JarvisAuthContext, batchId: string, mode: "update" | "keep", budgetMs = 45_000) {
+  if (!canManage(a)) throw new MeetError(403, "FORBIDDEN", "Only the Academic team can change a trainer.");
+  const t0 = Date.now(), rows = await upcomingRows(batchId), results: any[] = [];
+  for (const row of rows) {
+    if (!row.google_calendar_event_id && row.google_sync_status !== "failed") continue;   // no Meet yet → created for the new trainer as usual
+    if (Date.now() - t0 > budgetMs) {
+      if (mode === "update") await save(row.occurrence_key, { meet_handover_status: "update_requested", meet_handover_error: null }).catch(() => {});
+      results.push({ key: row.occurrence_key, date: row.class_date, state: "queued", message: "Continues automatically in the background." });
+      continue;
+    }
+    const r = await handoverOne(a, row, mode).catch((e) => ({ key: row.occurrence_key, date: row.class_date, state: "failed", message: explain(e).slice(0, 300) }));
+    results.push(r);
+    if (r.state === "done" || r.state === "kept") await sleep(1200);
+  }
+  const count = (s: string) => results.filter((r) => r.state === s).length;
+  return { results, done: count("done"), kept: count("kept"), manual: count("manual_required"), failed: count("failed"), queued: count("queued"), skipped: count("skipped") };
 }
 
 export async function getMeetingDetails(a: JarvisAuthContext, key: string, hint: { start?: string } = {}) {

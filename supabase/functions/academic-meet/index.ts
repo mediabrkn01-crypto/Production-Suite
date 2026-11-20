@@ -22,7 +22,7 @@ import { actorForKey, connectionOf, trainerProfileOf, TRAINER_PROFILE_MSG } from
 import {
   canManage, cancelClassMeeting, createClassMeeting, getMeetingDetails, MeetError, resendInvitations,
   retryCancel, retrySync, updateClassMeeting, joinLive, endClass, syncMeetReport, setTrainerEmail, openRoom, linkInvitees,
-  enqueue, processQueue, recreateWithTrainer,
+  enqueue, processQueue, recreateWithTrainer, handoverPreview, handoverBatch,
 } from "./academicMeetService.ts";
 import { calendarPause } from "./syncGuard.ts";
 
@@ -113,6 +113,11 @@ async function trainerCallback(url: URL, erpEmail: string): Promise<Response> {
       last_refresh_at: new Date().toISOString(), connection_status: "connected", last_error: null, paused_until: null, pause_level: 0, updated_at: new Date().toISOString(),
     }, { onConflict: "employee_id" });
     if (error) throw new Error(error.message);
+    // Classes that failed only because this trainer wasn't connected are queued again right away
+    // (the Academic team's queue run creates / moves them as this trainer — no manual Retry).
+    await adminClient().from("academic_live_classes").update({ google_sync_status: "pending", google_sync_error: null, next_retry_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq("trainer_id", a.trainerId).eq("google_sync_status", "failed").eq("last_error_reason", "TRAINER_NOT_CONNECTED").eq("class_status", "scheduled")
+      .gte("class_date", new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date())).then(() => {}, () => {});
     return page("Google Meet account connected", `Your classes will be created in ${who.email}'s Google Calendar — you are the host and can admit students. You can close this tab.`, true);
   } catch (e) {
     console.error("academic-meet trainer connect", e);
@@ -202,6 +207,14 @@ async function handle(a: JarvisAuthContext, body: any, key: string, hint: { star
           const c: any = t.hr_employee_id ? by.get(t.hr_employee_id) : null;
           return { trainerId: t.id, name: t.name, linked: !!t.hr_employee_id, connected: c?.connection_status === "connected", status: c?.connection_status || "not_connected", email: c?.google_email || null };
         }) });
+      }
+      // Trainer reassignment → Google Meet handover (preview before saving, apply after).
+      case "handover_preview": return json({ ok: true, ...(await handoverPreview(a, String(body.batchId || ""), body.newTrainerId ? String(body.newTrainerId) : null)) });
+      case "handover": {
+        const mode = body.mode === "keep" ? "keep" : "update";
+        const r = await handoverBatch(a, String(body.batchId || ""), mode);
+        if (r.queued || r.manual) background(processQueue(a));
+        return json({ ok: true, ...r });
       }
       // Bulk / automatic creation goes through the server queue: one class at a time, paced,
       // paused while Google limits the organizer. Processing continues after this response.
